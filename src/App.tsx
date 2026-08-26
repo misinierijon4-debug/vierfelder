@@ -6,19 +6,12 @@ import type { Backend } from './lib/backend'
 import { istBilanzzeit, toKey, weekDays } from './lib/dates'
 import { useTracker } from './lib/store'
 import { lokalWechseln, lokalesBackend, lokalesMe } from './lib/lokal'
-import {
-  abmelden,
-  brauchtEigenesPasswort,
-  hatSupabase,
-  supabaseBackend,
-  useSession,
-} from './lib/supabase'
+import { abmelden, hatSupabase, supabaseBackend, useSession } from './lib/supabase'
 import { abstand, istGesetzt, streak, wert, wocheBereich, wocheGesamt } from './lib/tracker'
 import { Kopf } from './components/Kopf'
 import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
 import { Anmeldung } from './components/Anmeldung'
-import { PasswortSetzen } from './components/PasswortSetzen'
 
 const UNDO_MS = 5000
 
@@ -34,9 +27,6 @@ export function App() {
 
   if (hatSupabase && status === 'laden') return <div className="min-h-[100dvh] bg-grund" />
   if (hatSupabase && !session) return <Anmeldung />
-  if (brauchtEigenesPasswort(session)) {
-    return <PasswortSetzen email={session!.user.email ?? ''} />
-  }
   if (!backend) return <div className="min-h-[100dvh] bg-grund" />
 
   return <Tracker backend={backend} onWechsel={() => setWechselNr((n) => n + 1)} />

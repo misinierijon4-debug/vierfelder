@@ -303,3 +303,14 @@ Zwei implementierungen erfüllen es: `src/lib/lokal.ts` (localStorage + Broadcas
 Anmeldung: e-mail und passwort (`src/components/Anmeldung.tsx`), keine registrierung im interface. Die zuordnung konto → person läuft über die tabelle `profile` mit einer spalte `person` (`erijon` oder `koray`) — die farbe hängt an der person, nicht am konto.
 
 Was ich nicht tun kann und du machen musst: die beiden konten anlegen und die passwörter setzen. Konten anlegen und passwörter eingeben gehört zu dem, was ich nicht mache. Im dashboard unter authentication → add user, danach die zwei zeilen in `profile` (das insert steht unten in `supabase/schema.sql`).
+
+## 16. Nachtrag: erzwungener passwortwechsel wieder raus
+
+Kurz gebaut, kurz benutzt, wieder entfernt (`src/components/PasswortSetzen.tsx`,
+`brauchtEigenesPasswort`, `passwortSetzen`). Der bildschirm hatte genau eine aufgabe:
+koray sollte beim ersten login das startpasswort ersetzen, das erijon beim anlegen
+gesetzt hatte. Das ist passiert, damit ist die aufgabe erledigt.
+
+Die app kennt jetzt keinen passwortwechsel mehr. Wer ein neues braucht, bekommt es im
+supabase-dashboard. Bei zwei konten ist das der kürzere weg als eine maske, die nach
+einem tag niemand mehr aufruft.

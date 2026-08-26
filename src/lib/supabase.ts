@@ -57,33 +57,6 @@ export async function abmelden() {
   await supabase?.auth.signOut()
 }
 
-/**
- * das startpasswort kennt derjenige, der das konto angelegt hat. bis der nutzer
- * ein eigenes gesetzt hat, steht `passwort_gesetzt` nicht in den metadaten und
- * die app zeigt nur den setzen-bildschirm.
- */
-export function brauchtEigenesPasswort(session: Session | null): boolean {
-  if (!session) return false
-  return session.user.user_metadata?.passwort_gesetzt !== true
-}
-
-export async function passwortSetzen(neu: string): Promise<string | null> {
-  if (!supabase) return 'supabase ist nicht eingerichtet.'
-  const { error } = await supabase.auth.updateUser({
-    password: neu,
-    data: { passwort_gesetzt: true },
-  })
-  if (!error) return null
-  const text = error.message.toLowerCase()
-  if (text.includes('should be different')) {
-    return 'das ist das startpasswort. nimm ein anderes.'
-  }
-  if (text.includes('at least') || text.includes('weak')) {
-    return 'zu kurz oder zu einfach. nimm ein längeres.'
-  }
-  return 'passwort konnte nicht gesetzt werden. prüfe die verbindung.'
-}
-
 export function supabaseBackend(eigeneId: string): Backend {
   if (!supabase) throw new Error('supabase ist nicht eingerichtet')
   const db = supabase

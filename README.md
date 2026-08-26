@@ -24,15 +24,14 @@ Projekt `vierfelder`, Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, R
 
 Zugangsdaten liegen in `.env.local` (nicht im Git). Ohne diese Datei startet die App im Prototyp-Modus mit localStorage.
 
-### Was noch fehlt: die zwei Konten
+### Die zwei Konten
 
-Konten anlegen und Passwörter setzen musst du selbst machen.
+Angelegt am 26.08.2026. Konten anlegen und Passwörter setzen läuft über das Dashboard,
+die App hat dafür keine Maske — auch nicht zum Ändern. Wer ein neues Passwort braucht,
+bekommt es unter Authentication → Users.
 
 1. Dashboard → Authentication → Add user → Create new user.
    Zwei Konten anlegen, bei beiden **Auto Confirm User** anhaken — sonst lehnt die Anmeldung mit „email not confirmed" ab.
-   Für Koray ein **zufälliges Startpasswort** nehmen. Beim ersten Login zwingt ihn die App,
-   ein eigenes zu setzen (`src/components/PasswortSetzen.tsx`); danach kennst du es nicht mehr.
-   Die App merkt sich das über das Flag `passwort_gesetzt` in den User-Metadaten.
 2. Danach einmal im SQL Editor, mit den echten E-Mail-Adressen:
 
 ```sql
