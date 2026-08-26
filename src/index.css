@@ -1,0 +1,93 @@
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource-variable/hanken-grotesk';
+@import 'tailwindcss';
+
+/* fünf benannte werte. alles andere ist abgeleitet. */
+:root {
+  --grund: #14171c;
+  --flaeche: #1b2027;
+  --kreide: #e6e9e4;
+  --erijon: #f2c14e;
+  --koray: #57b8a5;
+
+  --kreide-60: color-mix(in srgb, var(--kreide) 60%, var(--grund));
+  --kreide-52: color-mix(in srgb, var(--kreide) 52%, var(--grund));
+  --marke-rand: color-mix(in srgb, var(--kreide) 45%, var(--grund));
+  --linie: color-mix(in srgb, var(--kreide) 12%, var(--grund));
+  --linie-hell: color-mix(in srgb, var(--kreide) 26%, var(--grund));
+  /* unterschiedliche prozente, weil petrol dunkler startet als gold: beide landen bei ~2,7:1 */
+  --erijon-leer: color-mix(in srgb, var(--erijon) 40%, var(--grund));
+  --koray-leer: color-mix(in srgb, var(--koray) 48%, var(--grund));
+}
+
+@theme inline {
+  --color-grund: var(--grund);
+  --color-flaeche: var(--flaeche);
+  --color-kreide: var(--kreide);
+  --color-kreide-60: var(--kreide-60);
+  --color-kreide-52: var(--kreide-52);
+  --color-marke-rand: var(--marke-rand);
+  --color-linie: var(--linie);
+  --color-linie-hell: var(--linie-hell);
+  --color-erijon: var(--erijon);
+  --color-koray: var(--koray);
+
+  --font-display: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --radius-marke: 2px;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--grund);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--kreide);
+  font-family: var(--font-body);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* zahlen sind der inhalt dieser app */
+.tnum {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-stretch: 112%;
+  letter-spacing: -0.01em;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  letter-spacing: -0.02em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--linie-hell);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
