@@ -12,6 +12,7 @@ import { Kopf } from './components/Kopf'
 import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
 import { Anmeldung } from './components/Anmeldung'
+import { Schlafdiagramm } from './components/Schlafdiagramm'
 
 const UNDO_MS = 5000
 
@@ -19,11 +20,18 @@ export function App() {
   const { status, session } = useSession()
   const [wechselNr, setWechselNr] = useState(0)
 
+  /**
+   * am konto festmachen, nicht am session-objekt: getSession() und
+   * onAuthStateChange liefern beide dieselbe anmeldung, aber als zwei
+   * verschiedene objekte. daran hing bisher ein zweites, überflüssiges laden.
+   */
+  const kontoId = session?.user.id ?? null
+
   const backend = useMemo<Backend | null>(() => {
     if (!hatSupabase) return lokalesBackend()
-    return session ? supabaseBackend(session.user.id) : null
+    return kontoId ? supabaseBackend(kontoId) : null
     // wechselNr erzwingt beim nutzerwechsel im prototyp ein neues laden
-  }, [session, wechselNr])
+  }, [kontoId, wechselNr])
 
   if (hatSupabase && status === 'laden') return <div className="min-h-[100dvh] bg-grund" />
   if (hatSupabase && !session) return <Anmeldung />
@@ -33,7 +41,7 @@ export function App() {
 }
 
 function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
-  const { me, zustand, ladezustand, fehler, ereignis, toggle, setWert } = useTracker(backend)
+  const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
 
@@ -137,6 +145,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           ereignis={ereignis}
           leer={meineWoche === 0}
         />
+
+        <Schlafdiagramm naechte={schlaf} woche={woche} />
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>

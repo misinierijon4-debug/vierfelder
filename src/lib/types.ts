@@ -53,6 +53,17 @@ export type Zustand = {
   werte: Werte
 }
 
+export type Schlafnacht = {
+  user: UserId
+  nacht: string
+  schlafMinuten: number
+  einschlafzeit: string
+  wachphasen: number | null
+  wachMinuten: number | null
+  nachtwert: number
+  bewertungsbasis: 80 | 100
+}
+
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {
   return `${u}|${a}|${tag}`
 }

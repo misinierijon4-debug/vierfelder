@@ -1,6 +1,6 @@
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
 import { tickKey, wertKey } from './types'
-import type { AreaId, Ticks, UserId, Werte } from './types'
+import type { AreaId, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 /**
  * prototyp-backend ohne konto: daten im localStorage, realtime über
@@ -10,6 +10,7 @@ import type { AreaId, Ticks, UserId, Werte } from './types'
 const TICKS_KEY = 'vierfelder.ticks.v2'
 const WERTE_KEY = 'vierfelder.werte.v2'
 const ME_KEY = 'vierfelder.me.v2'
+const SCHLAF_KEY = 'vierfelder.schlaf.v1'
 const KANAL = 'vierfelder'
 
 type AlleWerte = Record<UserId, Werte>
@@ -56,7 +57,12 @@ export function lokalesBackend(): Backend {
 
     async laden(): Promise<Anfangszustand> {
       const me = lokalesMe()
-      return { me, ticks: lade<Ticks>(TICKS_KEY, {}), werte: alleWerte()[me] }
+      return {
+        me,
+        ticks: lade<Ticks>(TICKS_KEY, {}),
+        werte: alleWerte()[me],
+        schlaf: lade<Schlafnacht[]>(SCHLAF_KEY, []),
+      }
     },
 
     async schreibeTick(area: AreaId, tag: string, gesetzt: boolean) {

@@ -1,0 +1,2 @@
+[functions.schlaf-import]
+verify_jwt = false

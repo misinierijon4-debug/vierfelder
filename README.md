@@ -22,6 +22,10 @@ npm run build # typecheck + produktionsbuild + pwa
 
 Projekt `vierfelder`, Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt (siehe `supabase/schema.sql`).
 
+Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
+gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung
+stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
+
 Zugangsdaten liegen in `.env.local` (nicht im Git). Ohne diese Datei startet die App im Prototyp-Modus mit localStorage.
 
 ### Die zwei Konten
@@ -70,7 +74,8 @@ src/lib/supabase.ts    postgrest + realtime + anmeldung
 src/lib/store.ts       zustand, optimistisches schreiben, rücknahme bei fehlern
 src/lib/tracker.ts     reine logik, getestet
 src/lib/motion.ts      alle dauern an einer stelle
-src/components/        kopf, bereichszeile, marke, raster, zahl, anmeldung
+supabase/functions/    schlafimport und gemeinsame berechnung
+src/components/        kopf, bereichszeile, marke, raster, schlafdiagramm, zahl, anmeldung
 ```
 
 Welches Backend läuft, entscheidet allein, ob `VITE_SUPABASE_URL` gesetzt ist.

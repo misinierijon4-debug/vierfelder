@@ -1,9 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Backend } from './backend'
 import { tickKey, wertKey } from './types'
-import type { AreaId, Ereignis, Ticks, UserId, Werte, Zustand } from './types'
+import type { AreaId, Ereignis, Schlafnacht, Ticks, UserId, Werte, Zustand } from './types'
 
 let ereignisId = 0
+
+function istProfilfehler(e: unknown): boolean {
+  return e instanceof Error && e.message.startsWith('kein profil')
+}
+
+function fehlertext(e: unknown): string {
+  if (istProfilfehler(e)) return (e as Error).message
+  const code = (e as { code?: string } | null)?.code
+  if (code === 'PGRST301' || code === '401') {
+    return 'anmeldung abgelaufen. lade die seite neu.'
+  }
+  return 'daten konnten nicht geladen werden. prüfe die verbindung und lade neu.'
+}
 
 type Ladezustand = 'laden' | 'bereit' | 'fehler'
 
@@ -16,6 +29,7 @@ export function useTracker(backend: Backend) {
   const [me, setMe] = useState<UserId>('erijon')
   const [ticks, setTicks] = useState<Ticks>({})
   const [werte, setWerte] = useState<Werte>({})
+  const [schlaf, setSchlaf] = useState<Schlafnacht[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   const [fehler, setFehler] = useState<string | null>(null)
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
@@ -33,9 +47,14 @@ export function useTracker(backend: Backend) {
     let aktiv = true
     setLadezustand('laden')
 
-    backend
-      .laden()
-      .then((anfang) => {
+    /**
+     * direkt nach dem anmelden kann eine abfrage noch mit dem alten token
+     * rausgehen und 401 kassieren. das ist vorbei, bevor man es lesen kann,
+     * also einmal still nachfassen statt den nutzer in eine sackgasse zu schicken.
+     */
+    const versuche = async (rest: number): Promise<void> => {
+      try {
+        const anfang = await backend.laden()
         if (!aktiv) return
         meRef.current = anfang.me
         ticksRef.current = anfang.ticks
@@ -43,18 +62,22 @@ export function useTracker(backend: Backend) {
         setMe(anfang.me)
         setTicks(anfang.ticks)
         setWerte(anfang.werte)
+        setSchlaf(anfang.schlaf)
         setLadezustand('bereit')
         setFehler(null)
-      })
-      .catch((e: unknown) => {
+      } catch (e: unknown) {
         if (!aktiv) return
+        if (rest > 0 && !istProfilfehler(e)) {
+          await new Promise((r) => setTimeout(r, 700))
+          if (!aktiv) return
+          return versuche(rest - 1)
+        }
         setLadezustand('fehler')
-        setFehler(
-          e instanceof Error && e.message.startsWith('kein profil')
-            ? e.message
-            : 'daten konnten nicht geladen werden. prüfe die verbindung und lade neu.'
-        )
-      })
+        setFehler(fehlertext(e))
+      }
+    }
+
+    void versuche(1)
 
     const abmelden = backend.abonniere((e) => {
       const key = tickKey(e.user, e.area, e.tag)
@@ -128,5 +151,5 @@ export function useTracker(backend: Backend) {
 
   const zustand: Zustand = { ticks, werte }
 
-  return { me, zustand, ladezustand, fehler, ereignis, toggle, setWert }
+  return { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert }
 }

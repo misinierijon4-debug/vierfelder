@@ -30,3 +30,11 @@ export const EINGANG = {
   versatz: 0.045,
   weg: 6,
 }
+
+/** einmaliger aufbau des schlafdiagramms: erst balken, dann linien */
+export const DIAGRAMM = {
+  balkenDauer: 0.42,
+  balkenVersatz: 0.045,
+  linienPause: 0.16,
+  linienDauer: 0.55,
+}

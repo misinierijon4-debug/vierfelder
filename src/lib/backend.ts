@@ -1,4 +1,4 @@
-import type { AreaId, Ticks, UserId, Werte } from './types'
+import type { AreaId, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 /** ein einzelner tick, so wie ihn realtime liefert */
 export type TickEreignis = {
@@ -12,6 +12,7 @@ export type Anfangszustand = {
   me: UserId
   ticks: Ticks
   werte: Werte
+  schlaf: Schlafnacht[]
 }
 
 /**
