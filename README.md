@@ -48,8 +48,11 @@ Ohne Zeile in `profile` meldet die App: „kein profil für dieses konto".
 
 ## Hosting (GitHub Pages)
 
-`vite.config.ts` liest `VITE_BASE`, der Workflow liegt in `.github/workflows/pages.yml`.
-Nötige Repository-Variablen: `VITE_BASE`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
+Live: <https://misinierijon4-debug.github.io/vierfelder/>
+
+Jeder Push auf `main` baut und veröffentlicht neu (`.github/workflows/pages.yml`, Tests laufen
+vorher). `vite.config.ts` liest `VITE_BASE`; die drei Repository-Variablen sind gesetzt:
+`VITE_BASE=/vierfelder/`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
 - Repo heißt `<name>.github.io` → `VITE_BASE=/`
 - Repo heißt anders → `VITE_BASE=/<reponame>/`
