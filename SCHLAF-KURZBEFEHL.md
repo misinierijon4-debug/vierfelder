@@ -127,3 +127,54 @@ order by s.nacht desc;
 
 Ein zweiter Lauf für dieselbe Nacht aktualisiert dieselbe Zeile. Er legt keine
 zweite Nacht an.
+
+## Alternative: direkter Aufruf der RPC-Funktion
+
+Statt über die Edge Function kann der Kurzbefehl auch direkt `/rest/v1/rpc/record_sleep_night` aufrufen. Die Migration `supabase/migrations/20260827100000_record_sleep_night_rpc.sql` legt dazu eine verzeihende JSONB-Funktion an: Zahlen dürfen als Text ankommen ("9" oder "9,5"), Daten mit oder ohne Zeitzone, Schlafwerte als HealthKit-Text, deutscher Kurztext oder Rohwert 0 bis 5.
+
+Gesendet werden (alle Namen exakt so):
+
+- `p_raw_segments`: Array mit {`start`, `end`, `value`}-Objekten
+- `p_target_hours`: Schlafziel in Stunden, z.B. 9
+- `p_night_date`: optional, sonst wird die Nacht aus dem letzten Segmentende abgeleitet
+- `p_source_name`: optional
+- `p_user_id`: wird ignoriert, nur aus Kompatibilität vorhanden
+- `p_token`: das persönliche Import-Token (Klartext, mindestens 32 Zeichen)
+
+Die Identität kommt ausschließlich aus dem Token gegen die Tabelle `schlaf_import_tokens`. Ohne gültiges Token schreibt die Funktion nichts. Die Rückgabe ist ein JSON-Objekt mit `ok`, `nacht`, `schlaf_minuten`, `nachtwert` und weiteren Details.
+
+### Auf iOS getesteter RPC-Aufbau
+
+Für den direkten RPC-Aufruf keine Hilfsvariable `Segmente`, keine separate
+`Liste` und kein zusätzliches Payload-Wörterbuch nach der Wiederholung anlegen.
+Die Ausgabe des letzten Segment-Wörterbuchs wird über
+`Wiederholungsergebnisse` gesammelt.
+
+Innerhalb von `Mit jedem wiederholen`:
+
+1. `Startdatum`, `Enddatum` und `Wert` aus `Objekt wiederholen` abrufen.
+2. Beide Daten als `ISO 8601` formatieren und
+   `Einschließlich ISO 8601-Zeit` einschalten.
+3. Ein Wörterbuch mit drei ausdrücklich als **Text** angelegten Feldern bauen:
+   - `start`: formatiertes Startdatum
+   - `end`: formatiertes Enddatum
+   - `value`: Health-Wert
+
+Die Wahl `Text` ist wichtig. Eine nachträglich eingesetzte Variable ändert den
+ursprünglichen Feldtyp nicht; bei einem als Boolean angelegten Feld würde iOS
+das Datum beziehungsweise den Schlafwert als `true` oder `false` senden.
+
+In `Inhalte von URL abrufen`:
+
+- URL: `https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_sleep_night`
+- Methode: `POST`
+- Header `Content-Type`: `application/json`
+- Header `apikey`: der Publishable Key des Projekts
+- Haupttext: `JSON`
+- `p_raw_segments`: Feldtyp **Array**, Wert `Wiederholungsergebnisse`
+- `p_target_hours`: Feldtyp **Zahl**, Wert `9`
+- `p_token`: Feldtyp **Text**, persönliches Import-Token
+
+Ein erfolgreicher Test liefert unter anderem `"ok": true`. Die getestete
+Automation läuft täglich um 11:00 Uhr mit `Sofort ausführen`; die
+Ausführungsbenachrichtigung ist ausgeschaltet.

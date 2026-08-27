@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
 import { tickKey, wertKey } from './types'
-import type { AreaId, Schlafnacht, Ticks, UserId, Werte } from './types'
+import type { AreaId, RohsegmentDef, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -24,6 +24,8 @@ type SchlafZeile = {
   wach_minuten: number | string | null
   nachtwert: number
   bewertungsbasis: 80 | 100
+  schlafziel_minuten?: number | null
+  rohsegmente?: RohsegmentDef[] | null
 }
 
 export type Anmeldestatus = 'laden' | 'an' | 'aus'
@@ -84,7 +86,7 @@ export function supabaseBackend(eigeneId: string): Backend {
         db
           .from('schlafnaechte')
           .select(
-            'user_id, nacht, schlaf_minuten, einschlafzeit, wachphasen, wach_minuten, nachtwert, bewertungsbasis'
+            'user_id, nacht, schlaf_minuten, einschlafzeit, wachphasen, wach_minuten, nachtwert, bewertungsbasis, schlafziel_minuten, rohsegmente'
           )
           .order('nacht', { ascending: true }),
       ])
@@ -130,6 +132,8 @@ export function supabaseBackend(eigeneId: string): Backend {
           wachMinuten: n.wach_minuten === null ? null : Number(n.wach_minuten),
           nachtwert: n.nachtwert,
           bewertungsbasis: n.bewertungsbasis,
+          schlafzielMinuten: n.schlafziel_minuten ? Number(n.schlafziel_minuten) : undefined,
+          rohsegmente: Array.isArray(n.rohsegmente) ? n.rohsegmente : undefined,
         })
       }
 
@@ -181,7 +185,6 @@ export function supabaseBackend(eigeneId: string): Backend {
         .on(
           'postgres_changes',
           { event: 'DELETE', schema: 'public', table: 'eintraege' },
-          // bei DELETE liefert postgres nur die replica identity — das ist genau unser primary key
           (p) => melde(p.old as EintragZeile, false)
         )
         .subscribe()

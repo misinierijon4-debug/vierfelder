@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AREAS, other, user as userDef } from './lib/types'
-import type { AreaId, UserId } from './lib/types'
+import type { AppTab, AreaId, UserId } from './lib/types'
 import type { Backend } from './lib/backend'
 import { istBilanzzeit, toKey, weekDays } from './lib/dates'
 import { useTracker } from './lib/store'
@@ -12,7 +12,8 @@ import { Kopf } from './components/Kopf'
 import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
 import { Anmeldung } from './components/Anmeldung'
-import { Schlafdiagramm } from './components/Schlafdiagramm'
+import { TabLeiste } from './components/TabLeiste'
+import { SchlafTab } from './components/schlaf/SchlafTab'
 
 const UNDO_MS = 5000
 
@@ -43,6 +44,7 @@ export function App() {
 function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
   const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
+  const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
 
   const heuteKey = useMemo(() => toKey(heute), [heute])
@@ -88,6 +90,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           bilanzzeit={istBilanzzeit(heute)}
         />
 
+        {/* Tab-Navigation */}
+        <TabLeiste aktiverTab={aktiverTab} onTabWechsel={setAktiverTab} />
+
         {/* fester platz, damit eine fehlermeldung nichts verschiebt */}
         <div className="flex h-5 items-start">
           <AnimatePresence mode="wait" initial={false}>
@@ -108,45 +113,71 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           </AnimatePresence>
         </div>
 
-        <section
-          aria-label="heute eintragen"
-          className="mt-2 border-t border-linie transition-opacity duration-200"
-          style={{ opacity: ladezustand === 'laden' ? 0.4 : 1 }}
-        >
-          {AREAS.map((area, i) => (
-            <Bereichszeile
-              key={area.id}
-              area={area}
-              index={i}
-              gesetzt={istGesetzt(zustand, me, area.id, heuteKey)}
-              wocheIch={wocheBereich(zustand, me, area.id, woche)}
-              abstand={abstand(zustand, area.id, woche, me, er.id)}
-              streak={streak(zustand, me, area.id, heute)}
-              wert={wert(zustand.werte, area.id, heuteKey)}
-              farbe={ich.farbe}
-              farbeEr={er.farbe}
-              zeigeUndo={undoFuer === area.id}
-              onTap={() => toggle(area.id, heuteKey)}
-              onUndo={() => {
-                toggle(area.id, heuteKey)
-                setUndoFuer(null)
-              }}
-              onWert={(delta) =>
-                setWert(area.id, heuteKey, wert(zustand.werte, area.id, heuteKey) + delta)
-              }
-            />
-          ))}
-        </section>
+        {/* Tab-Inhalte */}
+        <AnimatePresence mode="wait">
+          {aktiverTab === 'tracker' ? (
+            <motion.div
+              key="tab-tracker"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+            >
+              <section
+                aria-label="heute eintragen"
+                className="mt-2 border-t border-linie transition-opacity duration-200"
+                style={{ opacity: ladezustand === 'laden' ? 0.4 : 1 }}
+              >
+                {AREAS.map((area, i) => (
+                  <Bereichszeile
+                    key={area.id}
+                    area={area}
+                    index={i}
+                    gesetzt={istGesetzt(zustand, me, area.id, heuteKey)}
+                    wocheIch={wocheBereich(zustand, me, area.id, woche)}
+                    abstand={abstand(zustand, area.id, woche, me, er.id)}
+                    streak={streak(zustand, me, area.id, heute)}
+                    wert={wert(zustand.werte, area.id, heuteKey)}
+                    farbe={ich.farbe}
+                    farbeEr={er.farbe}
+                    zeigeUndo={undoFuer === area.id}
+                    onTap={() => toggle(area.id, heuteKey)}
+                    onUndo={() => {
+                      toggle(area.id, heuteKey)
+                      setUndoFuer(null)
+                    }}
+                    onWert={(delta) =>
+                      setWert(area.id, heuteKey, wert(zustand.werte, area.id, heuteKey) + delta)
+                    }
+                  />
+                ))}
+              </section>
 
-        <Raster
-          zustand={zustand}
-          woche={woche}
-          heute={heuteKey}
-          ereignis={ereignis}
-          leer={meineWoche === 0}
-        />
-
-        <Schlafdiagramm naechte={schlaf} woche={woche} />
+              <Raster
+                zustand={zustand}
+                woche={woche}
+                heute={heuteKey}
+                ereignis={ereignis}
+                leer={meineWoche === 0}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="tab-schlaf"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+            >
+              <SchlafTab
+                naechte={schlaf}
+                woche={woche}
+                heuteKey={heuteKey}
+                me={me}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>

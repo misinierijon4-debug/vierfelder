@@ -1,5 +1,6 @@
 export type AreaId = 'lernen' | 'gym' | 'boxen' | 'lesen'
 export type UserId = 'erijon' | 'koray'
+export type AppTab = 'tracker' | 'schlaf'
 
 export type AreaDef = {
   id: AreaId
@@ -53,6 +54,13 @@ export type Zustand = {
   werte: Werte
 }
 
+export type RohsegmentDef = {
+  start: string
+  end: string
+  value: string | number
+  source?: string
+}
+
 export type Schlafnacht = {
   user: UserId
   nacht: string
@@ -62,6 +70,8 @@ export type Schlafnacht = {
   wachMinuten: number | null
   nachtwert: number
   bewertungsbasis: 80 | 100
+  schlafzielMinuten?: number
+  rohsegmente?: RohsegmentDef[]
 }
 
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {
