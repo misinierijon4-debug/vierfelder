@@ -1,77 +1,156 @@
 import { describe, expect, it } from 'vitest'
-import { analysiereSchlafnacht, formatDauer, normalisierePhase } from './schlafPhasen'
-import type { Schlafnacht } from './types'
+import {
+  achse,
+  analysiereSchlafnacht,
+  duell,
+  formatDauer,
+  formatStunden,
+  nachtMinute,
+  nachtUhrzeit,
+  stundenmarken,
+  wochenwerte,
+} from './schlafPhasen'
+import type { Phase, Schlafnacht, UserId } from './types'
 
-describe('schlafPhasen', () => {
-  it('formatiert Dauer verständlich in Stunden und Minuten', () => {
+/** baut ein iso-datum aus lokaler zeit — der test bleibt damit zeitzonenfest */
+function iso(tag: string, hhmm: string): string {
+  const [j, mo, t] = tag.split('-').map(Number)
+  const [h, m] = hhmm.split(':').map(Number)
+  return new Date(j!, mo! - 1, t!, h!, m!).toISOString()
+}
+
+const zyklus: Phase[] = [
+  { art: 'kern', start: 0, dauer: 60 },
+  { art: 'tief', start: 60, dauer: 60 },
+  { art: 'wach', start: 120, dauer: 12 },
+  { art: 'rem', start: 132, dauer: 120 },
+  { art: 'kern', start: 252, dauer: 253 },
+]
+
+function nacht(over: Partial<Schlafnacht> & { user?: UserId } = {}): Schlafnacht {
+  return {
+    user: 'erijon',
+    nacht: '2026-08-26',
+    schlafMinuten: 493,
+    einschlafzeit: iso('2026-08-25', '23:25'),
+    aufwachzeit: iso('2026-08-26', '08:35'),
+    bettStart: iso('2026-08-25', '23:10'),
+    bettEnde: iso('2026-08-26', '08:40'),
+    bettMinuten: 570,
+    tiefMinuten: 60,
+    remMinuten: 120,
+    kernMinuten: 313,
+    unspezMinuten: 0,
+    wachMinuten: 12,
+    zielMinuten: 540,
+    phasen: zyklus,
+    ...over,
+  }
+}
+
+describe('formate', () => {
+  it('schreibt dauern und uhrzeiten lesbar', () => {
     expect(formatDauer(473)).toBe('7h 53m')
     expect(formatDauer(480)).toBe('8h')
     expect(formatDauer(45)).toBe('45m')
     expect(formatDauer(0)).toBe('0m')
+    expect(formatStunden(445)).toBe('7,4h')
+    expect(nachtUhrzeit(1425)).toBe('23:45')
+    expect(nachtUhrzeit(1440 + 30)).toBe('00:30')
   })
 
-  it('normalisiert Phasen-Textwerte und HealthKit-Identifier', () => {
-    expect(normalisierePhase('HKCategoryValueSleepAnalysisAsleepDeep')).toBe('deep')
-    expect(normalisierePhase('AsleepREM')).toBe('rem')
-    expect(normalisierePhase('Core')).toBe('core')
-    expect(normalisierePhase('Awake')).toBe('awake')
-    expect(normalisierePhase('InBed')).toBe('in_bed')
-    expect(normalisierePhase('tief')).toBe('deep')
-    expect(normalisierePhase('wach')).toBe('awake')
+  it('legt den abend vor den morgen', () => {
+    expect(nachtMinute(iso('2026-08-25', '23:30'))).toBe(23 * 60 + 30)
+    expect(nachtMinute(iso('2026-08-26', '06:30'))).toBe(6 * 60 + 30 + 1440)
+    // 00:15 liegt 30 minuten nach 23:45, nicht 23 stunden davor
+    expect(
+      nachtMinute(iso('2026-08-26', '00:15')) - nachtMinute(iso('2026-08-25', '23:45'))
+    ).toBe(30)
+  })
+})
+
+describe('analyse einer nacht', () => {
+  it('nimmt die phasen der ansicht und rechnet effizienz gegen die bettzeit', () => {
+    const a = analysiereSchlafnacht(nacht())
+    expect(a.hatPhasenDaten).toBe(true)
+    expect(a.hatZeitfensterDaten).toBe(true)
+    expect(a.tiefMinuten).toBe(60)
+    expect(a.remMinuten).toBe(120)
+    expect(a.coreMinuten).toBe(313)
+    expect(a.wachphasenAnzahl).toBe(1)
+    expect(a.inBedBasis).toBe('bett')
+    expect(a.inBedMinuten).toBe(570)
+    expect(a.effizienz).toBe(86)
+    expect(a.einschlafUhrzeit).toBe('23:25')
+    expect(a.aufwachUhrzeit).toBe('08:35')
+    // die anteile beziehen sich auf die erfasste schlafzeit, nicht auf die bettzeit
+    expect(a.tiefProzent + a.remProzent + a.coreProzent).toBe(100)
   })
 
-  it('analysiert Rohsegmente einer Nacht und berechnet Phasen & Effizienz', () => {
-    const nacht: Schlafnacht = {
-      user: 'erijon',
-      nacht: '2026-08-26',
-      schlafMinuten: 492,
-      einschlafzeit: '2026-08-25T23:25:42+02:00',
-      wachphasen: 1,
-      wachMinuten: 48,
-      nachtwert: 88,
-      bewertungsbasis: 100,
-      rohsegmente: [
-        { start: '2026-08-25T23:25:42+02:00', end: '2026-08-26T00:14:12+02:00', value: 'Awake' },
-        { start: '2026-08-26T00:14:12+02:00', end: '2026-08-26T01:14:12+02:00', value: 'AsleepDeep' },
-        { start: '2026-08-26T01:14:12+02:00', end: '2026-08-26T03:14:12+02:00', value: 'AsleepREM' },
-        { start: '2026-08-26T03:14:12+02:00', end: '2026-08-26T08:25:42+02:00', value: 'AsleepCore' },
-      ],
-    }
-
-    const res = analysiereSchlafnacht(nacht)
-    expect(res.user).toBe('erijon')
-    expect(res.tiefMinuten).toBe(60)
-    expect(res.remMinuten).toBe(120)
-    expect(res.coreMinuten).toBe(312)
-    expect(res.wachMinuten).toBe(49)
-    expect(res.schlafMinuten).toBe(492)
-    expect(res.inBedMinuten).toBe(540)
-    expect(res.effizienz).toBeGreaterThan(90)
-    expect(res.hatPhasenDaten).toBe(true)
-    expect(res.hatZeitfensterDaten).toBe(true)
-    expect(res.einschlafUhrzeit).toContain(':')
-    expect(res.aufwachUhrzeit).toContain(':')
+  it('erfindet ohne stadien nichts und haelt die dauer als einen block', () => {
+    const a = analysiereSchlafnacht(
+      nacht({ tiefMinuten: 0, remMinuten: 0, kernMinuten: 0, wachMinuten: 0, phasen: [] })
+    )
+    expect(a.hatPhasenDaten).toBe(false)
+    expect(a.tiefProzent).toBe(0)
+    expect(a.remProzent).toBe(0)
+    expect(a.stuecke).toEqual([{ art: 'unspez', start: 0, dauer: 493 }])
   })
 
-  it('erfindet bei fehlenden Rohsegmenten keine Schlafphasen', () => {
-    const nacht: Schlafnacht = {
-      user: 'koray',
-      nacht: '2026-08-26',
-      schlafMinuten: 420,
-      einschlafzeit: '2026-08-25T23:30:00+02:00',
-      wachphasen: null,
-      wachMinuten: null,
-      nachtwert: 0,
-      bewertungsbasis: 100,
-    }
+  it('laesst die effizienz leer, wenn kein aufwachen gemessen wurde', () => {
+    const a = analysiereSchlafnacht(nacht({ aufwachzeit: null, bettMinuten: null, bettEnde: null }))
+    expect(a.effizienz).toBeNull()
+    expect(a.inBedBasis).toBe('fenster')
+    expect(a.aufwachUhrzeit).toBe('--:--')
+  })
+})
 
-    const res = analysiereSchlafnacht(nacht)
-    expect(res.schlafMinuten).toBe(420)
-    expect(res.hatPhasenDaten).toBe(false)
-    expect(res.tiefMinuten).toBe(0)
-    expect(res.remMinuten).toBe(0)
-    expect(res.coreMinuten).toBe(0)
-    expect(res.effizienz).toBeNull()
-    expect(res.hatZeitfensterDaten).toBe(false)
+describe('woche und duell', () => {
+  const meine = [
+    nacht({ nacht: '2026-08-24', einschlafzeit: iso('2026-08-23', '23:00'), schlafMinuten: 420 }),
+    nacht({ nacht: '2026-08-25', einschlafzeit: iso('2026-08-24', '23:20'), schlafMinuten: 480 }),
+    nacht({ nacht: '2026-08-26', einschlafzeit: iso('2026-08-25', '23:40'), schlafMinuten: 450 }),
+  ]
+  const seine = [
+    nacht({ user: 'koray', nacht: '2026-08-25', einschlafzeit: iso('2026-08-25', '00:30'), schlafMinuten: 400 }),
+    nacht({ user: 'koray', nacht: '2026-08-26', einschlafzeit: iso('2026-08-26', '01:30'), schlafMinuten: 380 }),
+  ]
+
+  it('mittelt die dauer und misst die streuung um den eigenen median', () => {
+    const w = wochenwerte('erijon', [...meine, ...seine])
+    expect(w.naechte).toBe(3)
+    expect(w.schlafSchnitt).toBe(450)
+    expect(w.einschlafMedian).toBe(23 * 60 + 20)
+    expect(w.streuung).toBeCloseTo(40 / 3, 5)
+  })
+
+  it('kuert pro disziplin einen sieger, aber nicht ohne daten', () => {
+    const alle = [...meine, ...seine]
+    const zeilen = duell(wochenwerte('erijon', alle), wochenwerte('koray', alle))
+    const imBett = zeilen.find((z) => z.id === 'imbett')!
+    expect(imBett.sieger).toBe('erijon')
+    expect(imBett.text.erijon).toBe('23:20')
+    expect(imBett.text.koray).toBe('01:00')
+    expect(zeilen.find((z) => z.id === 'schnitt')!.sieger).toBe('erijon')
+
+    const ohne = duell(wochenwerte('erijon', meine), wochenwerte('koray', []))
+    expect(ohne.every((z) => z.sieger === null)).toBe(true)
+  })
+})
+
+describe('achse', () => {
+  it('deckt mindestens 21 bis 09 uhr ab und waechst mit den daten', () => {
+    const spaet = analysiereSchlafnacht(
+      nacht({
+        einschlafzeit: iso('2026-08-26', '02:10'),
+        aufwachzeit: iso('2026-08-26', '11:20'),
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+      })
+    )
+    expect(achse([])).toEqual({ von: 1260, bis: 1980 })
+    expect(achse([spaet]).bis).toBe(1440 + 12 * 60)
+    expect(stundenmarken(1260, 1980)).toEqual([1260, 1440, 1620, 1800, 1980])
   })
 })

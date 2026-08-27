@@ -8,7 +8,7 @@ type Props = {
 }
 
 const TABS: Array<{ id: AppTab; label: string }> = [
-  { id: 'tracker', label: 'vierfelder' },
+  { id: 'tracker', label: 'tracker' },
   { id: 'schlaf', label: 'schlaf' },
 ]
 
@@ -37,7 +37,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
               <motion.div
                 layoutId="aktiverTabIndikator"
                 transition={STEMPEL}
-                className="absolute inset-0 rounded-[1px] bg-grund shadow-sm"
+                className="absolute inset-0 rounded-[1px] bg-grund"
                 style={{ border: '1px solid var(--linie-hell)' }}
               />
             )}

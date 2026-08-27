@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
 import { tickKey, wertKey } from './types'
-import type { AreaId, RohsegmentDef, Schlafnacht, Ticks, UserId, Werte } from './types'
+import type { AreaId, Phase, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -15,17 +15,27 @@ export const supabase = hatSupabase ? createClient(url!, key!) : null
 type ProfilZeile = { id: string; person: UserId }
 type EintragZeile = { user_id: string; bereich: AreaId; tag: string }
 type WertZeile = { bereich: AreaId; tag: string; wert: number }
+/** zeile aus `schlafnaechte_ansicht`. numeric kommt je nach spalte als text */
 type SchlafZeile = {
   user_id: string
   nacht: string
   schlaf_minuten: number | string
   einschlafzeit: string
-  wachphasen: number | null
+  aufwachzeit: string | null
+  bett_start: string | null
+  bett_ende: string | null
+  bett_minuten: number | string | null
+  tief_minuten: number | string | null
+  rem_minuten: number | string | null
+  kern_minuten: number | string | null
+  unspez_minuten: number | string | null
   wach_minuten: number | string | null
-  nachtwert: number
-  bewertungsbasis: 80 | 100
-  schlafziel_minuten?: number | null
-  rohsegmente?: RohsegmentDef[] | null
+  schlafziel_minuten: number
+  phasen: Phase[] | null
+}
+
+function zahl(wert: number | string | null | undefined): number {
+  return wert === null || wert === undefined ? 0 : Number(wert)
 }
 
 export type Anmeldestatus = 'laden' | 'an' | 'aus'
@@ -84,9 +94,9 @@ export function supabaseBackend(eigeneId: string): Backend {
         db.from('eintraege').select('user_id, bereich, tag'),
         db.from('werte').select('bereich, tag, wert'),
         db
-          .from('schlafnaechte')
+          .from('schlafnaechte_ansicht')
           .select(
-            'user_id, nacht, schlaf_minuten, einschlafzeit, wachphasen, wach_minuten, nachtwert, bewertungsbasis, schlafziel_minuten, rohsegmente'
+            'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen'
           )
           .order('nacht', { ascending: true }),
       ])
@@ -95,7 +105,7 @@ export function supabaseBackend(eigeneId: string): Backend {
       if (eintraege.error) throw eintraege.error
       if (werteZeilen.error) throw werteZeilen.error
       // Während Schema und Frontend getrennt veröffentlicht werden, darf die
-      // neue Tabelle den bestehenden Vierfelder-Tracker nicht lahmlegen.
+      // neue Ansicht den bestehenden Vierfelder-Tracker nicht lahmlegen.
       const schlafTabelleFehlt =
         schlafZeilen.error?.code === '42P01' || schlafZeilen.error?.code === 'PGRST205'
       if (schlafZeilen.error && !schlafTabelleFehlt) throw schlafZeilen.error
@@ -126,14 +136,19 @@ export function supabaseBackend(eigeneId: string): Backend {
         schlaf.push({
           user: person,
           nacht: n.nacht,
-          schlafMinuten: Number(n.schlaf_minuten),
+          schlafMinuten: zahl(n.schlaf_minuten),
           einschlafzeit: n.einschlafzeit,
-          wachphasen: n.wachphasen,
-          wachMinuten: n.wach_minuten === null ? null : Number(n.wach_minuten),
-          nachtwert: n.nachtwert,
-          bewertungsbasis: n.bewertungsbasis,
-          schlafzielMinuten: n.schlafziel_minuten ? Number(n.schlafziel_minuten) : undefined,
-          rohsegmente: Array.isArray(n.rohsegmente) ? n.rohsegmente : undefined,
+          aufwachzeit: n.aufwachzeit,
+          bettStart: n.bett_start,
+          bettEnde: n.bett_ende,
+          bettMinuten: n.bett_minuten === null ? null : Number(n.bett_minuten),
+          tiefMinuten: zahl(n.tief_minuten),
+          remMinuten: zahl(n.rem_minuten),
+          kernMinuten: zahl(n.kern_minuten),
+          unspezMinuten: zahl(n.unspez_minuten),
+          wachMinuten: zahl(n.wach_minuten),
+          zielMinuten: n.schlafziel_minuten,
+          phasen: Array.isArray(n.phasen) ? n.phasen : [],
         })
       }
 

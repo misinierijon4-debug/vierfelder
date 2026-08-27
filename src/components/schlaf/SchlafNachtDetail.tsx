@@ -50,7 +50,7 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
                     : 'border-transparent text-kreide-52 hover:text-kreide'
                 }`}
               >
-                <span className="size-2 rounded-full" style={{ backgroundColor: user.farbe }} />
+                <span className="size-2 rounded-[1px]" style={{ backgroundColor: user.farbe }} />
                 <span>{user.name}</span>
               </button>
             )
@@ -98,7 +98,10 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
-                  <dt className="text-[9px] text-kreide-52">zeit im bett</dt>
+                  {/* ohne InBed-segmente ist es die schlafspanne, nicht die bettzeit */}
+                  <dt className="text-[9px] text-kreide-52">
+                    {analyse.inBedBasis === 'bett' ? 'zeit im bett' : 'schlaffenster'}
+                  </dt>
                   <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
                     {analyse.hatZeitfensterDaten ? formatDauer(analyse.inBedMinuten) : '—'}
                   </dd>
@@ -106,7 +109,7 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
               </dl>
             </div>
 
-            <PhasenZeitstrahl analyse={analyse} />
+            <PhasenZeitstrahl analyse={analyse} farbe={person.farbe} />
           </motion.div>
         ) : (
           <motion.div

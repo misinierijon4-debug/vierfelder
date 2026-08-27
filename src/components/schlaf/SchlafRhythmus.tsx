@@ -1,84 +1,69 @@
+import { Fragment } from 'react'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht } from '../../lib/types'
-import { formatDauer } from '../../lib/schlafPhasen'
+import { duell, wochenwerte } from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
   woche: string[]
 }
 
+/**
+ * Das Duell der Woche. Jede Zeile ist eine gemessene Größe, der Sieger steht
+ * in seiner Farbe. Bei zu kleinem Unterschied bleibt beides grau — sonst
+ * wechselt die Farbe bei jeder Minute Rauschen.
+ */
 export function SchlafRhythmus({ naechte, woche }: Props) {
-  const wochenNaechte = naechte.filter((nacht) => woche.includes(nacht.nacht))
-
-  const stats = USERS.map((user) => {
-    const userNaechte = wochenNaechte.filter(
-      (nacht) => nacht.user === user.id && nacht.schlafMinuten > 0
-    )
-    const gesamtMinuten = userNaechte.reduce((acc, nacht) => acc + nacht.schlafMinuten, 0)
-    const schnittMinuten = userNaechte.length > 0 ? gesamtMinuten / userNaechte.length : 0
-
-    const einschlafZeiten = userNaechte
-      .map((nacht) => new Date(nacht.einschlafzeit))
-      .filter((datum) => !Number.isNaN(datum.getTime()))
-      .map((datum) => {
-        const minuten = datum.getHours() * 60 + datum.getMinutes()
-        return minuten < 12 * 60 ? minuten + 24 * 60 : minuten
-      })
-    const avgEinschlafMin = einschlafZeiten.length > 0
-      ? Math.round(einschlafZeiten.reduce((a, b) => a + b, 0) / einschlafZeiten.length) % (24 * 60)
-      : null
-    const einschlafAvg = avgEinschlafMin === null
-      ? null
-      : `${String(Math.floor(avgEinschlafMin / 60)).padStart(2, '0')}:${String(avgEinschlafMin % 60).padStart(2, '0')}`
-
-    return {
-      user,
-      naechteCount: userNaechte.length,
-      schnitt: schnittMinuten,
-      einschlafAvg,
-    }
-  })
+  const wochenNaechte = naechte.filter((n) => woche.includes(n.nacht))
+  const [a, b] = USERS.map((u) => wochenwerte(u.id, wochenNaechte))
+  const zeilen = duell(a!, b!)
 
   return (
     <section aria-labelledby="rhythmus-titel" className="mt-5">
-      <h2 id="rhythmus-titel" className="border-b border-linie pb-2 text-[12px] font-semibold text-kreide">
-        wochenrhythmus
+      <h2
+        id="rhythmus-titel"
+        className="border-b border-linie pb-2 text-[12px] font-semibold text-kreide"
+      >
+        duell der woche
       </h2>
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5">
-        {stats.map(({ user, naechteCount, schnitt, einschlafAvg }) => (
-          <div
-            key={user.id}
-            className="flex min-h-32 min-w-0 flex-col rounded-[2px] border border-linie bg-flaeche p-3"
-            style={{ borderTop: `2px solid ${user.farbe}` }}
-          >
-            <span className="truncate text-[10px] font-bold uppercase" style={{ color: user.farbe }}>
-              {user.name}
+      <div className="mt-3 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
+        <div className="grid grid-cols-[1fr_72px_72px] items-baseline gap-x-2 border-b border-linie px-3 py-2.5">
+          <span className="text-[10px] text-kreide-52">
+            {a!.naechte + b!.naechte === 0 ? 'noch keine nacht' : 'nächte'}
+          </span>
+          {USERS.map((u, i) => (
+            <span key={u.id} className="text-right text-[11px] font-medium" style={{ color: u.farbe }}>
+              {u.name}{' '}
+              <span className="tnum text-kreide-52">{(i === 0 ? a! : b!).naechte}</span>
             </span>
+          ))}
+        </div>
 
-            {naechteCount > 0 ? (
-              <>
-                <span className="tnum mt-2 truncate text-[20px] font-bold text-kreide">
-                  {formatDauer(schnitt)}
-                </span>
-                <span className="text-[9px] text-kreide-52">
-                  schnitt · {naechteCount} {naechteCount === 1 ? 'nacht' : 'nächte'}
-                </span>
-                <div className="mt-auto flex items-baseline justify-between gap-2 border-t border-linie pt-2">
-                  <span className="truncate text-[9px] text-kreide-52">Ø einschlafen</span>
-                  <span className="tnum shrink-0 text-[11px] font-semibold text-kreide">
-                    {einschlafAvg ?? '—'}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <p className="mt-auto mb-auto text-pretty text-[10px] leading-4 text-kreide-52">
-                noch keine Health-Daten in dieser Woche
-              </p>
-            )}
-          </div>
-        ))}
+        <dl className="divide-y divide-linie">
+          {zeilen.map((z) => (
+            <Fragment key={z.id}>
+              <div className="grid grid-cols-[1fr_72px_72px] items-baseline gap-x-2 px-3 py-2.5">
+                <dt className="truncate text-[11px] text-kreide-52">{z.label}</dt>
+                {USERS.map((u) => (
+                  <dd
+                    key={u.id}
+                    className="tnum text-right text-[13px] font-semibold transition-colors duration-200"
+                    style={{ color: z.sieger === u.id ? u.farbe : 'var(--kreide-52)' }}
+                  >
+                    {z.text[u.id]}
+                  </dd>
+                ))}
+              </div>
+            </Fragment>
+          ))}
+        </dl>
       </div>
+
+      <p className="mt-2 text-[10px] leading-snug text-kreide-52">
+        konstanz ist die mittlere abweichung von der eigenen üblichen einschlafzeit. kleiner heißt:
+        du gehst jeden abend etwa zur selben zeit ins bett.
+      </p>
     </section>
   )
 }

@@ -54,24 +54,37 @@ export type Zustand = {
   werte: Werte
 }
 
-export type RohsegmentDef = {
-  start: string
-  end: string
-  value: string | number
-  source?: string
+export type PhasenArt = 'tief' | 'rem' | 'kern' | 'unspez' | 'wach'
+
+/** ein stück nacht. start und dauer in minuten, gezählt ab der einschlafzeit */
+export type Phase = {
+  art: PhasenArt
+  start: number
+  dauer: number
 }
 
+/**
+ * eine nacht, so wie `schlafnaechte_ansicht` sie liefert. kein score:
+ * jedes feld hier ist eine gemessene größe aus apple health.
+ */
 export type Schlafnacht = {
   user: UserId
   nacht: string
   schlafMinuten: number
   einschlafzeit: string
-  wachphasen: number | null
-  wachMinuten: number | null
-  nachtwert: number
-  bewertungsbasis: 80 | 100
-  schlafzielMinuten?: number
-  rohsegmente?: RohsegmentDef[]
+  aufwachzeit: string | null
+  bettStart: string | null
+  bettEnde: string | null
+  bettMinuten: number | null
+  tiefMinuten: number
+  remMinuten: number
+  kernMinuten: number
+  unspezMinuten: number
+  wachMinuten: number
+  /** persönliches schlafziel aus dem kurzbefehl */
+  zielMinuten: number
+  /** leer, wenn die quelle keine stadien liefert. dann bleibt die dauer */
+  phasen: Phase[]
 }
 
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {

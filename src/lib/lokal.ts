@@ -1,7 +1,7 @@
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
 import { weekDays } from './dates'
 import { tickKey, wertKey } from './types'
-import type { AreaId, RohsegmentDef, Schlafnacht, Ticks, UserId, Werte } from './types'
+import type { AreaId, Phase, PhasenArt, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 const TICKS_KEY = 'vierfelder.ticks.v2'
 const WERTE_KEY = 'vierfelder.werte.v2'
@@ -36,69 +36,86 @@ export function lokalWechseln(u: UserId) {
   localStorage.setItem(ME_KEY, u)
 }
 
+/**
+ * Beispielnaechte fuer den Prototyp ohne Supabase. Sie werden aus echten
+ * Phasenzyklen aufgebaut, damit Zeitstrahl, Effizienz und Duell dasselbe
+ * zeigen wie mit Health-Daten — nur eben erfunden statt gemessen.
+ */
 function erzeugeBeispielSchlaf(): Schlafnacht[] {
   const woche = weekDays(new Date())
   const naechte: Schlafnacht[] = []
 
-  const beispielTage = woche.slice(0, 4)
+  // je eintrag: stunde und minute des zubettgehens, minuten bis zum
+  // einschlafen, laenge der schlafspanne
+  const muster: Record<UserId, Array<[number, number, number, number]>> = {
+    erijon: [
+      [22, 55, 15, 470],
+      [23, 10, 12, 490],
+      [23, 5, 18, 455],
+      [22, 50, 10, 500],
+    ],
+    koray: [
+      [0, 20, 15, 420],
+      [0, 55, 25, 400],
+      [1, 5, 14, 445],
+      [0, 5, 20, 430],
+    ],
+  }
 
-  const musterErijon = [
-    { dauer: 473, start: '23:25:00', end: '08:35:00', tief: 75, rem: 130, core: 268, wach: 18, wachPhasen: 4 },
-    { dauer: 445, start: '23:45:00', end: '07:30:00', tief: 65, rem: 110, core: 270, wach: 15, wachPhasen: 3 },
-    { dauer: 490, start: '23:10:00', end: '08:15:00', tief: 90, rem: 140, core: 260, wach: 12, wachPhasen: 2 },
-    { dauer: 460, start: '00:05:00', end: '08:10:00', tief: 70, rem: 125, core: 265, wach: 20, wachPhasen: 5 },
-  ]
+  const arten: PhasenArt[] = ['kern', 'tief', 'kern', 'rem']
+  const dauern = [42, 26, 34, 22]
 
-  const musterKoray = [
-    { dauer: 430, start: '00:30:00', end: '08:10:00', tief: 55, rem: 105, core: 270, wach: 22, wachPhasen: 4 },
-    { dauer: 410, start: '00:45:00', end: '07:55:00', tief: 50, rem: 95, core: 265, wach: 18, wachPhasen: 3 },
-    { dauer: 465, start: '23:50:00', end: '08:00:00', tief: 80, rem: 120, core: 265, wach: 14, wachPhasen: 3 },
-    { dauer: 440, start: '00:15:00', end: '08:00:00', tief: 60, rem: 115, core: 265, wach: 16, wachPhasen: 4 },
-  ]
+  const zyklen = (spanne: number, versatz: number): Phase[] => {
+    const phasen: Phase[] = []
+    let t = 0
+    let i = versatz
+    while (t < spanne - 6) {
+      const dauer = Math.min(dauern[i % 4]!, spanne - t)
+      phasen.push({ art: arten[i % 4]!, start: t, dauer })
+      t += dauer
+      if (i % 4 === 3 && t < spanne - 25) {
+        const wach = 4 + ((i + versatz) % 3) * 5
+        phasen.push({ art: 'wach', start: t, dauer: wach })
+        t += wach
+      }
+      i++
+    }
+    return phasen
+  }
 
-  beispielTage.forEach((tag, i) => {
-    const e = musterErijon[i % musterErijon.length]!
-    const k = musterKoray[i % musterKoray.length]!
+  const iso = (tag: string, stunde: number, minute: number, plusMinuten = 0): string => {
+    const [j, mo, t] = tag.split('-').map(Number)
+    // nach mitternacht gehoert die uhrzeit zum tag der nacht, davor zum vortag
+    const d = new Date(j!, mo! - 1, t! - (stunde >= 12 ? 1 : 0), stunde, minute + plusMinuten)
+    return d.toISOString()
+  }
 
-    const segsErijon: RohsegmentDef[] = [
-      { start: `${tag}T${e.start}+02:00`, end: `${tag}T01:00:00+02:00`, value: 'AsleepCore' },
-      { start: `${tag}T01:00:00+02:00`, end: `${tag}T02:15:00+02:00`, value: 'AsleepDeep' },
-      { start: `${tag}T02:15:00+02:00`, end: `${tag}T02:30:00+02:00`, value: 'Awake' },
-      { start: `${tag}T02:30:00+02:00`, end: `${tag}T04:30:00+02:00`, value: 'AsleepREM' },
-      { start: `${tag}T04:30:00+02:00`, end: `${tag}T${e.end}+02:00`, value: 'AsleepCore' },
-    ]
+  woche.slice(0, 4).forEach((tag, i) => {
+    for (const user of ['erijon', 'koray'] as UserId[]) {
+      const [stunde, minute, verzoegerung, spanne] = muster[user][i]!
+      const phasen = zyklen(spanne, user === 'erijon' ? i : i + 1)
+      const summe = (art: PhasenArt) =>
+        phasen.filter((p) => p.art === art).reduce((s, p) => s + p.dauer, 0)
+      const wach = summe('wach')
 
-    naechte.push({
-      user: 'erijon',
-      nacht: tag,
-      schlafMinuten: e.dauer,
-      einschlafzeit: `${tag}T${e.start}+02:00`,
-      wachphasen: e.wachPhasen,
-      wachMinuten: e.wach,
-      nachtwert: 88,
-      bewertungsbasis: 100,
-      rohsegmente: segsErijon,
-    })
-
-    const segsKoray: RohsegmentDef[] = [
-      { start: `${tag}T${k.start}+02:00`, end: `${tag}T01:30:00+02:00`, value: 'AsleepCore' },
-      { start: `${tag}T01:30:00+02:00`, end: `${tag}T02:30:00+02:00`, value: 'AsleepDeep' },
-      { start: `${tag}T02:30:00+02:00`, end: `${tag}T02:45:00+02:00`, value: 'Awake' },
-      { start: `${tag}T02:45:00+02:00`, end: `${tag}T04:30:00+02:00`, value: 'AsleepREM' },
-      { start: `${tag}T04:30:00+02:00`, end: `${tag}T${k.end}+02:00`, value: 'AsleepCore' },
-    ]
-
-    naechte.push({
-      user: 'koray',
-      nacht: tag,
-      schlafMinuten: k.dauer,
-      einschlafzeit: `${tag}T${k.start}+02:00`,
-      wachphasen: k.wachPhasen,
-      wachMinuten: k.wach,
-      nachtwert: 82,
-      bewertungsbasis: 100,
-      rohsegmente: segsKoray,
-    })
+      naechte.push({
+        user,
+        nacht: tag,
+        schlafMinuten: spanne - wach,
+        einschlafzeit: iso(tag, stunde, minute, verzoegerung),
+        aufwachzeit: iso(tag, stunde, minute, verzoegerung + spanne),
+        bettStart: iso(tag, stunde, minute),
+        bettEnde: iso(tag, stunde, minute, verzoegerung + spanne + 8),
+        bettMinuten: verzoegerung + spanne + 8,
+        tiefMinuten: summe('tief'),
+        remMinuten: summe('rem'),
+        kernMinuten: summe('kern'),
+        unspezMinuten: 0,
+        wachMinuten: wach,
+        zielMinuten: 540,
+        phasen,
+      })
+    }
   })
 
   return naechte

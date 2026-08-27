@@ -23,6 +23,10 @@ export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
     return letzteMitDaten ?? (woche.includes(heuteKey) ? heuteKey : woche[0]!)
   })
 
+  // das ziel kommt aus deinem kurzbefehl, nicht aus einer festen 8-stunden-annahme
+  const zielMinuten =
+    naechte.filter((n) => n.user === me).at(-1)?.zielMinuten ?? naechte.at(-1)?.zielMinuten ?? 480
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -35,6 +39,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
         naechte={naechte}
         woche={woche}
         gewaehlterTag={gewaehlterTag}
+        zielMinuten={zielMinuten}
         onTagWaehlen={setGewaehlterTag}
       />
 

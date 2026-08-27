@@ -2,16 +2,24 @@ import { motion } from 'motion/react'
 import { TAGKUERZEL } from '../../lib/dates'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
-import { formatDauer } from '../../lib/schlafPhasen'
+import { formatDauer, formatStunden } from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
   woche: string[]
   gewaehlterTag: string
+  /** dein persönliches schlafziel in minuten, aus dem kurzbefehl */
+  zielMinuten: number
   onTagWaehlen: (tag: string) => void
 }
 
-export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaehlen }: Props) {
+export function SchlafWochenVergleich({
+  naechte,
+  woche,
+  gewaehlterTag,
+  zielMinuten,
+  onTagWaehlen,
+}: Props) {
   const nachUser = new Map<UserId, Map<string, Schlafnacht>>()
   for (const user of USERS) nachUser.set(user.id, new Map())
   for (const nacht of naechte) nachUser.get(nacht.user)?.set(nacht.nacht, nacht)
@@ -28,7 +36,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
     }
   })
 
-  const maxMinuten = 10 * 60
+  const maxMinuten = Math.max(10 * 60, Math.ceil((zielMinuten + 60) / 60) * 60)
 
   return (
     <section aria-labelledby="schlaf-wochenuebersicht" className="mt-2">
@@ -38,7 +46,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
         </h2>
         <div className="flex items-center gap-1.5 text-[10px] text-kreide-52">
           <span className="block w-4 border-t border-dashed border-linie-hell" aria-hidden="true" />
-          <span>8h ziel</span>
+          <span>{formatDauer(zielMinuten)} ziel</span>
         </div>
       </div>
 
@@ -47,7 +55,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
           {schnitte.map(({ user, schnitt, anzahl }) => (
             <div key={user.id} className="min-w-0 px-3 py-2.5">
               <div className="flex items-center gap-1.5 text-[11px]">
-                <span className="size-2 rounded-full" style={{ backgroundColor: user.farbe }} />
+                <span className="size-2 rounded-[1px]" style={{ backgroundColor: user.farbe }} />
                 <span className="truncate text-kreide-52">{user.name}</span>
               </div>
               {anzahl > 0 ? (
@@ -93,7 +101,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
                 <div className="relative mx-auto my-2.5 flex h-16 w-full items-end justify-center gap-1">
                   <span
                     className="pointer-events-none absolute inset-x-0 border-t border-dashed border-linie-hell/50"
-                    style={{ bottom: `${(480 / maxMinuten) * 100}%` }}
+                    style={{ bottom: `${(zielMinuten / maxMinuten) * 100}%` }}
                     aria-hidden="true"
                   />
                   <div className="flex h-full w-2 flex-col justify-end overflow-hidden bg-grund">
@@ -123,12 +131,12 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
                 <div className="flex h-7 flex-col items-center justify-center text-[9px] font-semibold leading-[13px]">
                   {erijonMin > 0 && (
                     <span className="tnum" style={{ color: 'var(--erijon)' }}>
-                      {(erijonMin / 60).toFixed(1)}h
+                      {formatStunden(erijonMin)}
                     </span>
                   )}
                   {korayMin > 0 && (
                     <span className="tnum" style={{ color: 'var(--koray)' }}>
-                      {(korayMin / 60).toFixed(1)}h
+                      {formatStunden(korayMin)}
                     </span>
                   )}
                   {!hatDaten && <span className="text-kreide-52">—</span>}

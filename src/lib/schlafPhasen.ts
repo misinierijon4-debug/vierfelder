@@ -1,28 +1,74 @@
-import type { Schlafnacht, UserId } from './types'
+import type { Phase, PhasenArt, Schlafnacht, UserId } from './types'
 
-export type SchlafPhaseArt = 'deep' | 'rem' | 'core' | 'awake' | 'in_bed'
+/**
+ * Die Phasen kommen fertig aus `schlafnaechte_ansicht`; die Ansicht loest die
+ * Ueberlappungen der Health-Segmente serverseitig auf. Hier wird nur noch
+ * formatiert und verglichen — nichts geschaetzt und nichts ergaenzt.
+ */
 
-export type PhasenSegment = {
-  art: SchlafPhaseArt
-  start: string
-  end: string
-  startMs: number
-  endMs: number
-  dauerMinuten: number
+/** 15 uhr trennt zwei naechte: 00:15 liegt damit neben 23:45, nicht 23 stunden davor */
+const PIVOT = 15 * 60
+export const TAG = 1440
+
+function zwei(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+export function formatDauer(minuten: number): string {
+  const m = Math.max(0, Math.round(minuten))
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  if (h === 0) return `${rest}m`
+  if (rest === 0) return `${h}h`
+  return `${h}h ${rest}m`
+}
+
+export function formatUhrzeit(iso: string | null): string {
+  if (!iso) return '--:--'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '--:--'
+  return `${zwei(d.getHours())}:${zwei(d.getMinutes())}`
+}
+
+/** stunden mit deutschem komma, fuer die enge wochenspalte */
+export function formatStunden(minuten: number): string {
+  return `${(minuten / 60).toFixed(1).replace('.', ',')}h`
+}
+
+export function formatProzent(anteil: number): string {
+  return `${Math.round(anteil * 100)}%`
+}
+
+/** lokale uhrzeit als nachtminute: 21:00 → 1260, 06:30 → 1830 */
+export function nachtMinute(iso: string): number {
+  const d = new Date(iso)
+  const m = d.getHours() * 60 + d.getMinutes()
+  return m < PIVOT ? m + TAG : m
+}
+
+/** nachtminute zurueck in eine uhrzeit, fuer achsen und mediane */
+export function nachtUhrzeit(m: number): string {
+  const rest = ((Math.round(m) % TAG) + TAG) % TAG
+  return `${zwei(Math.floor(rest / 60))}:${zwei(rest % 60)}`
 }
 
 export type NachtPhasenAnalyse = {
   nacht: string
   user: UserId
   schlafMinuten: number
+  /** zeit im bett aus den InBed-segmenten, sonst die schlafspanne */
   inBedMinuten: number
+  inBedBasis: 'bett' | 'fenster'
   effizienz: number | null
   hatPhasenDaten: boolean
   hatZeitfensterDaten: boolean
-  einschlafzeit: string
-  aufwachzeit: string
   einschlafUhrzeit: string
   aufwachUhrzeit: string
+  /** alles in nachtminuten, fuer den zeitstrahl */
+  einschlafMinute: number
+  aufwachMinute: number
+  bettVon: number | null
+  bettBis: number | null
   tiefMinuten: number
   remMinuten: number
   coreMinuten: number
@@ -32,131 +78,224 @@ export type NachtPhasenAnalyse = {
   remProzent: number
   coreProzent: number
   wachProzent: number
-  phasen: PhasenSegment[]
-}
-
-export function formatDauer(minuten: number): string {
-  const m = Math.max(0, Math.round(minuten))
-  const h = Math.floor(m / 60)
-  const restM = m % 60
-  if (h === 0) return `${restM}m`
-  if (restM === 0) return `${h}h`
-  return `${h}h ${restM}m`
-}
-
-export function formatUhrzeit(isoString: string): string {
-  try {
-    const d = new Date(isoString)
-    if (isNaN(d.getTime())) return '--:--'
-    return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return '--:--'
-  }
-}
-
-export function normalisierePhase(rawVal: string | number): SchlafPhaseArt {
-  const s = String(rawVal).toLowerCase().replace(/[^a-z0-9]/g, '')
-  if (s.includes('deep') || s === 'tief' || s === '4') return 'deep'
-  if (s.includes('rem') || s === '5') return 'rem'
-  if (s.includes('core') || s === 'kern' || s === '3') return 'core'
-  if (s.includes('awake') || s === 'wach' || s === '2') return 'awake'
-  if (s.includes('inbed') || s === 'imbett' || s === '0') return 'in_bed'
-  return 'core'
+  /** der verlauf der nacht, minuten ab dem einschlafen */
+  stuecke: Phase[]
 }
 
 export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
-  const raw = nacht.rohsegmente ?? []
-  const segs = raw.map((s) => {
-    const startMs = Date.parse(s.start)
-    const endMs = Date.parse(s.end)
-    const dauerMinuten = Math.max(0, (endMs - startMs) / 60000)
-    return {
-      art: normalisierePhase(s.value),
-      start: s.start,
-      end: s.end,
-      startMs,
-      endMs,
-      dauerMinuten,
-    } satisfies PhasenSegment
-  }).filter((s) => !isNaN(s.startMs) && !isNaN(s.endMs) && s.endMs > s.startMs)
+  const einschlafMinute = nachtMinute(nacht.einschlafzeit)
+  const gemessenesEnde = nacht.aufwachzeit !== null
+  const fenster = gemessenesEnde
+    ? Math.max(1, nachtMinute(nacht.aufwachzeit!) - einschlafMinute)
+    : Math.max(1, Math.round(nacht.schlafMinuten + nacht.wachMinuten))
 
-  const schlafSegs = segs.filter((s) => s.art !== 'in_bed').sort((a, b) => a.startMs - b.startMs)
-  const phasenSegs = schlafSegs.filter((s) => s.art === 'deep' || s.art === 'rem' || s.art === 'core')
-  const hatPhasenDaten = phasenSegs.length > 0
+  const hatBett = nacht.bettMinuten !== null && nacht.bettMinuten > 0
+  const inBedMinuten = Math.round(hatBett ? nacht.bettMinuten! : fenster)
 
-  let tief = 0
-  let rem = 0
-  let core = 0
-  let wach = nacht.wachMinuten ?? 0
-  let wachCount = nacht.wachphasen ?? 0
+  const schlafMinuten = Math.round(nacht.schlafMinuten)
+  const erfasst = nacht.tiefMinuten + nacht.remMinuten + nacht.kernMinuten
+  const hatPhasenDaten = erfasst > 0
 
-  if (schlafSegs.length > 0) {
-    tief = Math.round(schlafSegs.filter((s) => s.art === 'deep').reduce((acc, s) => acc + s.dauerMinuten, 0))
-    rem = Math.round(schlafSegs.filter((s) => s.art === 'rem').reduce((acc, s) => acc + s.dauerMinuten, 0))
-    core = Math.round(schlafSegs.filter((s) => s.art === 'core').reduce((acc, s) => acc + s.dauerMinuten, 0))
-    const berechnetesWach = Math.round(schlafSegs.filter((s) => s.art === 'awake').reduce((acc, s) => acc + s.dauerMinuten, 0))
-    if (berechnetesWach > 0) wach = berechnetesWach
-    const berechneteWachCount = schlafSegs.filter((s) => s.art === 'awake').length
-    if (berechneteWachCount > 0) wachCount = berechneteWachCount
-  }
-
-  // Die gespeicherte Health-Summe bleibt der Leitwert. Fehlende Phasen werden
-  // nicht geschätzt und dadurch auch nicht als echte Messung ausgegeben.
-  const schlafMin = Math.max(0, Math.round(nacht.schlafMinuten))
-
-  // Start- und Endzeit
-  let startMs = Date.parse(nacht.einschlafzeit)
-  if (isNaN(startMs) && schlafSegs.length > 0) {
-    startMs = schlafSegs[0]!.startMs
-  }
-  if (isNaN(startMs)) {
-    startMs = new Date(`${nacht.nacht}T23:30:00+02:00`).getTime() - 24 * 3600 * 1000
-  }
-
-  const letzterSegmentEndpunkt = segs.reduce(
-    (max, segment) => Math.max(max, segment.endMs),
-    Number.NEGATIVE_INFINITY
-  )
-  const hatGemessenesEnde = Number.isFinite(letzterSegmentEndpunkt) && letzterSegmentEndpunkt > startMs
-  const abgeleitetesEnde = startMs + Math.max(schlafMin, schlafMin + (wach || 0)) * 60000
-  const endMs = hatGemessenesEnde ? letzterSegmentEndpunkt : abgeleitetesEnde
-  const inBed = Math.max(schlafMin, Math.round((endMs - startMs) / 60000))
-
-  const startIso = new Date(startMs).toISOString()
-  const endIso = new Date(endMs).toISOString()
-
-  const hatZeitfensterDaten = hatGemessenesEnde || nacht.wachMinuten !== null
-  const effizienz = hatZeitfensterDaten && inBed > 0
-    ? Math.min(100, Math.max(0, Math.round((schlafMin / inBed) * 100)))
-    : null
-
-  const erfassteSchlafphasen = tief + rem + core
-  const tiefProzent = erfassteSchlafphasen > 0 ? Math.round((tief / erfassteSchlafphasen) * 100) : 0
-  const remProzent = erfassteSchlafphasen > 0 ? Math.round((rem / erfassteSchlafphasen) * 100) : 0
-  const coreProzent = erfassteSchlafphasen > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0
-  const wachProzent = inBed > 0 ? Math.round((wach / inBed) * 100) : 0
+  const anteil = (teil: number) => (erfasst > 0 ? Math.round((teil / erfasst) * 100) : 0)
+  const tiefProzent = anteil(nacht.tiefMinuten)
+  const remProzent = anteil(nacht.remMinuten)
 
   return {
     nacht: nacht.nacht,
     user: nacht.user,
-    schlafMinuten: schlafMin,
-    inBedMinuten: inBed,
-    effizienz,
+    schlafMinuten,
+    inBedMinuten,
+    inBedBasis: hatBett ? 'bett' : 'fenster',
+    // ohne gemessenes ende gibt es kein ehrliches verhaeltnis
+    effizienz:
+      gemessenesEnde && inBedMinuten > 0
+        ? Math.min(100, Math.round((schlafMinuten / inBedMinuten) * 100))
+        : null,
     hatPhasenDaten,
-    hatZeitfensterDaten,
-    einschlafzeit: startIso,
-    aufwachzeit: endIso,
-    einschlafUhrzeit: formatUhrzeit(startIso),
-    aufwachUhrzeit: formatUhrzeit(endIso),
-    tiefMinuten: tief,
-    remMinuten: rem,
-    coreMinuten: core,
-    wachMinuten: wach,
-    wachphasenAnzahl: wachCount,
+    hatZeitfensterDaten: gemessenesEnde,
+    einschlafUhrzeit: formatUhrzeit(nacht.einschlafzeit),
+    aufwachUhrzeit: formatUhrzeit(nacht.aufwachzeit),
+    einschlafMinute,
+    aufwachMinute: einschlafMinute + fenster,
+    bettVon: nacht.bettStart === null ? null : nachtMinute(nacht.bettStart),
+    bettBis: nacht.bettEnde === null ? null : nachtMinute(nacht.bettEnde),
+    tiefMinuten: Math.round(nacht.tiefMinuten),
+    remMinuten: Math.round(nacht.remMinuten),
+    coreMinuten: Math.round(nacht.kernMinuten + nacht.unspezMinuten),
+    wachMinuten: Math.round(nacht.wachMinuten),
+    wachphasenAnzahl: nacht.phasen.filter((p) => p.art === 'wach').length,
     tiefProzent,
     remProzent,
-    coreProzent,
-    wachProzent,
-    phasen: schlafSegs,
+    coreProzent: erfasst > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0,
+    wachProzent: inBedMinuten > 0 ? Math.round((nacht.wachMinuten / inBedMinuten) * 100) : 0,
+    // ohne stadien bleibt ein durchgehender block: die dauer ist trotzdem echt
+    stuecke: nacht.phasen.length
+      ? nacht.phasen
+      : [{ art: 'unspez' as PhasenArt, start: 0, dauer: schlafMinuten }],
   }
+}
+
+/* ---------------------------------------------------------------- zeitstrahl */
+
+/** 21 bis 09 uhr, waechst mit den daten, damit nie ein balken abgeschnitten wird */
+export function achse(analysen: NachtPhasenAnalyse[]): { von: number; bis: number } {
+  let von = 21 * 60
+  let bis = 9 * 60 + TAG
+  for (const a of analysen) {
+    von = Math.min(von, Math.floor(Math.min(a.einschlafMinute, a.bettVon ?? a.einschlafMinute) / 60) * 60)
+    bis = Math.max(bis, Math.ceil(Math.max(a.aufwachMinute, a.bettBis ?? a.aufwachMinute) / 60) * 60)
+  }
+  return { von, bis }
+}
+
+/** senkrechte marken alle drei stunden, auf volle drei-stunden-schritte gelegt */
+export function stundenmarken(von: number, bis: number, schritt = 180): number[] {
+  const marken: number[] = []
+  for (let m = Math.ceil(von / schritt) * schritt; m <= bis; m += schritt) marken.push(m)
+  return marken
+}
+
+export function position(m: number, von: number, bis: number): number {
+  return (m - von) / (bis - von)
+}
+
+/* -------------------------------------------------------------------- duell */
+
+export function median(werte: number[]): number {
+  const s = [...werte].sort((a, b) => a - b)
+  const mitte = Math.floor(s.length / 2)
+  return s.length % 2 ? s[mitte]! : (s[mitte - 1]! + s[mitte]!) / 2
+}
+
+export type Wochenwerte = {
+  user: UserId
+  naechte: number
+  schlafSchnitt: number | null
+  gesamt: number
+  /** median der einschlafzeit als nachtminute */
+  einschlafMedian: number | null
+  /** mittlere abweichung vom eigenen median, in minuten */
+  streuung: number | null
+  tiefAnteil: number | null
+  wachSchnitt: number | null
+}
+
+export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
+  const eigene = naechte.filter((n) => n.user === user && n.schlafMinuten > 0)
+  if (eigene.length === 0) {
+    return {
+      user,
+      naechte: 0,
+      schlafSchnitt: null,
+      gesamt: 0,
+      einschlafMedian: null,
+      streuung: null,
+      tiefAnteil: null,
+      wachSchnitt: null,
+    }
+  }
+
+  const einschlaf = eigene.map((n) => nachtMinute(n.einschlafzeit))
+  const referenz = median(einschlaf)
+  const gesamt = eigene.reduce((s, n) => s + n.schlafMinuten, 0)
+  const mitStadien = eigene.filter((n) => n.tiefMinuten + n.remMinuten + n.kernMinuten > 0)
+  const stadienSchlaf = mitStadien.reduce((s, n) => s + n.schlafMinuten, 0)
+
+  return {
+    user,
+    naechte: eigene.length,
+    schlafSchnitt: gesamt / eigene.length,
+    gesamt,
+    einschlafMedian: referenz,
+    // eine einzelne nacht hat keine streuung, erst ab zwei ist der wert echt
+    streuung:
+      eigene.length > 1
+        ? einschlaf.reduce((s, m) => s + Math.abs(m - referenz), 0) / eigene.length
+        : null,
+    tiefAnteil: stadienSchlaf
+      ? mitStadien.reduce((s, n) => s + n.tiefMinuten, 0) / stadienSchlaf
+      : null,
+    wachSchnitt: eigene.reduce((s, n) => s + n.wachMinuten, 0) / eigene.length,
+  }
+}
+
+export type Duellzeile = {
+  id: string
+  label: string
+  text: Record<UserId, string>
+  /** null heisst gleichstand oder zu wenig daten. dann bleibt beides grau */
+  sieger: UserId | null
+}
+
+type Disziplin = {
+  id: string
+  label: string
+  wert: (w: Wochenwerte) => number | null
+  text: (w: Wochenwerte) => string
+  /** 'hoch' heisst: mehr gewinnt */
+  richtung: 'hoch' | 'tief'
+  /** ein kleiner unterschied ist kein sieg */
+  mindest: number
+}
+
+const OHNE = '—'
+
+const DISZIPLINEN: Disziplin[] = [
+  {
+    id: 'schnitt',
+    label: 'schnitt pro nacht',
+    wert: (w) => w.schlafSchnitt,
+    text: (w) => (w.schlafSchnitt === null ? OHNE : formatDauer(w.schlafSchnitt)),
+    richtung: 'hoch',
+    mindest: 5,
+  },
+  {
+    id: 'imbett',
+    label: 'im bett ab',
+    wert: (w) => w.einschlafMedian,
+    text: (w) => (w.einschlafMedian === null ? OHNE : nachtUhrzeit(w.einschlafMedian)),
+    richtung: 'tief',
+    mindest: 5,
+  },
+  {
+    id: 'konstanz',
+    label: 'konstanz',
+    wert: (w) => w.streuung,
+    text: (w) => (w.streuung === null ? OHNE : `±${Math.round(w.streuung)}m`),
+    richtung: 'tief',
+    mindest: 5,
+  },
+  {
+    id: 'wach',
+    label: 'wach in der nacht',
+    wert: (w) => w.wachSchnitt,
+    text: (w) => (w.wachSchnitt === null ? OHNE : formatDauer(w.wachSchnitt)),
+    richtung: 'tief',
+    mindest: 3,
+  },
+  {
+    id: 'tief',
+    label: 'tiefschlaf',
+    wert: (w) => w.tiefAnteil,
+    text: (w) => (w.tiefAnteil === null ? OHNE : formatProzent(w.tiefAnteil)),
+    richtung: 'hoch',
+    mindest: 0.01,
+  },
+]
+
+export function duell(a: Wochenwerte, b: Wochenwerte): Duellzeile[] {
+  return DISZIPLINEN.map((d) => {
+    const wa = d.wert(a)
+    const wb = d.wert(b)
+    let sieger: UserId | null = null
+    if (wa !== null && wb !== null && Math.abs(wa - wb) >= d.mindest) {
+      sieger = (d.richtung === 'hoch' ? wa > wb : wa < wb) ? a.user : b.user
+    }
+    return {
+      id: d.id,
+      label: d.label,
+      text: { [a.user]: d.text(a), [b.user]: d.text(b) } as Record<UserId, string>,
+      sieger,
+    }
+  })
 }
