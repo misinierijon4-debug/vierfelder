@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import type { Schlafnacht, UserId } from '../../lib/types'
+import { abendDatum } from '../../lib/schlafPhasen'
 import { SchlafWochenVergleich } from './SchlafWochenVergleich'
 import { SchlafNachtDetail } from './SchlafNachtDetail'
 import { SchlafRhythmus } from './SchlafRhythmus'
@@ -18,7 +19,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
   const [gewaehlterTag, setGewaehlterTag] = useState<string>(() => {
     const umgekehrt = [...woche].reverse()
     const letzteMitDaten = umgekehrt.find((tag) =>
-      naechte.some((n) => n.nacht === tag && n.schlafMinuten > 0)
+      naechte.some((n) => abendDatum(n.einschlafzeit) === tag && n.schlafMinuten > 0)
     )
     return letzteMitDaten ?? (woche.includes(heuteKey) ? heuteKey : woche[0]!)
   })

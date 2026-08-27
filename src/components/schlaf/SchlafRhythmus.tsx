@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht } from '../../lib/types'
-import { duell, wochenwerte } from '../../lib/schlafPhasen'
+import { abendDatum, duell, wochenwerte } from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
@@ -14,7 +14,7 @@ type Props = {
  * wechselt die Farbe bei jeder Minute Rauschen.
  */
 export function SchlafRhythmus({ naechte, woche }: Props) {
-  const wochenNaechte = naechte.filter((n) => woche.includes(n.nacht))
+  const wochenNaechte = naechte.filter((n) => woche.includes(abendDatum(n.einschlafzeit)))
   const [a, b] = USERS.map((u) => wochenwerte(u.id, wochenNaechte))
   const zeilen = duell(a!, b!)
 

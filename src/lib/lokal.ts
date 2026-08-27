@@ -83,29 +83,40 @@ function erzeugeBeispielSchlaf(): Schlafnacht[] {
     return phasen
   }
 
-  const iso = (tag: string, stunde: number, minute: number, plusMinuten = 0): string => {
-    const [j, mo, t] = tag.split('-').map(Number)
-    // nach mitternacht gehoert die uhrzeit zum tag der nacht, davor zum vortag
-    const d = new Date(j!, mo! - 1, t! - (stunde >= 12 ? 1 : 0), stunde, minute + plusMinuten)
+  // `abend` ist der tag, an dem jemand ins bett geht. eine uhrzeit vor mittag
+  // gehoert damit schon zum folgetag.
+  const iso = (abend: string, stunde: number, minute: number, plusMinuten = 0): string => {
+    const [j, mo, t] = abend.split('-').map(Number)
+    const d = new Date(j!, mo! - 1, t! + (stunde >= 12 ? 0 : 1), stunde, minute + plusMinuten)
     return d.toISOString()
   }
 
-  woche.slice(0, 4).forEach((tag, i) => {
+  /** lokales datum eines zeitpunkts als yyyy-mm-dd */
+  const datumVon = (zeitpunkt: string): string => {
+    const d = new Date(zeitpunkt)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+      d.getDate()
+    ).padStart(2, '0')}`
+  }
+
+  woche.slice(0, 4).forEach((abend, i) => {
     for (const user of ['erijon', 'koray'] as UserId[]) {
       const [stunde, minute, verzoegerung, spanne] = muster[user][i]!
       const phasen = zyklen(spanne, user === 'erijon' ? i : i + 1)
       const summe = (art: PhasenArt) =>
         phasen.filter((p) => p.art === art).reduce((s, p) => s + p.dauer, 0)
       const wach = summe('wach')
+      const aufwachzeit = iso(abend, stunde, minute, verzoegerung + spanne)
 
       naechte.push({
         user,
-        nacht: tag,
+        // die datenbank benennt die nacht nach dem morgen
+        nacht: datumVon(aufwachzeit),
         schlafMinuten: spanne - wach,
-        einschlafzeit: iso(tag, stunde, minute, verzoegerung),
-        aufwachzeit: iso(tag, stunde, minute, verzoegerung + spanne),
-        bettStart: iso(tag, stunde, minute),
-        bettEnde: iso(tag, stunde, minute, verzoegerung + spanne + 8),
+        einschlafzeit: iso(abend, stunde, minute, verzoegerung),
+        aufwachzeit,
+        bettStart: iso(abend, stunde, minute),
+        bettEnde: iso(abend, stunde, minute, verzoegerung + spanne + 8),
         bettMinuten: verzoegerung + spanne + 8,
         tiefMinuten: summe('tief'),
         remMinuten: summe('rem'),

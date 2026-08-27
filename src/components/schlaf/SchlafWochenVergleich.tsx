@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { TAGKUERZEL } from '../../lib/dates'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
-import { formatDauer, formatStunden } from '../../lib/schlafPhasen'
+import { abendDatum, formatDauer, formatStunden } from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
@@ -22,7 +22,7 @@ export function SchlafWochenVergleich({
 }: Props) {
   const nachUser = new Map<UserId, Map<string, Schlafnacht>>()
   for (const user of USERS) nachUser.set(user.id, new Map())
-  for (const nacht of naechte) nachUser.get(nacht.user)?.set(nacht.nacht, nacht)
+  for (const nacht of naechte) nachUser.get(nacht.user)?.set(abendDatum(nacht.einschlafzeit), nacht)
 
   const schnitte = USERS.map((user) => {
     const userNaechte = woche

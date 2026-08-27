@@ -46,6 +46,22 @@ export function nachtMinute(iso: string): number {
   return m < PIVOT ? m + TAG : m
 }
 
+/**
+ * Der Tag, an dessen Abend die Nacht begonnen hat — als yyyy-mm-dd.
+ *
+ * Die Datenbank benennt eine Nacht nach dem Morgen (das Aufwachen am 26.),
+ * Sleep Cycle und das Gefuehl nach dem Abend (ins Bett am 25.). Angezeigt
+ * wird der Abend; gespeichert bleibt der Morgen.
+ */
+export function abendDatum(einschlafzeit: string): string {
+  const d = new Date(einschlafzeit)
+  // nach mitternacht eingeschlafen? dann gehoert die nacht zum tag davor
+  if (d.getHours() * 60 + d.getMinutes() < PIVOT) d.setDate(d.getDate() - 1)
+  const monat = String(d.getMonth() + 1).padStart(2, '0')
+  const tag = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${monat}-${tag}`
+}
+
 /** nachtminute zurueck in eine uhrzeit, fuer achsen und mediane */
 export function nachtUhrzeit(m: number): string {
   const rest = ((Math.round(m) % TAG) + TAG) % TAG

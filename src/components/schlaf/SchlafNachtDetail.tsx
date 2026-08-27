@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { USERS, user as userDef } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
-import { fromKey, langesDatum } from '../../lib/dates'
-import { analysiereSchlafnacht, formatDauer } from '../../lib/schlafPhasen'
+import { addDays, fromKey, langesDatum } from '../../lib/dates'
+import { abendDatum, analysiereSchlafnacht, formatDauer } from '../../lib/schlafPhasen'
 import { PhasenZeitstrahl } from './PhasenZeitstrahl'
+
+const MORGEN = new Intl.DateTimeFormat('de-DE', { weekday: 'long' })
 
 type Props = {
   naechte: Schlafnacht[]
@@ -15,14 +17,18 @@ type Props = {
 export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
   const [ansichtUser, setAnsichtUser] = useState<UserId>(me)
   const aktuelleNacht = naechte.find(
-    (nacht) => nacht.nacht === gewaehlterTag && nacht.user === ansichtUser
+    (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
   )
   const analyse = aktuelleNacht ? analysiereSchlafnacht(aktuelleNacht) : null
   const person = userDef(ansichtUser)
 
+  // die nacht traegt den abend, an dem sie begonnen hat — wie in sleep cycle
   let datumLabel = gewaehlterTag
+  let bisLabel = ''
   try {
-    datumLabel = langesDatum(fromKey(gewaehlterTag))
+    const abend = fromKey(gewaehlterTag)
+    datumLabel = langesDatum(abend)
+    bisLabel = MORGEN.format(addDays(abend, 1)).toLowerCase()
   } catch {
     datumLabel = gewaehlterTag
   }
@@ -30,7 +36,9 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
   return (
     <section aria-labelledby="nacht-detail-titel" className="mt-5">
       <div className="border-b border-linie pb-3">
-        <p className="text-[10px] text-kreide-52">nacht-detail</p>
+        <p className="text-[10px] text-kreide-52">
+          {bisLabel ? `nacht auf ${bisLabel}` : 'nacht-detail'}
+        </p>
         <h2 id="nacht-detail-titel" className="mt-0.5 text-balance text-[13px] font-semibold text-kreide">
           {datumLabel}
         </h2>

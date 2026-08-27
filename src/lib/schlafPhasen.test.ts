@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  abendDatum,
   achse,
   analysiereSchlafnacht,
   duell,
@@ -66,6 +67,21 @@ describe('formate', () => {
     expect(
       nachtMinute(iso('2026-08-26', '00:15')) - nachtMinute(iso('2026-08-25', '23:45'))
     ).toBe(30)
+  })
+})
+
+describe('welchem tag eine nacht gehoert', () => {
+  it('benennt die nacht nach dem abend, nicht nach dem morgen', () => {
+    // sleep cycle nennt die nacht vom 25. auf den 26. „dienstag, 25.“,
+    // die datenbank speichert sie unter dem morgen (26.)
+    expect(abendDatum(iso('2026-08-25', '23:25'))).toBe('2026-08-25')
+    expect(abendDatum(iso('2026-08-26', '00:14'))).toBe('2026-08-25')
+    expect(abendDatum(iso('2026-08-26', '21:00'))).toBe('2026-08-26')
+  })
+
+  it('kommt ueber monats- und jahresgrenzen', () => {
+    expect(abendDatum(iso('2026-09-01', '00:30'))).toBe('2026-08-31')
+    expect(abendDatum(iso('2027-01-01', '01:15'))).toBe('2026-12-31')
   })
 })
 
