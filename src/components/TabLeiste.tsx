@@ -16,7 +16,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
   return (
     <nav
       aria-label="hauptbereiche"
-      className="relative mb-3 flex w-full rounded-[2px] border border-linie bg-flaeche p-[2px]"
+      className="relative mb-3 flex w-full rounded-[2px] border border-linie bg-flaeche p-1"
     >
       {TABS.map((tab) => {
         const istAktiv = aktiverTab === tab.id
@@ -27,7 +27,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
             role="tab"
             aria-selected={istAktiv}
             onClick={() => onTabWechsel(tab.id)}
-            className="relative flex-1 py-1.5 text-center text-[12px] font-medium transition-colors duration-150 focus-visible:outline-none"
+            className="relative flex-1 py-1.5 text-center text-[12px] font-semibold tracking-wide transition-colors duration-150 focus-visible:outline-none"
             style={{
               color: istAktiv ? 'var(--kreide)' : 'var(--kreide-52)',
             }}
@@ -36,7 +36,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
               <motion.div
                 layoutId="aktiverTabIndikator"
                 transition={STEMPEL}
-                className="absolute inset-0 rounded-[2px] bg-grund shadow-sm"
+                className="absolute inset-0 rounded-[1px] bg-grund shadow-sm"
                 style={{ border: '1px solid var(--linie-hell)' }}
               />
             )}

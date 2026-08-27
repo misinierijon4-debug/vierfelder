@@ -18,12 +18,6 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
     nachUser.get(nacht.user)?.set(nacht.nacht, nacht)
   }
 
-  // Höchste Schlafdauer für die Skalierung (mindestens 8 Stunden)
-  const alleMinuten = naechte
-    .filter((n) => woche.includes(n.nacht))
-    .map((n) => n.schlafMinuten)
-  const maxMinuten = Math.max(8 * 60, ...alleMinuten, 10 * 60)
-
   // Wochenschnitt pro Nutzer
   const schnitte = USERS.map((u) => {
     const userNaechte = woche
@@ -34,29 +28,29 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
     return { user: u, schnitt, anzahl: userNaechte.length }
   })
 
+  const maxMinuten = 10 * 60 // 10 Stunden Maximalhöhe für die Säulen
+
   return (
     <section aria-labelledby="schlaf-wochenuebersicht" className="mt-2">
-      {/* Header mit Wochenschnitt im Head-to-Head */}
-      <div className="mb-3 flex items-center justify-between rounded-[2px] border border-linie bg-flaeche px-3 py-2">
+      {/* Head-to-Head Wochenschnitt */}
+      <div className="mb-3 flex items-center justify-between rounded-[2px] border border-linie bg-flaeche px-3.5 py-2.5">
         {schnitte.map(({ user, schnitt, anzahl }) => (
           <div key={user.id} className="flex items-center gap-2">
             <span
-              className="h-2.5 w-2.5 rounded-full"
+              className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
               style={{ backgroundColor: user.farbe }}
             />
-            <div>
-              <span className="text-[11px] text-kreide-52">{user.name}: </span>
-              <span className="tnum text-[12px] font-semibold text-kreide">
-                {anzahl > 0 ? formatDauer(schnitt) : '--'}
-              </span>
-              <span className="ml-1 text-[10px] text-kreide-52">Ø</span>
-            </div>
+            <span className="text-[11px] text-kreide-52">{user.name}:</span>
+            <span className="tnum text-[13px] font-bold text-kreide">
+              {anzahl > 0 ? formatDauer(schnitt) : '--'}
+            </span>
+            <span className="text-[10px] text-kreide-52">Ø</span>
           </div>
         ))}
       </div>
 
-      {/* 7 Tage Wochenraster */}
-      <div className="grid grid-cols-7 gap-1.5">
+      {/* 7-Tage-Scoreboard */}
+      <div className="grid grid-cols-7 gap-1">
         {woche.map((tag, idx) => {
           const istGewaehlt = tag === gewaehlterTag
           const erijonNacht = nachUser.get('erijon')?.get(tag)
@@ -65,47 +59,47 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
           const erijonMin = erijonNacht?.schlafMinuten ?? 0
           const korayMin = korayNacht?.schlafMinuten ?? 0
 
-          const erijonHoeheProzent = (erijonMin / maxMinuten) * 100
-          const korayHoeheProzent = (korayMin / maxMinuten) * 100
+          const erijonHoehe = Math.min(100, (erijonMin / maxMinuten) * 100)
+          const korayHoehe = Math.min(100, (korayMin / maxMinuten) * 100)
 
           return (
             <button
               key={tag}
               type="button"
               onClick={() => onTagWaehlen(tag)}
-              className={`relative flex flex-col items-center rounded-[2px] border p-1.5 transition-all duration-150 focus-visible:outline-none ${
+              className={`relative flex flex-col items-center rounded-[2px] border py-2 px-1 transition-all duration-150 focus-visible:outline-none ${
                 istGewaehlt
                   ? 'border-linie-hell bg-flaeche shadow-sm'
-                  : 'border-linie/60 bg-flaeche/40 hover:border-linie hover:bg-flaeche'
+                  : 'border-linie/40 bg-flaeche/30 hover:border-linie hover:bg-flaeche/70'
               }`}
             >
-              {/* Wochentag-Label */}
+              {/* Wochentags-Kürzel */}
               <span
-                className={`text-[11px] font-medium ${
+                className={`text-[11px] font-semibold uppercase tracking-wider ${
                   istGewaehlt ? 'text-kreide' : 'text-kreide-52'
                 }`}
               >
                 {TAGKUERZEL[idx]}
               </span>
 
-              {/* Säulenbereich */}
-              <div className="relative my-2 flex h-28 w-full items-end justify-center gap-1">
-                {/* 8h Referenzlinie */}
+              {/* Säulen-Spur mit 8h-Referenz */}
+              <div className="relative my-2.5 flex h-24 w-full items-end justify-center gap-1">
+                {/* 8h Orientierungslinie */}
                 <div
-                  className="pointer-events-none absolute w-full border-b border-dashed border-linie/40"
+                  className="pointer-events-none absolute w-full border-b border-dashed border-linie/50"
                   style={{ bottom: `${(480 / maxMinuten) * 100}%` }}
                 />
 
-                {/* Erijon Balken */}
-                <div className="flex h-full w-2.5 flex-col items-center justify-end">
+                {/* Erijon Spur */}
+                <div className="flex h-full w-2 flex-col justify-end overflow-hidden rounded-t-[1px] bg-grund/60">
                   {erijonMin > 0 && (
                     <motion.div
                       initial={{ scaleY: 0 }}
                       animate={{ scaleY: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="w-full rounded-t-[1px]"
+                      transition={{ duration: 0.25 }}
+                      className="w-full"
                       style={{
-                        height: `${Math.max(4, erijonHoeheProzent)}%`,
+                        height: `${Math.max(6, erijonHoehe)}%`,
                         backgroundColor: 'var(--erijon)',
                         transformOrigin: 'bottom',
                       }}
@@ -113,16 +107,16 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
                   )}
                 </div>
 
-                {/* Koray Balken */}
-                <div className="flex h-full w-2.5 flex-col items-center justify-end">
+                {/* Koray Spur */}
+                <div className="flex h-full w-2 flex-col justify-end overflow-hidden rounded-t-[1px] bg-grund/60">
                   {korayMin > 0 && (
                     <motion.div
                       initial={{ scaleY: 0 }}
                       animate={{ scaleY: 1 }}
-                      transition={{ duration: 0.3, delay: 0.05 }}
-                      className="w-full rounded-t-[1px]"
+                      transition={{ duration: 0.25, delay: 0.04 }}
+                      className="w-full"
                       style={{
-                        height: `${Math.max(4, korayHoeheProzent)}%`,
+                        height: `${Math.max(6, korayHoehe)}%`,
                         backgroundColor: 'var(--koray)',
                         transformOrigin: 'bottom',
                       }}
@@ -131,20 +125,14 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
                 </div>
               </div>
 
-              {/* Direkte Stundenanzeige pro Tag */}
-              <div className="flex flex-col items-center text-[10px] leading-tight">
-                {erijonMin > 0 ? (
-                  <span className="tnum font-medium text-kreide" style={{ color: 'var(--erijon)' }}>
-                    {(erijonMin / 60).toFixed(1)}h
-                  </span>
-                ) : (
-                  <span className="text-kreide-52">--</span>
-                )}
-                {korayMin > 0 && (
-                  <span className="tnum font-medium text-kreide" style={{ color: 'var(--koray)' }}>
-                    {(korayMin / 60).toFixed(1)}h
-                  </span>
-                )}
+              {/* Stunden-Werte unten */}
+              <div className="flex flex-col items-center text-[10px] leading-tight font-medium">
+                <span className="tnum" style={{ color: erijonMin > 0 ? 'var(--erijon)' : 'var(--kreide-52)' }}>
+                  {erijonMin > 0 ? `${(erijonMin / 60).toFixed(1)}h` : '--'}
+                </span>
+                <span className="tnum" style={{ color: korayMin > 0 ? 'var(--koray)' : 'var(--kreide-52)' }}>
+                  {korayMin > 0 ? `${(korayMin / 60).toFixed(1)}h` : '--'}
+                </span>
               </div>
             </button>
           )

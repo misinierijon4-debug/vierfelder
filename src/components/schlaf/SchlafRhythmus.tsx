@@ -15,7 +15,6 @@ export function SchlafRhythmus({ naechte, woche }: Props) {
     const gesamtMinuten = userNaechte.reduce((acc, n) => acc + n.schlafMinuten, 0)
     const schnittMinuten = userNaechte.length > 0 ? gesamtMinuten / userNaechte.length : 0
 
-    // Durchschnittliche Einschlafzeit (Minuten ab Mitternacht)
     let avgEinschlafMin: number | null = null
     if (userNaechte.length > 0) {
       const einschlafZeiten = userNaechte.map((n) => {
@@ -49,31 +48,31 @@ export function SchlafRhythmus({ naechte, woche }: Props) {
         wochen-rhythmus & duell
       </h2>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {stats.map(({ user, naechteCount, gesamt, schnitt, einschlafAvg }) => (
           <div
             key={user.id}
-            className="rounded-[2px] border border-linie bg-flaeche p-3"
+            className="flex flex-col justify-between rounded-[2px] border border-linie bg-flaeche p-3.5"
             style={{ borderLeft: `3px solid ${user.farbe}` }}
           >
-            <span className="text-[12px] font-medium" style={{ color: user.farbe }}>
+            <span className="text-[12px] font-bold uppercase tracking-wider" style={{ color: user.farbe }}>
               {user.name}
             </span>
 
-            <div className="mt-2 space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
+            <div className="mt-3 space-y-2 text-[11px]">
+              <div className="flex items-baseline justify-between">
                 <span className="text-kreide-52">wochenschnitt:</span>
-                <span className="tnum font-medium text-kreide">
+                <span className="tnum text-[13px] font-semibold text-kreide">
                   {naechteCount > 0 ? formatDauer(schnitt) : '--'}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex items-baseline justify-between">
                 <span className="text-kreide-52">gesamt geschlafen:</span>
                 <span className="tnum font-medium text-kreide">
                   {naechteCount > 0 ? formatDauer(gesamt) : '--'}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex items-baseline justify-between">
                 <span className="text-kreide-52">Ø einschlafen:</span>
                 <span className="tnum font-medium text-kreide">{einschlafAvg}</span>
               </div>

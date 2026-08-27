@@ -43,9 +43,9 @@ describe('schlafPhasen', () => {
     expect(res.tiefMinuten).toBe(60)
     expect(res.remMinuten).toBe(120)
     expect(res.coreMinuten).toBe(312)
-    expect(res.wachMinuten).toBe(48) // 48.5 min
+    expect(res.wachMinuten).toBe(49)
     expect(res.schlafMinuten).toBe(492)
-    expect(res.inBedMinuten).toBe(540)
+    expect(res.inBedMinuten).toBe(541)
     expect(res.effizienz).toBeGreaterThan(90)
     expect(res.einschlafUhrzeit).toContain(':')
     expect(res.aufwachUhrzeit).toContain(':')

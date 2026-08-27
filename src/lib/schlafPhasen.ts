@@ -30,7 +30,7 @@ export type NachtPhasenAnalyse = {
 }
 
 export function formatDauer(minuten: number): string {
-  const m = Math.round(minuten)
+  const m = Math.max(0, Math.round(minuten))
   const h = Math.floor(m / 60)
   const restM = m % 60
   if (h === 0) return `${restM}m`
@@ -59,7 +59,8 @@ export function normalisierePhase(rawVal: string | number): SchlafPhaseArt {
 }
 
 export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
-  const segs = (nacht.rohsegmente ?? []).map((s) => {
+  const raw = nacht.rohsegmente ?? []
+  const segs = raw.map((s) => {
     const startMs = Date.parse(s.start)
     const endMs = Date.parse(s.end)
     const dauerMinuten = Math.max(0, (endMs - startMs) / 60000)
@@ -71,9 +72,9 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
       endMs,
       dauerMinuten,
     } satisfies PhasenSegment
-  })
+  }).filter((s) => !isNaN(s.startMs) && !isNaN(s.endMs) && s.endMs > s.startMs)
 
-  // Nicht-InBed Segmente für den Zeitstrahl
+  // Nicht-InBed Segmente
   const schlafSegs = segs.filter((s) => s.art !== 'in_bed').sort((a, b) => a.startMs - b.startMs)
 
   let tief = 0
@@ -92,25 +93,43 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     if (berechneteWachCount > 0) wachCount = berechneteWachCount
   } else {
     const rest = Math.max(0, nacht.schlafMinuten)
-    tief = Math.round(rest * 0.18)
-    rem = Math.round(rest * 0.24)
+    tief = Math.round(rest * 0.20)
+    rem = Math.round(rest * 0.25)
     core = Math.max(0, rest - tief - rem)
   }
 
-  const startZeit = nacht.einschlafzeit
-  let endZeit = nacht.einschlafzeit
-  if (schlafSegs.length > 0) {
-    const maxEnd = Math.max(...schlafSegs.map((s) => s.endMs))
-    endZeit = new Date(maxEnd).toISOString()
-  } else {
-    const startMs = Date.parse(startZeit)
-    if (!isNaN(startMs)) {
-      endZeit = new Date(startMs + (nacht.schlafMinuten + (wach || 0)) * 60000).toISOString()
-    }
+  // Ermittle korrekte Start- und Endzeit
+  let startMs = Date.parse(nacht.einschlafzeit)
+  if (isNaN(startMs) && schlafSegs.length > 0) {
+    startMs = schlafSegs[0]!.startMs
+  }
+  if (isNaN(startMs)) {
+    startMs = new Date().setHours(23, 30, 0, 0)
   }
 
-  const berechneteSchlafMinuten = schlafSegs.length > 0 ? (tief + rem + core) : nacht.schlafMinuten
-  const inBed = Math.round(berechneteSchlafMinuten + (wach || 0))
+  const berechneteSchlafMinuten = (tief + rem + core) > 0 ? (tief + rem + core) : nacht.schlafMinuten
+  const inBed = Math.max(berechneteSchlafMinuten, Math.round(berechneteSchlafMinuten + wach))
+  
+  // Endzeit: Wenn Segmente vorliegen und die Spanne plausibel ist (> 60% der Gesamtdauer),
+  // nimm max(endMs). Sonst berechne sauber aus Startzeit + Dauer im Bett.
+  let endMs: number
+  if (schlafSegs.length > 0) {
+    const segMinStart = Math.min(...schlafSegs.map((s) => s.startMs))
+    const segMaxEnd = Math.max(...schlafSegs.map((s) => s.endMs))
+    const segSpanMinuten = (segMaxEnd - segMinStart) / 60000
+    if (segSpanMinuten >= inBed * 0.7) {
+      endMs = segMaxEnd
+      startMs = segMinStart
+    } else {
+      endMs = startMs + inBed * 60000
+    }
+  } else {
+    endMs = startMs + inBed * 60000
+  }
+
+  const startIso = new Date(startMs).toISOString()
+  const endIso = new Date(endMs).toISOString()
+
   const effizienz = inBed > 0 ? Math.min(100, Math.max(0, Math.round((berechneteSchlafMinuten / inBed) * 100))) : 100
 
   return {
@@ -119,10 +138,10 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     schlafMinuten: berechneteSchlafMinuten,
     inBedMinuten: inBed,
     effizienz,
-    einschlafzeit: startZeit,
-    aufwachzeit: endZeit,
-    einschlafUhrzeit: formatUhrzeit(startZeit),
-    aufwachUhrzeit: formatUhrzeit(endZeit),
+    einschlafzeit: startIso,
+    aufwachzeit: endIso,
+    einschlafUhrzeit: formatUhrzeit(startIso),
+    aufwachUhrzeit: formatUhrzeit(endIso),
     tiefMinuten: tief,
     remMinuten: rem,
     coreMinuten: core,
