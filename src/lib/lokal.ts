@@ -1,6 +1,6 @@
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
-import { tickKey, wertKey } from './types'
-import type { AreaId, Schlafnacht, Ticks, UserId, Werte } from './types'
+import { gewichtKey, tickKey, wertKey } from './types'
+import type { AreaId, Gewichte, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 /**
  * prototyp-backend ohne konto: daten im localStorage, realtime über
@@ -10,6 +10,8 @@ import type { AreaId, Schlafnacht, Ticks, UserId, Werte } from './types'
 const TICKS_KEY = 'vierfelder.ticks.v2'
 const WERTE_KEY = 'vierfelder.werte.v2'
 const ME_KEY = 'vierfelder.me.v2'
+/** flach über beide personen wie die ticks, nicht pro nutzer wie die werte */
+const GEWICHT_KEY = 'vierfelder.gewicht.v1'
 const SCHLAF_KEY = 'vierfelder.schlaf.v1'
 const KANAL = 'vierfelder'
 
@@ -61,6 +63,7 @@ export function lokalesBackend(): Backend {
         me,
         ticks: lade<Ticks>(TICKS_KEY, {}),
         werte: alleWerte()[me],
+        gewichte: lade<Gewichte>(GEWICHT_KEY, {}),
         schlaf: lade<Schlafnacht[]>(SCHLAF_KEY, []),
       }
     },
@@ -82,6 +85,15 @@ export function lokalesBackend(): Backend {
       if (wert <= 0) delete alle[me][key]
       else alle[me][key] = wert
       localStorage.setItem(WERTE_KEY, JSON.stringify(alle))
+    },
+
+    async schreibeGewicht(tag: string, kg: number) {
+      const me = lokalesMe()
+      const gewichte = lade<Gewichte>(GEWICHT_KEY, {})
+      const key = gewichtKey(me, tag)
+      if (kg <= 0) delete gewichte[key]
+      else gewichte[key] = kg
+      localStorage.setItem(GEWICHT_KEY, JSON.stringify(gewichte))
     },
 
     abonniere(cb) {

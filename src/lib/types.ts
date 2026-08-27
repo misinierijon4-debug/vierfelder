@@ -1,6 +1,13 @@
 export type AreaId = 'lernen' | 'gym' | 'boxen' | 'lesen'
 export type UserId = 'erijon' | 'koray'
 
+/**
+ * alles, was in die wochenwertung zählt. `AreaId` bleibt absichtlich bei den
+ * vier antippbaren bereichen: nur die landen in `eintraege`, und so kann
+ * `schreibeTick` typsicher nie ein 'gewicht' dorthin schreiben.
+ */
+export type FeldId = AreaId | 'gewicht'
+
 export type AreaDef = {
   id: AreaId
   label: string
@@ -20,6 +27,19 @@ export const AREAS: AreaDef[] = [
   { id: 'gym', label: 'gym', unit: 'min', step: 15 },
   { id: 'boxen', label: 'boxen', unit: 'min', step: 15 },
   { id: 'lesen', label: 'lesen', unit: 'seiten', step: 10 },
+]
+
+/**
+ * das gewicht ist kein tick, den man antippt, sondern eine messung — es zählt
+ * aber genauso in wochenstand, raster und bilanz. deshalb steht es neben AREAS
+ * und nicht darin.
+ */
+export const GEWICHT_FELD = { id: 'gewicht' as const, label: 'gewicht' }
+
+/** alles, worüber gewertet wird: die vier bereiche und das gewicht */
+export const FELDER: { id: FeldId; label: string }[] = [
+  ...AREAS.map((a) => ({ id: a.id as FeldId, label: a.label })),
+  GEWICHT_FELD,
 ]
 
 /** farbe gehört der person, nicht der rolle */
@@ -48,9 +68,13 @@ export type Ticks = Record<TickKey, true>
 /** `${area}|${yyyy-mm-dd}` — liegt pro nutzer getrennt, spiegelt `werte` */
 export type Werte = Record<string, number>
 
+/** `${user}|${yyyy-mm-dd}` -> kilogramm. beide sehen beide, wie bei den ticks */
+export type Gewichte = Record<string, number>
+
 export type Zustand = {
   ticks: Ticks
   werte: Werte
+  gewichte: Gewichte
 }
 
 export type Schlafnacht = {
@@ -70,6 +94,10 @@ export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {
 
 export function wertKey(a: AreaId, tag: string): string {
   return `${a}|${tag}`
+}
+
+export function gewichtKey(u: UserId, tag: string): string {
+  return `${u}|${tag}`
 }
 
 export type Ereignis = {

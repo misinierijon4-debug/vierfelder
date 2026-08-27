@@ -13,6 +13,9 @@ import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
 import { Anmeldung } from './components/Anmeldung'
 import { Schlafdiagramm } from './components/Schlafdiagramm'
+import { Gewichtszeile } from './components/Gewichtszeile'
+import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
+import { gewichtAn, letztesGewicht } from './lib/gewicht'
 
 const UNDO_MS = 5000
 
@@ -41,7 +44,8 @@ export function App() {
 }
 
 function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
-  const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert } = useTracker(backend)
+  const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert, setzeGewicht } =
+    useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
 
@@ -147,6 +151,21 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
         />
 
         <Schlafdiagramm naechte={schlaf} woche={woche} />
+
+        {/* die eingabe steht bei ihrem diagramm: sie ist eine messung, kein tick,
+            und die vier zeilen oben sollen die falz nicht überschreiten */}
+        <Gewichtszeile
+          kg={gewichtAn(zustand.gewichte, me, heuteKey)}
+          letzte={letztesGewicht(zustand.gewichte, me)}
+          kgEr={gewichtAn(zustand.gewichte, er.id, heuteKey)}
+          nameEr={er.name}
+          farbe={ich.farbe}
+          farbeEr={er.farbe}
+          streak={streak(zustand, me, 'gewicht', heute)}
+          onSetze={(kg) => setzeGewicht(heuteKey, kg)}
+        />
+
+        <Gewichtsdiagramm gewichte={zustand.gewichte} heute={heuteKey} />
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>

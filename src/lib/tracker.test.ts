@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { abstand, istGesetzt, setzeTick, setzeWert, streak, wert, wocheBereich, wocheGesamt } from './tracker'
+import { gewichtKey } from './types'
 import type { Zustand } from './types'
 
-const leer: Zustand = { ticks: {}, werte: {} }
+const leer: Zustand = { ticks: {}, werte: {}, gewichte: {} }
 const MITTWOCH = new Date(2026, 7, 26, 12)
 
 function mit(z: Zustand, ...eintraege: [string, string][]): Zustand {
@@ -77,6 +78,47 @@ describe('streak', () => {
     let z = setzeTick(leer, 'erijon', 'boxen', toKey(addDays(MITTWOCH, -1)), true)
     z = setzeTick(z, 'erijon', 'boxen', toKey(addDays(MITTWOCH, -3)), true)
     expect(streak(z, 'erijon', 'boxen', MITTWOCH)).toBe(1)
+  })
+})
+
+describe('gewicht als fünftes feld', () => {
+  /** ein gewichtseintrag, ohne zeile in ticks — der tick wird abgeleitet */
+  function mitGewicht(z: Zustand, u: string, tag: string, kg: number): Zustand {
+    return { ...z, gewichte: { ...z.gewichte, [gewichtKey(u as never, tag)]: kg } }
+  }
+
+  it('gilt als gesetzt, sobald ein wert für den tag existiert', () => {
+    const z = mitGewicht(leer, 'erijon', '2026-08-26', 81.4)
+    expect(istGesetzt(z, 'erijon', 'gewicht', '2026-08-26')).toBe(true)
+    expect(istGesetzt(z, 'erijon', 'gewicht', '2026-08-25')).toBe(false)
+    expect(istGesetzt(z, 'koray', 'gewicht', '2026-08-26')).toBe(false)
+  })
+
+  it('zählt in den wochenstand, der damit bis 35 geht', () => {
+    let z = leer
+    const woche = weekDays(MITTWOCH)
+    for (const tag of woche) {
+      for (const bereich of ['lernen', 'gym', 'boxen', 'lesen'] as const) {
+        z = setzeTick(z, 'erijon', bereich, tag, true)
+      }
+      z = mitGewicht(z, 'erijon', tag, 81)
+    }
+    expect(wocheGesamt(z, 'erijon', woche)).toBe(35)
+  })
+
+  it('führt einen eigenen streak fürs wiegen', () => {
+    let z = leer
+    for (const versatz of [0, -1, -2]) {
+      z = mitGewicht(z, 'erijon', toKey(addDays(MITTWOCH, versatz)), 81)
+    }
+    expect(streak(z, 'erijon', 'gewicht', MITTWOCH)).toBe(3)
+  })
+
+  it('vergleicht die wiegetage der beiden', () => {
+    let z = mitGewicht(leer, 'erijon', '2026-08-24', 81)
+    z = mitGewicht(z, 'erijon', '2026-08-25', 81)
+    z = mitGewicht(z, 'koray', '2026-08-24', 75)
+    expect(abstand(z, 'gewicht', weekDays(MITTWOCH), 'erijon', 'koray')).toBe(1)
   })
 })
 
