@@ -16,9 +16,9 @@ type Props = {
  */
 const DICHTE: Record<Exclude<PhasenArt, 'wach'>, number> = {
   tief: 100,
-  rem: 62,
-  kern: 34,
-  unspez: 34,
+  rem: 58,
+  kern: 24,
+  unspez: 24,
 }
 
 function ton(farbe: string, art: PhasenArt): string {
@@ -63,19 +63,10 @@ export function PhasenZeitstrahl({ analyse, farbe }: Props) {
 
       {/* echter zeitstrahl: die breite ist die uhr, nicht der anteil */}
       <div
-        className="relative mx-3.5 h-5 overflow-hidden rounded-[1px] bg-grund"
+        className="relative mx-3.5 h-7 overflow-hidden rounded-[1px] bg-grund"
         role="img"
         aria-label={`schlafverlauf von ${analyse.einschlafUhrzeit} bis ${analyse.aufwachUhrzeit}`}
       >
-        {marken.map((m) => (
-          <span
-            key={m}
-            aria-hidden
-            className="absolute top-0 bottom-0 w-px bg-linie"
-            style={{ left: `${position(m, von, bis) * 100}%` }}
-          />
-        ))}
-
         <motion.div
           className="absolute inset-0"
           initial={reduced ? false : { clipPath: 'inset(0 100% 0 0)' }}
@@ -98,6 +89,16 @@ export function PhasenZeitstrahl({ analyse, farbe }: Props) {
             )
           })}
         </motion.div>
+
+        {/* die stundenmarken liegen über den phasen, sonst sieht man sie nur in den lücken */}
+        {marken.map((m) => (
+          <span
+            key={m}
+            aria-hidden
+            className="absolute top-0 bottom-0 w-px bg-grund opacity-60"
+            style={{ left: `${position(m, von, bis) * 100}%` }}
+          />
+        ))}
       </div>
 
       <p className="mx-3.5 mt-1.5 text-[10px] text-kreide-52">
