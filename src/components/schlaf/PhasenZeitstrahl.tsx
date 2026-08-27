@@ -6,27 +6,21 @@ import type { PhasenArt } from '../../lib/types'
 
 type Props = {
   analyse: NachtPhasenAnalyse
-  /** die farbe der person, deren nacht gezeigt wird */
-  farbe: string
 }
 
 /**
- * Tiefer Schlaf ist dichter. Eine Farbe, drei Dichten — kein zweites
- * Farbsystem neben den beiden Identitätsfarben.
+ * Die vier Phasenfarben gehoeren keiner Person, sie sind eine Legende. Sie
+ * stehen nur hier im Nachtdetail; das Wochenraster bleibt zweifarbig.
  */
-const DICHTE: Record<Exclude<PhasenArt, 'wach'>, number> = {
-  tief: 100,
-  rem: 58,
-  kern: 24,
-  unspez: 24,
+const FARBE: Record<PhasenArt, string> = {
+  tief: 'var(--phase-tief)',
+  rem: 'var(--phase-rem)',
+  kern: 'var(--phase-kern)',
+  unspez: 'var(--phase-kern)',
+  wach: 'var(--phase-wach)',
 }
 
-function ton(farbe: string, art: PhasenArt): string {
-  if (art === 'wach') return 'transparent'
-  return `color-mix(in srgb, ${farbe} ${DICHTE[art]}%, var(--grund))`
-}
-
-export function PhasenZeitstrahl({ analyse, farbe }: Props) {
+export function PhasenZeitstrahl({ analyse }: Props) {
   const reduced = useReducedMotion()
 
   if (!analyse.hatPhasenDaten) {
@@ -61,7 +55,7 @@ export function PhasenZeitstrahl({ analyse, farbe }: Props) {
         </span>
       </div>
 
-      {/* echter zeitstrahl: die breite ist die uhr, nicht der anteil */}
+      {/* echter zeitverlauf: die breite ist die uhr, nicht der anteil */}
       <div
         className="relative mx-3.5 h-7 overflow-hidden rounded-[1px] bg-grund"
         role="img"
@@ -74,7 +68,6 @@ export function PhasenZeitstrahl({ analyse, farbe }: Props) {
           transition={{ duration: reduced ? 0 : 0.45, ease: EASE }}
         >
           {analyse.stuecke.map((p) => {
-            if (p.art === 'wach') return null
             const start = analyse.einschlafMinute + p.start
             return (
               <span
@@ -83,26 +76,26 @@ export function PhasenZeitstrahl({ analyse, farbe }: Props) {
                 style={{
                   left: `${position(start, von, bis) * 100}%`,
                   width: `${(p.dauer / (bis - von)) * 100}%`,
-                  background: ton(farbe, p.art),
+                  background: FARBE[p.art],
                 }}
               />
             )
           })}
         </motion.div>
 
-        {/* die stundenmarken liegen über den phasen, sonst sieht man sie nur in den lücken */}
+        {/* die stundenmarken liegen über den phasen, sonst sieht man sie gar nicht */}
         {marken.map((m) => (
           <span
             key={m}
             aria-hidden
-            className="absolute top-0 bottom-0 w-px bg-grund opacity-60"
+            className="absolute top-0 bottom-0 w-px bg-grund opacity-70"
             style={{ left: `${position(m, von, bis) * 100}%` }}
           />
         ))}
       </div>
 
       <p className="mx-3.5 mt-1.5 text-[10px] text-kreide-52">
-        lücken im balken sind wachphasen · raster: eine stunde
+        von links nach rechts durch die nacht · raster: eine stunde
       </p>
 
       <dl className="mt-3 grid grid-cols-2 border-t border-linie">
@@ -116,11 +109,7 @@ export function PhasenZeitstrahl({ analyse, farbe }: Props) {
             <dt className="flex items-center gap-1.5 text-[10px] text-kreide-52">
               <span
                 className="size-2 shrink-0 rounded-[1px]"
-                style={
-                  kachel.key === 'wach'
-                    ? { border: '1px solid var(--linie-hell)' }
-                    : { background: ton(farbe, kachel.key) }
-                }
+                style={{ background: FARBE[kachel.key] }}
               />
               <span className="truncate">{kachel.label}</span>
             </dt>

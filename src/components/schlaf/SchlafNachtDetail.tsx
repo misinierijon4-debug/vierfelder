@@ -109,7 +109,7 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
               </dl>
             </div>
 
-            <PhasenZeitstrahl analyse={analyse} farbe={person.farbe} />
+            <PhasenZeitstrahl analyse={analyse} />
           </motion.div>
         ) : (
           <motion.div
