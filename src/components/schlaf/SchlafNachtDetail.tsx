@@ -5,6 +5,7 @@ import type { Schlafnacht, UserId } from '../../lib/types'
 import { addDays, fromKey, langesDatum } from '../../lib/dates'
 import { abendDatum, analysiereSchlafnacht, formatDauer } from '../../lib/schlafPhasen'
 import { PhasenZeitstrahl } from './PhasenZeitstrahl'
+import { Ring } from './Ring'
 
 const MORGEN = new Intl.DateTimeFormat('de-DE', { weekday: 'long' })
 
@@ -77,17 +78,27 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
             className="mt-3.5"
           >
             <div className="overflow-hidden rounded-[2px] border border-linie bg-flaeche">
-              <div className="flex items-end justify-between gap-4 px-4 py-3.5">
-                <div className="min-w-0">
+              <div className="flex items-center gap-4 px-4 py-4">
+                <Ring
+                  anteil={analyse.effizienz === null ? null : analyse.effizienz / 100}
+                  farbe={person.farbe}
+                  label="effizienz"
+                />
+
+                <div className="min-w-0 flex-1">
                   <span className="text-[10px] text-kreide-52">echte schlafzeit</span>
-                  <div className="tnum mt-1 truncate text-[28px] font-bold leading-none" style={{ color: person.farbe }}>
+                  <div
+                    className="tnum mt-1 truncate text-[28px] font-bold leading-none"
+                    style={{ color: person.farbe }}
+                  >
                     {formatDauer(analyse.schlafMinuten)}
                   </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <span className="text-[10px] text-kreide-52">effizienz</span>
-                  <div className="tnum mt-1 text-[20px] font-bold leading-none text-kreide">
-                    {analyse.effizienz === null ? '—' : `${analyse.effizienz}%`}
+
+                  <span className="mt-3 block text-[10px] text-kreide-52">
+                    {analyse.inBedBasis === 'bett' ? 'zeit im bett' : 'schlaffenster'}
+                  </span>
+                  <div className="tnum mt-1 truncate text-[15px] font-semibold leading-none text-kreide">
+                    {analyse.hatZeitfensterDaten ? formatDauer(analyse.inBedMinuten) : '—'}
                   </div>
                 </div>
               </div>
@@ -106,12 +117,11 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
-                  {/* ohne InBed-segmente ist es die schlafspanne, nicht die bettzeit */}
-                  <dt className="text-[9px] text-kreide-52">
-                    {analyse.inBedBasis === 'bett' ? 'zeit im bett' : 'schlaffenster'}
-                  </dt>
+                  <dt className="text-[9px] text-kreide-52">von deinem ziel</dt>
                   <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
-                    {analyse.hatZeitfensterDaten ? formatDauer(analyse.inBedMinuten) : '—'}
+                    {aktuelleNacht
+                      ? `${Math.round((analyse.schlafMinuten / aktuelleNacht.zielMinuten) * 100)}%`
+                      : '—'}
                   </dd>
                 </div>
               </dl>
