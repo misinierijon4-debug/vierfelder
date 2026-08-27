@@ -16,6 +16,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
   return (
     <nav
       aria-label="hauptbereiche"
+      role="tablist"
       className="relative mb-3 flex w-full rounded-[2px] border border-linie bg-flaeche p-1"
     >
       {TABS.map((tab) => {
@@ -27,7 +28,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
             role="tab"
             aria-selected={istAktiv}
             onClick={() => onTabWechsel(tab.id)}
-            className="relative flex-1 py-1.5 text-center text-[12px] font-semibold tracking-wide transition-colors duration-150 focus-visible:outline-none"
+            className="relative min-h-9 flex-1 py-1.5 text-center text-[12px] font-semibold transition-colors duration-150 focus-visible:outline-none"
             style={{
               color: istAktiv ? 'var(--kreide)' : 'var(--kreide-52)',
             }}

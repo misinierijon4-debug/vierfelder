@@ -45,9 +45,33 @@ describe('schlafPhasen', () => {
     expect(res.coreMinuten).toBe(312)
     expect(res.wachMinuten).toBe(49)
     expect(res.schlafMinuten).toBe(492)
-    expect(res.inBedMinuten).toBe(541)
+    expect(res.inBedMinuten).toBe(540)
     expect(res.effizienz).toBeGreaterThan(90)
+    expect(res.hatPhasenDaten).toBe(true)
+    expect(res.hatZeitfensterDaten).toBe(true)
     expect(res.einschlafUhrzeit).toContain(':')
     expect(res.aufwachUhrzeit).toContain(':')
+  })
+
+  it('erfindet bei fehlenden Rohsegmenten keine Schlafphasen', () => {
+    const nacht: Schlafnacht = {
+      user: 'koray',
+      nacht: '2026-08-26',
+      schlafMinuten: 420,
+      einschlafzeit: '2026-08-25T23:30:00+02:00',
+      wachphasen: null,
+      wachMinuten: null,
+      nachtwert: 0,
+      bewertungsbasis: 100,
+    }
+
+    const res = analysiereSchlafnacht(nacht)
+    expect(res.schlafMinuten).toBe(420)
+    expect(res.hatPhasenDaten).toBe(false)
+    expect(res.tiefMinuten).toBe(0)
+    expect(res.remMinuten).toBe(0)
+    expect(res.coreMinuten).toBe(0)
+    expect(res.effizienz).toBeNull()
+    expect(res.hatZeitfensterDaten).toBe(false)
   })
 })

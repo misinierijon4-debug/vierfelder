@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { USERS, user as userDef } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import { fromKey, langesDatum } from '../../lib/dates'
@@ -14,11 +14,9 @@ type Props = {
 
 export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
   const [ansichtUser, setAnsichtUser] = useState<UserId>(me)
-
   const aktuelleNacht = naechte.find(
-    (n) => n.nacht === gewaehlterTag && n.user === ansichtUser
+    (nacht) => nacht.nacht === gewaehlterTag && nacht.user === ansichtUser
   )
-
   const analyse = aktuelleNacht ? analysiereSchlafnacht(aktuelleNacht) : null
   const person = userDef(ansichtUser)
 
@@ -31,32 +29,29 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
 
   return (
     <section aria-labelledby="nacht-detail-titel" className="mt-5">
-      {/* Header mit formatiertem Datum & sauberem User-Switcher */}
-      <div className="flex items-center justify-between border-b border-linie pb-2.5">
-        <h2 id="nacht-detail-titel" className="text-[12px] font-normal text-kreide-52">
-          nacht-detail · <span className="font-semibold text-kreide">{datumLabel}</span>
+      <div className="border-b border-linie pb-3">
+        <p className="text-[10px] text-kreide-52">nacht-detail</p>
+        <h2 id="nacht-detail-titel" className="mt-0.5 text-balance text-[13px] font-semibold text-kreide">
+          {datumLabel}
         </h2>
 
-        {/* Sauberer User-Switcher ohne Überlappungen */}
-        <div className="flex items-center gap-1 rounded-[2px] border border-linie bg-flaeche p-0.5">
-          {USERS.map((u) => {
-            const istAktiv = ansichtUser === u.id
+        <div className="mt-3 grid grid-cols-2 rounded-[2px] border border-linie bg-flaeche p-0.5" role="group" aria-label="person auswählen">
+          {USERS.map((user) => {
+            const istAktiv = ansichtUser === user.id
             return (
               <button
-                key={u.id}
+                key={user.id}
                 type="button"
-                onClick={() => setAnsichtUser(u.id)}
-                className={`flex items-center gap-1.5 rounded-[1px] px-2.5 py-1 text-[11px] font-medium transition-all ${
+                aria-pressed={istAktiv}
+                onClick={() => setAnsichtUser(user.id)}
+                className={`flex min-h-9 items-center justify-center gap-1.5 rounded-[1px] border text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none ${
                   istAktiv
-                    ? 'bg-grund text-kreide shadow-sm border border-linie-hell'
-                    : 'text-kreide-52 hover:text-kreide'
+                    ? 'border-linie-hell bg-grund text-kreide'
+                    : 'border-transparent text-kreide-52 hover:text-kreide'
                 }`}
               >
-                <span
-                  className="h-2 w-2 flex-shrink-0 rounded-full"
-                  style={{ backgroundColor: u.farbe }}
-                />
-                <span>{u.name}</span>
+                <span className="size-2 rounded-full" style={{ backgroundColor: user.farbe }} />
+                <span>{user.name}</span>
               </button>
             )
           })}
@@ -73,41 +68,44 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
             transition={{ duration: 0.18 }}
             className="mt-3.5"
           >
-            {/* Hero Stat Card */}
-            <div className="rounded-[2px] border border-linie bg-flaeche p-4">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <span className="text-[11px] text-kreide-52">echte schlafzeit</span>
-                  <div className="tnum text-[26px] font-bold tracking-tight leading-none mt-1" style={{ color: person.farbe }}>
+            <div className="overflow-hidden rounded-[2px] border border-linie bg-flaeche">
+              <div className="flex items-end justify-between gap-4 px-4 py-3.5">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-kreide-52">echte schlafzeit</span>
+                  <div className="tnum mt-1 truncate text-[28px] font-bold leading-none" style={{ color: person.farbe }}>
                     {formatDauer(analyse.schlafMinuten)}
                   </div>
                 </div>
-
-                <div className="text-right">
-                  <span className="text-[11px] text-kreide-52">effizienz</span>
-                  <div className="tnum text-[20px] font-bold text-kreide leading-none mt-1">
-                    {analyse.effizienz}%
+                <div className="shrink-0 text-right">
+                  <span className="text-[10px] text-kreide-52">effizienz</span>
+                  <div className="tnum mt-1 text-[20px] font-bold leading-none text-kreide">
+                    {analyse.effizienz === null ? '—' : `${analyse.effizienz}%`}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-linie/50 pt-3 text-[12px]">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-kreide-52">schlaffenster:</span>
-                  <span className="tnum font-semibold text-kreide">
-                    {analyse.einschlafUhrzeit} – {analyse.aufwachUhrzeit}
-                  </span>
+              <dl className="grid grid-cols-3 divide-x divide-linie border-t border-linie">
+                <div className="min-w-0 px-2.5 py-2.5">
+                  <dt className="text-[9px] text-kreide-52">eingeschlafen</dt>
+                  <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
+                    {analyse.einschlafUhrzeit}
+                  </dd>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-kreide-52">im bett:</span>
-                  <span className="tnum font-semibold text-kreide">
-                    {formatDauer(analyse.inBedMinuten)}
-                  </span>
+                <div className="min-w-0 px-2.5 py-2.5">
+                  <dt className="text-[9px] text-kreide-52">aufgewacht</dt>
+                  <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
+                    {analyse.hatZeitfensterDaten ? analyse.aufwachUhrzeit : '—'}
+                  </dd>
                 </div>
-              </div>
+                <div className="min-w-0 px-2.5 py-2.5">
+                  <dt className="text-[9px] text-kreide-52">zeit im bett</dt>
+                  <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
+                    {analyse.hatZeitfensterDaten ? formatDauer(analyse.inBedMinuten) : '—'}
+                  </dd>
+                </div>
+              </dl>
             </div>
 
-            {/* Phasen-Zeitstrahl */}
             <PhasenZeitstrahl analyse={analyse} />
           </motion.div>
         ) : (
@@ -115,9 +113,10 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
             key="keine-daten"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mt-3.5 flex h-28 items-center justify-center rounded-[2px] border border-dashed border-linie bg-flaeche/40 text-[12px] text-kreide-52"
+            className="mt-3.5 rounded-[2px] border border-dashed border-linie px-4 py-6 text-center"
           >
-            keine health-daten für {person.name} in dieser nacht
+            <p className="text-pretty text-[12px] font-medium text-kreide">keine Health-Daten für {person.name}</p>
+            <p className="mt-1 text-pretty text-[10px] text-kreide-52">für diese Nacht wurde noch kein Schlaf importiert</p>
           </motion.div>
         )}
       </AnimatePresence>

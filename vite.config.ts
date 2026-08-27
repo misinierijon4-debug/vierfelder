@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { sites } from '@openai/sites-vite-plugin'
 
 // bei github pages liegt die app unter /reponame/, bei einer <name>.github.io-seite unter /.
 // gesetzt wird das nur im deploy-workflow, lokal bleibt es '/'.
@@ -16,6 +17,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    sites(),
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {

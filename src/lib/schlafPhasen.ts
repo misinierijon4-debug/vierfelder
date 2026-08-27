@@ -16,7 +16,9 @@ export type NachtPhasenAnalyse = {
   user: UserId
   schlafMinuten: number
   inBedMinuten: number
-  effizienz: number
+  effizienz: number | null
+  hatPhasenDaten: boolean
+  hatZeitfensterDaten: boolean
   einschlafzeit: string
   aufwachzeit: string
   einschlafUhrzeit: string
@@ -79,6 +81,8 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
   }).filter((s) => !isNaN(s.startMs) && !isNaN(s.endMs) && s.endMs > s.startMs)
 
   const schlafSegs = segs.filter((s) => s.art !== 'in_bed').sort((a, b) => a.startMs - b.startMs)
+  const phasenSegs = schlafSegs.filter((s) => s.art === 'deep' || s.art === 'rem' || s.art === 'core')
+  const hatPhasenDaten = phasenSegs.length > 0
 
   let tief = 0
   let rem = 0
@@ -96,16 +100,9 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     if (berechneteWachCount > 0) wachCount = berechneteWachCount
   }
 
-  // Falls Segmente 0 Minuten ergeben, schätze Phasen aus nacht.schlafMinuten
-  let schlafMin = (tief + rem + core)
-  if (schlafMin <= 0) {
-    schlafMin = nacht.schlafMinuten
-    tief = Math.round(schlafMin * 0.22)
-    rem = Math.round(schlafMin * 0.28)
-    core = Math.max(0, schlafMin - tief - rem)
-  }
-
-  const inBed = Math.max(schlafMin, Math.round(schlafMin + (wach || 0)))
+  // Die gespeicherte Health-Summe bleibt der Leitwert. Fehlende Phasen werden
+  // nicht geschätzt und dadurch auch nicht als echte Messung ausgegeben.
+  const schlafMin = Math.max(0, Math.round(nacht.schlafMinuten))
 
   // Start- und Endzeit
   let startMs = Date.parse(nacht.einschlafzeit)
@@ -116,17 +113,27 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     startMs = new Date(`${nacht.nacht}T23:30:00+02:00`).getTime() - 24 * 3600 * 1000
   }
 
-  // Berechne Endzeit immer konsistent aus Startzeit + InBed-Dauer
-  const endMs = startMs + inBed * 60000
+  const letzterSegmentEndpunkt = segs.reduce(
+    (max, segment) => Math.max(max, segment.endMs),
+    Number.NEGATIVE_INFINITY
+  )
+  const hatGemessenesEnde = Number.isFinite(letzterSegmentEndpunkt) && letzterSegmentEndpunkt > startMs
+  const abgeleitetesEnde = startMs + Math.max(schlafMin, schlafMin + (wach || 0)) * 60000
+  const endMs = hatGemessenesEnde ? letzterSegmentEndpunkt : abgeleitetesEnde
+  const inBed = Math.max(schlafMin, Math.round((endMs - startMs) / 60000))
 
   const startIso = new Date(startMs).toISOString()
   const endIso = new Date(endMs).toISOString()
 
-  const effizienz = inBed > 0 ? Math.min(100, Math.max(0, Math.round((schlafMin / inBed) * 100))) : 100
+  const hatZeitfensterDaten = hatGemessenesEnde || nacht.wachMinuten !== null
+  const effizienz = hatZeitfensterDaten && inBed > 0
+    ? Math.min(100, Math.max(0, Math.round((schlafMin / inBed) * 100)))
+    : null
 
-  const tiefProzent = schlafMin > 0 ? Math.round((tief / schlafMin) * 100) : 0
-  const remProzent = schlafMin > 0 ? Math.round((rem / schlafMin) * 100) : 0
-  const coreProzent = schlafMin > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0
+  const erfassteSchlafphasen = tief + rem + core
+  const tiefProzent = erfassteSchlafphasen > 0 ? Math.round((tief / erfassteSchlafphasen) * 100) : 0
+  const remProzent = erfassteSchlafphasen > 0 ? Math.round((rem / erfassteSchlafphasen) * 100) : 0
+  const coreProzent = erfassteSchlafphasen > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0
   const wachProzent = inBed > 0 ? Math.round((wach / inBed) * 100) : 0
 
   return {
@@ -135,6 +142,8 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     schlafMinuten: schlafMin,
     inBedMinuten: inBed,
     effizienz,
+    hatPhasenDaten,
+    hatZeitfensterDaten,
     einschlafzeit: startIso,
     aufwachzeit: endIso,
     einschlafUhrzeit: formatUhrzeit(startIso),

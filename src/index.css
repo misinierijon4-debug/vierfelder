@@ -59,13 +59,13 @@ body {
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums lining-nums;
   font-stretch: 112%;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .display {
   font-family: var(--font-display);
   font-stretch: 112%;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 button {
