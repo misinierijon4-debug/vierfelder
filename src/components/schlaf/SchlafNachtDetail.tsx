@@ -15,7 +15,6 @@ type Props = {
 export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
   const [ansichtUser, setAnsichtUser] = useState<UserId>(me)
 
-  // Finde die Nacht für den ausgewählten Tag und Nutzer
   const aktuelleNacht = naechte.find(
     (n) => n.nacht === gewaehlterTag && n.user === ansichtUser
   )
@@ -33,13 +32,13 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
   return (
     <section aria-labelledby="nacht-detail-titel" className="mt-5">
       {/* Header mit formatiertem Datum & sauberem User-Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-linie pb-2.5">
+      <div className="flex items-center justify-between border-b border-linie pb-2.5">
         <h2 id="nacht-detail-titel" className="text-[12px] font-normal text-kreide-52">
-          nacht-detail · <span className="font-medium text-kreide">{datumLabel}</span>
+          nacht-detail · <span className="font-semibold text-kreide">{datumLabel}</span>
         </h2>
 
-        {/* Sauberer, getrennter User-Umschalter ohne Überlappung */}
-        <div className="inline-flex rounded-[2px] border border-linie bg-flaeche p-[2px]">
+        {/* Sauberer User-Switcher ohne Überlappungen */}
+        <div className="flex items-center gap-1 rounded-[2px] border border-linie bg-flaeche p-0.5">
           {USERS.map((u) => {
             const istAktiv = ansichtUser === u.id
             return (
@@ -47,21 +46,17 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
                 key={u.id}
                 type="button"
                 onClick={() => setAnsichtUser(u.id)}
-                className="relative flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium transition-colors"
-                style={{ color: istAktiv ? 'var(--kreide)' : 'var(--kreide-52)' }}
+                className={`flex items-center gap-1.5 rounded-[1px] px-2.5 py-1 text-[11px] font-medium transition-all ${
+                  istAktiv
+                    ? 'bg-grund text-kreide shadow-sm border border-linie-hell'
+                    : 'text-kreide-52 hover:text-kreide'
+                }`}
               >
-                {istAktiv && (
-                  <motion.div
-                    layoutId="detailUserPill"
-                    className="absolute inset-0 rounded-[1px] bg-grund"
-                    style={{ border: '1px solid var(--linie-hell)' }}
-                  />
-                )}
                 <span
-                  className="relative z-10 h-2 w-2 flex-shrink-0 rounded-full"
+                  className="h-2 w-2 flex-shrink-0 rounded-full"
                   style={{ backgroundColor: u.farbe }}
                 />
-                <span className="relative z-10">{u.name}</span>
+                <span>{u.name}</span>
               </button>
             )
           })}
@@ -78,37 +73,37 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
             transition={{ duration: 0.18 }}
             className="mt-3.5"
           >
-            {/* Übersichtskarten: 2x2 Grid mit festen einzeiligen Werten */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="flex flex-col justify-between rounded-[2px] border border-linie bg-flaeche p-3">
-                <span className="text-[11px] text-kreide-52">echte schlafzeit</span>
-                <p
-                  className="tnum text-[17px] font-bold tracking-tight whitespace-nowrap mt-1"
-                  style={{ color: person.farbe }}
-                >
-                  {formatDauer(analyse.schlafMinuten)}
-                </p>
+            {/* Hero Stat Card */}
+            <div className="rounded-[2px] border border-linie bg-flaeche p-4">
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <span className="text-[11px] text-kreide-52">echte schlafzeit</span>
+                  <div className="tnum text-[26px] font-bold tracking-tight leading-none mt-1" style={{ color: person.farbe }}>
+                    {formatDauer(analyse.schlafMinuten)}
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[11px] text-kreide-52">effizienz</span>
+                  <div className="tnum text-[20px] font-bold text-kreide leading-none mt-1">
+                    {analyse.effizienz}%
+                  </div>
+                </div>
               </div>
 
-              <div className="flex flex-col justify-between rounded-[2px] border border-linie bg-flaeche p-3">
-                <span className="text-[11px] text-kreide-52">zeit im bett</span>
-                <p className="tnum text-[17px] font-bold tracking-tight text-kreide whitespace-nowrap mt-1">
-                  {formatDauer(analyse.inBedMinuten)}
-                </p>
-              </div>
-
-              <div className="flex flex-col justify-between rounded-[2px] border border-linie bg-flaeche p-3">
-                <span className="text-[11px] text-kreide-52">schlaffenster</span>
-                <p className="tnum text-[14px] font-semibold tracking-tight text-kreide whitespace-nowrap mt-1">
-                  {analyse.einschlafUhrzeit} – {analyse.aufwachUhrzeit}
-                </p>
-              </div>
-
-              <div className="flex flex-col justify-between rounded-[2px] border border-linie bg-flaeche p-3">
-                <span className="text-[11px] text-kreide-52">effizienz</span>
-                <p className="tnum text-[17px] font-bold tracking-tight text-kreide whitespace-nowrap mt-1">
-                  {analyse.effizienz}%
-                </p>
+              <div className="mt-4 flex items-center justify-between border-t border-linie/50 pt-3 text-[12px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-kreide-52">schlaffenster:</span>
+                  <span className="tnum font-semibold text-kreide">
+                    {analyse.einschlafUhrzeit} – {analyse.aufwachUhrzeit}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-kreide-52">im bett:</span>
+                  <span className="tnum font-semibold text-kreide">
+                    {formatDauer(analyse.inBedMinuten)}
+                  </span>
+                </div>
               </div>
             </div>
 

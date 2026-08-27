@@ -28,7 +28,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
     return { user: u, schnitt, anzahl: userNaechte.length }
   })
 
-  const maxMinuten = 10 * 60 // 10 Stunden Maximalhöhe für die Säulen
+  const maxMinuten = 10 * 60 // 10h Maximalwert für die Y-Skala
 
   return (
     <section aria-labelledby="schlaf-wochenuebersicht" className="mt-2">
@@ -50,7 +50,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
       </div>
 
       {/* 7-Tage-Scoreboard */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1.5">
         {woche.map((tag, idx) => {
           const istGewaehlt = tag === gewaehlterTag
           const erijonNacht = nachUser.get('erijon')?.get(tag)
@@ -67,31 +67,31 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
               key={tag}
               type="button"
               onClick={() => onTagWaehlen(tag)}
-              className={`relative flex flex-col items-center rounded-[2px] border py-2 px-1 transition-all duration-150 focus-visible:outline-none ${
+              className={`relative flex flex-col items-center rounded-[2px] border py-2.5 px-1 transition-all duration-150 focus-visible:outline-none ${
                 istGewaehlt
-                  ? 'border-linie-hell bg-flaeche shadow-sm'
+                  ? 'border-linie-hell bg-flaeche shadow-sm ring-1 ring-linie-hell/50'
                   : 'border-linie/40 bg-flaeche/30 hover:border-linie hover:bg-flaeche/70'
               }`}
             >
               {/* Wochentags-Kürzel */}
               <span
-                className={`text-[11px] font-semibold uppercase tracking-wider ${
+                className={`text-[11px] font-bold uppercase tracking-wider ${
                   istGewaehlt ? 'text-kreide' : 'text-kreide-52'
                 }`}
               >
                 {TAGKUERZEL[idx]}
               </span>
 
-              {/* Säulen-Spur mit 8h-Referenz */}
-              <div className="relative my-2.5 flex h-24 w-full items-end justify-center gap-1">
-                {/* 8h Orientierungslinie */}
+              {/* Säulen-Spur mit 8h-Orientierungslinie */}
+              <div className="relative my-3 flex h-24 w-full items-end justify-center gap-1">
+                {/* 8h Referenzlinie */}
                 <div
-                  className="pointer-events-none absolute w-full border-b border-dashed border-linie/50"
+                  className="pointer-events-none absolute w-full border-b border-dashed border-linie/40"
                   style={{ bottom: `${(480 / maxMinuten) * 100}%` }}
                 />
 
                 {/* Erijon Spur */}
-                <div className="flex h-full w-2 flex-col justify-end overflow-hidden rounded-t-[1px] bg-grund/60">
+                <div className="flex h-full w-2.5 flex-col justify-end overflow-hidden rounded-t-[1px] bg-grund">
                   {erijonMin > 0 && (
                     <motion.div
                       initial={{ scaleY: 0 }}
@@ -108,7 +108,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
                 </div>
 
                 {/* Koray Spur */}
-                <div className="flex h-full w-2 flex-col justify-end overflow-hidden rounded-t-[1px] bg-grund/60">
+                <div className="flex h-full w-2.5 flex-col justify-end overflow-hidden rounded-t-[1px] bg-grund">
                   {korayMin > 0 && (
                     <motion.div
                       initial={{ scaleY: 0 }}
@@ -126,7 +126,7 @@ export function SchlafWochenVergleich({ naechte, woche, gewaehlterTag, onTagWaeh
               </div>
 
               {/* Stunden-Werte unten */}
-              <div className="flex flex-col items-center text-[10px] leading-tight font-medium">
+              <div className="flex flex-col items-center text-[10px] leading-tight font-semibold">
                 <span className="tnum" style={{ color: erijonMin > 0 ? 'var(--erijon)' : 'var(--kreide-52)' }}>
                   {erijonMin > 0 ? `${(erijonMin / 60).toFixed(1)}h` : '--'}
                 </span>
