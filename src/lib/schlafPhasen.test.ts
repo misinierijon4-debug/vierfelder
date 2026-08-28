@@ -8,6 +8,7 @@ import {
   formatStunden,
   nachtMinute,
   nachtUhrzeit,
+  qualitaet,
   registrierteSchlafNutzer,
   stundenmarken,
   wochenwerte,
@@ -119,6 +120,43 @@ describe('analyse einer nacht', () => {
     expect(a.effizienz).toBeNull()
     expect(a.inBedBasis).toBe('fenster')
     expect(a.aufwachUhrzeit).toBe('--:--')
+  })
+})
+
+describe('qualitaet', () => {
+  /** die vier naechte, an denen die kurve angepasst wurde: schlafminuten -> sleep cycle */
+  const GEMESSEN: [number, number][] = [
+    [274, 65],
+    [391, 81],
+    [467, 89],
+    [479, 96],
+  ]
+
+  it('trifft die gemessenen naechte auf drei prozentpunkte', () => {
+    for (const [minuten, sleepCycle] of GEMESSEN) {
+      expect(Math.abs(qualitaet(minuten) - sleepCycle)).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('bleibt zwischen null und hundert und steigt mit der dauer', () => {
+    expect(qualitaet(0)).toBe(0)
+    expect(qualitaet(-30)).toBe(0)
+    // die kurve saettigt bei 530 minuten, danach bleibt sie oben stehen
+    expect(qualitaet(530)).toBe(100)
+    expect(qualitaet(900)).toBe(100)
+    let vorher = -1
+    for (let m = 0; m <= 600; m += 10) {
+      const wert = qualitaet(m)
+      expect(wert).toBeGreaterThanOrEqual(vorher)
+      vorher = wert
+    }
+  })
+
+  it('haengt an der schlafzeit, nicht an der bettzeit', () => {
+    const kurz = analysiereSchlafnacht(nacht({ bettMinuten: 400 }))
+    const lang = analysiereSchlafnacht(nacht({ bettMinuten: 700 }))
+    expect(kurz.qualitaet).toBe(lang.qualitaet)
+    expect(kurz.effizienz).not.toBe(lang.effizienz)
   })
 })
 

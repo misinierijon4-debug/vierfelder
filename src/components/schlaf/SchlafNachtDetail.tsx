@@ -96,9 +96,9 @@ export function SchlafNachtDetail({ naechte, registrierte, gewaehlterTag, me }: 
             <div className="overflow-hidden rounded-[2px] border border-linie bg-flaeche">
               <div className="flex items-center gap-4 px-4 py-4">
                 <Ring
-                  anteil={analyse.effizienz === null ? null : analyse.effizienz / 100}
+                  anteil={analyse.qualitaet / 100}
                   farbe={person.farbe}
-                  label="effizienz"
+                  label="qualität"
                 />
 
                 <div className="min-w-0 flex-1">
@@ -133,11 +133,9 @@ export function SchlafNachtDetail({ naechte, registrierte, gewaehlterTag, me }: 
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
-                  <dt className="text-[9px] text-kreide-52">von deinem ziel</dt>
+                  <dt className="text-[9px] text-kreide-52">effizienz</dt>
                   <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
-                    {aktuelleNacht
-                      ? `${Math.round((analyse.schlafMinuten / aktuelleNacht.zielMinuten) * 100)}%`
-                      : '—'}
+                    {analyse.effizienz === null ? '—' : `${analyse.effizienz}%`}
                   </dd>
                 </div>
               </dl>

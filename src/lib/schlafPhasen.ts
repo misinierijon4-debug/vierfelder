@@ -68,6 +68,49 @@ export function nachtUhrzeit(m: number): string {
   return `${zwei(Math.floor(rest / 60))}:${zwei(rest % 60)}`
 }
 
+/**
+ * Saettigung und Kruemmung der Qualitaetskurve. Beides ist gemessen, nicht
+ * gewaehlt: siehe `qualitaet`.
+ */
+const QUALITAET_SAETTIGUNG = 530
+const QUALITAET_EXPONENT = 0.7
+
+/**
+ * Qualitaet einer Nacht, nachempfunden dem Prozentwert von Sleep Cycle.
+ *
+ * Sleep Cycle rechnet mit Zeit im Bett, Tiefschlaf, Haeufigkeit und Intensitaet
+ * der Bewegungen und der Anzahl vollstaendiger Aufwachvorgaenge, und kalibriert
+ * das Ergebnis ueber die Zeit persoenlich. Die Bewegungsdaten kommen aus
+ * Beschleunigungssensor und Mikrofon und stehen in Health nicht zur Verfuegung;
+ * die Formel ist nicht veroeffentlicht. Nachgebaut ist darum nicht die Rechnung,
+ * sondern ihr Ergebnis.
+ *
+ * Angepasst an vier gemessene Naechte (Schlafminuten -> Sleep Cycle):
+ *
+ *   274 -> 65    391 -> 81    467 -> 89    479 -> 96
+ *
+ * Aus einer Rastersuche ueber gedeckelte, richtig herum monotone Modelle bleibt
+ * diese Potenzkurve als beste uebrig: hoechster Fehler 2,8 Prozentpunkte.
+ *
+ * Zwei Befunde aus derselben Suche, die gegen das Naheliegende sprechen:
+ *
+ *  - Effizienz (Schlaf durch Bettzeit) scheidet aus. Der Dienstag hat die beste
+ *    Effizienz und nur die zweitbeste Qualitaet, der Sonntag die schlechtere
+ *    Effizienz und die beste Qualitaet. Qualitaet kann keine Funktion davon
+ *    sein, und sie mit hineinzunehmen verschlechtert die Anpassung auf 4,0.
+ *  - Modelle mit Bettzeit *und* Schlafzeit sehen besser aus (1,4), sind aber
+ *    wertlos: weil Bettzeit gleich Schlafzeit plus Wachzeit ist, sagen sie in
+ *    Wahrheit "mehr Wachliegen ist besser".
+ *
+ * Was die Kurve nicht kann: sie sieht nur die Dauer. Eine lange, aber stark
+ * zerrissene Nacht bewertet sie zu gut. Mehr gemessene Naechte wuerden das
+ * zeigen — und die Kurve laesst sich dann nachziehen.
+ */
+export function qualitaet(schlafMinuten: number): number {
+  const anteil = Math.max(0, schlafMinuten) / QUALITAET_SAETTIGUNG
+  return Math.round(Math.min(100, 100 * anteil ** QUALITAET_EXPONENT))
+}
+
 export type NachtPhasenAnalyse = {
   nacht: string
   user: UserId
@@ -76,6 +119,8 @@ export type NachtPhasenAnalyse = {
   inBedMinuten: number
   inBedBasis: 'bett' | 'fenster'
   effizienz: number | null
+  /** nachempfundener sleep-cycle-prozentwert, siehe `qualitaet` */
+  qualitaet: number
   hatPhasenDaten: boolean
   hatZeitfensterDaten: boolean
   einschlafUhrzeit: string
@@ -127,6 +172,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
       gemessenesEnde && inBedMinuten > 0
         ? Math.min(100, Math.round((schlafMinuten / inBedMinuten) * 100))
         : null,
+    qualitaet: qualitaet(schlafMinuten),
     hatPhasenDaten,
     hatZeitfensterDaten: gemessenesEnde,
     einschlafUhrzeit: formatUhrzeit(nacht.einschlafzeit),
