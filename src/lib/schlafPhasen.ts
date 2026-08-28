@@ -256,6 +256,15 @@ type Disziplin = {
 
 const OHNE = '—'
 
+/**
+ * Eine Person gilt in der Schlaf-Funktion als verbunden, sobald mindestens
+ * eine Nacht erfolgreich importiert wurde. So bleibt "noch nicht verbunden"
+ * klar von "für diese Nacht fehlen Daten" getrennt.
+ */
+export function registrierteSchlafNutzer(naechte: Schlafnacht[]): Set<UserId> {
+  return new Set(naechte.map((nacht) => nacht.user))
+}
+
 const DISZIPLINEN: Disziplin[] = [
   {
     id: 'schnitt',

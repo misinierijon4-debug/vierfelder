@@ -1,10 +1,11 @@
 import { Fragment } from 'react'
 import { USERS } from '../../lib/types'
-import type { Schlafnacht } from '../../lib/types'
+import type { Schlafnacht, UserId } from '../../lib/types'
 import { abendDatum, duell, wochenwerte } from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
+  registrierte: ReadonlySet<UserId>
   woche: string[]
 }
 
@@ -13,10 +14,31 @@ type Props = {
  * in seiner Farbe. Bei zu kleinem Unterschied bleibt beides grau — sonst
  * wechselt die Farbe bei jeder Minute Rauschen.
  */
-export function SchlafRhythmus({ naechte, woche }: Props) {
+export function SchlafRhythmus({ naechte, registrierte, woche }: Props) {
   const wochenNaechte = naechte.filter((n) => woche.includes(abendDatum(n.einschlafzeit)))
   const [a, b] = USERS.map((u) => wochenwerte(u.id, wochenNaechte))
   const zeilen = duell(a!, b!)
+  const nichtVerbunden = USERS.filter((u) => !registrierte.has(u.id))
+
+  if (nichtVerbunden.length > 0) {
+    return (
+      <section aria-labelledby="rhythmus-titel" className="mt-5">
+        <h2
+          id="rhythmus-titel"
+          className="border-b border-linie pb-2 text-[12px] font-semibold text-kreide"
+        >
+          duell der woche
+        </h2>
+        <div className="mt-3 rounded-[2px] border border-dashed border-linie px-4 py-5 text-center">
+          <p className="text-[12px] font-medium text-kreide">duell wartet noch</p>
+          <p className="mt-1 text-[10px] leading-snug text-kreide-52">
+            {nichtVerbunden.map((u) => u.name).join(' und ')}{' '}
+            {nichtVerbunden.length === 1 ? 'ist' : 'sind'} noch nicht mit Schlaf verbunden
+          </p>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section aria-labelledby="rhythmus-titel" className="mt-5">

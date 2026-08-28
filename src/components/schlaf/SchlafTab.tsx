@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import type { Schlafnacht, UserId } from '../../lib/types'
-import { abendDatum } from '../../lib/schlafPhasen'
+import { abendDatum, registrierteSchlafNutzer } from '../../lib/schlafPhasen'
 import { SchlafWochenVergleich } from './SchlafWochenVergleich'
 import { SchlafNachtDetail } from './SchlafNachtDetail'
 import { SchlafRhythmus } from './SchlafRhythmus'
@@ -14,6 +14,8 @@ type Props = {
 }
 
 export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
+  const registrierte = registrierteSchlafNutzer(naechte)
+
   // Starte standardmäßig mit der letzten Nacht der Woche, für die Daten vorliegen,
   // oder mit heute
   const [gewaehlterTag, setGewaehlterTag] = useState<string>(() => {
@@ -38,6 +40,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
     >
       <SchlafWochenVergleich
         naechte={naechte}
+        registrierte={registrierte}
         woche={woche}
         gewaehlterTag={gewaehlterTag}
         zielMinuten={zielMinuten}
@@ -46,12 +49,14 @@ export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
 
       <SchlafNachtDetail
         naechte={naechte}
+        registrierte={registrierte}
         gewaehlterTag={gewaehlterTag}
         me={me}
       />
 
       <SchlafRhythmus
         naechte={naechte}
+        registrierte={registrierte}
         woche={woche}
       />
     </motion.div>

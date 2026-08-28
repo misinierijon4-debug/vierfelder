@@ -6,6 +6,7 @@ import { abendDatum, formatDauer, formatStunden } from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
+  registrierte: ReadonlySet<UserId>
   woche: string[]
   gewaehlterTag: string
   /** dein persönliches schlafziel in minuten, aus dem kurzbefehl */
@@ -15,6 +16,7 @@ type Props = {
 
 export function SchlafWochenVergleich({
   naechte,
+  registrierte,
   woche,
   gewaehlterTag,
   zielMinuten,
@@ -58,7 +60,9 @@ export function SchlafWochenVergleich({
                 <span className="size-2 rounded-[1px]" style={{ backgroundColor: user.farbe }} />
                 <span className="truncate text-kreide-52">{user.name}</span>
               </div>
-              {anzahl > 0 ? (
+              {!registrierte.has(user.id) ? (
+                <p className="mt-1 text-[11px] text-kreide-52">noch nicht verbunden</p>
+              ) : anzahl > 0 ? (
                 <div className="mt-1 flex items-baseline justify-between gap-2">
                   <span className="tnum truncate text-[17px] font-bold text-kreide">
                     {formatDauer(schnitt)}
@@ -68,7 +72,7 @@ export function SchlafWochenVergleich({
                   </span>
                 </div>
               ) : (
-                <p className="mt-1 text-[11px] text-kreide-52">noch keine daten</p>
+                <p className="mt-1 text-[11px] text-kreide-52">diese woche noch leer</p>
               )}
             </div>
           ))}

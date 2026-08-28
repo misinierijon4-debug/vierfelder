@@ -11,17 +11,19 @@ const MORGEN = new Intl.DateTimeFormat('de-DE', { weekday: 'long' })
 
 type Props = {
   naechte: Schlafnacht[]
+  registrierte: ReadonlySet<UserId>
   gewaehlterTag: string
   me: UserId
 }
 
-export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
+export function SchlafNachtDetail({ naechte, registrierte, gewaehlterTag, me }: Props) {
   const [ansichtUser, setAnsichtUser] = useState<UserId>(me)
   const aktuelleNacht = naechte.find(
     (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
   )
   const analyse = aktuelleNacht ? analysiereSchlafnacht(aktuelleNacht) : null
   const person = userDef(ansichtUser)
+  const istRegistriert = registrierte.has(ansichtUser)
 
   // die nacht traegt den abend, an dem sie begonnen hat — wie in sleep cycle
   let datumLabel = gewaehlterTag
@@ -68,7 +70,21 @@ export function SchlafNachtDetail({ naechte, gewaehlterTag, me }: Props) {
       </div>
 
       <AnimatePresence mode="wait">
-        {analyse ? (
+        {!istRegistriert ? (
+          <motion.div
+            key={`${ansichtUser}-nicht-verbunden`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-3.5 rounded-[2px] border border-dashed border-linie px-4 py-6 text-center"
+          >
+            <p className="text-pretty text-[12px] font-medium text-kreide">
+              {person.name} ist noch nicht mit Schlaf verbunden
+            </p>
+            <p className="mt-1 text-pretty text-[10px] text-kreide-52">
+              nach dem ersten Health-Import erscheinen die Nächte automatisch
+            </p>
+          </motion.div>
+        ) : analyse ? (
           <motion.div
             key={`${ansichtUser}-${gewaehlterTag}`}
             initial={{ opacity: 0, y: 4 }}

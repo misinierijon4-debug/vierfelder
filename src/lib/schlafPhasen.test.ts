@@ -8,6 +8,7 @@ import {
   formatStunden,
   nachtMinute,
   nachtUhrzeit,
+  registrierteSchlafNutzer,
   stundenmarken,
   wochenwerte,
 } from './schlafPhasen'
@@ -151,6 +152,14 @@ describe('woche und duell', () => {
 
     const ohne = duell(wochenwerte('erijon', meine), wochenwerte('koray', []))
     expect(ohne.every((z) => z.sieger === null)).toBe(true)
+  })
+
+  it('unterscheidet verbundene Nutzer von noch nicht eingerichteten', () => {
+    const registrierte = registrierteSchlafNutzer(meine)
+    expect(registrierte.has('erijon')).toBe(true)
+    expect(registrierte.has('koray')).toBe(false)
+
+    expect(registrierteSchlafNutzer([...meine, ...seine]).has('koray')).toBe(true)
   })
 })
 
