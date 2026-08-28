@@ -13,7 +13,10 @@ Geschrieben wird ausschließlich über die Datenbankfunktion mit deinem
 persönlichen Token. Die App selbst hat auf `aufenthalte` kein Schreibrecht —
 das ist der Grund, warum eine Messung mehr wert ist als ein Tick.
 
-## Einmalig in Supabase einrichten
+## Supabase
+
+Die Migration ist am 28.08.2026 auf `ogxwazageufvalkocywh` eingespielt. Bei
+einem neuen Projekt:
 
 ```powershell
 npx supabase link --project-ref ogxwazageufvalkocywh
@@ -27,74 +30,75 @@ Supabase einrichten"). Wer noch keins hat, legt es dort an.
 
 ## Der Kurzbefehl
 
-Ein Kurzbefehl pro iPhone, den alle Automationen aufrufen. Er nimmt einen Text
-der Form `bereich|ereignis|ort` entgegen, zum Beispiel `gym|ankunft|gym nord`.
+Sechs Kurzbefehle pro iPhone — aber nur einer wird gebaut, die anderen fünf sind
+Duplikate mit zwei geänderten Feldern. Keine Variablen, kein Text zerlegen.
 
-1. In **Kurzbefehle** einen neuen Kurzbefehl `aufenthalt senden` anlegen.
-2. Aktion **Text aus Eingabe abrufen** hinzufügen. Sie liefert den Text, den die
-   Automation übergibt.
-3. Aktion **Text teilen** hinzufügen:
-   - Text: das Ergebnis aus Schritt 2
-   - Trennzeichen: **Benutzerdefiniert**, `|`
-4. Dreimal **Element aus Liste abrufen** hinzufügen, jeweils vom geteilten Text:
-   - `Erstes Element` → das ist der **Bereich**
-   - `Element am Index 2` → das ist das **Ereignis**
-   - `Letztes Element` → das ist der **Ort**
-5. Aktion **Inhalte von URL abrufen** hinzufügen:
+**Den ersten bauen:**
+
+1. In **Kurzbefehle** einen neuen Kurzbefehl anlegen und ihn `gym nord an`
+   nennen.
+2. Genau eine Aktion hinzufügen: **Inhalte von URL abrufen**.
+3. Auf den Pfeil tippen, um die Details aufzuklappen, und ausfüllen:
    - URL: `https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_aufenthalt`
    - Methode: `POST`
-   - Header `Content-Type`: `application/json`
-   - Header `apikey`: der Publishable Key des Projekts
-   - Haupttext: `JSON`, mit vier Feldern, **alle vier als Typ Text angelegt**:
-     - `p_token`: dein persönliches Import-Token
-     - `p_bereich`: das Element aus Schritt 4 (`gym` oder `boxen`)
-     - `p_ereignis`: das Element aus Schritt 4 (`ankunft` oder `abgang`)
-     - `p_ort`: das Element aus Schritt 4
+   - Header hinzufügen — `Content-Type` mit dem Wert `application/json`
+   - Header hinzufügen — `apikey` mit dem Publishable Key des Projekts
+   - Haupttext anfordern: `JSON`
+4. Im JSON vier Felder anlegen, **alle vier vom Typ Text**:
 
-Die Wahl **Text** ist wichtig. Eine nachträglich eingesetzte Variable ändert den
-ursprünglichen Feldtyp nicht; ein als Boolean angelegtes Feld würde iOS als
-`true` senden. Dieselbe Falle wie beim Schlafimport.
+   | Schlüssel | Wert |
+   |---|---|
+   | `p_token` | dein persönliches Import-Token |
+   | `p_bereich` | `gym` |
+   | `p_ereignis` | `ankunft` |
+   | `p_ort` | `gym nord` |
+
+Der Typ **Text** ist wichtig. iOS legt neue Felder gern als Boolean an, und dann
+kommt statt des Tokens ein `true` an.
+
+**Die fünf anderen:** den fertigen Kurzbefehl gedrückt halten → **Duplizieren**,
+umbenennen und im JSON nur `p_bereich`, `p_ereignis` und `p_ort` ändern. Das
+Token bleibt unangetastet, es wird also nur einmal getippt.
+
+| Name | `p_bereich` | `p_ereignis` | `p_ort` |
+|---|---|---|---|
+| gym nord an | `gym` | `ankunft` | `gym nord` |
+| gym nord aus | `gym` | `abgang` | `gym nord` |
+| gym sued an | `gym` | `ankunft` | `gym sued` |
+| gym sued aus | `gym` | `abgang` | `gym sued` |
+| boxen an | `boxen` | `ankunft` | `boxhalle` |
+| boxen aus | `boxen` | `abgang` | `boxhalle` |
+
+Die Ortsnamen sind frei wählbar, sie müssen bei Ankunft und Abgang nur **exakt
+gleich** geschrieben sein — daran findet die Funktion die offene Ankunft wieder.
+`p_bereich` entscheidet, welcher Haken gesetzt wird; deshalb kosten zwei Gyms
+keine Änderung an der Datenbank, sondern nur zwei weitere Kurzbefehle.
 
 `p_zeit` wird nicht mitgeschickt: ohne Angabe gilt der Moment des Aufrufs, und
 das ist genau der Moment, in dem die Automation auslöst.
 
 ## Die Automationen
 
-Pro Ort zwei Stück — eine fürs Ankommen, eine fürs Weggehen. Bei zwei Gyms und
-einer Boxhalle sind das sechs. Klingt nach viel, ist aber einmal eine
-Viertelstunde und danach nie wieder.
+Sechs Stück, je eine pro Kurzbefehl. Für jede:
 
-1. In **Kurzbefehle** zu **Automation** wechseln.
-2. **Neue Automation** → **Ankunft**.
-3. Ort wählen (Adresse des Gyms), Radius wenn möglich klein halten.
+1. In **Kurzbefehle** unten auf **Automation**.
+2. **Neue Automation** → in der Liste **Ankunft** (bzw. **Verlassen**) wählen.
+3. Ort wählen — die Adresse des Gyms. Radius so klein wie möglich ziehen.
    Zeitraum: **Ganztägig**.
 4. **Sofort ausführen** wählen und **Bei Ausführung benachrichtigen**
-   ausschalten.
-5. Als Aktion **Kurzbefehl ausführen** → `aufenthalt senden`, und als Eingabe
-   den passenden Text:
+   ausschalten. (Auf älteren iOS-Versionen heißt das **Vor dem Ausführen
+   fragen** — dann muss dieser Schalter aus.)
+5. Als Aktion **Kurzbefehl ausführen** wählen und den passenden Kurzbefehl aus
+   der Tabelle oben eintragen.
 
-| Automation | Auslöser | Eingabe |
-|---|---|---|
-| Gym A an | Ankunft | `gym\|ankunft\|gym nord` |
-| Gym A aus | Verlassen | `gym\|abgang\|gym nord` |
-| Gym B an | Ankunft | `gym\|ankunft\|gym sued` |
-| Gym B aus | Verlassen | `gym\|abgang\|gym sued` |
-| Boxen an | Ankunft | `boxen\|ankunft\|boxhalle` |
-| Boxen aus | Verlassen | `boxen\|abgang\|boxhalle` |
-
-Der Ortsname ist frei wählbar, er muss nur bei Ankunft und Abgang **exakt
-gleich** geschrieben sein — daran findet die Funktion die offene Ankunft wieder.
-Der Bereich entscheidet, welcher Haken gesetzt wird; deshalb kosten zwei Gyms
-keine Änderung an der Datenbank, sondern nur zwei weitere Automationen.
-
-Ein drittes Gym später: dieselben zwei Automationen mit neuem Ortsnamen anlegen,
-sonst nichts.
+Zwei Automationen pro Ort, also sechs insgesamt. Das ist einmal eine
+Viertelstunde und danach nie wieder.
 
 ## Testen
 
-Kurzbefehl einmal von Hand ausführen (mit `gym|ankunft|gym nord` als Eingabe),
-eine Minute warten, dann mit `gym|abgang|gym nord` — die Antwort enthält
-`"ok": true` und die Dauer. In Supabase nachsehen:
+`gym nord an` von Hand ausführen. Die Antwort muss `"ok": true` enthalten.
+Dann `gym nord aus` ausführen — die Antwort enthält zusätzlich `dauer_minuten`.
+In Supabase nachsehen:
 
 ```sql
 select p.person, a.bereich, a.ort,
@@ -105,8 +109,16 @@ join profile p on p.id = a.user_id
 order by a.ankunft desc;
 ```
 
-Weniger als 20 Minuten erscheinen in der Tabelle, setzen aber keinen Tick. Zum
-Testen also entweder länger warten oder in der Datenbank nachhelfen.
+Ein Testlauf von einer Minute steht in der Tabelle, setzt aber keinen Tick — er
+liegt unter der Schwelle von 20 Minuten. Das ist richtig so; die Zeile im SQL
+ist der Beleg, dass die Kette funktioniert. Testzeilen kann man wegräumen:
+
+```sql
+delete from aufenthalte where ort = 'gym nord' and abgang - ankunft < interval '5 minutes';
+```
+
+Kommt stattdessen `kein gueltiges import-token`, stimmt `p_token` nicht oder das
+Feld wurde nicht als **Text** angelegt.
 
 ## Was von allein passiert, und was nicht
 
