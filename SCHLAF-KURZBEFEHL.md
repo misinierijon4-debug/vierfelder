@@ -192,6 +192,27 @@ kein `"ok": true`, sondern `code`/`message`, wurde nichts gespeichert.
 | `22023` | `segment braucht lesbares start und end` | Die Segmentfelder sind nicht als **Text** angelegt. Siehe der Hinweis zum Feldtyp oben. |
 | `22023` | `keine auswertbaren schlafsegmente gefunden` | Health hat für den Zeitraum nur `In Bed` geliefert. Der Kurzbefehl lief zu früh oder die Nacht wurde nicht aufgezeichnet. |
 
+„Die Netzwerkverbindung wurde unterbrochen“ ist **kein** Fehler der Funktion.
+Diese Meldung kommt von iOS selbst (`NSURLErrorNetworkConnectionLost`), bevor
+eine Antwort da ist. In den Supabase-Logs steht dann gar kein Eintrag — das ist
+der Test, mit dem man beide Fälle auseinanderhält:
+
+```sql
+select timestamp,
+       log_attributes['response.status_code'] as status,
+       log_attributes['response.headers.proxy_status'] as fehler
+from logs
+where source = 'edge_logs'
+  and event_message ilike '%record_sleep_night%'
+order by timestamp desc
+limit 10;
+```
+
+Fehlt der Aufruf dort, kam er nie an. Übliche Ursachen auf dem iPhone: aktiver
+Stromsparmodus, der Netzwerkverkehr im Hintergrund drosselt, oder eine schwache
+Mobilfunkverbindung, über die die QUIC-Verbindung während des Uploads abbricht.
+Abhilfe: WLAN, Stromsparmodus aus, dann erneut ausführen.
+
 `p_night_date` gehört **nicht** ins Wörterbuch. Wer dort das `Startdatum` der
 Health-Messung einsetzt, datiert die Nacht auf den Abend statt auf den Morgen
 und überschreibt damit die Zeile der Vornacht — der Schlüssel der Tabelle ist
