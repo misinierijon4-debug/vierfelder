@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { USERS, user as userDef } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
@@ -13,11 +12,17 @@ type Props = {
   naechte: Schlafnacht[]
   registrierte: ReadonlySet<UserId>
   gewaehlterTag: string
-  me: UserId
+  ansichtUser: UserId
+  onAnsichtUserWaehlen: (user: UserId) => void
 }
 
-export function SchlafNachtDetail({ naechte, registrierte, gewaehlterTag, me }: Props) {
-  const [ansichtUser, setAnsichtUser] = useState<UserId>(me)
+export function SchlafNachtDetail({
+  naechte,
+  registrierte,
+  gewaehlterTag,
+  ansichtUser,
+  onAnsichtUserWaehlen,
+}: Props) {
   const aktuelleNacht = naechte.find(
     (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
   )
@@ -54,7 +59,7 @@ export function SchlafNachtDetail({ naechte, registrierte, gewaehlterTag, me }: 
                 key={user.id}
                 type="button"
                 aria-pressed={istAktiv}
-                onClick={() => setAnsichtUser(user.id)}
+                onClick={() => onAnsichtUserWaehlen(user.id)}
                 className={`flex min-h-9 items-center justify-center gap-1.5 rounded-[1px] border text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none ${
                   istAktiv
                     ? 'border-linie-hell bg-grund text-kreide'

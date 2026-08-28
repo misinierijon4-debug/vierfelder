@@ -8,6 +8,7 @@ type Props = {
   naechte: Schlafnacht[]
   registrierte: ReadonlySet<UserId>
   woche: string[]
+  titel?: string
   gewaehlterTag: string
   /** dein persönliches schlafziel in minuten, aus dem kurzbefehl */
   zielMinuten: number
@@ -18,6 +19,7 @@ export function SchlafWochenVergleich({
   naechte,
   registrierte,
   woche,
+  titel = 'diese woche',
   gewaehlterTag,
   zielMinuten,
   onTagWaehlen,
@@ -44,7 +46,7 @@ export function SchlafWochenVergleich({
     <section aria-labelledby="schlaf-wochenuebersicht" className="mt-2">
       <div className="mb-2.5 flex items-end justify-between">
         <h2 id="schlaf-wochenuebersicht" className="text-[12px] font-semibold text-kreide">
-          diese woche
+          {titel}
         </h2>
         <div className="flex items-center gap-1.5 text-[10px] text-kreide-52">
           <span className="block w-4 border-t border-dashed border-linie-hell" aria-hidden="true" />
