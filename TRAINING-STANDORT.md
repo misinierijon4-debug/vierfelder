@@ -60,19 +60,25 @@ kommt statt des Tokens ein `true` an.
 umbenennen und im JSON nur `p_bereich`, `p_ereignis` und `p_ort` ändern. Das
 Token bleibt unangetastet, es wird also nur einmal getippt.
 
+Die sechs Kurzbefehle bei erijon (28.08.2026):
+
 | Name | `p_bereich` | `p_ereignis` | `p_ort` |
 |---|---|---|---|
-| gym nord an | `gym` | `ankunft` | `gym nord` |
-| gym nord aus | `gym` | `abgang` | `gym nord` |
-| gym sued an | `gym` | `ankunft` | `gym sued` |
-| gym sued aus | `gym` | `abgang` | `gym sued` |
-| boxen an | `boxen` | `ankunft` | `boxhalle` |
-| boxen aus | `boxen` | `abgang` | `boxhalle` |
+| Andernach Gym Nord | `gym` | `ankunft` | `gym nord` |
+| Andernach Gym Nord aus | `gym` | `abgang` | `gym nord` |
+| AI Fitness Neuwied | `gym` | `ankunft` | `ai fitness neuwied` |
+| AI Fitness Neuwied aus | `gym` | `abgang` | `ai fitness neuwied` |
+| Boxen an | `boxen` | `ankunft` | `boxhalle` |
+| Boxen aus | `boxen` | `abgang` | `boxhalle` |
+
+Beide Gyms schicken `gym`; welches der beiden es war, steht nur im Ort. Der
+Haken ist derselbe — deshalb kostet ein zweites oder drittes Gym keine Änderung
+an der Datenbank, sondern nur zwei weitere Kurzbefehle.
 
 Die Ortsnamen sind frei wählbar, sie müssen bei Ankunft und Abgang nur **exakt
 gleich** geschrieben sein — daran findet die Funktion die offene Ankunft wieder.
-`p_bereich` entscheidet, welcher Haken gesetzt wird; deshalb kosten zwei Gyms
-keine Änderung an der Datenbank, sondern nur zwei weitere Kurzbefehle.
+Einen Ort umbenennen also nur dann, wenn zu ihm gerade keine Ankunft offen ist,
+sonst findet der nächste Abgang sie nicht mehr.
 
 `p_zeit` wird nicht mitgeschickt: ohne Angabe gilt der Moment des Aufrufs, und
 das ist genau der Moment, in dem die Automation auslöst.
@@ -96,9 +102,9 @@ Viertelstunde und danach nie wieder.
 
 ## Testen
 
-`gym nord an` von Hand ausführen. Die Antwort muss `"ok": true` enthalten.
-Dann `gym nord aus` ausführen — die Antwort enthält zusätzlich `dauer_minuten`.
-In Supabase nachsehen:
+Den Ankunfts-Kurzbefehl von Hand ausführen. Die Antwort muss `"ok": true` und
+`"neu": true` enthalten. Dann den Abgangs-Kurzbefehl — die Antwort enthält
+zusätzlich `dauer_minuten`. In Supabase nachsehen:
 
 ```sql
 select p.person, a.bereich, a.ort,
@@ -114,7 +120,7 @@ liegt unter der Schwelle von 20 Minuten. Das ist richtig so; die Zeile im SQL
 ist der Beleg, dass die Kette funktioniert. Testzeilen kann man wegräumen:
 
 ```sql
-delete from aufenthalte where ort = 'gym nord' and abgang - ankunft < interval '5 minutes';
+delete from aufenthalte where abgang - ankunft < interval '5 minutes';
 ```
 
 Kommt stattdessen `kein gueltiges import-token`, stimmt `p_token` nicht oder das
