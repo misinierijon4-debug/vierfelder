@@ -4,6 +4,7 @@ import { Minus, Plus } from '@phosphor-icons/react'
 import type { AreaDef } from '../lib/types'
 import { EASE, EINGANG, TAKT } from '../lib/motion'
 import { Marke } from './Marke'
+import { Schritt } from './Schritt'
 import { Zahl } from './Zahl'
 
 type Props = {
@@ -194,35 +195,5 @@ function Wechsel({ schluessel, children }: { schluessel: string; children: React
         {children}
       </motion.div>
     </AnimatePresence>
-  )
-}
-
-function Schritt({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string
-  disabled?: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  const reduced = useReducedMotion()
-  return (
-    <motion.button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      whileTap={reduced || disabled ? undefined : { scale: 0.9 }}
-      transition={{ duration: 0.09, ease: EASE }}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      className="flex h-6 w-8 items-center justify-center rounded-[2px] border border-linie text-kreide-60 disabled:opacity-35"
-    >
-      {children}
-    </motion.button>
   )
 }

@@ -52,6 +52,18 @@ create table if not exists schlafnaechte (
   primary key (user_id, nacht)
 );
 
+-- tägliches gewicht. beide sehen beide, wie bei den ticks: der vergleich ist der
+-- zweck. der wochentick fürs wiegen wird hieraus abgeleitet, nicht nach eintraege
+-- kopiert — sonst gäbe es zwei quellen und einen tick ohne messung.
+-- der check fängt vertipper ab (8 statt 80, 810 statt 81), nicht mehr.
+create table if not exists gewicht (
+  user_id uuid not null references auth.users on delete cascade default auth.uid(),
+  tag date not null,
+  kg numeric(5,2) not null check (kg > 20 and kg < 400),
+  erstellt timestamptz not null default now(),
+  primary key (user_id, tag)
+);
+
 -- dauerhafte Kurzbefehls-Tokens liegen nur gehasht vor. Für diese Tabelle gibt
 -- es absichtlich keine RLS-Policy; nur die Edge Function mit service_role liest.
 create extension if not exists pgcrypto with schema extensions;
@@ -66,7 +78,12 @@ alter table profile enable row level security;
 alter table eintraege enable row level security;
 alter table werte enable row level security;
 alter table schlafnaechte enable row level security;
+alter table gewicht enable row level security;
 alter table schlaf_import_tokens enable row level security;
+
+revoke all on table gewicht from anon;
+revoke all on table gewicht from authenticated;
+grant select, insert, update, delete on table gewicht to authenticated;
 
 create policy "profile lesen" on profile
   for select to authenticated using (true);
@@ -106,6 +123,22 @@ create policy "schlaf aendern" on schlafnaechte
 create policy "schlaf loeschen" on schlafnaechte
   for delete to authenticated using (auth.uid() = user_id);
 
+create policy "gewicht lesen" on gewicht
+  for select to authenticated using (
+    (select auth.uid()) in (select id from public.profile)
+  );
+
+create policy "gewicht schreiben" on gewicht
+  for insert to authenticated with check ((select auth.uid()) = user_id);
+
+-- anders als eintraege braucht gewicht ein update: ein upsert mit nutzlast
+-- schreibt sonst nicht. vorbild ist werte, nicht eintraege.
+create policy "gewicht aendern" on gewicht
+  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+create policy "gewicht loeschen" on gewicht
+  for delete to authenticated using ((select auth.uid()) = user_id);
+
 -- Im SQL Editor einmal pro Person mit einem zufälligen Token aufrufen. Die
 -- Funktion ist für anon/authenticated nicht ausführbar und speichert nur SHA-256.
 create or replace function set_schlaf_import_token(p_person text, p_token text)
@@ -140,7 +173,10 @@ revoke all on function set_schlaf_import_token(text, text) from public, anon, au
 create index if not exists schlafnaechte_nutzer_nacht_idx
   on schlafnaechte (user_id, nacht desc);
 
--- realtime nur auf den ticks. werte gehen nie über den kanal.
+create index if not exists gewicht_nutzer_tag_idx
+  on gewicht (user_id, tag desc);
+
+-- realtime nur auf den ticks. werte, schlaf und gewicht gehen nie über den kanal.
 alter publication supabase_realtime add table eintraege;
 
 -- eingespielt am 26.08.2026 in projekt ogxwazageufvalkocywh (eu-central-1).

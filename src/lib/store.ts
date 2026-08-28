@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Backend } from './backend'
-import { tickKey, wertKey } from './types'
-import type { AreaId, Ereignis, Schlafnacht, Ticks, UserId, Werte, Zustand } from './types'
+import { gewichtKey, tickKey, wertKey } from './types'
+import type {
+  AreaId,
+  Ereignis,
+  Gewichte,
+  Schlafnacht,
+  Ticks,
+  UserId,
+  Werte,
+  Zustand,
+} from './types'
 
 let ereignisId = 0
 
@@ -29,6 +38,7 @@ export function useTracker(backend: Backend) {
   const [me, setMe] = useState<UserId>('erijon')
   const [ticks, setTicks] = useState<Ticks>({})
   const [werte, setWerte] = useState<Werte>({})
+  const [gewichte, setGewichte] = useState<Gewichte>({})
   const [schlaf, setSchlaf] = useState<Schlafnacht[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   const [fehler, setFehler] = useState<string | null>(null)
@@ -36,6 +46,7 @@ export function useTracker(backend: Backend) {
 
   const ticksRef = useRef<Ticks>({})
   const werteRef = useRef<Werte>({})
+  const gewichteRef = useRef<Gewichte>({})
   const meRef = useRef<UserId>('erijon')
 
   const uebernimm = useCallback((next: Ticks) => {
@@ -59,9 +70,11 @@ export function useTracker(backend: Backend) {
         meRef.current = anfang.me
         ticksRef.current = anfang.ticks
         werteRef.current = anfang.werte
+        gewichteRef.current = anfang.gewichte
         setMe(anfang.me)
         setTicks(anfang.ticks)
         setWerte(anfang.werte)
+        setGewichte(anfang.gewichte)
         setSchlaf(anfang.schlaf)
         setLadezustand('bereit')
         setFehler(null)
@@ -149,7 +162,32 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
-  const zustand: Zustand = { ticks, werte }
+  const setzeGewicht = useCallback(
+    (tag: string, kg: number) => {
+      const u = meRef.current
+      const vorher = gewichteRef.current
+      // auf hundert gramm runden, und zwar hier: sonst kommt aus 81,4 + 0,1 der
+      // wert 81.50000000000001, den die datenbank rundet und die anzeige beim
+      // neuladen sichtbar ändert.
+      const sauber = Math.round(kg * 10) / 10
+      const next: Gewichte = { ...vorher }
+      const key = gewichtKey(u, tag)
+      if (sauber <= 0) delete next[key]
+      else next[key] = sauber
 
-  return { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert }
+      gewichteRef.current = next
+      setGewichte(next)
+
+      backend.schreibeGewicht(tag, sauber).catch(() => {
+        gewichteRef.current = vorher
+        setGewichte(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend]
+  )
+
+  const zustand: Zustand = { ticks, werte, gewichte }
+
+  return { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert, setzeGewicht }
 }

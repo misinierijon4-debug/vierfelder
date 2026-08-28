@@ -2,6 +2,9 @@
 
 Wochentracker für zwei: lernen, gym, boxen, lesen. Ein Tick pro Bereich und Tag, geteiltes Wochenraster, sonntags Bilanz, montags von vorn.
 
+Dazu das tägliche Gewicht: eingetragen zählt wie ein Tick (Wochenstand also bis 35), und ein
+Diagramm zeigt die Entwicklung beider als Veränderung in Kilogramm.
+
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
 ## Starten
@@ -14,13 +17,17 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 11 tests
+npm test      # logik, 52 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 
 ## Supabase
 
 Projekt `vierfelder`, Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt (siehe `supabase/schema.sql`).
+
+Die Tabelle `gewicht` liegt wie `eintraege` offen für beide Konten — der Vergleich ist der
+Zweck. Es gibt dort bewusst kein Realtime und keine zweite Zeile in `eintraege`: der Wochentick
+fürs Wiegen wird aus dem Gewichtseintrag abgeleitet, damit es keinen Tick ohne Messung gibt.
 
 Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
 gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung
@@ -73,9 +80,11 @@ src/lib/lokal.ts       prototyp: localStorage + BroadcastChannel
 src/lib/supabase.ts    postgrest + realtime + anmeldung
 src/lib/store.ts       zustand, optimistisches schreiben, rücknahme bei fehlern
 src/lib/tracker.ts     reine logik, getestet
+src/lib/gewicht.ts     gleitender schnitt, achse, parsen — reine logik, getestet
 src/lib/motion.ts      alle dauern an einer stelle
 supabase/functions/    schlafimport und gemeinsame berechnung
-src/components/        kopf, bereichszeile, marke, raster, schlafdiagramm, zahl, anmeldung
+src/components/        kopf, bereichszeile, marke, schritt, raster, schlafdiagramm,
+                       gewichtszeile, gewichtsdiagramm, zahl, anmeldung
 ```
 
 Welches Backend läuft, entscheidet allein, ob `VITE_SUPABASE_URL` gesetzt ist.

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { AREAS, USERS } from '../lib/types'
-import type { AreaId, Ereignis, UserId, Zustand } from '../lib/types'
+import { FELDER, USERS } from '../lib/types'
+import type { Ereignis, FeldId, UserId, Zustand } from '../lib/types'
 import { TAGKUERZEL } from '../lib/dates'
 import { istGesetzt, wocheBereich } from '../lib/tracker'
 import { EASE, STEMPEL, TAKT } from '../lib/motion'
@@ -74,12 +74,12 @@ export function Raster({ zustand, woche, heute, ereignis, leer }: Props) {
         ))}
         <div />
 
-        {AREAS.map((area, ai) => (
+        {FELDER.map((feld, fi) => (
           <Bereichsblock
-            key={area.id}
-            area={area.id}
-            label={area.label}
-            letzter={ai === AREAS.length - 1}
+            key={feld.id}
+            area={feld.id}
+            label={feld.label}
+            letzter={fi === FELDER.length - 1}
             zustand={zustand}
             woche={woche}
             heute={heute}
@@ -100,7 +100,7 @@ function Bereichsblock({
   heute,
   ereignis,
 }: {
-  area: AreaId
+  area: FeldId
   label: string
   letzter: boolean
   zustand: Zustand
@@ -154,7 +154,7 @@ function Zeile({
   treffer,
   sweep,
 }: {
-  area: AreaId
+  area: FeldId
   areaLabel: string
   user: UserId
   farbe: string

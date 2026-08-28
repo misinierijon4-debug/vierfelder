@@ -314,3 +314,50 @@ gesetzt hatte. Das ist passiert, damit ist die aufgabe erledigt.
 Die app kennt jetzt keinen passwortwechsel mehr. Wer ein neues braucht, bekommt es im
 supabase-dashboard. Bei zwei konten ist das der kürzere weg als eine maske, die nach
 einem tag niemand mehr aufruft.
+
+## 17. Nachtrag: das gewicht (27.08.2026)
+
+**Die kurve zeigt veränderung, nicht kilogramm.** Erijon und koray wiegen unterschiedlich viel.
+Auf einer gemeinsamen kg-achse klebte die eine linie am oberen, die andere am unteren rand, und
+man sähe von beiden verläufen nichts. Also läuft die y-achse in **Δ kg**: jede person startet an
+ihrem ersten punkt im fenster bei null, beide teilen sich eine nulllinie. Die absolute zahl steht
+darunter als text — dort, wo man sie nachschlägt, statt sie aus einer achse abzulesen.
+
+Der preis ist ehrlich zu benennen: die basis wandert täglich mit. Δ heisst „veränderung in diesem
+fenster", nicht „seit ich angefangen habe", und beim umschalten von 30 auf 90 tage verformen sich
+beide kurven, sie verlängern sich nicht.
+
+**Geglättet, weil die rohzahl lügt.** Tagesgewicht schwankt durch wasser um ein bis zwei kilo.
+Die kräftige linie ist ein nachlaufender 7-tage-schnitt, die blassen punkte dahinter sind die
+tageswerte. Der schnitt geht über **kalendertage**, nicht über die letzten sieben einträge —
+sonst mittelt eine dreiwöchige pause lautlos über sich hinweg und erfindet einen verlauf, den es
+nie gab. Nach mehr als sieben leeren tagen bricht die linie ab, statt eine gerade durch eine
+lücke zu ziehen. Gerechnet wird über die volle historie und erst danach aufs fenster geschnitten,
+damit der linke rand schon sieben messungen hinter sich hat.
+
+Die achse ist **nicht** symmetrisch um null. Symmetrie verschenkt die halbe fläche in genau dem
+fall, der am häufigsten ist: beide nehmen ab. Stattdessen schnappen beide grenzen auf ein
+vielfaches einer stufe — dadurch liegt eine marke immer exakt auf null, und die nulllinie gibt es
+gratis.
+
+**Der tick wird abgeleitet, nicht gespeichert.** Das gewicht zählt in den wochenstand, der damit
+bis 35 geht. Naheliegend wäre eine zweite zeile in `eintraege` mit `bereich = 'gewicht'` gewesen.
+Das wären zwei quellen für dieselbe wahrheit — und man könnte sich per marke einen tick ohne
+messung holen. Also heisst „gesetzt" schlicht: für diesen tag existiert ein gewichtseintrag. Die
+marke in der zeile ist deshalb als einzige in der app **nicht** antippbar; sie zeigt nur an.
+
+**Die eingabe steht unten, bei ihrem diagramm.** Eine fünfte zeile in `heute eintragen` hätte
+~78px über der falz gekostet und die messung aus abschnitt 15 ungültig gemacht. Ausserdem sind
+die vier zeilen oben antippbare ticks, das gewicht ist ein zahlenfeld — eine andere interaktion,
+und eine, die morgens passiert statt abends. Der 3-sekunden-ablauf bleibt vier zeilen lang.
+
+**Was am zahlenfeld gefährlich war.** Die vorbelegung mit dem letzten gewicht spart tipparbeit,
+hätte aber bei fokus und blur ohne tippen einen eintrag **erfunden** — eine messung, die nie
+stattfand. Deshalb wird nur geschrieben, wenn wirklich getippt wurde. Der entwurf ist während der
+eingabe ein eigener string und nicht der gerundete wert aus dem store, sonst verschwände das
+komma mitten im tippen. `inputMode="decimal"` zeigt auf ios keine return-taste, also gibt es den
+`fertig`-knopf. Und ein vertipper wie `814` wird schon im client abgelehnt: die sichtbare
+rücknahme ist die rückmeldung, dafür braucht es keinen zweiten fehlertext.
+
+Die app heisst weiter `vierfelder`. Die vier bereiche sind die vier felder; das wiegen ist die
+messung dazu, die mitzählt.

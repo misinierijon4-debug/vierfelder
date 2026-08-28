@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
-import { tickKey, wertKey } from './types'
-import type { AreaId, Phase, Schlafnacht, Ticks, UserId, Werte } from './types'
+import { gewichtKey, tickKey, wertKey } from './types'
+import type { AreaId, Gewichte, Phase, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -37,6 +37,9 @@ type SchlafZeile = {
 function zahl(wert: number | string | null | undefined): number {
   return wert === null || wert === undefined ? 0 : Number(wert)
 }
+
+/** numeric kommt aus postgrest als string, genau wie schlaf_minuten */
+type GewichtZeile = { user_id: string; tag: string; kg: number | string }
 
 export type Anmeldestatus = 'laden' | 'an' | 'aus'
 
@@ -89,7 +92,7 @@ export function supabaseBackend(eigeneId: string): Backend {
     art: 'supabase',
 
     async laden(): Promise<Anfangszustand> {
-      const [profile, eintraege, werteZeilen, schlafZeilen] = await Promise.all([
+      const [profile, eintraege, werteZeilen, schlafZeilen, gewichtZeilen] = await Promise.all([
         db.from('profile').select('id, person'),
         db.from('eintraege').select('user_id, bereich, tag'),
         db.from('werte').select('bereich, tag, wert'),
@@ -99,16 +102,17 @@ export function supabaseBackend(eigeneId: string): Backend {
             'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen'
           )
           .order('nacht', { ascending: true }),
+        db.from('gewicht').select('user_id, tag, kg').order('tag', { ascending: true }),
       ])
 
       if (profile.error) throw profile.error
       if (eintraege.error) throw eintraege.error
       if (werteZeilen.error) throw werteZeilen.error
       // Während Schema und Frontend getrennt veröffentlicht werden, darf die
-      // neue Ansicht den bestehenden Vierfelder-Tracker nicht lahmlegen.
-      const schlafTabelleFehlt =
-        schlafZeilen.error?.code === '42P01' || schlafZeilen.error?.code === 'PGRST205'
-      if (schlafZeilen.error && !schlafTabelleFehlt) throw schlafZeilen.error
+      // neue Ansicht oder Tabelle den bestehenden Tracker nicht lahmlegen.
+      const fehltNoch = (code?: string) => code === '42P01' || code === 'PGRST205'
+      if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
+      if (gewichtZeilen.error && !fehltNoch(gewichtZeilen.error.code)) throw gewichtZeilen.error
 
       personen.clear()
       for (const p of (profile.data ?? []) as ProfilZeile[]) personen.set(p.id, p.person)
@@ -152,7 +156,16 @@ export function supabaseBackend(eigeneId: string): Backend {
         })
       }
 
-      return { me, ticks, werte, schlaf }
+      const gewichte: Gewichte = {}
+      for (const z of (gewichtZeilen.data ?? []) as GewichtZeile[]) {
+        const person = personen.get(z.user_id)
+        if (!person) continue
+        // Number(): numeric käme sonst als string und die summe im gleitenden
+        // schnitt würde stillschweigend aneinandergehängt statt addiert.
+        gewichte[gewichtKey(person, z.tag)] = Number(z.kg)
+      }
+
+      return { me, ticks, werte, gewichte, schlaf }
     },
 
     async schreibeTick(bereich, tag, gesetzt) {
@@ -178,6 +191,18 @@ export function supabaseBackend(eigeneId: string): Backend {
         const { error } = await db
           .from('werte')
           .upsert({ user_id: eigeneId, bereich, tag, wert }, { onConflict: 'user_id,bereich,tag' })
+        if (error) throw error
+      }
+    },
+
+    async schreibeGewicht(tag, kg) {
+      if (kg <= 0) {
+        const { error } = await db.from('gewicht').delete().match({ user_id: eigeneId, tag })
+        if (error) throw error
+      } else {
+        const { error } = await db
+          .from('gewicht')
+          .upsert({ user_id: eigeneId, tag, kg }, { onConflict: 'user_id,tag' })
         if (error) throw error
       }
     },

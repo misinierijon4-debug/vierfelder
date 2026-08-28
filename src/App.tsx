@@ -14,6 +14,9 @@ import { Raster } from './components/Raster'
 import { Anmeldung } from './components/Anmeldung'
 import { TabLeiste } from './components/TabLeiste'
 import { SchlafTab } from './components/schlaf/SchlafTab'
+import { Gewichtszeile } from './components/Gewichtszeile'
+import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
+import { gewichtAn, letztesGewicht } from './lib/gewicht'
 
 const UNDO_MS = 5000
 
@@ -42,7 +45,8 @@ export function App() {
 }
 
 function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
-  const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert } = useTracker(backend)
+  const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert, setzeGewicht } =
+    useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
   const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
@@ -160,6 +164,21 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 ereignis={ereignis}
                 leer={meineWoche === 0}
               />
+
+              {/* gewicht ist eine messung statt eines ticks und steht deshalb
+                  zusammen mit seinem verlauf unter dem wochenraster */}
+              <Gewichtszeile
+                kg={gewichtAn(zustand.gewichte, me, heuteKey)}
+                letzte={letztesGewicht(zustand.gewichte, me)}
+                kgEr={gewichtAn(zustand.gewichte, er.id, heuteKey)}
+                nameEr={er.name}
+                farbe={ich.farbe}
+                farbeEr={er.farbe}
+                streak={streak(zustand, me, 'gewicht', heute)}
+                onSetze={(kg) => setzeGewicht(heuteKey, kg)}
+              />
+
+              <Gewichtsdiagramm gewichte={zustand.gewichte} heute={heuteKey} />
             </motion.div>
           ) : (
             <motion.div
