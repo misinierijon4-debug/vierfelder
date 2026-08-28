@@ -178,3 +178,36 @@ In `Inhalte von URL abrufen`:
 Ein erfolgreicher Test liefert unter anderem `"ok": true`. Die getestete
 Automation läuft täglich um 11:00 Uhr mit `Sofort ausführen`; die
 Ausführungsbenachrichtigung ist ausgeschaltet.
+
+### Fehlersuche am RPC-Aufruf
+
+Die Funktion antwortet immer mit HTTP 200 und einem JSON-Objekt. Steht darin
+kein `"ok": true`, sondern `code`/`message`, wurde nichts gespeichert.
+
+| `code`  | `message`                              | Ursache und Abhilfe |
+| ------- | -------------------------------------- | ------------------- |
+| `28000` | `import-token fehlt oder ist zu kurz`  | Das Wörterbuch enthält kein Feld `p_token` (oder ein Token unter 32 Zeichen). Feld `p_token` als **Text** mit dem persönlichen Token anlegen. |
+| `28000` | `import-token ist ungueltig`           | Das Token gehört zu keiner aktiven Zeile in `schlaf_import_tokens`. Mit `select set_schlaf_import_token('erijon', '…');` neu setzen. |
+| `22023` | `p_raw_segments muss ein array sein`   | Das Feld hat den falschen Typ. `p_raw_segments` muss Feldtyp **Array** mit `Wiederholungsergebnisse` sein, nicht ein einzelnes Wörterbuch. |
+| `22023` | `segment braucht lesbares start und end` | Die Segmentfelder sind nicht als **Text** angelegt. Siehe der Hinweis zum Feldtyp oben. |
+| `22023` | `keine auswertbaren schlafsegmente gefunden` | Health hat für den Zeitraum nur `In Bed` geliefert. Der Kurzbefehl lief zu früh oder die Nacht wurde nicht aufgezeichnet. |
+
+`p_night_date` gehört **nicht** ins Wörterbuch. Wer dort das `Startdatum` der
+Health-Messung einsetzt, datiert die Nacht auf den Abend statt auf den Morgen
+und überschreibt damit die Zeile der Vornacht — der Schlüssel der Tabelle ist
+`(user_id, nacht)`. Ohne den Parameter leitet die Funktion die Nacht selbst aus
+dem letzten Schlafende ab. `p_user_id` und `p_source_name` sind ebenfalls
+entbehrlich; die Person kommt ausschließlich aus dem Token.
+
+Ob eine Nacht angekommen ist, zeigt:
+
+```sql
+select p.person, s.nacht, s.einschlafzeit, s.schlaf_minuten, s.nachtwert
+from schlafnaechte s
+join profile p on p.id = s.user_id
+order by s.nacht desc
+limit 10;
+```
+
+In der App erscheint eine Nacht unter dem **Abend, an dem sie begonnen hat**.
+Die Nacht mit `nacht = 2026-08-28` steht dort also unter „donnerstag, 27. august“.
