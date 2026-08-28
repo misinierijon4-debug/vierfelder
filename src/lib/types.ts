@@ -9,6 +9,23 @@ export type AppTab = 'tracker' | 'schlaf'
  */
 export type FeldId = AreaId | 'gewicht'
 
+/**
+ * die bereiche, für die es eine messung gibt. nur hier trägt die unterscheidung
+ * zwischen gemessen und getippt eine aussage: bei lernen und lesen kann kein
+ * gerät wissen, ob es stattgefunden hat, also wäre die marke dort kein urteil
+ * über den eintrag, sondern nur rauschen.
+ */
+export type MessbarerBereich = 'gym' | 'boxen'
+
+export const MESSBARE_BEREICHE: MessbarerBereich[] = ['gym', 'boxen']
+
+export function istMessbar(f: FeldId): f is MessbarerBereich {
+  return f === 'gym' || f === 'boxen'
+}
+
+/** wie ein tick zustande kam. `null`, wo eine messung gar nicht möglich wäre */
+export type TickQuelle = 'gemessen' | 'getippt'
+
 export type AreaDef = {
   id: AreaId
   label: string
@@ -72,10 +89,25 @@ export type Werte = Record<string, number>
 /** `${user}|${yyyy-mm-dd}` -> kilogramm. beide sehen beide, wie bei den ticks */
 export type Gewichte = Record<string, number>
 
+/**
+ * ein gemessener aufenthalt an einem trainingsort, so wie die
+ * standort-automation ihn gemeldet hat. `abgang` fehlt, solange man noch da
+ * ist — ein offener aufenthalt zählt nicht, sonst wäre eine vorbeifahrt ein
+ * training.
+ */
+export type Aufenthalt = {
+  user: UserId
+  bereich: MessbarerBereich
+  ort: string
+  ankunft: string
+  abgang: string | null
+}
+
 export type Zustand = {
   ticks: Ticks
   werte: Werte
   gewichte: Gewichte
+  aufenthalte: Aufenthalt[]
 }
 
 export type PhasenArt = 'tief' | 'rem' | 'kern' | 'unspez' | 'wach'

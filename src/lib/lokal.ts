@@ -1,8 +1,9 @@
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
-import { weekDays } from './dates'
+import { toKey, weekDays } from './dates'
 import { gewichtKey, tickKey, wertKey } from './types'
 import type {
   AreaId,
+  Aufenthalt,
   Gewichte,
   Phase,
   PhasenArt,
@@ -143,6 +144,53 @@ function erzeugeBeispielSchlaf(): Schlafnacht[] {
   return naechte
 }
 
+/**
+ * beispielbesuche fuer den prototyp ohne supabase. echte aufenthalte schreibt
+ * ausschliesslich die standort-automation ueber die datenbank — hier stehen
+ * sie nur, damit man ohne iphone sieht, wie sich ein gemessener tick von
+ * einem getippten unterscheidet.
+ */
+function erzeugeBeispielAufenthalte(): Aufenthalt[] {
+  const woche = weekDays(new Date())
+  const heute = toKey(new Date())
+
+  const zeit = (tag: string, stunde: number, minute: number): string => {
+    const [j, mo, t] = tag.split('-').map(Number)
+    return new Date(j!, mo! - 1, t!, stunde, minute).toISOString()
+  }
+
+  // [wochentag, person, bereich, ort, beginn, dauer in minuten]
+  const muster: Array<[number, UserId, 'gym' | 'boxen', string, [number, number], number]> = [
+    [0, 'erijon', 'gym', 'gym nord', [18, 5], 74],
+    [0, 'koray', 'gym', 'gym sued', [7, 10], 55],
+    [1, 'erijon', 'boxen', 'boxhalle', [19, 0], 88],
+    [2, 'koray', 'gym', 'gym sued', [7, 20], 48],
+  ]
+
+  const aufenthalte: Aufenthalt[] = muster
+    .filter(([i]) => woche[i]! < heute)
+    .map(([i, user, bereich, ort, [stunde, minute], dauer]) => ({
+      user,
+      bereich,
+      ort,
+      ankunft: zeit(woche[i]!, stunde, minute),
+      abgang: zeit(woche[i]!, stunde, minute + dauer),
+    }))
+
+  // einer für heute, relativ zu jetzt: nur so sieht man im prototyp auch die
+  // gemessene bereichszeile, die nicht antippbar ist.
+  const jetzt = Date.now()
+  aufenthalte.push({
+    user: 'erijon',
+    bereich: 'gym',
+    ort: 'gym nord',
+    ankunft: new Date(jetzt - 180 * 60000).toISOString(),
+    abgang: new Date(jetzt - 106 * 60000).toISOString(),
+  })
+
+  return aufenthalte
+}
+
 let kanal: BroadcastChannel | null | undefined
 function holeKanal(): BroadcastChannel | null {
   if (kanal === undefined) {
@@ -168,6 +216,7 @@ export function lokalesBackend(): Backend {
         werte: alleWerte()[me],
         gewichte: lade<Gewichte>(GEWICHT_KEY, {}),
         schlaf,
+        aufenthalte: erzeugeBeispielAufenthalte(),
       }
     },
 

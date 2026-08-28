@@ -3,6 +3,8 @@ import { EASE, TAKT } from '../lib/motion'
 
 type Props = {
   gesetzt: boolean
+  /** gesetzt, aber nur behauptet: blasse fläche statt voller marke */
+  halb: boolean
   farbe: string
 }
 
@@ -11,7 +13,7 @@ type Props = {
  * die marke hat exakt die form einer rasterzelle, nur groß.
  * die zeile darum ist das eigentliche ziel, deshalb ist das hier nur die anzeige.
  */
-export function Marke({ gesetzt, farbe }: Props) {
+export function Marke({ gesetzt, halb, farbe }: Props) {
   const reduced = useReducedMotion()
 
   return (
@@ -28,7 +30,10 @@ export function Marke({ gesetzt, farbe }: Props) {
               animate={reduced ? { opacity: 1 } : { scaleX: 1, opacity: 1 }}
               exit={reduced ? { opacity: 0 } : { scaleX: 0.22, opacity: 0 }}
               transition={{ duration: reduced ? 0 : TAKT.marke, ease: EASE }}
-              style={{ background: farbe, originX: 0 }}
+              style={{
+                background: halb ? `color-mix(in srgb, ${farbe} 40%, var(--grund))` : farbe,
+                originX: 0,
+              }}
               className="absolute inset-[1px] block rounded-[1px]"
             />
           )}

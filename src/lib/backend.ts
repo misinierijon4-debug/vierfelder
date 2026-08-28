@@ -1,4 +1,4 @@
-import type { AreaId, Gewichte, Schlafnacht, Ticks, UserId, Werte } from './types'
+import type { Aufenthalt, AreaId, Gewichte, Schlafnacht, Ticks, UserId, Werte } from './types'
 
 /** ein einzelner tick, so wie ihn realtime liefert */
 export type TickEreignis = {
@@ -14,6 +14,8 @@ export type Anfangszustand = {
   werte: Werte
   gewichte: Gewichte
   schlaf: Schlafnacht[]
+  /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
+  aufenthalte: Aufenthalt[]
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { KeyboardEvent, ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus } from '@phosphor-icons/react'
-import type { AreaDef } from '../lib/types'
+import type { AreaDef, TickQuelle } from '../lib/types'
 import { EASE, EINGANG, TAKT } from '../lib/motion'
 import { Marke } from './Marke'
 import { Schritt } from './Schritt'
@@ -15,6 +15,10 @@ type Props = {
   abstand: number
   streak: number
   wert: number
+  /** wie der tick zustande kam. `null`, wo es nichts zu messen gibt */
+  quelle: TickQuelle | null
+  /** minuten des gemessenen aufenthalts, wenn es einen gibt */
+  messungMinuten: number | null
   farbe: string
   farbeEr: string
   zeigeUndo: boolean
@@ -35,6 +39,8 @@ export function Bereichszeile({
   abstand,
   streak,
   wert,
+  quelle,
+  messungMinuten,
   farbe,
   farbeEr,
   zeigeUndo,
@@ -44,6 +50,14 @@ export function Bereichszeile({
 }: Props) {
   const reduced = useReducedMotion()
 
+  /**
+   * eine messung ist nicht antippbar — wie die gewichtsmarke. es gäbe sonst
+   * einen zustand, in dem ein tap nichts tut, weil der tick schon aus dem
+   * aufenthalt kommt. der minutenwert kommt dann aus der messung statt aus
+   * dem schrittzähler.
+   */
+  const gemessen = quelle === 'gemessen'
+
   const aufTaste = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -51,8 +65,17 @@ export function Bereichszeile({
     }
   }
 
-  const links = gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
-  const rechts = zeigeUndo ? 'undo' : gesetzt ? (wert > 0 ? 'wert' : 'ohne') : 'nichts'
+  const links =
+    !gemessen && gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
+  const rechts = gemessen
+    ? 'messung'
+    : zeigeUndo
+      ? 'undo'
+      : gesetzt
+        ? wert > 0
+          ? 'wert'
+          : 'ohne'
+        : 'nichts'
 
   return (
     <motion.div
@@ -66,15 +89,21 @@ export function Bereichszeile({
       className="border-b border-linie"
     >
       <motion.div
-        role="button"
-        tabIndex={0}
-        aria-pressed={gesetzt}
-        aria-label={`${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`}
-        onClick={onTap}
-        onKeyDown={aufTaste}
-        whileTap={reduced ? undefined : { scale: 0.995 }}
+        role={gemessen ? undefined : 'button'}
+        tabIndex={gemessen ? undefined : 0}
+        aria-pressed={gemessen ? undefined : gesetzt}
+        aria-label={
+          gemessen
+            ? `${area.label}, heute gemessen`
+            : `${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`
+        }
+        onClick={gemessen ? undefined : onTap}
+        onKeyDown={gemessen ? undefined : aufTaste}
+        whileTap={reduced || gemessen ? undefined : { scale: 0.995 }}
         transition={{ duration: 0.09, ease: EASE }}
-        className="flex cursor-pointer flex-col justify-center gap-1.5 py-2 pl-1 select-none"
+        className={`flex flex-col justify-center gap-1.5 py-2 pl-1 select-none${
+          gemessen ? '' : ' cursor-pointer'
+        }`}
       >
         <div className="flex items-center gap-3">
           <div
@@ -115,13 +144,13 @@ export function Bereichszeile({
             </span>
           </div>
 
-          <Marke gesetzt={gesetzt} farbe={farbe} />
+          <Marke gesetzt={gesetzt} halb={quelle === 'getippt'} farbe={farbe} />
         </div>
 
         {/* zweite zeile: immer 24px hoch, egal was drinsteht */}
         <div className="flex h-6 items-center justify-between pr-2">
           <Wechsel schluessel={links}>
-            {gesetzt ? (
+            {!gemessen && gesetzt ? (
               <div className="flex items-center gap-1.5">
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} verringern`}
@@ -145,7 +174,16 @@ export function Bereichszeile({
           </Wechsel>
 
           <Wechsel schluessel={rechts}>
-            {zeigeUndo ? (
+            {gemessen ? (
+              <span className="flex items-baseline gap-1.5">
+                <Zahl
+                  value={messungMinuten ?? 0}
+                  className="text-[14px] font-semibold"
+                  style={{ color: 'var(--kreide-60)' }}
+                />
+                <span className="text-[12px] text-kreide-52">min · gemessen</span>
+              </span>
+            ) : zeigeUndo ? (
               <button
                 type="button"
                 onClick={(e) => {

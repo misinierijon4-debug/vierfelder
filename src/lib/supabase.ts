@@ -3,7 +3,17 @@ import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import type { Anfangszustand, Backend, TickEreignis } from './backend'
 import { gewichtKey, tickKey, wertKey } from './types'
-import type { AreaId, Gewichte, Phase, Schlafnacht, Ticks, UserId, Werte } from './types'
+import type {
+  Aufenthalt,
+  AreaId,
+  Gewichte,
+  MessbarerBereich,
+  Phase,
+  Schlafnacht,
+  Ticks,
+  UserId,
+  Werte,
+} from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -40,6 +50,13 @@ function zahl(wert: number | string | null | undefined): number {
 
 /** numeric kommt aus postgrest als string, genau wie schlaf_minuten */
 type GewichtZeile = { user_id: string; tag: string; kg: number | string }
+type AufenthaltZeile = {
+  user_id: string
+  bereich: MessbarerBereich
+  ort: string
+  ankunft: string
+  abgang: string | null
+}
 
 export type Anmeldestatus = 'laden' | 'an' | 'aus'
 
@@ -92,18 +109,23 @@ export function supabaseBackend(eigeneId: string): Backend {
     art: 'supabase',
 
     async laden(): Promise<Anfangszustand> {
-      const [profile, eintraege, werteZeilen, schlafZeilen, gewichtZeilen] = await Promise.all([
-        db.from('profile').select('id, person'),
-        db.from('eintraege').select('user_id, bereich, tag'),
-        db.from('werte').select('bereich, tag, wert'),
-        db
-          .from('schlafnaechte_ansicht')
-          .select(
-            'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen'
-          )
-          .order('nacht', { ascending: true }),
-        db.from('gewicht').select('user_id, tag, kg').order('tag', { ascending: true }),
-      ])
+      const [profile, eintraege, werteZeilen, schlafZeilen, gewichtZeilen, aufenthaltZeilen] =
+        await Promise.all([
+          db.from('profile').select('id, person'),
+          db.from('eintraege').select('user_id, bereich, tag'),
+          db.from('werte').select('bereich, tag, wert'),
+          db
+            .from('schlafnaechte_ansicht')
+            .select(
+              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen'
+            )
+            .order('nacht', { ascending: true }),
+          db.from('gewicht').select('user_id, tag, kg').order('tag', { ascending: true }),
+          db
+            .from('aufenthalte')
+            .select('user_id, bereich, ort, ankunft, abgang')
+            .order('ankunft', { ascending: true }),
+        ])
 
       if (profile.error) throw profile.error
       if (eintraege.error) throw eintraege.error
@@ -113,6 +135,9 @@ export function supabaseBackend(eigeneId: string): Backend {
       const fehltNoch = (code?: string) => code === '42P01' || code === 'PGRST205'
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
       if (gewichtZeilen.error && !fehltNoch(gewichtZeilen.error.code)) throw gewichtZeilen.error
+      if (aufenthaltZeilen.error && !fehltNoch(aufenthaltZeilen.error.code)) {
+        throw aufenthaltZeilen.error
+      }
 
       personen.clear()
       for (const p of (profile.data ?? []) as ProfilZeile[]) personen.set(p.id, p.person)
@@ -165,7 +190,20 @@ export function supabaseBackend(eigeneId: string): Backend {
         gewichte[gewichtKey(person, z.tag)] = Number(z.kg)
       }
 
-      return { me, ticks, werte, gewichte, schlaf }
+      const aufenthalte: Aufenthalt[] = []
+      for (const a of (aufenthaltZeilen.data ?? []) as AufenthaltZeile[]) {
+        const person = personen.get(a.user_id)
+        if (!person) continue
+        aufenthalte.push({
+          user: person,
+          bereich: a.bereich,
+          ort: a.ort,
+          ankunft: a.ankunft,
+          abgang: a.abgang,
+        })
+      }
+
+      return { me, ticks, werte, gewichte, schlaf, aufenthalte }
     },
 
     async schreibeTick(bereich, tag, gesetzt) {

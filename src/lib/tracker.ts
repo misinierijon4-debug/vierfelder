@@ -1,15 +1,34 @@
 import { addDays, toKey } from './dates'
-import { FELDER, gewichtKey, tickKey, wertKey } from './types'
-import type { AreaId, FeldId, UserId, Werte, Zustand } from './types'
+import { FELDER, gewichtKey, istMessbar, tickKey, wertKey } from './types'
+import type { AreaId, FeldId, TickQuelle, UserId, Werte, Zustand } from './types'
+import { gemessen } from './training'
 
 /**
  * beim gewicht gibt es keinen eigenen tick: gesetzt heißt schlicht, dass für
  * diesen tag ein gewichtseintrag existiert. eine zweite zeile in `eintraege`
  * wäre eine zweite wahrheit — und ein tick ohne messung.
+ *
+ * bei gym und boxen kommt eine zweite quelle dazu: ein gemessener aufenthalt
+ * setzt den tick von allein. das antippen bleibt trotzdem möglich, weil eine
+ * standort-automation ausfallen kann und boxen auch zuhause stattfindet — was
+ * dabei herauskommt, unterscheidet `quelle`.
  */
 export function istGesetzt(z: Zustand, u: UserId, f: FeldId, tag: string): boolean {
   if (f === 'gewicht') return z.gewichte[gewichtKey(u, tag)] !== undefined
+  if (istMessbar(f) && gemessen(z.aufenthalte, u, f, tag)) return true
   return z.ticks[tickKey(u, f, tag)] === true
+}
+
+/**
+ * wie der tick zustande kam — die einzige antwort auf „man kann ja einfach
+ * behaupten, man war da". `null` heißt nicht ungesetzt, sondern: hier gibt es
+ * nichts zu unterscheiden (lernen, lesen), also wird auch nichts angezeigt.
+ */
+export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TickQuelle | null {
+  if (!istGesetzt(z, u, f, tag)) return null
+  if (f === 'gewicht') return 'gemessen'
+  if (!istMessbar(f)) return null
+  return gemessen(z.aufenthalte, u, f, tag) ? 'gemessen' : 'getippt'
 }
 
 /** ticks eines feldes in der woche */

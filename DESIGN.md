@@ -361,3 +361,58 @@ rücknahme ist die rückmeldung, dafür braucht es keinen zweiten fehlertext.
 
 Die app heisst weiter `vierfelder`. Die vier bereiche sind die vier felder; das wiegen ist die
 messung dazu, die mitzählt.
+
+## 18. Nachtrag: der beweis (28.08.2026)
+
+**Das problem.** Ein tick ist eine behauptung. Man kann abends vier felder
+antippen, ohne irgendetwas davon getan zu haben, und die woche sieht gut aus.
+Bei einer app für genau zwei personen, deren einziger inhalt der vergleich ist,
+hebelt das den vergleich aus.
+
+**Was schon richtig war.** Zweimal steht die lösung bereits im projekt: das
+gewicht (abschnitt 17) leitet den tick aus der messung ab, statt ihn antippbar
+zu machen, und der schlaf kommt gar nicht erst durch menschenhände, sondern
+über einen kurzbefehl aus health. Die regel dahinter gilt allgemein: **ein
+tick, den man antippen kann, ist eine behauptung. ein tick, der aus fremd
+erzeugten daten entsteht, ist ein beleg.**
+
+**Der standort statt der uhr.** Keiner von beiden hat eine apple watch, also
+fällt der weg über health-trainings aus. Stattdessen melden zwei
+standort-automationen pro trainingsort die ankunft und den abgang; aus dem paar
+ergibt sich die dauer, ab 20 minuten setzt sich der tick. Die schwelle
+sortiert die vorbeifahrt aus, nicht den kurzen tag.
+
+**Der ort entscheidet über den bereich, nicht die trainingsart.** Erijon geht
+in zwei verschiedene gyms, boxen ist immer dieselbe halle. Welcher ort zu
+welchem bereich gehört, steht deshalb im kurzbefehl auf dem iphone und nicht in
+der datenbank. Ein drittes gym kostet zwei automationen und keine migration.
+
+**Geschrieben wird nur mit token.** `aufenthalte` hat für angemeldete konten
+kein insert-, update- oder delete-recht; die einzige schreibende stelle ist
+`record_aufenthalt`, eine security-definer-funktion, die die person aus dem
+persönlichen import-token bestimmt — demselben, das der schlafimport benutzt.
+Ohne das entzogene schreibrecht wäre die messung nur ein tick mit anderem
+namen: die app könnte sie selbst erfinden.
+
+**Halb gefüllt heißt getippt.** Der ehrlichste teil ist die anzeige. Antippen
+bleibt überall erlaubt — eine standort-automation fällt aus, und boxen findet
+auch zuhause statt. Aber die zelle zeigt, wie der tick entstanden ist: voll
+heißt gemessen, rand mit blasser fläche heißt getippt. Lügen ist damit nicht
+verboten, sondern sichtbar, und das ist bei zwei personen, die sich kennen, die
+wirksamere schranke.
+
+**Nur dort, wo es etwas zu unterscheiden gibt.** Bei lernen und lesen kann kein
+gerät wissen, ob es stattgefunden hat. Eine halbe zelle wäre dort kein urteil
+über den eintrag, sondern eine dauerhafte trübung ohne aussage — also bleiben
+diese beiden zeilen voll. Die unterscheidung gilt für gym, boxen und das
+gewicht, das per definition gemessen ist.
+
+**Die gemessene zeile ist nicht antippbar.** Wie die gewichtsmarke. Es gäbe
+sonst einen zustand, in dem ein tap nichts tut, weil der tick schon aus dem
+aufenthalt kommt. Rechts in der zeile stehen dann die gemessenen minuten statt
+des schrittzählers: der wert kommt aus der messung, nicht aus dem daumen.
+
+**Was der beweis nicht ist.** Er beweist anwesenheit, nicht anstrengung. Wer
+das handy im gym liegen lässt, bekommt seinen tick. Das ist der punkt, an dem
+technik aufhört: sie kann lügen teuer machen, nicht unmöglich. 20 minuten in
+der halle stehen kostet ungefähr so viel wie 20 minuten trainieren.

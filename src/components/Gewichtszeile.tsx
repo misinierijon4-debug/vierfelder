@@ -127,7 +127,8 @@ export function Gewichtszeile({
             </div>
           )}
 
-          <Marke gesetzt={kg !== null} farbe={farbe} />
+          {/* das gewicht ist immer eine messung, deshalb nie halb */}
+          <Marke gesetzt={kg !== null} halb={false} farbe={farbe} />
         </div>
 
         {/* zweite zeile, feste höhe wie in der bereichszeile: nichts darf rutschen */}

@@ -5,6 +5,11 @@ Wochentracker für zwei: lernen, gym, boxen, lesen. Ein Tick pro Bereich und Tag
 Dazu das tägliche Gewicht: eingetragen zählt wie ein Tick (Wochenstand also bis 35), und ein
 Diagramm zeigt die Entwicklung beider als Veränderung in Kilogramm.
 
+Gym und Boxen haken sich selbst ab: eine Standort-Automation auf dem iPhone meldet Ankunft und
+Abgang am Trainingsort, ab 20 Minuten setzt sich der Tick. Das Raster zeigt, wie ein Haken
+entstanden ist — voll heißt gemessen, blass heißt getippt. Anleitung in
+[TRAINING-STANDORT.md](TRAINING-STANDORT.md).
+
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
 ## Starten
@@ -17,7 +22,7 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 52 tests
+npm test      # logik, 79 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 
@@ -32,6 +37,11 @@ fürs Wiegen wird aus dem Gewichtseintrag abgeleitet, damit es keinen Tick ohne 
 Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
 gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung
 stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
+
+Die Tabelle `aufenthalte` liegt bewusst anders als alle übrigen: angemeldete Konten dürfen nur
+lesen. Geschrieben wird ausschließlich über `record_aufenthalt`, die die Person aus demselben
+Import-Token bestimmt. Ohne dieses entzogene Schreibrecht könnte die App eine Messung erfinden,
+und die Unterscheidung zwischen gemessen und getippt wäre wertlos.
 
 Zugangsdaten liegen in `.env.local` (nicht im Git). Ohne diese Datei startet die App im Prototyp-Modus mit localStorage.
 
@@ -81,6 +91,7 @@ src/lib/supabase.ts    postgrest + realtime + anmeldung
 src/lib/store.ts       zustand, optimistisches schreiben, rücknahme bei fehlern
 src/lib/tracker.ts     reine logik, getestet
 src/lib/gewicht.ts     gleitender schnitt, achse, parsen — reine logik, getestet
+src/lib/training.ts    aufenthalte zu ticks — reine logik, getestet
 src/lib/motion.ts      alle dauern an einer stelle
 supabase/functions/    schlafimport und gemeinsame berechnung
 src/components/        kopf, bereichszeile, marke, schritt, raster, schlafdiagramm,

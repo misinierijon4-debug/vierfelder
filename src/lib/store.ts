@@ -3,6 +3,7 @@ import type { Backend } from './backend'
 import { gewichtKey, tickKey, wertKey } from './types'
 import type {
   AreaId,
+  Aufenthalt,
   Ereignis,
   Gewichte,
   Schlafnacht,
@@ -40,6 +41,9 @@ export function useTracker(backend: Backend) {
   const [werte, setWerte] = useState<Werte>({})
   const [gewichte, setGewichte] = useState<Gewichte>({})
   const [schlaf, setSchlaf] = useState<Schlafnacht[]>([])
+  // messungen schreibt nur die datenbank, deshalb gibt es hier kein ref und
+  // keine optimistische rücknahme: der zustand ändert sich nur beim laden.
+  const [aufenthalte, setAufenthalte] = useState<Aufenthalt[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   const [fehler, setFehler] = useState<string | null>(null)
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
@@ -76,6 +80,7 @@ export function useTracker(backend: Backend) {
         setWerte(anfang.werte)
         setGewichte(anfang.gewichte)
         setSchlaf(anfang.schlaf)
+        setAufenthalte(anfang.aufenthalte)
         setLadezustand('bereit')
         setFehler(null)
       } catch (e: unknown) {
@@ -187,7 +192,7 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
-  const zustand: Zustand = { ticks, werte, gewichte }
+  const zustand: Zustand = { ticks, werte, gewichte, aufenthalte }
 
   return { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert, setzeGewicht }
 }

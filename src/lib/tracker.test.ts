@@ -4,7 +4,7 @@ import { abstand, istGesetzt, setzeTick, setzeWert, streak, wert, wocheBereich, 
 import { gewichtKey } from './types'
 import type { Zustand } from './types'
 
-const leer: Zustand = { ticks: {}, werte: {}, gewichte: {} }
+const leer: Zustand = { ticks: {}, werte: {}, gewichte: {}, aufenthalte: [] }
 const MITTWOCH = new Date(2026, 7, 26, 12)
 
 function mit(z: Zustand, ...eintraege: [string, string][]): Zustand {

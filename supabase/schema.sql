@@ -179,6 +179,41 @@ create index if not exists gewicht_nutzer_tag_idx
 -- realtime nur auf den ticks. werte, schlaf und gewicht gehen nie über den kanal.
 alter publication supabase_realtime add table eintraege;
 
+-- gemessene aufenthalte an einem trainingsort (nachtrag 28.08.2026). eine zeile
+-- pro besuch: die ankunft legt sie an, der abgang schliesst sie. beides schickt
+-- eine standort-automation vom iphone. der wochentick für gym und boxen wird
+-- hieraus abgeleitet wie beim gewicht aus der messung — nach eintraege kopiert
+-- wird nichts. schreiben darf nur record_aufenthalt; ohne insert-recht kann die
+-- app keine messung erfinden, und genau das macht eine messung mehr wert als
+-- einen tick. der vollständige aufbau steht in
+-- supabase/migrations/20260828160000_aufenthalte.sql.
+create table if not exists aufenthalte (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users on delete cascade,
+  bereich text not null check (bereich in ('gym','boxen')),
+  ort text not null check (length(btrim(ort)) between 1 and 40),
+  ankunft timestamptz not null,
+  abgang timestamptz check (abgang is null or abgang > ankunft),
+  aktualisiert timestamptz not null default now()
+);
+
+alter table aufenthalte enable row level security;
+
+revoke all on table aufenthalte from anon;
+revoke all on table aufenthalte from authenticated;
+grant select on table aufenthalte to authenticated;
+
+create policy "aufenthalte lesen" on aufenthalte
+  for select to authenticated using (
+    (select auth.uid()) in (select id from public.profile)
+  );
+
+create unique index if not exists aufenthalte_offen_idx
+  on aufenthalte (user_id, ort) where abgang is null;
+
+create index if not exists aufenthalte_nutzer_ankunft_idx
+  on aufenthalte (user_id, ankunft desc);
+
 -- eingespielt am 26.08.2026 in projekt ogxwazageufvalkocywh (eu-central-1).
 --
 -- nach dem anlegen der beiden konten (dashboard > authentication > add user,

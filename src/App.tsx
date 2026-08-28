@@ -7,7 +7,7 @@ import { istBilanzzeit, toKey, weekDays } from './lib/dates'
 import { useTracker } from './lib/store'
 import { lokalWechseln, lokalesBackend, lokalesMe } from './lib/lokal'
 import { abmelden, hatSupabase, supabaseBackend, useSession } from './lib/supabase'
-import { abstand, istGesetzt, streak, wert, wocheBereich, wocheGesamt } from './lib/tracker'
+import { abstand, istGesetzt, quelle, streak, wert, wocheBereich, wocheGesamt } from './lib/tracker'
 import { Kopf } from './components/Kopf'
 import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
@@ -17,6 +17,7 @@ import { SchlafTab } from './components/schlaf/SchlafTab'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
+import { gemesseneMinuten } from './lib/training'
 
 const UNDO_MS = 5000
 
@@ -142,6 +143,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                     abstand={abstand(zustand, area.id, woche, me, er.id)}
                     streak={streak(zustand, me, area.id, heute)}
                     wert={wert(zustand.werte, area.id, heuteKey)}
+                    quelle={quelle(zustand, me, area.id, heuteKey)}
+                    messungMinuten={gemesseneMinuten(zustand.aufenthalte, me, area.id, heuteKey)}
                     farbe={ich.farbe}
                     farbeEr={er.farbe}
                     zeigeUndo={undoFuer === area.id}

@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FELDER, USERS } from '../lib/types'
 import type { Ereignis, FeldId, UserId, Zustand } from '../lib/types'
 import { TAGKUERZEL } from '../lib/dates'
-import { istGesetzt, wocheBereich } from '../lib/tracker'
+import { istGesetzt, quelle, wocheBereich } from '../lib/tracker'
 import { EASE, STEMPEL, TAKT } from '../lib/motion'
 
 /* rastergeometrie an einer stelle, damit das heute-band exakt unter der spalte liegt */
@@ -174,6 +174,9 @@ function Zeile({
         <Zelle
           key={tag}
           gefuellt={istGesetzt(zustand, user, area, tag)}
+          // halb heißt: gesetzt, aber nur behauptet. bei lernen und lesen gibt
+          // es nichts zu messen, dort bleibt jede zelle voll.
+          halb={quelle(zustand, user, area, tag) === 'getippt'}
           farbe={farbe}
           leer={leer}
           zukunft={tag > heute}
@@ -201,6 +204,7 @@ function Zeile({
 
 function Zelle({
   gefuellt,
+  halb,
   farbe,
   leer,
   zukunft,
@@ -210,6 +214,7 @@ function Zelle({
   label,
 }: {
   gefuellt: boolean
+  halb: boolean
   farbe: string
   leer: string
   zukunft: boolean
@@ -230,7 +235,15 @@ function Zelle({
       aria-hidden
       data-tag={label}
       className="relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200"
-      style={{ borderColor: gefuellt ? 'transparent' : zukunft ? 'var(--linie)' : leer }}
+      style={{
+        borderColor: gefuellt
+          ? halb
+            ? farbe
+            : 'transparent'
+          : zukunft
+            ? 'var(--linie)'
+            : leer,
+      }}
     >
       <AnimatePresence initial={false}>
         {gefuellt && (
@@ -244,8 +257,16 @@ function Zelle({
                 ? { ...STEMPEL, delay: verzoegerung }
                 : { duration: reduced ? 0 : 0.12 }
             }
-            style={{ background: farbe }}
-            className="absolute inset-[-1px] block rounded-[2px]"
+            // ein getippter tick bleibt ein rand mit blasser fläche: er zählt
+            // genauso, sieht aber nicht aus wie eine messung.
+            style={{
+              background: halb ? `color-mix(in srgb, ${farbe} 40%, var(--grund))` : farbe,
+            }}
+            className={
+              halb
+                ? 'absolute inset-0 block rounded-[1px]'
+                : 'absolute inset-[-1px] block rounded-[2px]'
+            }
           />
         )}
       </AnimatePresence>
