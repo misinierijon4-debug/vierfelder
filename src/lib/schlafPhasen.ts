@@ -150,10 +150,13 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     ? Math.max(1, nachtMinute(nacht.aufwachzeit!) - einschlafMinute)
     : Math.max(1, Math.round(nacht.schlafMinuten + nacht.wachMinuten))
 
-  const hatBett = nacht.bettMinuten !== null && nacht.bettMinuten > 0
-  const inBedMinuten = Math.round(hatBett ? nacht.bettMinuten! : fenster)
-
   const schlafMinuten = Math.round(nacht.schlafMinuten)
+
+  const hatBett = nacht.bettMinuten !== null && nacht.bettMinuten > 0
+  // die bettzeit kann nie kuerzer sein als der schlaf darin. stimmen die
+  // beiden zahlen nicht zusammen, ist die laengere die einzige, die sicher
+  // gemessen wurde — sonst stuende hier "12h 59m schlaf in 8h 45m bett"
+  const inBedMinuten = Math.max(schlafMinuten, Math.round(hatBett ? nacht.bettMinuten! : fenster))
   const erfasst = nacht.tiefMinuten + nacht.remMinuten + nacht.kernMinuten
   const hatPhasenDaten = erfasst > 0
 
@@ -189,7 +192,13 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     tiefProzent,
     remProzent,
     coreProzent: erfasst > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0,
-    wachProzent: inBedMinuten > 0 ? Math.round((nacht.wachMinuten / inBedMinuten) * 100) : 0,
+    // gleiche bezugsgroesse wie die drei stadien daneben: die nacht selbst,
+    // nicht die bettzeit — sonst vergleicht die kachel etwas anderes als die
+    // drei ueber ihr
+    wachProzent:
+      schlafMinuten + nacht.wachMinuten > 0
+        ? Math.round((nacht.wachMinuten / (schlafMinuten + nacht.wachMinuten)) * 100)
+        : 0,
     // ohne stadien bleibt ein durchgehender block: die dauer ist trotzdem echt
     stuecke: nacht.phasen.length
       ? nacht.phasen

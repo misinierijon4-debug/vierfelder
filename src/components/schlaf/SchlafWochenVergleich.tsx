@@ -70,7 +70,7 @@ export function SchlafWochenVergleich({
                     {formatDauer(schnitt)}
                   </span>
                   <span className="shrink-0 text-[10px] text-kreide-52">
-                    {anzahl} {anzahl === 1 ? 'nacht' : 'nächte'}
+                    ø aus {anzahl} {anzahl === 1 ? 'nacht' : 'nächten'}
                   </span>
                 </div>
               ) : (

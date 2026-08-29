@@ -67,11 +67,14 @@ const NAMEN: Record<string, Schlafwert> = {
   core: 'asleep_core',
   asleepcore: 'asleep_core',
   kern: 'asleep_core',
+  kernschlaf: 'asleep_core',
   deep: 'asleep_deep',
   asleepdeep: 'asleep_deep',
   tief: 'asleep_deep',
+  tiefschlaf: 'asleep_deep',
   rem: 'asleep_rem',
   asleeprem: 'asleep_rem',
+  remschlaf: 'asleep_rem',
   awake: 'awake',
   wach: 'awake',
 }
@@ -143,27 +146,40 @@ function normalisiereSegmente(segmente: Rohsegment[]): NormalisiertesSegment[] {
   return normalisiert.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs)
 }
 
+/**
+ * Die zuletzt endende Schlafepisode aus einem Fenster, das mehrere enthalten
+ * kann. Getrennt wird an einer Lücke von drei Stunden zwischen zwei
+ * Schlafsegmenten; ein Mittagsschlaf am selben Tag verändert damit weder Dauer
+ * noch Einschlafzeit.
+ *
+ * Der Anker ist der Schlaf selbst, nicht InBed: läuft der Kurzbefehl später am
+ * Tag, liegt im 24-Stunden-Fenster bereits das InBed der kommenden Nacht, in
+ * der noch kein Stadium steckt (gemessen: 26.08. 23:37 – 27.08. 07:15, während
+ * die auszuwertende Nacht am 26.08. um 08:25 endete). Ein InBed-Anker hätte
+ * daraus eine Nacht ohne Schlaf gemacht.
+ */
 function waehleLetzteNacht(segmente: NormalisiertesSegment[]): NormalisiertesSegment[] {
-  const inBed = segmente.filter((s) => s.art === 'in_bed').sort((a, b) => b.endMs - a.endMs)
-  if (inBed.length > 0) {
-    const anker = inBed[0]!
-    return segmente.filter((s) => s.startMs < anker.endMs && s.endMs > anker.startMs)
-  }
+  const schlaf = segmente.filter((s) => s.art.startsWith('asleep_'))
+  if (schlaf.length === 0) return segmente
 
-  // Quellen ohne InBed werden an einer Lücke von drei Stunden getrennt. Bei
-  // einem 24-Stunden-Fenster gewinnt die zuletzt endende Schlafepisode; ein
-  // früherer Mittagsschlaf verändert damit weder Dauer noch Einschlafzeit.
   const cluster: NormalisiertesSegment[][] = []
   let ende = 0
-  for (const segment of segmente) {
+  for (const segment of schlaf) {
     const aktuell = cluster[cluster.length - 1]
     if (!aktuell || segment.startMs - ende > 3 * 60 * MINUTE) cluster.push([segment])
     else aktuell.push(segment)
     ende = Math.max(ende, segment.endMs)
   }
-  return cluster.sort(
+
+  const letzte = cluster.sort(
     (a, b) => Math.max(...b.map((s) => s.endMs)) - Math.max(...a.map((s) => s.endMs))
   )[0]!
+  const von = Math.min(...letzte.map((s) => s.startMs))
+  const bis = Math.max(...letzte.map((s) => s.endMs))
+
+  // wach und in_bed dieser Episode kommen mit; alles andere gehört zu einer
+  // anderen Nacht und darf weder Dauer noch Unterbrechungen beeinflussen
+  return segmente.filter((s) => s.startMs < bis && s.endMs > von)
 }
 
 function vereinige(intervalle: Intervall[], gapMs = 0): Intervall[] {

@@ -16,6 +16,9 @@ describe('schlafwerte', () => {
   it('versteht exportnamen, kurzbefehlsnamen und rohwerte', () => {
     expect(normalisiereSchlafwert('HKCategoryValueSleepAnalysisAsleepCore')).toBe('asleep_core')
     expect(normalisiereSchlafwert('Wach')).toBe('awake')
+    expect(normalisiereSchlafwert('Tiefschlaf')).toBe('asleep_deep')
+    expect(normalisiereSchlafwert('Kernschlaf')).toBe('asleep_core')
+    expect(normalisiereSchlafwert('REM-Schlaf')).toBe('asleep_rem')
     expect(normalisiereSchlafwert(5)).toBe('asleep_rem')
   })
 
@@ -61,7 +64,7 @@ describe('schlafwerte', () => {
     expect(nacht.nachtwert).toBe(63)
   })
 
-  it('nimmt bei einem 24-stunden-fenster die letzte in-bed-episode', () => {
+  it('nimmt bei einem 24-stunden-fenster die letzte schlafepisode', () => {
     const nacht = berechneSchlafnacht(
       [
         segment('14:00:00', '15:00:00', 'InBed'),
@@ -75,6 +78,50 @@ describe('schlafwerte', () => {
 
     expect(nacht.schlafMinuten).toBe(90)
     expect(nacht.einschlafzeit).toContain('22:15:00')
+  })
+
+  it('zaehlt zwei naechte im fenster nicht zusammen', () => {
+    // gemessen am 29.08.: der kurzbefehl lieferte 00:15-08:36 und 23:29-05:16
+    // in einem aufruf, und die zeile stand danach auf 12h 59m
+    const nacht = berechneSchlafnacht(
+      [
+        segment('00:15:00', '04:00:00', 'Core'),
+        segment('04:00:00', '08:36:00', 'REM'),
+        segment('02:00:00', '02:20:00', 'Awake'),
+        {
+          start: `${basis}T23:29:00+02:00`,
+          end: '2026-08-27T05:16:00+02:00',
+          value: 'Core',
+          source: 'test',
+        },
+      ],
+      480,
+      []
+    )
+
+    expect(nacht.schlafMinuten).toBe(347)
+    expect(nacht.einschlafzeit).toContain('23:29:00')
+    expect(nacht.nacht).toBe('2026-08-27')
+    // die wachphase gehoert zur ersten nacht und darf die zweite nicht bewerten
+    expect(nacht.wachMinuten).toBeNull()
+    expect(nacht.bewertungsbasis).toBe(80)
+  })
+
+  it('haelt sich an den schlaf, nicht an ein in-bed der naechsten nacht', () => {
+    // gemessen: das fenster enthaelt das InBed des kommenden abends, in dem
+    // noch kein stadium liegt. ein InBed-anker haette null minuten ergeben
+    const nacht = berechneSchlafnacht(
+      [
+        segment('00:14:00', '08:25:00', 'Core'),
+        segment('03:00:00', '03:10:00', 'Awake'),
+        segment('23:37:00', '23:59:00', 'InBed'),
+      ],
+      480,
+      []
+    )
+
+    expect(nacht.schlafMinuten).toBe(481)
+    expect(nacht.einschlafzeit).toContain('00:14:00')
   })
 
   it('berechnet den median pro nutzer aus höchstens 13 vorherigen nächten', () => {

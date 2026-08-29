@@ -115,6 +115,18 @@ describe('analyse einer nacht', () => {
     expect(a.stuecke).toEqual([{ art: 'unspez', start: 0, dauer: 493 }])
   })
 
+  it('zeigt nie mehr schlaf als bettzeit', () => {
+    // so sah der glitch aus: 779 gespeicherte minuten in einem bett von 525
+    const a = analysiereSchlafnacht(nacht({ schlafMinuten: 779, bettMinuten: 525 }))
+    expect(a.inBedMinuten).toBeGreaterThanOrEqual(a.schlafMinuten)
+    expect(a.effizienz).toBeLessThanOrEqual(100)
+  })
+
+  it('bezieht auch den wachanteil auf die nacht selbst', () => {
+    const a = analysiereSchlafnacht(nacht())
+    expect(a.wachProzent).toBe(Math.round((12 / (493 + 12)) * 100))
+  })
+
   it('laesst die effizienz leer, wenn kein aufwachen gemessen wurde', () => {
     const a = analysiereSchlafnacht(nacht({ aufwachzeit: null, bettMinuten: null, bettEnde: null }))
     expect(a.effizienz).toBeNull()

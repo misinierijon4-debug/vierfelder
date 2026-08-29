@@ -141,6 +141,12 @@ Gesendet werden (alle Namen exakt so):
 - `p_user_id`: wird ignoriert, nur aus Kompatibilität vorhanden
 - `p_token`: das persönliche Import-Token (Klartext, mindestens 32 Zeichen)
 
+Beide Wege wählen aus dem gesendeten Fenster dieselbe Nacht: die zuletzt endende
+Schlafepisode, getrennt an einer Lücke von drei Stunden. Läuft der Kurzbefehl
+später als sonst, stehen zwei Nächte im 24-Stunden-Fenster — gezählt wird nur
+die letzte. Überlappende Segmente (Uhr und iPhone melden denselben Zeitraum)
+zählen einmal, Wachzeit innerhalb der Episode wird abgezogen.
+
 Die Identität kommt ausschließlich aus dem Token gegen die Tabelle `schlaf_import_tokens`. Ohne gültiges Token schreibt die Funktion nichts. Die Rückgabe ist ein JSON-Objekt mit `ok`, `nacht`, `schlaf_minuten`, `nachtwert` und weiteren Details.
 
 ### Auf iOS getesteter RPC-Aufbau
