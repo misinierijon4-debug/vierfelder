@@ -127,14 +127,30 @@ export function SchlafNachtDetail({
               <dl className="grid grid-cols-3 divide-x divide-linie border-t border-linie">
                 <div className="min-w-0 px-2.5 py-2.5">
                   <dt className="text-[9px] text-kreide-52">eingeschlafen</dt>
-                  <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
-                    {analyse.einschlafUhrzeit}
+                  <dd className="mt-1 truncate">
+                    <span className="tnum text-[13px] font-semibold text-kreide">
+                      {analyse.einschlafUhrzeit}
+                    </span>
+                    {analyse.einschlafdauerMinuten !== null && (
+                      <span className="tnum mt-0.5 block text-[9px] text-kreide-52">
+                        {analyse.einschlafdauerMinuten < 1
+                          ? 'sofort'
+                          : `nach ${formatDauer(analyse.einschlafdauerMinuten)} im bett`}
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
                   <dt className="text-[9px] text-kreide-52">aufgewacht</dt>
-                  <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
-                    {analyse.hatZeitfensterDaten ? analyse.aufwachUhrzeit : '—'}
+                  <dd className="mt-1 truncate">
+                    <span className="tnum text-[13px] font-semibold text-kreide">
+                      {analyse.hatZeitfensterDaten ? analyse.aufwachUhrzeit : '—'}
+                    </span>
+                    {analyse.imBettBisUhrzeit !== null && (
+                      <span className="tnum mt-0.5 block text-[9px] text-kreide-52">
+                        bis {analyse.imBettBisUhrzeit} im bett
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">

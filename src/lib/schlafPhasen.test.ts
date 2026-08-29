@@ -112,7 +112,14 @@ describe('analyse einer nacht', () => {
     expect(a.hatPhasenDaten).toBe(false)
     expect(a.tiefProzent).toBe(0)
     expect(a.remProzent).toBe(0)
-    expect(a.stuecke).toEqual([{ art: 'unspez', start: 0, dauer: 493 }])
+    // der schlaf bleibt ein block; links und rechts steht das wachliegen im bett
+    expect(a.stuecke.filter((p) => p.art !== 'wach')).toEqual([
+      { art: 'unspez', start: 0, dauer: 493 },
+    ])
+    expect(a.stuecke.filter((p) => p.art === 'wach')).toEqual([
+      { art: 'wach', start: -15, dauer: 15 },
+      { art: 'wach', start: 550, dauer: 5 },
+    ])
   })
 
   it('zeigt nie mehr schlaf als bettzeit', () => {
@@ -122,9 +129,24 @@ describe('analyse einer nacht', () => {
     expect(a.effizienz).toBeLessThanOrEqual(100)
   })
 
-  it('bezieht auch den wachanteil auf die nacht selbst', () => {
+  it('zaehlt das einschlafen zur wachzeit, wie sleep cycle', () => {
     const a = analysiereSchlafnacht(nacht())
-    expect(a.wachProzent).toBe(Math.round((12 / (493 + 12)) * 100))
+    // 23:10 ins bett, 23:25 eingeschlafen
+    expect(a.einschlafdauerMinuten).toBe(15)
+    expect(a.imBettVonUhrzeit).toBe('23:10')
+    expect(a.imBettBisUhrzeit).toBe('08:40')
+    // 570 minuten im bett, davon 493 geschlafen: der rest ist wach
+    expect(a.wachMinuten).toBe(77)
+    expect(a.schlafMinuten + a.wachMinuten).toBe(a.inBedMinuten)
+    expect(a.wachProzent).toBe(Math.round((77 / 570) * 100))
+  })
+
+  it('laesst die einschlafdauer leer, wenn keine bettzeit gemessen wurde', () => {
+    const a = analysiereSchlafnacht(nacht({ bettStart: null, bettEnde: null, bettMinuten: null }))
+    expect(a.einschlafdauerMinuten).toBeNull()
+    expect(a.imBettVonUhrzeit).toBeNull()
+    // ohne bettzeit bleibt nur, was health an wachsegmenten gemeldet hat
+    expect(a.wachMinuten).toBe(12)
   })
 
   it('laesst die effizienz leer, wenn kein aufwachen gemessen wurde', () => {

@@ -39,6 +39,10 @@ export function PhasenZeitstrahl({ analyse }: Props) {
   const bis = Math.ceil(Math.max(analyse.aufwachMinute, analyse.bettBis ?? 0) / 30) * 30
   const marken = stundenmarken(von, bis, 60)
 
+  // der balken zeigt die ganze bettzeit, also nennt die zeile auch sie
+  const vonUhr = analyse.imBettVonUhrzeit ?? analyse.einschlafUhrzeit
+  const bisUhr = analyse.imBettBisUhrzeit ?? analyse.aufwachUhrzeit
+
   const kacheln = [
     { key: 'tief' as const, label: 'tiefschlaf', minuten: analyse.tiefMinuten, prozent: analyse.tiefProzent },
     { key: 'rem' as const, label: 'rem', minuten: analyse.remMinuten, prozent: analyse.remProzent },
@@ -51,7 +55,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
       <div className="flex items-baseline justify-between gap-3 px-3.5 py-3">
         <span className="text-[11px] font-medium text-kreide">verlauf der nacht</span>
         <span className="tnum shrink-0 text-[10px] text-kreide-52">
-          {analyse.einschlafUhrzeit} – {analyse.aufwachUhrzeit}
+          {vonUhr} – {bisUhr}
         </span>
       </div>
 
@@ -59,7 +63,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
       <div
         className="relative mx-3.5 h-7 overflow-hidden rounded-[1px] bg-grund"
         role="img"
-        aria-label={`schlafverlauf von ${analyse.einschlafUhrzeit} bis ${analyse.aufwachUhrzeit}`}
+        aria-label={`schlafverlauf von ${vonUhr} bis ${bisUhr}`}
       >
         <motion.div
           className="absolute inset-0"

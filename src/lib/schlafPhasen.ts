@@ -125,6 +125,11 @@ export type NachtPhasenAnalyse = {
   hatZeitfensterDaten: boolean
   einschlafUhrzeit: string
   aufwachUhrzeit: string
+  /** hingelegt und wieder aufgestanden — null ohne InBed-segmente */
+  imBettVonUhrzeit: string | null
+  imBettBisUhrzeit: string | null
+  /** vom hinlegen bis zum einschlafen. null ohne InBed-segmente */
+  einschlafdauerMinuten: number | null
   /** alles in nachtminuten, fuer den zeitstrahl */
   einschlafMinute: number
   aufwachMinute: number
@@ -133,6 +138,8 @@ export type NachtPhasenAnalyse = {
   tiefMinuten: number
   remMinuten: number
   coreMinuten: number
+  /** wie in sleep cycle: alles im bett, was nicht schlaf war — das
+   *  wachliegen vor dem einschlafen zaehlt mit */
   wachMinuten: number
   wachphasenAnzahl: number
   tiefProzent: number
@@ -164,6 +171,36 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
   const tiefProzent = anteil(nacht.tiefMinuten)
   const remProzent = anteil(nacht.remMinuten)
 
+  const aufwachMinute = einschlafMinute + fenster
+  const bettVon = nacht.bettStart === null ? null : nachtMinute(nacht.bettStart)
+  const bettBis = nacht.bettEnde === null ? null : nachtMinute(nacht.bettEnde)
+
+  // das wachliegen vor dem einschlafen und das noch-liegenbleiben danach
+  const einschlafdauerMinuten =
+    bettVon === null ? null : Math.max(0, Math.round(einschlafMinute - bettVon))
+  const nachliegenMinuten = bettBis === null ? 0 : Math.max(0, Math.round(bettBis - aufwachMinute))
+
+  // wach wie in sleep cycle: die bettzeit ohne den schlaf darin. gemessene
+  // wachsegmente sind darin enthalten, das einschlafen kommt dazu.
+  //
+  // ohne InBed bleibt es bei den gemessenen wachsegmenten: das schlaffenster
+  // gegen den schlaf zu rechnen wuerde luecken ohne jede health-messung zu
+  // wachliegen erklaeren, und das waere geraten
+  const wachMinuten = hatBett
+    ? Math.max(Math.round(nacht.wachMinuten), inBedMinuten - schlafMinuten)
+    : Math.round(nacht.wachMinuten)
+
+  // der verlauf zeigt die ganze bettzeit, nicht erst ab dem einschlafen
+  const stuecke: Phase[] = nacht.phasen.length
+    ? [...nacht.phasen]
+    : [{ art: 'unspez' as PhasenArt, start: 0, dauer: schlafMinuten }]
+  if (einschlafdauerMinuten !== null && einschlafdauerMinuten >= 1) {
+    stuecke.unshift({ art: 'wach', start: -einschlafdauerMinuten, dauer: einschlafdauerMinuten })
+  }
+  if (nachliegenMinuten >= 1) {
+    stuecke.push({ art: 'wach', start: fenster, dauer: nachliegenMinuten })
+  }
+
   return {
     nacht: nacht.nacht,
     user: nacht.user,
@@ -180,29 +217,28 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     hatZeitfensterDaten: gemessenesEnde,
     einschlafUhrzeit: formatUhrzeit(nacht.einschlafzeit),
     aufwachUhrzeit: formatUhrzeit(nacht.aufwachzeit),
+    imBettVonUhrzeit: nacht.bettStart === null ? null : formatUhrzeit(nacht.bettStart),
+    imBettBisUhrzeit: nacht.bettEnde === null ? null : formatUhrzeit(nacht.bettEnde),
+    einschlafdauerMinuten,
     einschlafMinute,
-    aufwachMinute: einschlafMinute + fenster,
-    bettVon: nacht.bettStart === null ? null : nachtMinute(nacht.bettStart),
-    bettBis: nacht.bettEnde === null ? null : nachtMinute(nacht.bettEnde),
+    aufwachMinute,
+    bettVon,
+    bettBis,
     tiefMinuten: Math.round(nacht.tiefMinuten),
     remMinuten: Math.round(nacht.remMinuten),
     coreMinuten: Math.round(nacht.kernMinuten + nacht.unspezMinuten),
-    wachMinuten: Math.round(nacht.wachMinuten),
+    wachMinuten,
     wachphasenAnzahl: nacht.phasen.filter((p) => p.art === 'wach').length,
     tiefProzent,
     remProzent,
     coreProzent: erfasst > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0,
-    // gleiche bezugsgroesse wie die drei stadien daneben: die nacht selbst,
-    // nicht die bettzeit — sonst vergleicht die kachel etwas anderes als die
-    // drei ueber ihr
+    // anteil an der bettzeit: schlaf plus wach ergibt genau sie
     wachProzent:
-      schlafMinuten + nacht.wachMinuten > 0
-        ? Math.round((nacht.wachMinuten / (schlafMinuten + nacht.wachMinuten)) * 100)
+      schlafMinuten + wachMinuten > 0
+        ? Math.round((wachMinuten / (schlafMinuten + wachMinuten)) * 100)
         : 0,
     // ohne stadien bleibt ein durchgehender block: die dauer ist trotzdem echt
-    stuecke: nacht.phasen.length
-      ? nacht.phasen
-      : [{ art: 'unspez' as PhasenArt, start: 0, dauer: schlafMinuten }],
+    stuecke,
   }
 }
 
