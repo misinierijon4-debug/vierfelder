@@ -1,18 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import type { Anfangszustand, Backend, TickEreignis } from './backend'
-import { gewichtKey, tickKey, wertKey } from './types'
+import type { Anfangszustand, Backend, EinheitEreignis } from './backend'
+import { gewichtKey, tickKey } from './types'
 import type {
   Aufenthalt,
   AreaId,
+  Einheit,
+  Einheiten,
   Gewichte,
   MessbarerBereich,
   Phase,
   Schlafnacht,
-  Ticks,
   UserId,
-  Werte,
 } from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL
@@ -25,6 +25,14 @@ export const supabase = hatSupabase ? createClient(url!, key!) : null
 type ProfilZeile = { id: string; person: UserId }
 type EintragZeile = { user_id: string; bereich: AreaId; tag: string }
 type WertZeile = { bereich: AreaId; tag: string; wert: number }
+type EinheitZeile = {
+  id: string
+  user_id: string
+  bereich: AreaId
+  tag: string
+  wert: number | null
+  erfasst: string | null
+}
 /** zeile aus `schlafnaechte_ansicht`. numeric kommt je nach spalte als text */
 type SchlafZeile = {
   user_id: string
@@ -105,15 +113,60 @@ export function supabaseBackend(eigeneId: string): Backend {
   /** uuid -> person. wird beim laden gefüllt und von realtime mitbenutzt */
   const personen = new Map<string, UserId>()
 
+  /**
+   * solange `einheiten` noch nicht eingespielt ist, liest und schreibt die app
+   * weiter `eintraege` und `werte`. das hält sie am leben, wenn die migration
+   * und der deploy nicht in derselben minute passieren.
+   */
+  let altbestand = false
+  let modusBekannt: () => void = () => {}
+  const modus = new Promise<void>((r) => {
+    modusBekannt = r
+  })
+
+  /** eine tageszeile aus dem altbestand, als einheit gelesen */
+  const alteEinheit = (
+    person: UserId,
+    bereich: AreaId,
+    tag: string,
+    wert: number | null
+  ): Einheit => ({
+    id: `alt|${person}|${bereich}|${tag}`,
+    user: person,
+    area: bereich,
+    tag,
+    wert,
+    erfasst: null,
+  })
+
+  const einordnen = (ziel: Einheiten, e: Einheit) => {
+    const key = tickKey(e.user, e.area, e.tag)
+    const liste = ziel[key]
+    if (!liste) ziel[key] = [e]
+    else if (!liste.some((x) => x.id === e.id)) liste.push(e)
+  }
+
+  const zeileZuEinheit = (z: EinheitZeile): Einheit | null => {
+    const person = personen.get(z.user_id)
+    if (!person) return null
+    return {
+      id: z.id,
+      user: person,
+      area: z.bereich,
+      tag: z.tag,
+      wert: z.wert === null ? null : Number(z.wert),
+      erfasst: z.erfasst,
+    }
+  }
+
   return {
     art: 'supabase',
 
     async laden(): Promise<Anfangszustand> {
-      const [profile, eintraege, werteZeilen, schlafZeilen, gewichtZeilen, aufenthaltZeilen] =
+      const [profile, einheitZeilen, schlafZeilen, gewichtZeilen, aufenthaltZeilen] =
         await Promise.all([
           db.from('profile').select('id, person'),
-          db.from('eintraege').select('user_id, bereich, tag'),
-          db.from('werte').select('bereich, tag, wert'),
+          db.from('einheiten').select('id, user_id, bereich, tag, wert, erfasst'),
           db
             .from('schlafnaechte_ansicht')
             .select(
@@ -128,16 +181,28 @@ export function supabaseBackend(eigeneId: string): Backend {
         ])
 
       if (profile.error) throw profile.error
-      if (eintraege.error) throw eintraege.error
-      if (werteZeilen.error) throw werteZeilen.error
-      // Während Schema und Frontend getrennt veröffentlicht werden, darf die
+      // Während Schema und Frontend getrennt veröffentlicht werden, darf eine
       // neue Ansicht oder Tabelle den bestehenden Tracker nicht lahmlegen.
       const fehltNoch = (code?: string) => code === '42P01' || code === 'PGRST205'
+      if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
       if (gewichtZeilen.error && !fehltNoch(gewichtZeilen.error.code)) throw gewichtZeilen.error
       if (aufenthaltZeilen.error && !fehltNoch(aufenthaltZeilen.error.code)) {
         throw aufenthaltZeilen.error
       }
+
+      altbestand = Boolean(einheitZeilen.error)
+      modusBekannt()
+
+      // die beiden alten tabellen werden nur noch gelesen, wenn es sein muss
+      const [eintraege, werteZeilen] = altbestand
+        ? await Promise.all([
+            db.from('eintraege').select('user_id, bereich, tag'),
+            db.from('werte').select('bereich, tag, wert'),
+          ])
+        : [null, null]
+      if (eintraege?.error) throw eintraege.error
+      if (werteZeilen?.error) throw werteZeilen.error
 
       personen.clear()
       for (const p of (profile.data ?? []) as ProfilZeile[]) personen.set(p.id, p.person)
@@ -147,15 +212,33 @@ export function supabaseBackend(eigeneId: string): Backend {
         throw new Error('kein profil für dieses konto. lege in der tabelle profile eine zeile an.')
       }
 
-      const ticks: Ticks = {}
-      for (const e of (eintraege.data ?? []) as EintragZeile[]) {
-        const person = personen.get(e.user_id)
-        if (person) ticks[tickKey(person, e.bereich, e.tag)] = true
-      }
-
-      const werte: Werte = {}
-      for (const w of (werteZeilen.data ?? []) as WertZeile[]) {
-        werte[wertKey(w.bereich, w.tag)] = w.wert
+      const einheiten: Einheiten = {}
+      if (altbestand) {
+        // `werte` gehört nur dem eigenen konto, mehr als die eigenen minuten
+        // gibt der altbestand nicht her.
+        const werte = new Map<string, number>()
+        for (const w of (werteZeilen?.data ?? []) as WertZeile[]) {
+          werte.set(`${w.bereich}|${w.tag}`, w.wert)
+        }
+        for (const e of (eintraege?.data ?? []) as EintragZeile[]) {
+          const person = personen.get(e.user_id)
+          if (!person) continue
+          const wert = person === me ? (werte.get(`${e.bereich}|${e.tag}`) ?? null) : null
+          einordnen(einheiten, alteEinheit(person, e.bereich, e.tag, wert))
+        }
+      } else {
+        for (const z of (einheitZeilen.data ?? []) as EinheitZeile[]) {
+          const e = zeileZuEinheit(z)
+          if (e) einordnen(einheiten, e)
+        }
+        // älteste zuerst; ohne zeitpunkt sind die übernommenen altbestände
+        for (const liste of Object.values(einheiten)) {
+          liste.sort((a, b) => {
+            const x = a.erfasst ?? ''
+            const y = b.erfasst ?? ''
+            return x < y ? -1 : x > y ? 1 : 0
+          })
+        }
       }
 
       const schlaf: Schlafnacht[] = []
@@ -203,34 +286,90 @@ export function supabaseBackend(eigeneId: string): Backend {
         })
       }
 
-      return { me, ticks, werte, gewichte, schlaf, aufenthalte }
+      return { me, einheiten, gewichte, schlaf, aufenthalte, altbestand }
     },
 
-    async schreibeTick(bereich, tag, gesetzt) {
-      if (gesetzt) {
+    async schreibeEinheit(e) {
+      if (altbestand) {
         const { error } = await db
           .from('eintraege')
-          .upsert({ user_id: eigeneId, bereich, tag }, { onConflict: 'user_id,bereich,tag' })
+          .upsert(
+            { user_id: eigeneId, bereich: e.area, tag: e.tag },
+            { onConflict: 'user_id,bereich,tag' }
+          )
         if (error) throw error
-      } else {
-        const { error } = await db
-          .from('eintraege')
-          .delete()
-          .match({ user_id: eigeneId, bereich, tag })
-        if (error) throw error
+        if (e.wert !== null) await this.schreibeEinheitWert(e, e.wert)
+        return
       }
+
+      // ignoreDuplicates: dieselbe id zweimal zu senden — nach einem timeout,
+      // aus einer wiederholung — legt keine zweite einheit an.
+      const { error } = await db.from('einheiten').upsert(
+        {
+          id: e.id,
+          user_id: eigeneId,
+          bereich: e.area,
+          tag: e.tag,
+          wert: e.wert,
+          erfasst: e.erfasst,
+        },
+        { onConflict: 'id', ignoreDuplicates: true }
+      )
+      if (error) throw error
     },
 
-    async schreibeWert(bereich, tag, wert) {
-      if (wert <= 0) {
-        const { error } = await db.from('werte').delete().match({ user_id: eigeneId, bereich, tag })
-        if (error) throw error
-      } else {
+    async schreibeEinheitWert(e, wert) {
+      if (altbestand) {
+        if (wert === null || wert <= 0) {
+          const { error } = await db
+            .from('werte')
+            .delete()
+            .match({ user_id: eigeneId, bereich: e.area, tag: e.tag })
+          if (error) throw error
+          return
+        }
         const { error } = await db
           .from('werte')
-          .upsert({ user_id: eigeneId, bereich, tag, wert }, { onConflict: 'user_id,bereich,tag' })
+          .upsert(
+            { user_id: eigeneId, bereich: e.area, tag: e.tag, wert },
+            { onConflict: 'user_id,bereich,tag' }
+          )
         if (error) throw error
+        return
       }
+
+      const { error } = await db
+        .from('einheiten')
+        .update({ wert })
+        .match({ id: e.id, user_id: eigeneId })
+      if (error) throw error
+    },
+
+    async loescheEinheit(e) {
+      if (altbestand) return this.loescheTag([e])
+      const { error } = await db.from('einheiten').delete().match({ id: e.id, user_id: eigeneId })
+      if (error) throw error
+    },
+
+    async loescheTag(einheiten) {
+      const erste = einheiten[0]
+      if (!erste) return
+
+      if (altbestand) {
+        const treffer = { user_id: eigeneId, bereich: erste.area, tag: erste.tag }
+        const eintrag = await db.from('eintraege').delete().match(treffer)
+        if (eintrag.error) throw eintrag.error
+        const wert = await db.from('werte').delete().match(treffer)
+        if (wert.error) throw wert.error
+        return
+      }
+
+      const { error } = await db
+        .from('einheiten')
+        .delete()
+        .eq('user_id', eigeneId)
+        .in('id', einheiten.map((e) => e.id))
+      if (error) throw error
     },
 
     async schreibeGewicht(tag, kg) {
@@ -246,29 +385,67 @@ export function supabaseBackend(eigeneId: string): Backend {
     },
 
     abonniere(cb) {
-      const melde = (zeile: EintragZeile | null, gesetzt: boolean) => {
-        if (!zeile) return
-        const person = personen.get(zeile.user_id)
-        if (!person) return
-        cb({ user: person, area: zeile.bereich, tag: zeile.tag, gesetzt } satisfies TickEreignis)
-      }
+      // welcher kanal der richtige ist, steht erst nach dem laden fest.
+      let kanal: ReturnType<typeof db.channel> | null = null
+      let abgemeldet = false
 
-      const kanal = db
-        .channel('eintraege')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'eintraege' },
-          (p) => melde(p.new as EintragZeile, true)
-        )
-        .on(
-          'postgres_changes',
-          { event: 'DELETE', schema: 'public', table: 'eintraege' },
-          (p) => melde(p.old as EintragZeile, false)
-        )
-        .subscribe()
+      void modus.then(() => {
+        if (abgemeldet) return
+
+        if (altbestand) {
+          const melde = (zeile: EintragZeile | null, art: 'neu' | 'weg') => {
+            if (!zeile) return
+            const person = personen.get(zeile.user_id)
+            if (!person) return
+            cb({ art, einheit: alteEinheit(person, zeile.bereich, zeile.tag, null) })
+          }
+
+          kanal = db
+            .channel('eintraege')
+            .on(
+              'postgres_changes',
+              { event: 'INSERT', schema: 'public', table: 'eintraege' },
+              (p) => melde(p.new as EintragZeile, 'neu')
+            )
+            .on(
+              'postgres_changes',
+              { event: 'DELETE', schema: 'public', table: 'eintraege' },
+              (p) => melde(p.old as EintragZeile, 'weg')
+            )
+            .subscribe()
+          return
+        }
+
+        const melde = (zeile: EinheitZeile | null, art: EinheitEreignis['art']) => {
+          if (!zeile) return
+          const einheit = zeileZuEinheit(zeile)
+          if (einheit) cb({ art, einheit })
+        }
+
+        kanal = db
+          .channel('einheiten')
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'einheiten' },
+            (p) => melde(p.new as EinheitZeile, 'neu')
+          )
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'einheiten' },
+            (p) => melde(p.new as EinheitZeile, 'wert')
+          )
+          // `replica identity full` liefert hier die ganze zeile, nicht nur die id
+          .on(
+            'postgres_changes',
+            { event: 'DELETE', schema: 'public', table: 'einheiten' },
+            (p) => melde(p.old as EinheitZeile, 'weg')
+          )
+          .subscribe()
+      })
 
       return () => {
-        db.removeChannel(kanal)
+        abgemeldet = true
+        if (kanal) db.removeChannel(kanal)
       }
     },
   }

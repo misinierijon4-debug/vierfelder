@@ -7,17 +7,28 @@ import { istBilanzzeit, toKey, weekDays } from './lib/dates'
 import { useTracker } from './lib/store'
 import { lokalWechseln, lokalesBackend, lokalesMe } from './lib/lokal'
 import { abmelden, hatSupabase, supabaseBackend, useSession } from './lib/supabase'
-import { abstand, istGesetzt, quelle, streak, wert, wocheBereich, wocheGesamt } from './lib/tracker'
+import {
+  abstand,
+  anzahlEinheiten,
+  istGesetzt,
+  letzteEinheit,
+  quelle,
+  streak,
+  tagesWert,
+  wocheBereich,
+  wocheGesamt,
+} from './lib/tracker'
 import { Kopf } from './components/Kopf'
 import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
+import { Tagesdetail } from './components/Tagesdetail'
+import type { Tagesauswahl } from './components/Tagesdetail'
 import { Anmeldung } from './components/Anmeldung'
 import { TabLeiste } from './components/TabLeiste'
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
-import { gemesseneMinuten } from './lib/training'
 
 const UNDO_MS = 5000
 
@@ -46,11 +57,24 @@ export function App() {
 }
 
 function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
-  const { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert, setzeGewicht } =
-    useTracker(backend)
+  const {
+    me,
+    zustand,
+    schlaf,
+    ladezustand,
+    fehler,
+    ereignis,
+    altbestand,
+    toggle,
+    einheitHinzu,
+    rueckgaengig,
+    setWert,
+    setzeGewicht,
+  } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
   const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
+  const [detail, setDetail] = useState<Tagesauswahl | null>(null)
 
   const heuteKey = useMemo(() => toKey(heute), [heute])
   const woche = useMemo(() => weekDays(heute), [heute])
@@ -81,6 +105,11 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     const timer = window.setTimeout(() => setUndoFuer(null), UNDO_MS)
     return () => window.clearTimeout(timer)
   }, [ereignis])
+
+  const zurueck = (area: AreaId) => {
+    rueckgaengig(area, heuteKey)
+    setUndoFuer(null)
+  }
 
   const meineWoche = wocheGesamt(zustand, me, woche)
 
@@ -133,31 +162,39 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 className="mt-2 border-t border-linie transition-opacity duration-200"
                 style={{ opacity: ladezustand === 'laden' ? 0.4 : 1 }}
               >
-                {AREAS.map((area, i) => (
-                  <Bereichszeile
-                    key={area.id}
-                    area={area}
-                    index={i}
-                    gesetzt={istGesetzt(zustand, me, area.id, heuteKey)}
-                    wocheIch={wocheBereich(zustand, me, area.id, woche)}
-                    abstand={abstand(zustand, area.id, woche, me, er.id)}
-                    streak={streak(zustand, me, area.id, heute)}
-                    wert={wert(zustand.werte, area.id, heuteKey)}
-                    quelle={quelle(zustand, me, area.id, heuteKey)}
-                    messungMinuten={gemesseneMinuten(zustand.aufenthalte, me, area.id, heuteKey)}
-                    farbe={ich.farbe}
-                    farbeEr={er.farbe}
-                    zeigeUndo={undoFuer === area.id}
-                    onTap={() => toggle(area.id, heuteKey)}
-                    onUndo={() => {
-                      toggle(area.id, heuteKey)
-                      setUndoFuer(null)
-                    }}
-                    onWert={(delta) =>
-                      setWert(area.id, heuteKey, wert(zustand.werte, area.id, heuteKey) + delta)
-                    }
-                  />
-                ))}
+                {AREAS.map((area, i) => {
+                  // die schritte gelten der neuesten einheit, die zahl rechts
+                  // dem ganzen tag
+                  const letzte = letzteEinheit(zustand, me, area.id, heuteKey)
+                  return (
+                    <Bereichszeile
+                      key={area.id}
+                      area={area}
+                      index={i}
+                      gesetzt={istGesetzt(zustand, me, area.id, heuteKey)}
+                      wocheIch={wocheBereich(zustand, me, area.id, woche)}
+                      abstand={abstand(zustand, area.id, woche, me, er.id)}
+                      streak={streak(zustand, me, area.id, heute)}
+                      wert={tagesWert(zustand, me, area.id, heuteKey)}
+                      einheitWert={letzte?.wert ?? 0}
+                      anzahl={anzahlEinheiten(zustand, me, area.id, heuteKey)}
+                      mehrfachMoeglich={!altbestand}
+                      quelle={quelle(zustand, me, area.id, heuteKey)}
+                      // bei zwei besuchen an einem tag steht dort die summe,
+                      // nicht der längere von beiden
+                      messungMinuten={tagesWert(zustand, me, area.id, heuteKey)}
+                      farbe={ich.farbe}
+                      farbeEr={er.farbe}
+                      zeigeUndo={undoFuer === area.id}
+                      onTap={() => toggle(area.id, heuteKey)}
+                      onUndo={() => zurueck(area.id)}
+                      onNeueEinheit={() => einheitHinzu(area.id, heuteKey)}
+                      onWert={(delta) => {
+                        if (letzte) setWert(letzte, (letzte.wert ?? 0) + delta)
+                      }}
+                    />
+                  )
+                })}
               </section>
 
               <Raster
@@ -166,6 +203,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 heute={heuteKey}
                 ereignis={ereignis}
                 leer={meineWoche === 0}
+                onZelle={(user, area, tag) => setDetail({ user, area, tag })}
               />
 
               {/* gewicht ist eine messung statt eines ticks und steht deshalb
@@ -203,6 +241,17 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>
+
+      <AnimatePresence>
+        {detail && (
+          <Tagesdetail
+            zustand={zustand}
+            auswahl={detail}
+            heute={heuteKey}
+            onSchliessen={() => setDetail(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

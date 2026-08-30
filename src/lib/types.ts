@@ -78,13 +78,35 @@ export function area(id: AreaId): AreaDef {
   return AREAS.find((a) => a.id === id)!
 }
 
-/** `${user}|${area}|${yyyy-mm-dd}` — spiegelt den primary key von `eintraege` */
+/** `${user}|${area}|${yyyy-mm-dd}` — der schlüssel eines tages je person */
 export type TickKey = string
 
+/** altbestand: der haken je person, bereich und tag aus `eintraege` */
 export type Ticks = Record<TickKey, true>
 
-/** `${area}|${yyyy-mm-dd}` — liegt pro nutzer getrennt, spiegelt `werte` */
+/** altbestand: `${area}|${yyyy-mm-dd}` -> tageswert aus `werte`, nur eigene */
 export type Werte = Record<string, number>
+
+/**
+ * eine einzelne durchführung. gym um sieben und gym um sieben abends sind zwei
+ * einheiten, kein ersetzter tageswert. `wert` ist null, wo nie eine dauer
+ * erfasst wurde — geraten wird nichts.
+ */
+export type Einheit = {
+  /** uuid, vom client erzeugt. dieselbe id zweimal zu senden legt nichts an */
+  id: string
+  user: UserId
+  area: AreaId
+  /** lokaler kalendertag, gebildet mit `toKey` — nie aus einer utc-zeit */
+  tag: string
+  /** minuten oder seiten, je nach bereich. null heißt: nie erfasst */
+  wert: number | null
+  /** zeitpunkt der eintragung als iso-string, soweit vorhanden */
+  erfasst: string | null
+}
+
+/** `${user}|${area}|${yyyy-mm-dd}` -> die einheiten des tages, älteste zuerst */
+export type Einheiten = Record<TickKey, Einheit[]>
 
 /** `${user}|${yyyy-mm-dd}` -> kilogramm. beide sehen beide, wie bei den ticks */
 export type Gewichte = Record<string, number>
@@ -104,8 +126,7 @@ export type Aufenthalt = {
 }
 
 export type Zustand = {
-  ticks: Ticks
-  werte: Werte
+  einheiten: Einheiten
   gewichte: Gewichte
   aufenthalte: Aufenthalt[]
 }
@@ -145,6 +166,24 @@ export type Schlafnacht = {
 
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {
   return `${u}|${a}|${tag}`
+}
+
+/**
+ * eine id, die auf jedem gerät und ohne netz entsteht. sie ist der primary key
+ * der zeile: ein wiederholtes senden nach einem timeout legt deshalb keine
+ * zweite einheit an, sondern läuft ins leere.
+ */
+export function neueEinheitId(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  // älteres webview: zufall aus getRandomValues, sonst aus Math.random
+  const bytes = new Uint8Array(16)
+  if (c && typeof c.getRandomValues === 'function') c.getRandomValues(bytes)
+  else for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 export function wertKey(a: AreaId, tag: string): string {

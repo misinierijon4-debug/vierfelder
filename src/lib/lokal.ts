@@ -1,9 +1,11 @@
-import type { Anfangszustand, Backend, TickEreignis } from './backend'
+import type { Anfangszustand, Backend, EinheitEreignis } from './backend'
 import { toKey, weekDays } from './dates'
-import { gewichtKey, tickKey, wertKey } from './types'
+import { gewichtKey, neueEinheitId, tickKey, wertKey } from './types'
 import type {
-  AreaId,
   Aufenthalt,
+  AreaId,
+  Einheit,
+  Einheiten,
   Gewichte,
   Phase,
   PhasenArt,
@@ -13,16 +15,22 @@ import type {
   Werte,
 } from './types'
 
+/** altbestand: ein haken je person, bereich und tag */
 const TICKS_KEY = 'vierfelder.ticks.v2'
+/** altbestand: ein tageswert je bereich und tag, pro person */
 const WERTE_KEY = 'vierfelder.werte.v2'
 const ME_KEY = 'vierfelder.me.v2'
 const SCHLAF_KEY = 'vierfelder.schlaf.v2'
 /** flach über beide personen wie die ticks, nicht pro nutzer wie die werte */
 const GEWICHT_KEY = 'vierfelder.gewicht.v1'
+/** eine zeile pro durchführung, flach über beide personen */
+const EINHEITEN_KEY = 'vierfelder.einheiten.v1'
+/** damit die übernahme des altbestands genau einmal läuft */
+const MIGRIERT_KEY = 'vierfelder.einheiten.migriert.v1'
 const KANAL = 'vierfelder'
 
 type AlleWerte = Record<UserId, Werte>
-type Nachricht = TickEreignis & { von: string }
+type Nachricht = EinheitEreignis & { von: string }
 
 function lade<T>(key: string, fallback: T): T {
   try {
@@ -38,6 +46,45 @@ function lade<T>(key: string, fallback: T): T {
 function alleWerte(): AlleWerte {
   const alle = lade<AlleWerte>(WERTE_KEY, { erijon: {}, koray: {} })
   return { erijon: alle.erijon ?? {}, koray: alle.koray ?? {} }
+}
+
+function alleEinheiten(): Einheit[] {
+  const roh = lade<Einheit[]>(EINHEITEN_KEY, [])
+  return Array.isArray(roh) ? roh : []
+}
+
+function sichere(einheiten: Einheit[]) {
+  localStorage.setItem(EINHEITEN_KEY, JSON.stringify(einheiten))
+}
+
+/**
+ * übernimmt ticks und werte aus dem alten format in einheiten — einmalig, und
+ * ohne minuten zu erfinden: wo kein wert gespeichert war, bleibt `wert` null.
+ * der zeitpunkt fehlt, weil das alte format keinen gespeichert hat.
+ */
+function uebernimmAltbestand() {
+  if (localStorage.getItem(MIGRIERT_KEY)) return
+
+  const ticks = lade<Ticks>(TICKS_KEY, {})
+  const werte = alleWerte()
+  const vorhanden = new Set(alleEinheiten().map((e) => `${e.user}|${e.area}|${e.tag}`))
+  const uebernommen = alleEinheiten()
+
+  for (const key of Object.keys(ticks)) {
+    const [user, area, tag] = key.split('|') as [UserId, AreaId, string]
+    if (!user || !area || !tag || vorhanden.has(key)) continue
+    uebernommen.push({
+      id: neueEinheitId(),
+      user,
+      area,
+      tag,
+      wert: werte[user]?.[wertKey(area, tag)] ?? null,
+      erfasst: null,
+    })
+  }
+
+  sichere(uebernommen)
+  localStorage.setItem(MIGRIERT_KEY, '1')
 }
 
 export function lokalesMe(): UserId {
@@ -202,41 +249,63 @@ function holeKanal(): BroadcastChannel | null {
 export function lokalesBackend(): Backend {
   const absender = Math.random().toString(36).slice(2)
 
+  const sende = (art: EinheitEreignis['art'], einheit: Einheit) => {
+    holeKanal()?.postMessage({ von: absender, art, einheit } satisfies Nachricht)
+  }
+
   return {
     art: 'lokal',
 
     async laden(): Promise<Anfangszustand> {
+      uebernimmAltbestand()
+
       const me = lokalesMe()
       const gespeicherterSchlaf = lade<Schlafnacht[]>(SCHLAF_KEY, [])
       const schlaf = gespeicherterSchlaf.length > 0 ? gespeicherterSchlaf : erzeugeBeispielSchlaf()
 
+      const einheiten: Einheiten = {}
+      for (const e of alleEinheiten()) {
+        const key = tickKey(e.user, e.area, e.tag)
+        const liste = einheiten[key]
+        if (!liste) einheiten[key] = [e]
+        else if (!liste.some((x) => x.id === e.id)) liste.push(e)
+      }
+
       return {
         me,
-        ticks: lade<Ticks>(TICKS_KEY, {}),
-        werte: alleWerte()[me],
+        einheiten,
         gewichte: lade<Gewichte>(GEWICHT_KEY, {}),
         schlaf,
         aufenthalte: erzeugeBeispielAufenthalte(),
+        altbestand: false,
       }
     },
 
-    async schreibeTick(area: AreaId, tag: string, gesetzt: boolean) {
-      const me = lokalesMe()
-      const ticks = lade<Ticks>(TICKS_KEY, {})
-      const key = tickKey(me, area, tag)
-      if (gesetzt) ticks[key] = true
-      else delete ticks[key]
-      localStorage.setItem(TICKS_KEY, JSON.stringify(ticks))
-      holeKanal()?.postMessage({ von: absender, user: me, area, tag, gesetzt } satisfies Nachricht)
+    async schreibeEinheit(e: Einheit) {
+      const alle = alleEinheiten()
+      // die id entscheidet: derselbe schreibversuch zweimal legt nichts an
+      if (alle.some((x) => x.id === e.id)) return
+      alle.push(e)
+      sichere(alle)
+      sende('neu', e)
     },
 
-    async schreibeWert(area: AreaId, tag: string, wert: number) {
-      const me = lokalesMe()
-      const alle = alleWerte()
-      const key = wertKey(area, tag)
-      if (wert <= 0) delete alle[me][key]
-      else alle[me][key] = wert
-      localStorage.setItem(WERTE_KEY, JSON.stringify(alle))
+    async schreibeEinheitWert(e: Einheit, wert: number | null) {
+      const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, wert } : x))
+      sichere(alle)
+      sende('wert', { ...e, wert })
+    },
+
+    async loescheEinheit(e: Einheit) {
+      sichere(alleEinheiten().filter((x) => x.id !== e.id))
+      sende('weg', e)
+    },
+
+    async loescheTag(einheiten: Einheit[]) {
+      if (einheiten.length === 0) return
+      const weg = new Set(einheiten.map((e) => e.id))
+      sichere(alleEinheiten().filter((x) => !weg.has(x.id)))
+      for (const e of einheiten) sende('weg', e)
     },
 
     async schreibeGewicht(tag: string, kg: number) {
@@ -253,8 +322,8 @@ export function lokalesBackend(): Backend {
       if (!ch) return () => {}
       const onMessage = (e: MessageEvent<Nachricht>) => {
         const n = e.data
-        if (!n || n.von === absender) return
-        cb({ user: n.user, area: n.area, tag: n.tag, gesetzt: n.gesetzt })
+        if (!n || n.von === absender || !n.einheit) return
+        cb({ art: n.art, einheit: n.einheit })
       }
       ch.addEventListener('message', onMessage)
       return () => ch.removeEventListener('message', onMessage)

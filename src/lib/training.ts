@@ -31,9 +31,26 @@ export function zaehlt(a: Aufenthalt): boolean {
 }
 
 /**
+ * alle zählenden aufenthalte dieser person in diesem bereich an diesem tag,
+ * nach ankunft sortiert. zwei besuche sind zwei einheiten — am tick ändert das
+ * nichts, der zählt weiter tage.
+ */
+export function messungen(
+  aufenthalte: Aufenthalt[],
+  u: UserId,
+  f: FeldId,
+  tag: string
+): Aufenthalt[] {
+  if (!istMessbar(f)) return []
+  return aufenthalte
+    .filter((a) => a.user === u && a.bereich === f && zaehlt(a) && tagVon(a) === tag)
+    .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
+}
+
+/**
  * der längste zählende aufenthalt dieser person in diesem bereich an diesem
- * tag. zwei besuche an einem tag bleiben ein tick — der längere ist der, den
- * die zeile anzeigt.
+ * tag. mehrere besuche bleiben ein tick — der längere ist der, den die zeile
+ * anzeigt.
  */
 export function messung(
   aufenthalte: Aufenthalt[],
@@ -41,11 +58,9 @@ export function messung(
   f: FeldId,
   tag: string
 ): Aufenthalt | null {
-  if (!istMessbar(f)) return null
   let beste: Aufenthalt | null = null
   let besteDauer = -1
-  for (const a of aufenthalte) {
-    if (a.user !== u || a.bereich !== f || !zaehlt(a) || tagVon(a) !== tag) continue
+  for (const a of messungen(aufenthalte, u, f, tag)) {
     const dauer = dauerMinuten(a)!
     if (dauer > besteDauer) {
       beste = a

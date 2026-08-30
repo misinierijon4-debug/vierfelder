@@ -14,7 +14,14 @@ type Props = {
   wocheIch: number
   abstand: number
   streak: number
+  /** summe des tages über alle einheiten */
   wert: number
+  /** wert der jüngsten einheit — auf sie wirken die schritte */
+  einheitWert: number
+  /** wie oft die aktivität heute stattgefunden hat */
+  anzahl: number
+  /** solange die tabelle `einheiten` fehlt, bleibt es bei einer pro tag */
+  mehrfachMoeglich: boolean
   /** wie der tick zustande kam. `null`, wo es nichts zu messen gibt */
   quelle: TickQuelle | null
   /** minuten des gemessenen aufenthalts, wenn es einen gibt */
@@ -25,6 +32,7 @@ type Props = {
   onTap: () => void
   onUndo: () => void
   onWert: (delta: number) => void
+  onNeueEinheit: () => void
 }
 
 /**
@@ -39,6 +47,9 @@ export function Bereichszeile({
   abstand,
   streak,
   wert,
+  einheitWert,
+  anzahl,
+  mehrfachMoeglich,
   quelle,
   messungMinuten,
   farbe,
@@ -47,6 +58,7 @@ export function Bereichszeile({
   onTap,
   onUndo,
   onWert,
+  onNeueEinheit,
 }: Props) {
   const reduced = useReducedMotion()
 
@@ -73,8 +85,8 @@ export function Bereichszeile({
       ? 'undo'
       : gesetzt
         ? wert > 0
-          ? 'wert'
-          : 'ohne'
+          ? `wert-${anzahl}`
+          : `ohne-${anzahl}`
         : 'nichts'
 
   return (
@@ -154,7 +166,7 @@ export function Bereichszeile({
               <div className="flex items-center gap-1.5">
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} verringern`}
-                  disabled={wert <= 0}
+                  disabled={einheitWert <= 0}
                   onClick={() => onWert(-area.step)}
                 >
                   <Minus size={11} weight="bold" />
@@ -165,6 +177,20 @@ export function Bereichszeile({
                 >
                   <Plus size={11} weight="bold" />
                 </Schritt>
+                {/* eine zweite runde ersetzt die erste nicht, sie kommt dazu.
+                    die schritte darüber gelten dann für die neueste einheit. */}
+                {mehrfachMoeglich && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onNeueEinheit()
+                    }}
+                    className="ml-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                  >
+                    + einheit
+                  </button>
+                )}
               </div>
             ) : streak > 1 ? (
               <span className="text-[12px] text-kreide-52">
@@ -181,7 +207,9 @@ export function Bereichszeile({
                   className="text-[14px] font-semibold"
                   style={{ color: 'var(--kreide-60)' }}
                 />
-                <span className="text-[12px] text-kreide-52">min · gemessen</span>
+                <span className="text-[12px] text-kreide-52">
+                  min · gemessen{anzahl > 1 ? ` · ${anzahl}×` : ''}
+                </span>
               </span>
             ) : zeigeUndo ? (
               <button
@@ -207,6 +235,9 @@ export function Bereichszeile({
                   </>
                 ) : (
                   <span className="text-[12px] text-kreide-52">ohne wert</span>
+                )}
+                {anzahl > 1 && (
+                  <span className="tnum text-[12px] text-kreide-52">· {anzahl}×</span>
                 )}
               </span>
             ) : null}

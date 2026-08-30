@@ -179,6 +179,53 @@ create index if not exists gewicht_nutzer_tag_idx
 -- realtime nur auf den ticks. werte, schlaf und gewicht gehen nie über den kanal.
 alter publication supabase_realtime add table eintraege;
 
+-- eine zeile pro durchfuehrung (nachtrag 30.08.2026). gym um sieben und gym um
+-- sieben abends sind zwei einheiten, kein ersetzter tageswert. der haken wird
+-- hieraus abgeleitet — mindestens eine einheit —, genau wie beim gewicht aus
+-- der messung; nach eintraege kopiert wird nichts. anders als `werte` liegt die
+-- tabelle offen fuer beide konten: der vergleich ist der zweck. der vollstaendige
+-- aufbau samt uebernahme des altbestands steht in
+-- supabase/migrations/20260830190000_einheiten.sql.
+create table if not exists einheiten (
+  -- die uuid erzeugt der client. sie ist der schutz gegen doppelte eintraege
+  id uuid primary key,
+  user_id uuid not null references auth.users on delete cascade default auth.uid(),
+  bereich text not null check (bereich in ('lernen','gym','boxen','lesen')),
+  -- lokaler kalendertag des geraets, nie now()::date
+  tag date not null,
+  -- minuten oder seiten. null heisst: nie erfasst
+  wert int check (wert is null or wert >= 0),
+  erfasst timestamptz,
+  erstellt timestamptz not null default now()
+);
+
+alter table einheiten enable row level security;
+
+create policy "einheiten lesen" on einheiten
+  for select to authenticated using (
+    (select auth.uid()) in (select id from public.profile)
+  );
+
+create policy "einheiten schreiben" on einheiten
+  for insert to authenticated with check ((select auth.uid()) = user_id);
+
+create policy "einheiten aendern" on einheiten
+  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+create policy "einheiten loeschen" on einheiten
+  for delete to authenticated using ((select auth.uid()) = user_id);
+
+create index if not exists einheiten_nutzer_tag_idx on einheiten (user_id, tag desc);
+create index if not exists einheiten_bereich_tag_idx on einheiten (bereich, tag desc);
+
+-- ohne `full` liefert ein DELETE ueber realtime nur die uuid
+alter table einheiten replica identity full;
+alter publication supabase_realtime add table einheiten;
+
+-- `eintraege` und `werte` oben bleiben als altbestand stehen: sie sind die
+-- quelle des backfills und der rueckfallweg, solange eine aeltere version der
+-- app laeuft. geschrieben werden sie nicht mehr.
+
 -- gemessene aufenthalte an einem trainingsort (nachtrag 28.08.2026). eine zeile
 -- pro besuch: die ankunft legt sie an, der abgang schliesst sie. beides schickt
 -- eine standort-automation vom iphone. der wochentick für gym und boxen wird

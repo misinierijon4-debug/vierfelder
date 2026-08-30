@@ -416,3 +416,56 @@ des schrittzählers: der wert kommt aus der messung, nicht aus dem daumen.
 das handy im gym liegen lässt, bekommt seinen tick. Das ist der punkt, an dem
 technik aufhört: sie kann lügen teuer machen, nicht unmöglich. 20 minuten in
 der halle stehen kostet ungefähr so viel wie 20 minuten trainieren.
+
+## 19. Nachtrag: einheiten statt tageswerte (30.08.2026)
+
+**Das problem war nicht die zahl, sondern der ort, an dem sie stand.** Die
+minuten eines trainings lagen in `werte`, einer zeile je bereich und tag — und
+gezeigt wurden sie nur in der bereichszeile von heute. Ab mitternacht blieb im
+raster die gefüllte zelle und sonst nichts. Die zahl war da, aber nirgends mehr
+abrufbar. Und ein zweites gym am selben tag ersetzte das erste, weil der
+primary key keine zweite zeile zuließ.
+
+**Eine zeile pro durchführung.** `einheiten` hält aktivität, tag, wert,
+zeitpunkt und person, mit einer eigenen id je einheit. Zwei trainings sind zwei
+zeilen, nicht ein überschriebener tageswert. Die tabelle ersetzt `werte` und
+`eintraege` als quelle; beide bleiben als altbestand stehen, weil die migration
+sie ausliest und weil eine ältere version der app sonst ins leere liefe.
+
+**Der haken wird abgeleitet, nicht gespeichert.** „Gesetzt" heißt jetzt:
+mindestens eine einheit. Das ist dieselbe entscheidung wie beim gewicht
+(abschnitt 17) und bei den aufenthalten — eine zweite tabelle mit demselben
+inhalt wären zwei wahrheiten und eine gelegenheit, sie auseinanderlaufen zu
+lassen. **Am zählen ändert das nichts:** der wochenstand zählt weiter tage. Zwei
+einheiten an einem tag sind ein punkt, das maximum bleibt 35. Sonst wäre der
+vergleich zwischen zwei personen davon abhängig, wer seinen tag in mehr stücke
+schneidet.
+
+**Die minuten liegen jetzt offen.** Abschnitt 10 hatte `werte` bewusst privat
+gestellt: „minuten und seiten gehören nur dem eigenen nutzer". Diese regel ist
+hier umgedreht. Der grund ist die tagesansicht: ein fenster, das beim anderen
+nur „erledigt" zeigen darf, ist eine halbe ansicht, und der vergleich ist der
+zweck dieser app — beim gewicht, der intimeren zahl, steht das längst so. Der
+preis ist ehrlich zu benennen: mit der migration werden auch die historischen
+minuten für beide sichtbar, rückwirkend.
+
+**Die tagesansicht zeigt nur an.** Auch für heute. Ein fenster, in dem man
+tippen kann, wäre eine zweite, halb andere eingabemaske neben der bereichszeile;
+zwei wege zum selben eintrag sind einer zu viel. Vergangene tage sind damit
+gar nicht änderbar — was gestern war, war gestern. Geschlossen wird über den
+hintergrund, das kreuz oder escape, und der treffbereich der rasterzelle wächst
+über ein pseudoelement nach oben und unten: 22px hoch bleibt sie trotzdem,
+sonst wäre die geometrie aus abschnitt 15 hinüber.
+
+**„Rückgängig" nimmt genau eine handlung zurück.** Nach der zweiten einheit
+verschwindet nur diese zweite, der haken und die erste bleiben — sonst wäre der
+knopf ein abhaken mit anderem namen. Und wer den tag versehentlich abhakt,
+bekommt beim rückgängig alle einheiten mit ihren minuten zurück, dieselben ids,
+nicht einen leeren neuen eintrag.
+
+**Zwei dinge, die man sonst erst im betrieb merkt.** Der tag einer einheit wird
+immer lokal gebildet, nie aus einer utc-zeit — sonst landet das training um
+23:40 auf dem folgetag. Und die id kommt vom client statt aus der datenbank:
+ein wiederholter schreibversuch nach einem timeout läuft damit in den primary
+key, statt eine zweite einheit zu erfinden. Dasselbe gilt für ein doppelt
+gemeldetes realtime-ereignis, das über die id zusammengeführt wird.

@@ -1,21 +1,25 @@
-import type { Aufenthalt, AreaId, Gewichte, Schlafnacht, Ticks, UserId, Werte } from './types'
+import type { Aufenthalt, Einheit, Einheiten, Gewichte, Schlafnacht, UserId } from './types'
 
-/** ein einzelner tick, so wie ihn realtime liefert */
-export type TickEreignis = {
-  user: UserId
-  area: AreaId
-  tag: string
-  gesetzt: boolean
+/** eine einheit, so wie realtime oder ein anderer tab sie meldet */
+export type EinheitEreignis = {
+  art: 'neu' | 'weg' | 'wert'
+  einheit: Einheit
 }
 
 export type Anfangszustand = {
   me: UserId
-  ticks: Ticks
-  werte: Werte
+  einheiten: Einheiten
   gewichte: Gewichte
   schlaf: Schlafnacht[]
   /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
   aufenthalte: Aufenthalt[]
+  /**
+   * die tabelle `einheiten` fehlt noch, gelesen wurde aus `eintraege` und
+   * `werte`. dann gibt es genau eine einheit pro tag und die oberfläche bietet
+   * keine zweite an — besser als eine app, die leer aussieht, weil migration
+   * und deploy nicht in derselben minute passiert sind.
+   */
+  altbestand: boolean
 }
 
 /**
@@ -25,10 +29,16 @@ export type Anfangszustand = {
 export interface Backend {
   readonly art: 'lokal' | 'supabase'
   laden(): Promise<Anfangszustand>
-  schreibeTick(area: AreaId, tag: string, gesetzt: boolean): Promise<void>
-  schreibeWert(area: AreaId, tag: string, wert: number): Promise<void>
-  /** kilogramm für einen tag. `kg <= 0` löscht den eintrag, wie bei schreibeWert */
+  /** legt eine durchführung an. die id kommt vom client und macht das wiederholbar */
+  schreibeEinheit(e: Einheit): Promise<void>
+  /** ändert die minuten oder seiten einer einheit */
+  schreibeEinheitWert(e: Einheit, wert: number | null): Promise<void>
+  /** nimmt eine einzelne durchführung zurück */
+  loescheEinheit(e: Einheit): Promise<void>
+  /** nimmt den ganzen tag zurück, mit allen einheiten */
+  loescheTag(einheiten: Einheit[]): Promise<void>
+  /** kilogramm für einen tag. `kg <= 0` löscht den eintrag */
   schreibeGewicht(tag: string, kg: number): Promise<void>
-  /** ruft cb bei jedem fremden oder eigenen tick auf. gibt die abmeldung zurück */
-  abonniere(cb: (e: TickEreignis) => void): () => void
+  /** ruft cb bei jeder fremden oder eigenen einheit auf. gibt die abmeldung zurück */
+  abonniere(cb: (e: EinheitEreignis) => void): () => void
 }

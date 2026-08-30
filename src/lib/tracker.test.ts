@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
-import { abstand, istGesetzt, setzeTick, setzeWert, streak, wert, wocheBereich, wocheGesamt } from './tracker'
+import {
+  abstand,
+  anzahlEinheiten,
+  baueEinheit,
+  einheitenAn,
+  entferneEinheit,
+  fuegeEinheitHinzu,
+  istGesetzt,
+  letzteEinheit,
+  setzeEinheitWert,
+  setzeTick,
+  streak,
+  tagesWert,
+  tageseinheiten,
+  wocheBereich,
+  wocheGesamt,
+} from './tracker'
 import { gewichtKey } from './types'
 import type { Zustand } from './types'
 
-const leer: Zustand = { ticks: {}, werte: {}, gewichte: {}, aufenthalte: [] }
+const leer: Zustand = { einheiten: {}, gewichte: {}, aufenthalte: [] }
 const MITTWOCH = new Date(2026, 7, 26, 12)
 
 function mit(z: Zustand, ...eintraege: [string, string][]): Zustand {
@@ -122,19 +138,100 @@ describe('gewicht als fünftes feld', () => {
   })
 })
 
-describe('werte', () => {
-  it('lässt den tick stehen, wenn der wert auf null zurückgeht', () => {
-    let z = setzeTick(leer, 'erijon', 'lernen', '2026-08-26', true)
-    z = setzeWert(z, 'lernen', '2026-08-26', 45)
-    expect(wert(z.werte, 'lernen', '2026-08-26')).toBe(45)
+describe('einheiten', () => {
+  /** eine einheit mit festem wert anlegen und zurückgeben */
+  function mitEinheit(z: Zustand, area: 'lernen' | 'gym' | 'boxen' | 'lesen', tag: string, wert: number | null) {
+    const e = { ...baueEinheit('erijon', area, tag, wert), id: `${area}-${tag}-${Math.random()}` }
+    return { z: fuegeEinheitHinzu(z, e), e }
+  }
 
-    z = setzeWert(z, 'lernen', '2026-08-26', 0)
-    expect(istGesetzt(z, 'erijon', 'lernen', '2026-08-26')).toBe(true)
-    expect(wert(z.werte, 'lernen', '2026-08-26')).toBe(0)
+  it('zählt zwei einheiten an einem tag als einen tick', () => {
+    let z = mitEinheit(leer, 'gym', '2026-08-26', 65).z
+    z = mitEinheit(z, 'gym', '2026-08-26', 28).z
+
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(2)
+    expect(istGesetzt(z, 'erijon', 'gym', '2026-08-26')).toBe(true)
+    // die punkteregel bleibt: der wochenstand zählt tage, nicht durchführungen
+    expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
+  })
+
+  it('addiert die minuten des tages und hält die einzelnen fest', () => {
+    let z = mitEinheit(leer, 'gym', '2026-08-26', 65).z
+    z = mitEinheit(z, 'gym', '2026-08-26', 28).z
+
+    expect(tagesWert(z, 'erijon', 'gym', '2026-08-26')).toBe(93)
+    expect(tageseinheiten(z, 'erijon', 'gym', '2026-08-26').map((e) => e.wert)).toEqual([65, 28])
+  })
+
+  it('erfindet keine minuten, wo nie welche erfasst wurden', () => {
+    const z = mitEinheit(leer, 'lesen', '2026-08-26', null).z
+    expect(einheitenAn(z, 'erijon', 'lesen', '2026-08-26')[0]!.wert).toBeNull()
+    expect(tagesWert(z, 'erijon', 'lesen', '2026-08-26')).toBe(0)
+    expect(istGesetzt(z, 'erijon', 'lesen', '2026-08-26')).toBe(true)
+  })
+
+  it('nimmt eine einzelne einheit zurück, ohne den tag zu leeren', () => {
+    const erste = mitEinheit(leer, 'boxen', '2026-08-26', 40)
+    const zweite = mitEinheit(erste.z, 'boxen', '2026-08-26', 20)
+
+    const z = entferneEinheit(zweite.z, zweite.e.id)
+    expect(anzahlEinheiten(z, 'erijon', 'boxen', '2026-08-26')).toBe(1)
+    expect(istGesetzt(z, 'erijon', 'boxen', '2026-08-26')).toBe(true)
+
+    const ohne = entferneEinheit(z, erste.e.id)
+    expect(istGesetzt(ohne, 'erijon', 'boxen', '2026-08-26')).toBe(false)
+  })
+
+  it('legt dieselbe einheit kein zweites mal an', () => {
+    const { z, e } = mitEinheit(leer, 'gym', '2026-08-26', 30)
+    const nochmal = fuegeEinheitHinzu(z, e)
+    expect(anzahlEinheiten(nochmal, 'erijon', 'gym', '2026-08-26')).toBe(1)
+    expect(nochmal).toBe(z)
+  })
+
+  it('ändert den wert genau einer einheit', () => {
+    const erste = mitEinheit(leer, 'lernen', '2026-08-26', 45)
+    const zweite = mitEinheit(erste.z, 'lernen', '2026-08-26', 15)
+
+    const z = setzeEinheitWert(zweite.z, zweite.e.id, 30)
+    expect(tagesWert(z, 'erijon', 'lernen', '2026-08-26')).toBe(75)
+    expect(letzteEinheit(z, 'erijon', 'lernen', '2026-08-26')!.wert).toBe(30)
   })
 
   it('kennt keine negativen werte', () => {
-    const z = setzeWert(leer, 'lesen', '2026-08-26', -10)
-    expect(wert(z.werte, 'lesen', '2026-08-26')).toBe(0)
+    const { z, e } = mitEinheit(leer, 'lesen', '2026-08-26', 10)
+    const runter = setzeEinheitWert(z, e.id, -10)
+    expect(tagesWert(runter, 'erijon', 'lesen', '2026-08-26')).toBe(0)
+  })
+
+  it('legt die einheit auf den lokalen tag, nicht auf den utc-tag', () => {
+    // 23:40 ortszeit ist in utc schon der folgetag
+    const spaet = new Date(2026, 7, 26, 23, 40)
+    const e = baueEinheit('erijon', 'gym', toKey(spaet), 30, spaet)
+    expect(e.tag).toBe('2026-08-26')
+    expect(new Date(e.erfasst!).getTime()).toBe(spaet.getTime())
+  })
+})
+
+describe('an- und abhaken', () => {
+  it('legt beim ersten tap eine einheit ohne wert an', () => {
+    const z = setzeTick(leer, 'erijon', 'gym', '2026-08-26', true)
+    const liste = einheitenAn(z, 'erijon', 'gym', '2026-08-26')
+    expect(liste).toHaveLength(1)
+    expect(liste[0]!.wert).toBeNull()
+    expect(liste[0]!.erfasst).not.toBeNull()
+  })
+
+  it('lässt einen zweiten tap den vorhandenen eintrag nicht ersetzen', () => {
+    const z = setzeTick(leer, 'erijon', 'gym', '2026-08-26', true)
+    expect(setzeTick(z, 'erijon', 'gym', '2026-08-26', true)).toBe(z)
+  })
+
+  it('räumt beim abhaken alle einheiten des tages weg', () => {
+    let z = setzeTick(leer, 'erijon', 'gym', '2026-08-26', true)
+    z = fuegeEinheitHinzu(z, baueEinheit('erijon', 'gym', '2026-08-26', 28))
+    z = setzeTick(z, 'erijon', 'gym', '2026-08-26', false)
+    expect(einheitenAn(z, 'erijon', 'gym', '2026-08-26')).toHaveLength(0)
+    expect(istGesetzt(z, 'erijon', 'gym', '2026-08-26')).toBe(false)
   })
 })

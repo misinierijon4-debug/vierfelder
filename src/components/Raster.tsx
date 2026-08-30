@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FELDER, USERS } from '../lib/types'
 import type { Ereignis, FeldId, UserId, Zustand } from '../lib/types'
 import { TAGKUERZEL } from '../lib/dates'
-import { istGesetzt, quelle, wocheBereich } from '../lib/tracker'
+import { anzahlEinheiten, istGesetzt, quelle, wocheBereich } from '../lib/tracker'
 import { EASE, STEMPEL, TAKT } from '../lib/motion'
 
 /* rastergeometrie an einer stelle, damit das heute-band exakt unter der spalte liegt */
@@ -18,9 +18,11 @@ type Props = {
   ereignis: Ereignis | null
   /** die eigene woche ist noch komplett leer */
   leer: boolean
+  /** ein vergangenes oder heutiges feld öffnet die tagesansicht */
+  onZelle: (user: UserId, area: FeldId, tag: string) => void
 }
 
-export function Raster({ zustand, woche, heute, ereignis, leer }: Props) {
+export function Raster({ zustand, woche, heute, ereignis, leer, onZelle }: Props) {
   const reduced = useReducedMotion()
   const heuteIndex = woche.indexOf(heute)
 
@@ -84,6 +86,7 @@ export function Raster({ zustand, woche, heute, ereignis, leer }: Props) {
             woche={woche}
             heute={heute}
             ereignis={ereignis}
+            onZelle={onZelle}
           />
         ))}
       </div>
@@ -99,6 +102,7 @@ function Bereichsblock({
   woche,
   heute,
   ereignis,
+  onZelle,
 }: {
   area: FeldId
   label: string
@@ -107,6 +111,7 @@ function Bereichsblock({
   woche: string[]
   heute: string
   ereignis: Ereignis | null
+  onZelle: (user: UserId, area: FeldId, tag: string) => void
 }) {
   return (
     <>
@@ -132,6 +137,7 @@ function Bereichsblock({
             heute={heute}
             treffer={treffer}
             sweep={treffer && treffer.quelle === 'fremd' ? treffer.id : null}
+            onZelle={onZelle}
           />
         )
       })}
@@ -153,6 +159,7 @@ function Zeile({
   heute,
   treffer,
   sweep,
+  onZelle,
 }: {
   area: FeldId
   areaLabel: string
@@ -165,27 +172,33 @@ function Zeile({
   heute: string
   treffer: Ereignis | null
   sweep: number | null
+  onZelle: (user: UserId, area: FeldId, tag: string) => void
 }) {
   const summe = wocheBereich(zustand, user, area, woche)
 
   return (
     <>
-      {woche.map((tag, i) => (
-        <Zelle
-          key={tag}
-          gefuellt={istGesetzt(zustand, user, area, tag)}
-          // halb heißt: gesetzt, aber nur behauptet. bei lernen und lesen gibt
-          // es nichts zu messen, dort bleibt jede zelle voll.
-          halb={quelle(zustand, user, area, tag) === 'getippt'}
-          farbe={farbe}
-          leer={leer}
-          zukunft={tag > heute}
-          animiert={treffer && treffer.tag === tag ? treffer : null}
-          sweep={sweep}
-          sweepIndex={i}
-          label={`${name}, ${areaLabel}, ${tag}`}
-        />
-      ))}
+      {woche.map((tag, i) => {
+        const anzahl = anzahlEinheiten(zustand, user, area, tag)
+        return (
+          <Zelle
+            key={tag}
+            gefuellt={istGesetzt(zustand, user, area, tag)}
+            // halb heißt: gesetzt, aber nur behauptet. bei lernen und lesen gibt
+            // es nichts zu messen, dort bleibt jede zelle voll.
+            halb={quelle(zustand, user, area, tag) === 'getippt'}
+            anzahl={anzahl}
+            farbe={farbe}
+            leer={leer}
+            zukunft={tag > heute}
+            animiert={treffer && treffer.tag === tag ? treffer : null}
+            sweep={sweep}
+            sweepIndex={i}
+            label={`${name}, ${areaLabel}, ${tag}`}
+            onOeffne={() => onZelle(user, area, tag)}
+          />
+        )
+      })}
       <div className="relative z-10 text-right text-[13px] font-semibold leading-none">
         <span className="sr-only">{`${name}, ${areaLabel}: ${summe} von 7 tagen`}</span>
         {summe > 0 ? (
@@ -205,6 +218,7 @@ function Zeile({
 function Zelle({
   gefuellt,
   halb,
+  anzahl,
   farbe,
   leer,
   zukunft,
@@ -212,9 +226,12 @@ function Zelle({
   sweep,
   sweepIndex,
   label,
+  onOeffne,
 }: {
   gefuellt: boolean
   halb: boolean
+  /** wie viele einheiten an diesem tag. ab zwei steht die zahl in der zelle */
+  anzahl: number
   farbe: string
   leer: string
   zukunft: boolean
@@ -222,6 +239,7 @@ function Zelle({
   sweep: number | null
   sweepIndex: number
   label: string
+  onOeffne: () => void
 }) {
   const reduced = useReducedMotion()
   const verzoegerung = animiert
@@ -230,21 +248,8 @@ function Zelle({
       : TAKT.fremd
     : 0
 
-  return (
-    <span
-      aria-hidden
-      data-tag={label}
-      className="relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200"
-      style={{
-        borderColor: gefuellt
-          ? halb
-            ? farbe
-            : 'transparent'
-          : zukunft
-            ? 'var(--linie)'
-            : leer,
-      }}
-    >
+  const inhalt = (
+    <>
       <AnimatePresence initial={false}>
         {gefuellt && (
           <motion.span
@@ -271,6 +276,18 @@ function Zelle({
         )}
       </AnimatePresence>
 
+      {/* zwei einheiten sind ein haken und trotzdem mehr als einer. die ziffer
+          sagt es, ohne die zelle zu einer zweiten größe zu machen. */}
+      {anzahl > 1 && (
+        <span
+          aria-hidden
+          className="tnum pointer-events-none absolute right-[2px] bottom-[1px] text-[8px] leading-none font-semibold"
+          style={{ color: halb ? 'var(--kreide)' : 'var(--grund)' }}
+        >
+          {anzahl}
+        </span>
+      )}
+
       {/* der eintrag des anderen läuft als licht über seine zeile */}
       {sweep !== null && !reduced && (
         <motion.span
@@ -282,6 +299,39 @@ function Zelle({
           className="pointer-events-none absolute inset-[-1px] block rounded-[2px]"
         />
       )}
-    </span>
+    </>
+  )
+
+  const rand = gefuellt ? (halb ? farbe : 'transparent') : zukunft ? 'var(--linie)' : leer
+
+  // die zukunft ist nichts zum nachschlagen und bleibt stumm
+  if (zukunft) {
+    return (
+      <span
+        aria-hidden
+        data-tag={label}
+        className="relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200"
+        style={{ borderColor: rand }}
+      >
+        {inhalt}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      data-tag={label}
+      aria-label={`${label}${
+        gefuellt ? (anzahl > 1 ? `, ${anzahl} einheiten` : ', erledigt') : ', offen'
+      }, tagesansicht öffnen`}
+      onClick={onOeffne}
+      // 22px bleiben 22px: der treffbereich wächst über das pseudoelement nach
+      // oben und unten, das raster behält seine geometrie.
+      className="relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200 after:absolute after:inset-x-0 after:-inset-y-[9px] after:content-['']"
+      style={{ borderColor: rand }}
+    >
+      {inhalt}
+    </button>
   )
 }

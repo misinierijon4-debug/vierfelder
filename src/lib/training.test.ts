@@ -1,11 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { MINDESTMINUTEN, dauerMinuten, gemesseneMinuten, messung, tagVon, zaehlt } from './training'
-import { istGesetzt, quelle, setzeTick, wocheBereich } from './tracker'
+import {
+  MINDESTMINUTEN,
+  dauerMinuten,
+  gemesseneMinuten,
+  messung,
+  messungen,
+  tagVon,
+  zaehlt,
+} from './training'
+import {
+  anzahlEinheiten,
+  baueEinheit,
+  fuegeEinheitHinzu,
+  istGesetzt,
+  quelle,
+  setzeTick,
+  tagesWert,
+  tageseinheiten,
+  wocheBereich,
+} from './tracker'
 import { weekDays } from './dates'
 import type { Aufenthalt, Zustand } from './types'
 
 const MITTWOCH = new Date(2026, 7, 26, 12)
-const leer: Zustand = { ticks: {}, werte: {}, gewichte: {}, aufenthalte: [] }
+const leer: Zustand = { einheiten: {}, gewichte: {}, aufenthalte: [] }
 
 /** ortszeit, damit der tag genauso fällt wie im browser der beiden */
 function zeit(tag: string, stunde: number, minute: number): string {
@@ -114,5 +132,34 @@ describe('tick aus der messung', () => {
   it('nennt das gewicht gemessen', () => {
     const z: Zustand = { ...leer, gewichte: { 'erijon|2026-08-26': 81.4 } }
     expect(quelle(z, 'erijon', 'gewicht', '2026-08-26')).toBe('gemessen')
+  })
+})
+
+describe('mehrere besuche an einem tag', () => {
+  it('sind zwei einheiten und trotzdem ein tick', () => {
+    const z = mit(besuch('2026-08-26', [7, 0], 65), besuch('2026-08-26', [18, 30], 28))
+
+    expect(messungen(z.aufenthalte, 'erijon', 'gym', '2026-08-26')).toHaveLength(2)
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(2)
+    expect(tagesWert(z, 'erijon', 'gym', '2026-08-26')).toBe(93)
+    expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
+  })
+
+  it('zählt eine zu kurze stippvisite nicht als einheit', () => {
+    const z = mit(besuch('2026-08-26', [7, 0], 65), besuch('2026-08-26', [18, 30], 5))
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(1)
+  })
+
+  it('mischt gemessene und getippte einheiten nach uhrzeit', () => {
+    const gemessenerBesuch = besuch('2026-08-26', [18, 30], 28)
+    let z = mit(gemessenerBesuch)
+    z = fuegeEinheitHinzu(
+      z,
+      baueEinheit('erijon', 'gym', '2026-08-26', 65, new Date(2026, 7, 26, 7, 0))
+    )
+
+    const liste = tageseinheiten(z, 'erijon', 'gym', '2026-08-26')
+    expect(liste.map((e) => e.herkunft)).toEqual(['getippt', 'gemessen'])
+    expect(liste.map((e) => e.wert)).toEqual([65, 28])
   })
 })

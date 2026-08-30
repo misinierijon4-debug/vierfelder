@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Backend } from './backend'
-import { gewichtKey, tickKey, wertKey } from './types'
+import { gewichtKey, tickKey } from './types'
 import type {
   AreaId,
   Aufenthalt,
+  Einheit,
+  Einheiten,
   Ereignis,
   Gewichte,
   Schlafnacht,
-  Ticks,
   UserId,
-  Werte,
   Zustand,
 } from './types'
+import { baueEinheit, fuegeHinzu, mitWert, ohneEinheit, ohneTag } from './tracker'
 
 let ereignisId = 0
 
@@ -37,8 +38,7 @@ type Ladezustand = 'laden' | 'bereit' | 'fehler'
  */
 export function useTracker(backend: Backend) {
   const [me, setMe] = useState<UserId>('erijon')
-  const [ticks, setTicks] = useState<Ticks>({})
-  const [werte, setWerte] = useState<Werte>({})
+  const [einheiten, setEinheiten] = useState<Einheiten>({})
   const [gewichte, setGewichte] = useState<Gewichte>({})
   const [schlaf, setSchlaf] = useState<Schlafnacht[]>([])
   // messungen schreibt nur die datenbank, deshalb gibt es hier kein ref und
@@ -47,15 +47,27 @@ export function useTracker(backend: Backend) {
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   const [fehler, setFehler] = useState<string | null>(null)
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
+  /** ohne die tabelle `einheiten` bleibt es bei einer einheit pro tag */
+  const [altbestand, setAltbestand] = useState(false)
 
-  const ticksRef = useRef<Ticks>({})
-  const werteRef = useRef<Werte>({})
+  /**
+   * was „rückgängig" zurücknimmt. beim abhaken merkt sich das die einheiten
+   * mitsamt ihren minuten — sonst käme nach dem versehentlichen abhaken ein
+   * leerer eintrag zurück statt der stunde, die da stand.
+   */
+  const letzteAktion = useRef<
+    { art: 'neu'; area: AreaId; tag: string; einheit: Einheit } | 
+    { art: 'weg'; area: AreaId; tag: string; einheiten: Einheit[] } |
+    null
+  >(null)
+
+  const einheitenRef = useRef<Einheiten>({})
   const gewichteRef = useRef<Gewichte>({})
   const meRef = useRef<UserId>('erijon')
 
-  const uebernimm = useCallback((next: Ticks) => {
-    ticksRef.current = next
-    setTicks(next)
+  const uebernimm = useCallback((next: Einheiten) => {
+    einheitenRef.current = next
+    setEinheiten(next)
   }, [])
 
   useEffect(() => {
@@ -72,15 +84,14 @@ export function useTracker(backend: Backend) {
         const anfang = await backend.laden()
         if (!aktiv) return
         meRef.current = anfang.me
-        ticksRef.current = anfang.ticks
-        werteRef.current = anfang.werte
+        einheitenRef.current = anfang.einheiten
         gewichteRef.current = anfang.gewichte
         setMe(anfang.me)
-        setTicks(anfang.ticks)
-        setWerte(anfang.werte)
+        setEinheiten(anfang.einheiten)
         setGewichte(anfang.gewichte)
         setSchlaf(anfang.schlaf)
         setAufenthalte(anfang.aufenthalte)
+        setAltbestand(anfang.altbestand)
         setLadezustand('bereit')
         setFehler(null)
       } catch (e: unknown) {
@@ -98,21 +109,31 @@ export function useTracker(backend: Backend) {
     void versuche(1)
 
     const abmelden = backend.abonniere((e) => {
-      const key = tickKey(e.user, e.area, e.tag)
-      const next = { ...ticksRef.current }
-      if (e.gesetzt) next[key] = true
-      else delete next[key]
+      const einheit = e.einheit
+      // über die id zusammengeführt: ein doppelt gemeldetes ereignis ändert
+      // nichts, und ein eigener schreibvorgang kommt nicht doppelt zurück.
+      const vorher = einheitenRef.current
+      const next =
+        e.art === 'neu'
+          ? fuegeHinzu(vorher, einheit)
+          : e.art === 'weg'
+            ? ohneEinheit(vorher, einheit.id)
+            : mitWert(vorher, einheit.id, einheit.wert)
+      if (next === vorher) return
       uebernimm(next)
+
+      if (e.art === 'wert') return
+      const gesetzt = (next[tickKey(einheit.user, einheit.area, einheit.tag)] ?? []).length > 0
 
       // nur live eintreffende ereignisse werden animiert
       if (document.visibilityState === 'visible') {
         setEreignis({
           id: ++ereignisId,
-          user: e.user,
-          area: e.area,
-          tag: e.tag,
-          gesetzt: e.gesetzt,
-          quelle: e.user === meRef.current ? 'selbst' : 'fremd',
+          user: einheit.user,
+          area: einheit.area,
+          tag: einheit.tag,
+          gesetzt,
+          quelle: einheit.user === meRef.current ? 'selbst' : 'fremd',
         })
       }
     })
@@ -123,22 +144,52 @@ export function useTracker(backend: Backend) {
     }
   }, [backend, uebernimm])
 
-  const toggle = useCallback(
-    (area: AreaId, tag: string) => {
+  /** legt eine weitere durchführung an. gibt sie zurück, damit undo sie kennt */
+  const einheitHinzu = useCallback(
+    (area: AreaId, tag: string): Einheit => {
       const u = meRef.current
-      const vorher = ticksRef.current
-      const key = tickKey(u, area, tag)
-      const gesetzt = vorher[key] !== true
+      const vorher = einheitenRef.current
+      const einheit = baueEinheit(u, area, tag, null)
 
-      const next = { ...vorher }
-      if (gesetzt) next[key] = true
-      else delete next[key]
-
-      uebernimm(next)
-      setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt, quelle: 'selbst' })
+      letzteAktion.current = { art: 'neu', area, tag, einheit }
+      uebernimm(fuegeHinzu(vorher, einheit))
+      setEreignis({
+        id: ++ereignisId,
+        user: u,
+        area,
+        tag,
+        gesetzt: true,
+        quelle: 'selbst',
+      })
       setFehler(null)
 
-      backend.schreibeTick(area, tag, gesetzt).catch(() => {
+      backend.schreibeEinheit(einheit).catch(() => {
+        uebernimm(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+
+      return einheit
+    },
+    [backend, uebernimm]
+  )
+
+  /** nimmt eine einzelne durchführung zurück */
+  const einheitWeg = useCallback(
+    (einheit: Einheit) => {
+      const vorher = einheitenRef.current
+      const next = ohneEinheit(vorher, einheit.id)
+      uebernimm(next)
+      setEreignis({
+        id: ++ereignisId,
+        user: einheit.user,
+        area: einheit.area,
+        tag: einheit.tag,
+        gesetzt: (next[tickKey(einheit.user, einheit.area, einheit.tag)] ?? []).length > 0,
+        quelle: 'selbst',
+      })
+      setFehler(null)
+
+      backend.loescheEinheit(einheit).catch(() => {
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
@@ -146,25 +197,80 @@ export function useTracker(backend: Backend) {
     [backend, uebernimm]
   )
 
-  const setWert = useCallback(
-    (area: AreaId, tag: string, v: number) => {
-      const vorher = werteRef.current
-      const sauber = Math.max(0, Math.round(v))
-      const next: Werte = { ...vorher }
-      const key = wertKey(area, tag)
-      if (sauber === 0) delete next[key]
-      else next[key] = sauber
+  /** der an/aus-schalter: an legt die erste einheit an, aus räumt den tag */
+  const toggle = useCallback(
+    (area: AreaId, tag: string) => {
+      const u = meRef.current
+      const vorher = einheitenRef.current
+      const vorhandene = vorher[tickKey(u, area, tag)] ?? []
 
-      werteRef.current = next
-      setWerte(next)
+      if (vorhandene.length === 0) {
+        einheitHinzu(area, tag)
+        return
+      }
 
-      backend.schreibeWert(area, tag, sauber).catch(() => {
-        werteRef.current = vorher
-        setWerte(vorher)
+      letzteAktion.current = { art: 'weg', area, tag, einheiten: vorhandene }
+      uebernimm(ohneTag(vorher, u, area, tag))
+      setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt: false, quelle: 'selbst' })
+      setFehler(null)
+
+      backend.loescheTag(vorhandene).catch(() => {
+        uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend]
+    [backend, einheitHinzu, uebernimm]
+  )
+
+  /**
+   * „rückgängig" macht genau die letzte handlung rückgängig: eine angelegte
+   * einheit verschwindet wieder, ein abgehakter tag kommt mit allen einheiten
+   * und ihren minuten zurück. dieselben ids, also legt das nichts doppelt an.
+   */
+  const rueckgaengig = useCallback(
+    (area: AreaId, tag: string) => {
+      const aktion = letzteAktion.current
+      if (!aktion || aktion.area !== area || aktion.tag !== tag) {
+        // nichts gemerkt: dann ist der schalter die ehrlichste antwort
+        toggle(area, tag)
+        return
+      }
+      letzteAktion.current = null
+
+      if (aktion.art === 'neu') {
+        einheitWeg(aktion.einheit)
+        return
+      }
+
+      const u = meRef.current
+      const vorher = einheitenRef.current
+      let next = vorher
+      for (const e of aktion.einheiten) next = fuegeHinzu(next, e)
+      uebernimm(next)
+      setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt: true, quelle: 'selbst' })
+      setFehler(null)
+
+      Promise.all(aktion.einheiten.map((e) => backend.schreibeEinheit(e))).catch(() => {
+        uebernimm(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, einheitWeg, toggle, uebernimm]
+  )
+
+  /** minuten oder seiten einer einzelnen einheit */
+  const setWert = useCallback(
+    (einheit: Einheit, v: number) => {
+      const vorher = einheitenRef.current
+      const sauber = Math.max(0, Math.round(v))
+      uebernimm(mitWert(vorher, einheit.id, sauber))
+
+      backend.schreibeEinheitWert(einheit, sauber).catch(() => {
+        uebernimm(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, uebernimm]
   )
 
   const setzeGewicht = useCallback(
@@ -192,7 +298,20 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
-  const zustand: Zustand = { ticks, werte, gewichte, aufenthalte }
+  const zustand: Zustand = { einheiten, gewichte, aufenthalte }
 
-  return { me, zustand, schlaf, ladezustand, fehler, ereignis, toggle, setWert, setzeGewicht }
+  return {
+    me,
+    zustand,
+    schlaf,
+    ladezustand,
+    fehler,
+    ereignis,
+    altbestand,
+    toggle,
+    einheitHinzu,
+    rueckgaengig,
+    setWert,
+    setzeGewicht,
+  }
 }
