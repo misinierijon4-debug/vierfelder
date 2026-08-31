@@ -3,8 +3,9 @@ import type { Aufenthalt, FeldId, UserId } from './types'
 import { istMessbar } from './types'
 
 /**
- * kürzer war kein training, sondern ein blick in die tür. die schwelle sitzt
- * bewusst niedrig: sie soll die vorbeifahrt aussortieren, nicht den kurzen tag.
+ * kürzer war kein training, sondern ein blick in die tür — und kein lernen,
+ * sondern ein fokus, der eine minute lang an war. die schwelle sitzt bewusst
+ * niedrig: sie soll die vorbeifahrt aussortieren, nicht den kurzen tag.
  */
 export const MINDESTMINUTEN = 20
 
@@ -18,8 +19,8 @@ export function dauerMinuten(a: Aufenthalt): number | null {
 }
 
 /**
- * der aufenthalt gehört zu dem tag, an dem er begonnen hat. wer um 23:40 in
- * die halle geht, hat am mittwoch trainiert, auch wenn er um 00:30 rauskommt.
+ * die sitzung gehört zu dem tag, an dem sie begonnen hat. wer um 23:40 in die
+ * halle geht, hat am mittwoch trainiert, auch wenn er um 00:30 rauskommt.
  */
 export function tagVon(a: Aufenthalt): string {
   return toKey(new Date(a.ankunft))
@@ -31,8 +32,29 @@ export function zaehlt(a: Aufenthalt): boolean {
 }
 
 /**
- * alle zählenden aufenthalte dieser person in diesem bereich an diesem tag,
- * nach ankunft sortiert. zwei besuche sind zwei einheiten — am tick ändert das
+ * zwei quellen für dieselbe stunde sind nicht zwei einheiten. wer im gym den
+ * fokus einschaltet, während die standort-automation ohnehin läuft, hat einmal
+ * trainiert — überschneiden sich zwei sitzungen, bleibt die längere. ohne diese
+ * regel würde ausgerechnet der doppelt belegte tag doppelt gezählt.
+ */
+function ohneUeberschneidung(sortiert: Aufenthalt[]): Aufenthalt[] {
+  const behalten: Aufenthalt[] = []
+  for (const a of sortiert) {
+    const letzte = behalten[behalten.length - 1]
+    // als zeitstempel vergleichen, nicht als text: die zeiten kommen aus zwei
+    // quellen und müssen dafür nicht gleich geschrieben sein.
+    if (letzte && new Date(a.ankunft).getTime() < new Date(letzte.abgang!).getTime()) {
+      if (dauerMinuten(a)! > dauerMinuten(letzte)!) behalten[behalten.length - 1] = a
+      continue
+    }
+    behalten.push(a)
+  }
+  return behalten
+}
+
+/**
+ * alle zählenden sitzungen dieser person in diesem bereich an diesem tag, nach
+ * beginn sortiert. zwei besuche sind zwei einheiten — am tick ändert das
  * nichts, der zählt weiter tage.
  */
 export function messungen(
@@ -42,15 +64,16 @@ export function messungen(
   tag: string
 ): Aufenthalt[] {
   if (!istMessbar(f)) return []
-  return aufenthalte
-    .filter((a) => a.user === u && a.bereich === f && zaehlt(a) && tagVon(a) === tag)
-    .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
+  return ohneUeberschneidung(
+    aufenthalte
+      .filter((a) => a.user === u && a.bereich === f && zaehlt(a) && tagVon(a) === tag)
+      .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
+  )
 }
 
 /**
- * der längste zählende aufenthalt dieser person in diesem bereich an diesem
- * tag. mehrere besuche bleiben ein tick — der längere ist der, den die zeile
- * anzeigt.
+ * die längste zählende sitzung dieser person in diesem bereich an diesem tag.
+ * mehrere bleiben ein tick — die längste ist die, die die zeile anzeigt.
  */
 export function messung(
   aufenthalte: Aufenthalt[],

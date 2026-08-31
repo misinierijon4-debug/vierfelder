@@ -194,8 +194,8 @@ function Zeile({
           <Zelle
             key={tag}
             gefuellt={istGesetzt(zustand, user, area, tag)}
-            // halb heißt: gesetzt, aber nur behauptet. bei lernen und lesen gibt
-            // es nichts zu messen, dort bleibt jede zelle voll.
+            // halb heißt: gesetzt, aber nur behauptet. seit die fokus-modi auch
+            // lernen und lesen belegen, gilt das in allen vier bereichen.
             halb={quelle(zustand, user, area, tag) === 'getippt'}
             anzahl={anzahl}
             farbe={farbe}

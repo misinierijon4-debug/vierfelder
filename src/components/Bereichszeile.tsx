@@ -24,7 +24,7 @@ type Props = {
   mehrfachMoeglich: boolean
   /** wie der tick zustande kam. `null`, wo es nichts zu messen gibt */
   quelle: TickQuelle | null
-  /** minuten des gemessenen aufenthalts, wenn es einen gibt */
+  /** minuten der gemessenen sitzungen des tages, wenn es welche gibt */
   messungMinuten: number | null
   farbe: string
   farbeEr: string
@@ -64,11 +64,18 @@ export function Bereichszeile({
 
   /**
    * eine messung ist nicht antippbar — wie die gewichtsmarke. es gäbe sonst
-   * einen zustand, in dem ein tap nichts tut, weil der tick schon aus dem
-   * aufenthalt kommt. der minutenwert kommt dann aus der messung statt aus
-   * dem schrittzähler.
+   * einen zustand, in dem ein tap nichts tut, weil der tick schon aus der
+   * sitzung kommt.
    */
   const gemessen = quelle === 'gemessen'
+
+  /**
+   * den wert liefert die messung nur dort, wo der bereich in minuten rechnet.
+   * beim lesen misst der fokus zeit, gezählt werden aber seiten — die schritte
+   * bleiben deshalb stehen, sonst wäre eine gemessene lesestunde eine zeile,
+   * in der man die seiten nicht mehr eintragen kann.
+   */
+  const wertAusMessung = gemessen && area.unit === 'min'
 
   const aufTaste = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -78,7 +85,7 @@ export function Bereichszeile({
   }
 
   const links =
-    !gemessen && gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
+    !wertAusMessung && gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
   const rechts = gemessen
     ? 'messung'
     : zeigeUndo
@@ -162,7 +169,7 @@ export function Bereichszeile({
         {/* zweite zeile: immer 24px hoch, egal was drinsteht */}
         <div className="flex h-6 items-center justify-between pr-2">
           <Wechsel schluessel={links}>
-            {!gemessen && gesetzt ? (
+            {!wertAusMessung && gesetzt ? (
               <div className="flex items-center gap-1.5">
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} verringern`}
@@ -202,6 +209,18 @@ export function Bereichszeile({
           <Wechsel schluessel={rechts}>
             {gemessen ? (
               <span className="flex items-baseline gap-1.5">
+                {/* beim lesen stehen beide zahlen: die seiten sind der wert des
+                    bereichs, die minuten der beleg. eine ersetzt die andere nicht. */}
+                {!wertAusMessung && wert > 0 && (
+                  <>
+                    <Zahl
+                      value={wert}
+                      className="text-[14px] font-semibold"
+                      style={{ color: 'var(--kreide-60)' }}
+                    />
+                    <span className="text-[12px] text-kreide-52">{area.unit} ·</span>
+                  </>
+                )}
                 <Zahl
                   value={messungMinuten ?? 0}
                   className="text-[14px] font-semibold"

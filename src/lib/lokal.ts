@@ -192,10 +192,10 @@ function erzeugeBeispielSchlaf(): Schlafnacht[] {
 }
 
 /**
- * beispielbesuche fuer den prototyp ohne supabase. echte aufenthalte schreibt
- * ausschliesslich die standort-automation ueber die datenbank — hier stehen
- * sie nur, damit man ohne iphone sieht, wie sich ein gemessener tick von
- * einem getippten unterscheidet.
+ * beispielsitzungen fuer den prototyp ohne supabase. echte sitzungen schreibt
+ * ausschliesslich die automation auf dem iphone ueber die datenbank — standort
+ * oder fokus. hier stehen sie nur, damit man ohne iphone sieht, wie sich ein
+ * gemessener tick von einem getippten unterscheidet.
  */
 function erzeugeBeispielAufenthalte(): Aufenthalt[] {
   const woche = weekDays(new Date())
@@ -206,12 +206,15 @@ function erzeugeBeispielAufenthalte(): Aufenthalt[] {
     return new Date(j!, mo! - 1, t!, stunde, minute).toISOString()
   }
 
-  // [wochentag, person, bereich, ort, beginn, dauer in minuten]
-  const muster: Array<[number, UserId, 'gym' | 'boxen', string, [number, number], number]> = [
+  // [wochentag, person, bereich, quelle, beginn, dauer in minuten]
+  const muster: Array<[number, UserId, AreaId, string, [number, number], number]> = [
     [0, 'erijon', 'gym', 'gym nord', [18, 5], 74],
     [0, 'koray', 'gym', 'gym sued', [7, 10], 55],
     [1, 'erijon', 'boxen', 'boxhalle', [19, 0], 88],
+    [1, 'erijon', 'lernen', 'fokus lernen', [16, 10], 95],
     [2, 'koray', 'gym', 'gym sued', [7, 20], 48],
+    // gemessen in minuten, gezaehlt in seiten: hier sieht man beides
+    [2, 'koray', 'lesen', 'fokus lesen', [21, 40], 35],
   ]
 
   const aufenthalte: Aufenthalt[] = muster

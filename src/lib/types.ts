@@ -10,17 +10,19 @@ export type AppTab = 'tracker' | 'schlaf'
 export type FeldId = AreaId | 'gewicht'
 
 /**
- * die bereiche, für die es eine messung gibt. nur hier trägt die unterscheidung
- * zwischen gemessen und getippt eine aussage: bei lernen und lesen kann kein
- * gerät wissen, ob es stattgefunden hat, also wäre die marke dort kein urteil
- * über den eintrag, sondern nur rauschen.
+ * die bereiche, für die es eine messung gibt — seit den fokus-modi alle vier.
+ * lernen und lesen haben keinen ort, aber einen fokus: der wird bewusst
+ * eingeschaltet, läuft eine messbare zeit und wird wieder ausgeschaltet. das
+ * belegt so viel wie der standort beim gym, nämlich die sitzung und nicht ihren
+ * inhalt — und damit trägt die unterscheidung zwischen gemessen und getippt
+ * überall dieselbe aussage.
  */
-export type MessbarerBereich = 'gym' | 'boxen'
+export type MessbarerBereich = AreaId
 
-export const MESSBARE_BEREICHE: MessbarerBereich[] = ['gym', 'boxen']
+export const MESSBARE_BEREICHE: MessbarerBereich[] = ['lernen', 'gym', 'boxen', 'lesen']
 
 export function istMessbar(f: FeldId): f is MessbarerBereich {
-  return f === 'gym' || f === 'boxen'
+  return f !== 'gewicht'
 }
 
 /** wie ein tick zustande kam. `null`, wo eine messung gar nicht möglich wäre */
@@ -112,14 +114,16 @@ export type Einheiten = Record<TickKey, Einheit[]>
 export type Gewichte = Record<string, number>
 
 /**
- * ein gemessener aufenthalt an einem trainingsort, so wie die
- * standort-automation ihn gemeldet hat. `abgang` fehlt, solange man noch da
- * ist — ein offener aufenthalt zählt nicht, sonst wäre eine vorbeifahrt ein
- * training.
+ * eine gemessene sitzung, so wie das iphone sie gemeldet hat: eine
+ * standort-automation am trainingsort oder eine fokus-automation beim ein- und
+ * ausschalten. `abgang` fehlt, solange sie läuft — eine offene sitzung zählt
+ * nicht, sonst wäre eine vorbeifahrt ein training und ein vergessener fokus
+ * ein lerntag.
  */
 export type Aufenthalt = {
   user: UserId
   bereich: MessbarerBereich
+  /** name der quelle: ein trainingsort oder ein fokus */
   ort: string
   ankunft: string
   abgang: string | null

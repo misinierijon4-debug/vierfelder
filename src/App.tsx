@@ -14,6 +14,7 @@ import {
   anzahlEinheiten,
   istGesetzt,
   letzteEinheit,
+  messungsMinuten,
   quelle,
   streak,
   tagesWert,
@@ -207,9 +208,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       anzahl={anzahlEinheiten(zustand, me, area.id, heuteKey)}
                       mehrfachMoeglich={!altbestand}
                       quelle={quelle(zustand, me, area.id, heuteKey)}
-                      // bei zwei besuchen an einem tag steht dort die summe,
-                      // nicht der längere von beiden
-                      messungMinuten={tagesWert(zustand, me, area.id, heuteKey)}
+                      // bei zwei sitzungen an einem tag steht dort die summe,
+                      // nicht die längere von beiden
+                      messungMinuten={messungsMinuten(zustand, me, area.id, heuteKey)}
                       farbe={ich.farbe}
                       farbeEr={er.farbe}
                       zeigeUndo={undoFuer === area.id}
@@ -217,7 +218,14 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       onUndo={() => zurueck(area.id)}
                       onNeueEinheit={() => einheitHinzu(area.id, heuteKey)}
                       onWert={(delta) => {
-                        if (letzte) setWert(letzte, (letzte.wert ?? 0) + delta)
+                        if (letzte) {
+                          setWert(letzte, (letzte.wert ?? 0) + delta)
+                          return
+                        }
+                        // gemessen und trotzdem noch nichts getippt: das gibt es
+                        // beim lesen, wo der fokus die zeit misst und die seiten
+                        // niemand kennt. der erste schritt legt die einheit an.
+                        if (delta > 0) setWert(einheitHinzu(area.id, heuteKey), delta)
                       }}
                     />
                   )

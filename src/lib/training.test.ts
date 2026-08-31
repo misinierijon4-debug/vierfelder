@@ -15,12 +15,13 @@ import {
   istGesetzt,
   quelle,
   setzeTick,
+  messungsMinuten,
   tagesWert,
   tageseinheiten,
   wocheBereich,
 } from './tracker'
 import { weekDays } from './dates'
-import type { Aufenthalt, Zustand } from './types'
+import type { AreaId, Aufenthalt, Zustand } from './types'
 
 const MITTWOCH = new Date(2026, 7, 26, 12)
 const leer: Zustand = { einheiten: {}, gewichte: {}, aufenthalte: [] }
@@ -45,6 +46,17 @@ function besuch(
     abgang: dauer === null ? null : zeit(tag, von[0]!, von[1]! + dauer),
     ...rest,
   }
+}
+
+/** eine sitzung aus einem fokus: dieselbe messung, nur ohne ort */
+function fokus(
+  tag: string,
+  bereich: AreaId,
+  von: [number, number],
+  dauer: number,
+  rest: Partial<Aufenthalt> = {}
+): Aufenthalt {
+  return besuch(tag, von, dauer, { bereich, ort: `fokus ${bereich}`, ...rest })
 }
 
 function mit(...aufenthalte: Aufenthalt[]): Zustand {
@@ -92,10 +104,23 @@ describe('aufenthalt', () => {
     expect(messung(z.aufenthalte, 'koray', 'boxen', '2026-08-25')).toBeNull()
   })
 
-  it('gibt es für lernen und lesen nicht', () => {
-    const z = mit(besuch('2026-08-26', [18, 0], 60))
-    expect(messung(z.aufenthalte, 'erijon', 'lernen', '2026-08-26')).toBeNull()
+  it('gibt es auch für lernen und lesen, wenn ein fokus lief', () => {
+    const z = mit(fokus('2026-08-26', 'lernen', [16, 10], 95))
+    expect(messung(z.aufenthalte, 'erijon', 'lernen', '2026-08-26')).not.toBeNull()
+    // der fokus lernen belegt lernen und sonst nichts
     expect(messung(z.aufenthalte, 'erijon', 'lesen', '2026-08-26')).toBeNull()
+    expect(messung(z.aufenthalte, 'erijon', 'gym', '2026-08-26')).toBeNull()
+  })
+
+  it('zählt standort und fokus für dieselbe stunde nur einmal', () => {
+    // im gym den fokus eingeschaltet, während die standort-automation lief:
+    // ein training, nicht zwei. die längere der beiden sitzungen bleibt.
+    const z = mit(
+      besuch('2026-08-26', [18, 0], 74),
+      fokus('2026-08-26', 'gym', [18, 10], 55)
+    )
+    expect(messungen(z.aufenthalte, 'erijon', 'gym', '2026-08-26')).toHaveLength(1)
+    expect(gemesseneMinuten(z.aufenthalte, 'erijon', 'gym', '2026-08-26')).toBe(74)
   })
 })
 
@@ -124,9 +149,15 @@ describe('tick aus der messung', () => {
     expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
   })
 
-  it('unterscheidet nichts, wo es nichts zu messen gibt', () => {
+  it('nennt einen antippten lerntag getippt, seit es den fokus gibt', () => {
     const z = setzeTick(leer, 'erijon', 'lernen', '2026-08-26', true)
-    expect(quelle(z, 'erijon', 'lernen', '2026-08-26')).toBeNull()
+    expect(quelle(z, 'erijon', 'lernen', '2026-08-26')).toBe('getippt')
+  })
+
+  it('setzt lernen aus dem fokus, ohne antippen', () => {
+    const z = mit(fokus('2026-08-26', 'lernen', [16, 10], 95))
+    expect(istGesetzt(z, 'erijon', 'lernen', '2026-08-26')).toBe(true)
+    expect(quelle(z, 'erijon', 'lernen', '2026-08-26')).toBe('gemessen')
   })
 
   it('nennt das gewicht gemessen', () => {
@@ -161,5 +192,38 @@ describe('mehrere besuche an einem tag', () => {
     const liste = tageseinheiten(z, 'erijon', 'gym', '2026-08-26')
     expect(liste.map((e) => e.herkunft)).toEqual(['getippt', 'gemessen'])
     expect(liste.map((e) => e.wert)).toEqual([65, 28])
+  })
+})
+
+describe('lesen: gemessen in minuten, gezählt in seiten', () => {
+  it('lässt die minuten aus der seitensumme heraus', () => {
+    let z = mit(fokus('2026-08-26', 'lesen', [21, 40], 35))
+    z = fuegeEinheitHinzu(
+      z,
+      baueEinheit('erijon', 'lesen', '2026-08-26', 24, new Date(2026, 7, 26, 22, 20))
+    )
+
+    // 24 seiten sind der wert des bereichs, 35 minuten sind der beleg
+    expect(tagesWert(z, 'erijon', 'lesen', '2026-08-26')).toBe(24)
+    expect(messungsMinuten(z, 'erijon', 'lesen', '2026-08-26')).toBe(35)
+
+    const liste = tageseinheiten(z, 'erijon', 'lesen', '2026-08-26')
+    expect(liste.map((e) => e.einheit)).toEqual(['min', 'seiten'])
+  })
+
+  it('setzt den tick auch ohne eine einzige seite', () => {
+    const z = mit(fokus('2026-08-26', 'lesen', [21, 40], 35))
+    expect(istGesetzt(z, 'erijon', 'lesen', '2026-08-26')).toBe(true)
+    expect(tagesWert(z, 'erijon', 'lesen', '2026-08-26')).toBe(0)
+  })
+
+  it('rechnet beim gym weiter alles in minuten', () => {
+    let z = mit(besuch('2026-08-26', [18, 0], 74))
+    z = fuegeEinheitHinzu(
+      z,
+      baueEinheit('erijon', 'gym', '2026-08-26', 30, new Date(2026, 7, 26, 7, 0))
+    )
+    expect(tagesWert(z, 'erijon', 'gym', '2026-08-26')).toBe(104)
+    expect(messungsMinuten(z, 'erijon', 'gym', '2026-08-26')).toBe(74)
   })
 })
