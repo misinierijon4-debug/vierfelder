@@ -285,6 +285,28 @@ describe('verlauf', () => {
     expect(v[0]!.bis - v[0]!.von).toBe(120)
   })
 
+  it('laesst ein kurzes stadium wortlos im nachbarn aufgehen', () => {
+    const a = analysiereSchlafnacht(
+      nacht({
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+        phasen: [
+          { art: 'kern', start: 0, dauer: 60 },
+          { art: 'tief', start: 60, dauer: 3 },
+          { art: 'kern', start: 63, dauer: 60 },
+        ],
+      })
+    )
+    const { linie, unruhen } = verlauf(a)
+
+    // drei minuten tiefschlaf sind kein abschnitt der nacht: die beiden
+    // kernstuecke werden eine linie, und einen strich gibt es nur fuer wach
+    expect(linie.map((s) => s.art)).toEqual(['kern'])
+    expect(linie[0]!.bis - linie[0]!.von).toBe(123)
+    expect(unruhen).toHaveLength(0)
+  })
+
   it('nimmt kurze unruhe aus der linie und verteilt ihre zeit an die nachbarn', () => {
     const a = analysiereSchlafnacht(
       nacht({

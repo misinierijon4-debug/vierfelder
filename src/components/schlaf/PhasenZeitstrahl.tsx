@@ -8,7 +8,7 @@ import {
   position,
   stundenmarken,
   verlauf,
-  WACH_SCHWELLE,
+  PHASEN_SCHWELLE,
 } from '../../lib/schlafPhasen'
 import { DIAGRAMM, EASE } from '../../lib/motion'
 import type { PhasenArt } from '../../lib/types'
@@ -46,7 +46,7 @@ const UNTEN = 92
 /** grundlinie der uhrzeiten */
 const ACHSE_Y = 117
 /** waagerechte laenge eines phasenuebergangs */
-const UEBERGANG = 5
+const UEBERGANG = 7.5
 /**
  * Strichstaerke der Kurve.
  *
@@ -221,7 +221,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
 
       {unruhen.length > 0 && (
         <p className="mx-3.5 mt-1 text-pretty text-[10px] text-kreide-52">
-          striche oben: {unruhen.length}× kurz wach, unter {WACH_SCHWELLE} minuten
+          striche oben: {unruhen.length}× kurz wach, unter {PHASEN_SCHWELLE} minuten
         </p>
       )}
 

@@ -112,17 +112,21 @@ export function qualitaet(schlafMinuten: number): number {
 }
 
 /**
- * Ab wann wach "aufgewacht" heisst, in Minuten.
+ * Ab wann ein Stueck Nacht eine eigene Phase ist, in Minuten.
  *
- * Health meldet fuer eine Nacht leicht dreissig getrennte Wachstuecke von ein
- * bis zwei Minuten: umdrehen, kurz hochschrecken, die Decke richten. Die
- * Ansicht fasst schon zusammen, was hoechstens zwei Minuten auseinanderliegt —
- * was danach noch kurz ist, war Unruhe und kein Aufwachen.
+ * Health zerlegt eine Nacht in bis zu achtzig Stuecke, viele davon ein oder
+ * zwei Minuten lang: einmal umdrehen, ein kurzes Absacken, die Decke richten.
+ * Die Ansicht fasst schon zusammen, was hoechstens zwei Minuten auseinander
+ * liegt — was danach noch kuerzer als diese Schwelle ist, ist kein Abschnitt
+ * der Nacht, sondern ihr Rauschen.
  *
- * Die Minuten aendert die Schwelle nicht. Sie entscheidet nur, was als
- * Aufwachen gezaehlt und was in der Kurve als eigener Block gezeichnet wird.
+ * Fuer die Kurve heisst das: Wach darunter wird ein Strich statt eines
+ * Ausschlags, ein Stadium darunter geht in seinen Nachbarn auf. Fuer die
+ * Zahlen heisst es nichts — die Minuten je Stadium kommen aus den Summen der
+ * Ansicht, nicht aus der gezeichneten Linie. Nur die Anzahl neben `wach`
+ * zaehlt ab hier.
  */
-export const WACH_SCHWELLE = 5
+export const PHASEN_SCHWELLE = 5
 
 export type NachtPhasenAnalyse = {
   nacht: string
@@ -154,7 +158,7 @@ export type NachtPhasenAnalyse = {
   /** wie in sleep cycle: alles im bett, was nicht schlaf war — das
    *  wachliegen vor dem einschlafen zaehlt mit */
   wachMinuten: number
-  /** wach am stueck, mindestens `WACH_SCHWELLE` lang — kurzes drehen zaehlt nicht */
+  /** wach am stueck, mindestens `PHASEN_SCHWELLE` lang — kurzes drehen zaehlt nicht */
   wachphasenAnzahl: number
   tiefProzent: number
   remProzent: number
@@ -243,7 +247,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     coreMinuten: Math.round(nacht.kernMinuten + nacht.unspezMinuten),
     wachMinuten,
     wachphasenAnzahl: nacht.phasen.filter(
-      (p) => p.art === 'wach' && p.dauer >= WACH_SCHWELLE
+      (p) => p.art === 'wach' && p.dauer >= PHASEN_SCHWELLE
     ).length,
     tiefProzent,
     remProzent,
@@ -458,22 +462,21 @@ export type Verlaufsstueck = {
 }
 
 export type Nachtverlauf = {
-  /** die durchgehende linie: schlaf und wach am stueck */
+  /** die durchgehende linie: alles, was lang genug fuer eine eigene phase ist */
   linie: Verlaufsstueck[]
-  /** kurzes wachwerden unter `WACH_SCHWELLE` — striche statt ausschlag */
+  /** kurzes wachwerden unter `PHASEN_SCHWELLE` — striche statt ausschlag */
   unruhen: Verlaufsstueck[]
 }
 
 /**
  * Die Phasen einer Nacht als durchgehende Folge in Nachtminuten.
  *
- * Getrennt wird nach `WACH_SCHWELLE`: langes Wachliegen bleibt in der Linie
- * und steigt bis nach oben, kurze Unruhe kommt heraus und wird spaeter als
- * Strich auf der Wachhoehe gezeichnet. Ohne diese Trennung ist eine Minute
- * Umdrehen im Bild genauso laut wie eine halbe Stunde Wachliegen — und aus
- * einer ruhigen Nacht wird ein Lattenzaun.
+ * Alles unter `PHASEN_SCHWELLE` faellt aus der Linie: kurzes Wachwerden wird
+ * zu einem Strich auf der Wachhoehe, ein kurzes Stadium geht wortlos in seinen
+ * Nachbarn auf. Sonst ist eine Minute Umdrehen im Bild genauso laut wie eine
+ * halbe Stunde Wachliegen, und aus einer ruhigen Nacht wird ein Lattenzaun.
  *
- * Die Zeit einer herausgenommenen Unruhe faellt nicht weg: sie geht je zur
+ * Die Zeit eines herausgenommenen Stuecks faellt nicht weg: sie geht je zur
  * Haelfte an die beiden Nachbarn, damit die Linie nicht reisst und die Uhr
  * weiterhin stimmt.
  *
@@ -488,10 +491,16 @@ export function verlauf(analyse: NachtPhasenAnalyse): Nachtverlauf {
       art: p.art,
       von: analyse.einschlafMinute + p.start,
       bis: analyse.einschlafMinute + p.start + p.dauer,
-      kurz: p.art === 'wach' && p.dauer < WACH_SCHWELLE,
+      kurz: p.dauer < PHASEN_SCHWELLE,
     }))
     .filter((s) => s.bis > s.von)
     .sort((a, b) => a.von - b.von)
+
+  // eine nacht ganz ohne langes stueck gibt es: dann traegt das laengste die
+  // linie. ein leeres bild waere schlimmer als eine grobe kurve
+  if (roh.length > 0 && roh.every((s) => s.kurz)) {
+    roh.reduce((a, b) => (b.bis - b.von > a.bis - a.von ? b : a)).kurz = false
+  }
 
   const gerade: Verlaufsstueck[] = []
   const unruhen: Verlaufsstueck[] = []
@@ -501,7 +510,9 @@ export function verlauf(analyse: NachtPhasenAnalyse): Nachtverlauf {
       gerade.push({ art: stueck.art, von: stueck.von, bis: stueck.bis })
       return
     }
-    unruhen.push({ art: 'wach', von: stueck.von, bis: stueck.bis })
+    // nur wach hinterlaesst eine spur: ein kurzes stadium ist nicht sichtbar,
+    // ein kurzes wachwerden schon
+    if (stueck.art === 'wach') unruhen.push({ art: 'wach', von: stueck.von, bis: stueck.bis })
 
     const davor = gerade[gerade.length - 1]
     const danach = roh.slice(i + 1).find((n) => !n.kurz)
