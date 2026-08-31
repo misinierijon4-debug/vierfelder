@@ -8,6 +8,7 @@ import {
   position,
   stundenmarken,
   verlauf,
+  WACH_SCHWELLE,
 } from '../../lib/schlafPhasen'
 import { DIAGRAMM, EASE } from '../../lib/motion'
 import type { PhasenArt } from '../../lib/types'
@@ -53,21 +54,27 @@ export function PhasenZeitstrahl({ analyse }: Props) {
   const reduced = useReducedMotion()
   const glanz = useId()
 
-  const { kurve, von, bis, marken } = useMemo(() => {
-    const stuecke = verlauf(analyse)
+  const { kurve, unruhen, von, bis, marken } = useMemo(() => {
+    const { linie, unruhen } = verlauf(analyse)
     // die achse gehoert dieser einen nacht: sie beginnt und endet an den
     // gemessenen zeiten, damit die auflösung so fein wie moeglich bleibt
-    const von = Math.min(analyse.einschlafMinute, ...stuecke.map((s) => s.von))
-    const bis = Math.max(analyse.aufwachMinute, ...stuecke.map((s) => s.bis))
+    const alle = [...linie, ...unruhen]
+    const von = Math.min(analyse.einschlafMinute, ...alle.map((s) => s.von))
+    const bis = Math.max(analyse.aufwachMinute, ...alle.map((s) => s.bis))
     // ueber zwoelf stunden wuerden stuendliche marken aneinanderkleben
     const schritt = bis - von > 12 * 60 ? 120 : 60
     return {
-      kurve: hypnogramm(stuecke, von, bis, {
+      kurve: hypnogramm(linie, von, bis, {
         breite: BREITE,
         oben: OBEN,
         unten: UNTEN,
         radius: UEBERGANG,
       }),
+      unruhen: unruhen.map((u) => ({
+        von: position(u.von, von, bis) * BREITE,
+        // eine minute waere sonst unsichtbar: der strich hat eine mindestlaenge
+        bis: Math.max(position(u.bis, von, bis) * BREITE, position(u.von, von, bis) * BREITE + 1.6),
+      })),
       von,
       bis,
       marken: stundenmarken(von, bis, schritt).filter((m) => {
@@ -151,6 +158,21 @@ export function PhasenZeitstrahl({ analyse }: Props) {
 
           {linien(2.4, 1, false)}
 
+          {/* kurzes wachwerden: ein strich auf der wachhoehe, kein ausschlag */}
+          {unruhen.map((u) => (
+            <line
+              key={u.von}
+              x1={u.von}
+              x2={u.bis}
+              y1={OBEN}
+              y2={OBEN}
+              stroke={FARBE.wach}
+              strokeWidth="2.4"
+              strokeOpacity="0.45"
+              strokeLinecap="round"
+            />
+          ))}
+
           <text
             x="0"
             y={ACHSE_Y}
@@ -186,6 +208,12 @@ export function PhasenZeitstrahl({ analyse }: Props) {
           </text>
         </svg>
       </motion.div>
+
+      {unruhen.length > 0 && (
+        <p className="mx-3.5 mt-1 text-pretty text-[10px] text-kreide-52">
+          striche oben: {unruhen.length}× kurz wach, unter {WACH_SCHWELLE} minuten
+        </p>
+      )}
 
       <dl className="mt-3 grid grid-cols-2 border-t border-linie">
         {kacheln.map((kachel, index) => (

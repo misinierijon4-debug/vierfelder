@@ -257,7 +257,7 @@ describe('achse', () => {
 describe('verlauf', () => {
   it('legt die phasen absolut auf die nacht und fasst gleiche zusammen', () => {
     const a = analysiereSchlafnacht(nacht())
-    const v = verlauf(a)
+    const v = verlauf(a).linie
 
     // 23:10 hingelegt, 23:25 eingeschlafen: das wachliegen steht vorn
     expect(v[0]).toEqual({ art: 'wach', von: 23 * 60 + 10, bis: 23 * 60 + 25 })
@@ -280,9 +280,37 @@ describe('verlauf', () => {
         ],
       })
     )
-    const v = verlauf(a)
+    const v = verlauf(a).linie
     expect(v.map((s) => s.art)).toEqual(['kern', 'tief'])
     expect(v[0]!.bis - v[0]!.von).toBe(120)
+  })
+
+  it('nimmt kurze unruhe aus der linie und verteilt ihre zeit an die nachbarn', () => {
+    const a = analysiereSchlafnacht(
+      nacht({
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+        phasen: [
+          { art: 'kern', start: 0, dauer: 60 },
+          { art: 'wach', start: 60, dauer: 2 },
+          { art: 'tief', start: 62, dauer: 60 },
+          { art: 'wach', start: 122, dauer: 20 },
+          { art: 'kern', start: 142, dauer: 60 },
+        ],
+      })
+    )
+    const { linie, unruhen } = verlauf(a)
+
+    // die zwei minuten sind keine wachphase, die zwanzig minuten schon
+    expect(linie.map((s) => s.art)).toEqual(['kern', 'tief', 'wach', 'kern'])
+    expect(unruhen).toHaveLength(1)
+    expect(unruhen[0]!.bis - unruhen[0]!.von).toBe(2)
+    // die linie reisst nicht: beide nachbarn treffen sich in der mitte
+    expect(linie[0]!.bis).toBe(linie[1]!.von)
+    expect(linie[0]!.bis - linie[0]!.von).toBe(61)
+    // und die zaehlung nennt nur das echte aufwachen
+    expect(a.wachphasenAnzahl).toBe(1)
   })
 })
 
