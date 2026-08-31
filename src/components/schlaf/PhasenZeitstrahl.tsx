@@ -47,6 +47,16 @@ const UNTEN = 92
 const ACHSE_Y = 117
 /** waagerechte laenge eines phasenuebergangs */
 const UEBERGANG = 5
+/**
+ * Strichstaerke der Kurve.
+ *
+ * Sie ist die Grenze der Aufloesung: was schmaler ist als der Strich, kann
+ * keine Form mehr bilden, sondern nur noch eine Doppellinie — und die sieht
+ * aus wie ein Fehler, nicht wie eine kurze Phase. Bei 320 Einheiten fuer eine
+ * Nacht ist eine Minute rund 0,6 Einheiten breit; mit 1,5 traegt der Strich
+ * also alles ab etwa zweieinhalb Minuten.
+ */
+const STRICH = 1.5
 /** so nah an den rand darf keine stundenmarke, sonst stoesst sie an die eckzeit */
 const RANDSCHUTZ = 34
 
@@ -146,17 +156,17 @@ export function PhasenZeitstrahl({ analyse }: Props) {
             {/* das leuchten ist die einzige stelle mit weicher kante in der app —
                 ohne es wirkt die kurve wie ein technischer plot, nicht wie eine nacht */}
             <filter id={glanz} x="-5%" y="-40%" width="110%" height="180%">
-              <feGaussianBlur stdDeviation="4" />
+              <feGaussianBlur stdDeviation="3" />
             </filter>
           </defs>
 
           <g filter={`url(#${glanz})`}>
-            {linien(3, 0.22, false)}
+            {linien(STRICH + 1, 0.16, false)}
             {/* der traum leuchtet staerker, so wie er die nacht auch praegt */}
-            {linien(4.5, 0.6, true)}
+            {linien(STRICH + 2, 0.5, true)}
           </g>
 
-          {linien(2.4, 1, false)}
+          {linien(STRICH, 1, false)}
 
           {/* kurzes wachwerden: ein strich auf der wachhoehe, kein ausschlag */}
           {unruhen.map((u) => (
@@ -167,8 +177,8 @@ export function PhasenZeitstrahl({ analyse }: Props) {
               y1={OBEN}
               y2={OBEN}
               stroke={FARBE.wach}
-              strokeWidth="2.4"
-              strokeOpacity="0.45"
+              strokeWidth={STRICH + 0.4}
+              strokeOpacity="0.5"
               strokeLinecap="round"
             />
           ))}
