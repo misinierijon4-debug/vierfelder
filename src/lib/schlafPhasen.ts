@@ -111,6 +111,19 @@ export function qualitaet(schlafMinuten: number): number {
   return Math.round(Math.min(100, 100 * anteil ** QUALITAET_EXPONENT))
 }
 
+/**
+ * Ab wann wach "aufgewacht" heisst, in Minuten.
+ *
+ * Health meldet fuer eine Nacht leicht dreissig getrennte Wachstuecke von ein
+ * bis zwei Minuten: umdrehen, kurz hochschrecken, die Decke richten. Die
+ * Ansicht fasst schon zusammen, was hoechstens zwei Minuten auseinanderliegt —
+ * was danach noch kurz ist, war Unruhe und kein Aufwachen.
+ *
+ * Die Minuten aendert die Schwelle nicht. Sie entscheidet nur, was als
+ * Aufwachen gezaehlt und was in der Kurve als eigener Block gezeichnet wird.
+ */
+export const WACH_SCHWELLE = 5
+
 export type NachtPhasenAnalyse = {
   nacht: string
   user: UserId
@@ -141,6 +154,7 @@ export type NachtPhasenAnalyse = {
   /** wie in sleep cycle: alles im bett, was nicht schlaf war — das
    *  wachliegen vor dem einschlafen zaehlt mit */
   wachMinuten: number
+  /** wach am stueck, mindestens `WACH_SCHWELLE` lang — kurzes drehen zaehlt nicht */
   wachphasenAnzahl: number
   tiefProzent: number
   remProzent: number
@@ -228,7 +242,9 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     remMinuten: Math.round(nacht.remMinuten),
     coreMinuten: Math.round(nacht.kernMinuten + nacht.unspezMinuten),
     wachMinuten,
-    wachphasenAnzahl: nacht.phasen.filter((p) => p.art === 'wach').length,
+    wachphasenAnzahl: nacht.phasen.filter(
+      (p) => p.art === 'wach' && p.dauer >= WACH_SCHWELLE
+    ).length,
     tiefProzent,
     remProzent,
     coreProzent: erfasst > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0,
@@ -441,34 +457,79 @@ export type Verlaufsstueck = {
   bis: number
 }
 
+export type Nachtverlauf = {
+  /** die durchgehende linie: schlaf und wach am stueck */
+  linie: Verlaufsstueck[]
+  /** kurzes wachwerden unter `WACH_SCHWELLE` — striche statt ausschlag */
+  unruhen: Verlaufsstueck[]
+}
+
 /**
  * Die Phasen einer Nacht als durchgehende Folge in Nachtminuten.
  *
+ * Getrennt wird nach `WACH_SCHWELLE`: langes Wachliegen bleibt in der Linie
+ * und steigt bis nach oben, kurze Unruhe kommt heraus und wird spaeter als
+ * Strich auf der Wachhoehe gezeichnet. Ohne diese Trennung ist eine Minute
+ * Umdrehen im Bild genauso laut wie eine halbe Stunde Wachliegen — und aus
+ * einer ruhigen Nacht wird ein Lattenzaun.
+ *
+ * Die Zeit einer herausgenommenen Unruhe faellt nicht weg: sie geht je zur
+ * Haelfte an die beiden Nachbarn, damit die Linie nicht reisst und die Uhr
+ * weiterhin stimmt.
+ *
  * Zwei direkt aneinander grenzende Stuecke gleicher Hoehe werden zu einem
- * zusammengefasst — sie waeren in der Kurve dieselbe waagerechte Linie, und
- * eine Naht mittendrin wuerde nur die Farbe doppelt zeichnen. Eine echte
- * Luecke bleibt eine Luecke.
+ * zusammengefasst — sie waeren dieselbe waagerechte Linie, und eine Naht
+ * mittendrin wuerde nur die Farbe doppelt zeichnen. Eine echte Luecke ohne
+ * Messung bleibt eine Luecke.
  */
-export function verlauf(analyse: NachtPhasenAnalyse): Verlaufsstueck[] {
+export function verlauf(analyse: NachtPhasenAnalyse): Nachtverlauf {
   const roh = analyse.stuecke
     .map((p) => ({
       art: p.art,
       von: analyse.einschlafMinute + p.start,
       bis: analyse.einschlafMinute + p.start + p.dauer,
+      kurz: p.art === 'wach' && p.dauer < WACH_SCHWELLE,
     }))
     .filter((s) => s.bis > s.von)
     .sort((a, b) => a.von - b.von)
 
-  const zusammen: Verlaufsstueck[] = []
-  for (const stueck of roh) {
-    const letztes = zusammen[zusammen.length - 1]
+  const gerade: Verlaufsstueck[] = []
+  const unruhen: Verlaufsstueck[] = []
+
+  roh.forEach((stueck, i) => {
+    if (!stueck.kurz) {
+      gerade.push({ art: stueck.art, von: stueck.von, bis: stueck.bis })
+      return
+    }
+    unruhen.push({ art: 'wach', von: stueck.von, bis: stueck.bis })
+
+    const davor = gerade[gerade.length - 1]
+    const danach = roh.slice(i + 1).find((n) => !n.kurz)
+    const linksDran = davor !== undefined && Math.abs(davor.bis - stueck.von) < 0.001
+    const rechtsDran = danach !== undefined && Math.abs(danach.von - stueck.bis) < 0.001
+
+    if (linksDran && rechtsDran) {
+      const mitte = (stueck.von + stueck.bis) / 2
+      davor.bis = mitte
+      danach.von = mitte
+    } else if (linksDran) {
+      davor.bis = stueck.bis
+    } else if (rechtsDran) {
+      danach.von = stueck.von
+    }
+  })
+
+  const linie: Verlaufsstueck[] = []
+  for (const stueck of gerade) {
+    const letztes = linie[linie.length - 1]
     if (letztes && TIEFE[letztes.art] === TIEFE[stueck.art] && stueck.von <= letztes.bis) {
       letztes.bis = Math.max(letztes.bis, stueck.bis)
       continue
     }
-    zusammen.push({ ...stueck })
+    linie.push({ ...stueck })
   }
-  return zusammen
+
+  return { linie, unruhen }
 }
 
 /** ein stueck der kurve: ein svg-pfad, der seine phasenfarbe traegt */

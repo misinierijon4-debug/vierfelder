@@ -22,8 +22,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'vierfelder',
-        short_name: 'vierfelder',
+        name: 'zweikampf',
+        short_name: 'zweikampf',
         description: 'lernen, gym, boxen, lesen. zu zweit, eine woche.',
         lang: 'de',
         theme_color: '#14171c',

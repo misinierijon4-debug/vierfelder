@@ -15,6 +15,9 @@ import type {
   Werte,
 } from './types'
 
+// die schlüssel behalten den alten namen: die app heisst seit dem 31.08.2026
+// zweikampf, aber ein umbenannter schlüssel ist ein leerer schlüssel — der
+// prototyp-modus verlöre damit alles, was lokal drinsteht.
 /** altbestand: ein haken je person, bereich und tag */
 const TICKS_KEY = 'vierfelder.ticks.v2'
 /** altbestand: ein tageswert je bereich und tag, pro person */

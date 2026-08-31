@@ -1,4 +1,4 @@
--- vierfelder: schema für genau zwei konten.
+-- zweikampf: schema für genau zwei konten.
 -- ausführen im supabase sql editor, sobald das projekt steht.
 
 -- ordnet ein konto einer der beiden personen zu. die farbe hängt an der person,

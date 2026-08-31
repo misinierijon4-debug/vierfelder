@@ -1,4 +1,4 @@
-# vierfelder
+# zweikampf
 
 Wochentracker für zwei: lernen, gym, boxen, lesen. Ein Tick pro Bereich und Tag, geteiltes Wochenraster, sonntags Bilanz, montags von vorn.
 
@@ -26,6 +26,38 @@ getippt in allen vier Bereichen. Anleitung in [FOKUS-KURZBEFEHL.md](FOKUS-KURZBE
 
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
+## Der Name und das Zeichen
+
+Die App hieß bis zum 31.08.2026 `vierfelder`. Der Name zählte die Bereiche mit,
+und die Bereiche sind mehr geworden — mit dem Gewicht sind es fünf. Der neue
+Name zählt nicht, sondern benennt, worum es geht: zwei, die gegeneinander
+antreten. Passend auch zum Boxen, das ohnehin eine der Disziplinen ist.
+
+Das Zeichen sind zwei Keile, die ineinander stoßen: der warme von links oben,
+der kühle von rechts unten, die Spitzen laufen aneinander vorbei, dazwischen
+bleibt ein schmaler diagonaler Schlitz. Punktsymmetrisch, weil keiner der beiden
+im Vorteil ist, und in denselben zwei Personenfarben wie das Raster. Es benutzt
+nur Tokens aus [DESIGN.md](DESIGN.md) und folgt derselben Bildsprache wie die
+App: harte Kanten, eine Ebene, kein Verlauf, kein Schatten.
+
+`scripts/icons.py` erzeugt alle Dateien in `public/` aus einer einzigen
+Geometrie — die zwei SVGs fürs Web und die vier PNGs für Homescreen und Tab:
+
+```bash
+python3 scripts/icons.py
+```
+
+Das Skript bringt einen eigenen Rasterizer und PNG-Encoder mit und braucht
+weder npm-Pakete noch ein Grafikprogramm. Wer das Zeichen ändern will, ändert
+die Konstanten oben im Skript und lässt es einmal laufen; von Hand bearbeitete
+PNGs würden beim nächsten Lauf überschrieben.
+
+**Technische Namen bleiben `vierfelder`:** das Repository und damit die
+Pages-URL, das Supabase-Projekt und die localStorage-Schlüssel des
+Prototyp-Modus. Ein Repository umzubenennen ändert `VITE_BASE` und die
+öffentliche Adresse, ein Umbenennen der Schlüssel würde lokale Daten
+wegwerfen — beides wäre Aufwand ohne Gegenwert.
+
 ## Starten
 
 ```bash
@@ -42,7 +74,7 @@ npm run build # typecheck + produktionsbuild + pwa
 
 ## Supabase
 
-Projekt `vierfelder`, Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt (siehe `supabase/schema.sql`).
+Projekt `vierfelder` (der technische Name blieb bei der Umbenennung stehen, siehe unten), Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt (siehe `supabase/schema.sql`).
 
 Die Tabelle `einheiten` hält eine Zeile je Durchführung (`supabase/migrations/20260830190000_einheiten.sql`).
 Sie ist die Quelle des Hakens — mindestens eine Einheit heißt erledigt —, liegt offen für beide

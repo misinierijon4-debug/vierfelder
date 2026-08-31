@@ -50,9 +50,9 @@ export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
             <div className="flex items-baseline justify-between">
               <div>
                 <h1 className="display text-[16px] font-bold lowercase leading-none">
-                  vierfelder
+                  zweikampf
                 </h1>
-                <p className="mt-1 text-[11px] text-kreide-52">
+                <p className="mt-1.5 text-[11px] text-kreide-52">
                   kw <span className="tnum">{kw}</span> · {langesDatum(heute)}
                 </p>
               </div>
