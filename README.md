@@ -20,7 +20,8 @@ entstanden ist — voll heißt gemessen, blass heißt getippt. Anleitung in
 
 Lernen und Lesen haben keinen Ort, aber einen Fokus. Drei Fokus-Modi — lernen, lesen, training —
 melden beim Ein- und Ausschalten dasselbe wie eine Ankunft und ein Abgang, und ab 20 Minuten
-steht auch dort der Haken von allein. Damit gilt die Unterscheidung zwischen gemessen und
+steht auch dort der Haken von allein — beim Lesen ab 10, weil ein Kapitel kürzer ist als eine
+Trainingseinheit. Damit gilt die Unterscheidung zwischen gemessen und
 getippt in allen vier Bereichen. Anleitung in [FOKUS-KURZBEFEHL.md](FOKUS-KURZBEFEHL.md).
 
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
@@ -35,7 +36,7 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 111 tests
+npm test      # logik, 112 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 

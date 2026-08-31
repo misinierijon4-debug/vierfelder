@@ -556,6 +556,13 @@ bleiben antippbar, obwohl die zeile gemessen ist. Eine summe aus minuten und
 seiten wäre eine zahl, die nichts bedeutet — und eine gemessene lesestunde, in
 der man die seiten nicht mehr eintragen kann, wäre ein rückschritt.
 
+**Zehn minuten fürs lesen, zwanzig für alles andere.** Die schwelle soll die
+vorbeifahrt aussortieren, nicht den kurzen abend — und was eine vorbeifahrt
+ist, hängt vom bereich ab. Am gym fährt man versehentlich vorbei; den fokus
+lesen schaltet niemand versehentlich ein, und ein kapitel ist kürzer als eine
+trainingseinheit. Eine einheitliche zahl wäre nicht strenger, sondern nur an
+einer stelle falsch.
+
 **Was der fokus nicht kann.** Er läuft auf einem zeitplan genauso wie von hand.
 Die datenbank sieht nicht, wer den schalter umgelegt hat, also steht die einzige
 regel dagegen in der anleitung und nicht im code: auf diesen drei modi kein

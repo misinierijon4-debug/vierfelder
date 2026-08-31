@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MINDESTMINUTEN,
+  MINDESTMINUTEN_LESEN,
   dauerMinuten,
   gemesseneMinuten,
   messung,
@@ -77,6 +78,15 @@ describe('aufenthalt', () => {
   it('zählt einen zu kurzen besuch nicht', () => {
     expect(zaehlt(besuch('2026-08-26', [18, 0], MINDESTMINUTEN - 1))).toBe(false)
     expect(zaehlt(besuch('2026-08-26', [18, 0], MINDESTMINUTEN))).toBe(true)
+  })
+
+  it('lässt beim lesen zehn minuten reichen', () => {
+    const kurz = fokus('2026-08-26', 'lesen', [21, 40], MINDESTMINUTEN_LESEN - 1)
+    const lang = fokus('2026-08-26', 'lesen', [21, 40], MINDESTMINUTEN_LESEN)
+    expect(zaehlt(kurz)).toBe(false)
+    expect(zaehlt(lang)).toBe(true)
+    // dieselbe dauer beim lernen ist noch keine einheit
+    expect(zaehlt(fokus('2026-08-26', 'lernen', [16, 0], MINDESTMINUTEN_LESEN))).toBe(false)
   })
 
   it('gehört zu dem tag, an dem er begonnen hat', () => {

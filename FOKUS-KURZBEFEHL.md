@@ -3,7 +3,7 @@
 „Nicht stören" ist nur einer von beliebig vielen Fokus-Modi. Drei weitere —
 **lernen**, **lesen**, **training** — schalten nicht nur die Mitteilungen
 stumm, sondern setzen den Wochentick von allein: an heißt Beginn, aus heißt
-Ende, und ab 20 Minuten steht der Haken.
+Ende, und ab 20 Minuten steht der Haken — beim Lesen ab 10.
 
 Das ist dieselbe Mechanik wie bei den Trainingsorten
 ([TRAINING-STANDORT.md](TRAINING-STANDORT.md)), nur ohne Ort. Der Fokus
@@ -132,7 +132,7 @@ order by a.ankunft desc;
 ```
 
 Ein Testlauf von einer Minute steht in der Tabelle, setzt aber keinen Tick — er
-liegt unter der Schwelle. Wegräumen:
+liegt unter der Schwelle (20 Minuten, beim Lesen 10). Wegräumen:
 
 ```sql
 delete from aufenthalte where abgang - ankunft < interval '5 minutes';
@@ -146,8 +146,11 @@ vergessen.
 
 ## Was von allein passiert, und was nicht
 
-- **Unter 20 Minuten** zählt nicht. Ein Fokus, der versehentlich an- und
-  ausging, ist kein Lerntag.
+- **Unter 20 Minuten** zählt nicht, beim Lesen unter 10. Ein Fokus, der
+  versehentlich an- und ausging, ist kein Lerntag. Lesen hat die kürzere
+  Schwelle, weil ein Kapitel kürzer ist als eine Trainingseinheit — und weil
+  man am Gym versehentlich vorbeifährt, den Fokus lesen aber nicht
+  versehentlich einschaltet.
 - **Zweimal am Tag** bleibt ein Tick, steht in der Tagesansicht aber als zwei
   Einheiten mit eigener Uhrzeit.
 - **Über Mitternacht**: die Sitzung zählt zu dem Tag, an dem sie begann.

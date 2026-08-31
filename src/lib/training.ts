@@ -1,5 +1,5 @@
 import { toKey } from './dates'
-import type { Aufenthalt, FeldId, UserId } from './types'
+import type { Aufenthalt, FeldId, MessbarerBereich, UserId } from './types'
 import { istMessbar } from './types'
 
 /**
@@ -8,6 +8,18 @@ import { istMessbar } from './types'
  * niedrig: sie soll die vorbeifahrt aussortieren, nicht den kurzen tag.
  */
 export const MINDESTMINUTEN = 20
+
+/**
+ * lesen zählt ab zehn minuten. ein kapitel ist kürzer als eine trainingseinheit,
+ * und der weg dorthin ist kürzer: zum gym fährt man versehentlich vorbei, den
+ * fokus lesen schaltet man nicht versehentlich ein. eine schwelle, die den
+ * ehrlichen kurzen abend aussortiert, misst nicht strenger, sondern schlechter.
+ */
+export const MINDESTMINUTEN_LESEN = 10
+
+export function mindestMinuten(bereich: MessbarerBereich): number {
+  return bereich === 'lesen' ? MINDESTMINUTEN_LESEN : MINDESTMINUTEN
+}
 
 /** minuten zwischen ankunft und abgang. `null`, solange der abgang fehlt */
 export function dauerMinuten(a: Aufenthalt): number | null {
@@ -28,7 +40,7 @@ export function tagVon(a: Aufenthalt): string {
 
 export function zaehlt(a: Aufenthalt): boolean {
   const dauer = dauerMinuten(a)
-  return dauer !== null && dauer >= MINDESTMINUTEN
+  return dauer !== null && dauer >= mindestMinuten(a.bereich)
 }
 
 /**
