@@ -20,7 +20,7 @@ export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
   const stand = USERS.map((u) => ({ u, punkte: wocheGesamt(zustand, u.id, woche) }))
 
   return (
-    <header className="pt-5 pb-2">
+    <header className="pb-3">
       <AnimatePresence mode="wait" initial={false}>
         {bilanzzeit ? (
           <motion.div
@@ -39,7 +39,7 @@ export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: reduced ? 0 : 0.26, ease: EASE_WEICH }}
-            className="flex items-start justify-between gap-4"
+            className="flex min-h-[55px] items-start justify-between gap-4"
           >
             <div>
               <h1 className="display text-[16px] font-bold lowercase leading-none">

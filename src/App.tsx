@@ -144,7 +144,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
   return (
     <div className="min-h-[100dvh] bg-grund">
-      <main className="mx-auto w-full max-w-[420px] px-5 pb-6">
+      <main className="app-frame mx-auto w-full max-w-[420px]">
         <Kopf
           heute={heute}
           woche={woche}

@@ -25,6 +25,11 @@
   --phase-kern: #7fd1e8;
   --phase-tief: #2f7f96;
 
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
+
   --erijon-leer: color-mix(in srgb, var(--erijon) 40%, var(--grund));
   --koray-leer: color-mix(in srgb, var(--koray) 48%, var(--grund));
 }
@@ -59,12 +64,29 @@ html {
 
 body {
   margin: 0;
+  min-height: 100dvh;
   background: var(--grund);
   color: var(--kreide);
   font-family: var(--font-body);
   font-synthesis-weight: none;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/*
+ * `black-translucent` lässt die PWA bis unter Statusleiste und Dynamic Island
+ * zeichnen. Der Inhalt beginnt deshalb innerhalb der echten iPhone-Safe-Area;
+ * links und rechts schützt dieselbe Hülle auch das Querformat.
+ */
+.app-frame {
+  padding-top: calc(var(--app-safe-top) + 1rem);
+  padding-right: max(1.25rem, calc(var(--app-safe-right) + 0.75rem));
+  padding-bottom: calc(var(--app-safe-bottom) + 1.5rem);
+  padding-left: max(1.25rem, calc(var(--app-safe-left) + 0.75rem));
 }
 
 /* zahlen sind der inhalt dieser app */
