@@ -34,7 +34,7 @@ Zwei Dinge, beides einmal:
 ```powershell
 npx supabase link --project-ref ogxwazageufvalkocywh
 npx supabase db push
-npx supabase functions deploy fokus
+npx supabase functions deploy fokus --no-verify-jwt
 ```
 
 Die Migration `20260831210000_fokus.sql` erlaubt der Tabelle `aufenthalte` alle
@@ -138,7 +138,9 @@ delete from aufenthalte where abgang - ankunft < interval '5 minutes';
 
 Kommt `kein gueltiges import-token`, stimmt `t` nicht. Kommt `p_bereich muss
 lernen, gym, boxen oder lesen sein`, ist die Migration noch nicht eingespielt.
-Kommt gar nichts oder ein 404, fehlt `npx supabase functions deploy fokus`.
+Kommt gar nichts oder ein 404, fehlt `npx supabase functions deploy fokus
+--no-verify-jwt`. Kommt `401 Invalid JWT`, wurde beim Deploy `--no-verify-jwt`
+vergessen.
 
 ## Was von allein passiert, und was nicht
 
