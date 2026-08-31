@@ -31,6 +31,8 @@ import { TrackerKalender } from './components/TrackerKalender'
 import { Anmeldung } from './components/Anmeldung'
 import { TabLeiste } from './components/TabLeiste'
 import { SchlafTab } from './components/schlaf/SchlafTab'
+import { DuellTab } from './components/duell/DuellTab'
+import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
@@ -66,6 +68,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     me,
     zustand,
     schlaf,
+    wetten,
     ladezustand,
     fehler,
     ereignis,
@@ -75,6 +78,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     rueckgaengig,
     wertAendern,
     setzeGewicht,
+    setzeWette,
   } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
   const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
@@ -96,22 +100,17 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   const ich = userDef(me)
   const er = other(me)
 
-  // datumswechsel um mitternacht und beim zurückkehren in die app
+  // Uhrzeit und Datum aktuell halten: dadurch schaltet auch das Sonntagsfinale
+  // um 18 Uhr um, ohne dass die App neu geöffnet werden muss.
   useEffect(() => {
-    const pruefe = () => {
-      const jetzt = new Date()
-      if (toKey(jetzt) !== heuteKey) setHeute(jetzt)
-    }
-    const jetzt = new Date()
-    const mitternacht = new Date(jetzt)
-    mitternacht.setHours(24, 0, 0, 0)
-    const timer = window.setTimeout(pruefe, mitternacht.getTime() - jetzt.getTime() + 200)
+    const pruefe = () => setHeute(new Date())
+    const timer = window.setInterval(pruefe, 30_000)
     document.addEventListener('visibilitychange', pruefe)
     return () => {
-      window.clearTimeout(timer)
+      window.clearInterval(timer)
       document.removeEventListener('visibilitychange', pruefe)
     }
-  }, [heuteKey])
+  }, [])
 
   // rückgängig steht fünf sekunden in der zeile, die du zuletzt angefasst hast
   useEffect(() => {
@@ -186,6 +185,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.18 }}
             >
+              <RivalitaetsTicker zustand={zustand} woche={woche} me={me} kompakt={true} />
+
               <section
                 aria-label="heute eintragen"
                 className="mt-2 border-t border-linie transition-opacity duration-200"
@@ -283,6 +284,25 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
               <Gewichtsdiagramm gewichte={zustand.gewichte} heute={heuteKey} />
             </motion.div>
+          ) : aktiverTab === 'duell' ? (
+            <motion.div
+              key="tab-duell"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+            >
+              <DuellTab
+                zustand={zustand}
+                woche={woche}
+                heuteKey={heuteKey}
+                me={me}
+                heute={heute}
+                wette={wetten[woche[0] ?? heuteKey] ?? ''}
+                onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
+                onZumTracker={() => setAktiverTab('tracker')}
+              />
+            </motion.div>
           ) : (
             <motion.div
               key="tab-schlaf"
@@ -341,12 +361,12 @@ function Fusszeile({
 
   if (art === 'supabase') {
     return (
-      <footer className="mt-6 flex items-center gap-2 text-[11px] text-kreide-52">
+      <footer className="mt-6 flex min-h-11 items-center gap-2 text-[11px] text-kreide-52">
         <span>angemeldet als {userDef(me).name}</span>
         <button
           type="button"
           onClick={() => abmelden()}
-          className="underline decoration-linie-hell underline-offset-4"
+          className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4"
         >
           abmelden
         </button>
@@ -355,7 +375,7 @@ function Fusszeile({
   }
 
   return (
-    <footer className="mt-6 flex items-center gap-2 text-[11px] text-kreide-52">
+    <footer className="mt-6 flex min-h-11 items-center gap-2 text-[11px] text-kreide-52">
       <span>prototyp · angemeldet als {userDef(lokalesMe()).name}</span>
       <button
         type="button"
@@ -363,7 +383,7 @@ function Fusszeile({
           lokalWechseln(er.id)
           onWechsel()
         }}
-        className="underline decoration-linie-hell underline-offset-4"
+        className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4"
       >
         zu {er.name} wechseln
       </button>

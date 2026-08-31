@@ -2,9 +2,14 @@ import type { Aufenthalt, Einheit, Einheiten, Gewichte, Schlafnacht, UserId } fr
 
 /** eine einheit, so wie realtime oder ein anderer tab sie meldet */
 export type EinheitEreignis = {
+  typ: 'einheit'
   art: 'neu' | 'weg' | 'wert'
   einheit: Einheit
 }
+
+export type WetteEreignis = { typ: 'wette'; woche: string; text: string }
+export type BackendEreignis = EinheitEreignis | WetteEreignis
+export type Wetten = Record<string, string>
 
 export type Anfangszustand = {
   me: UserId
@@ -13,6 +18,7 @@ export type Anfangszustand = {
   schlaf: Schlafnacht[]
   /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
   aufenthalte: Aufenthalt[]
+  wetten: Wetten
   /**
    * die tabelle `einheiten` fehlt noch, gelesen wurde aus `eintraege` und
    * `werte`. dann gibt es genau eine einheit pro tag und die oberfläche bietet
@@ -39,6 +45,8 @@ export interface Backend {
   loescheTag(einheiten: Einheit[]): Promise<void>
   /** kilogramm für einen tag. `kg <= 0` löscht den eintrag */
   schreibeGewicht(tag: string, kg: number): Promise<void>
+  /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
+  schreibeWette(woche: string, text: string): Promise<void>
   /** ruft cb bei jeder fremden oder eigenen einheit auf. gibt die abmeldung zurück */
-  abonniere(cb: (e: EinheitEreignis) => void): () => void
+  abonniere(cb: (e: BackendEreignis) => void): () => void
 }

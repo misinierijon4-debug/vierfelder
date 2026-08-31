@@ -1,6 +1,6 @@
 export type AreaId = 'lernen' | 'gym' | 'boxen' | 'lesen'
 export type UserId = 'erijon' | 'koray'
-export type AppTab = 'tracker' | 'schlaf'
+export type AppTab = 'tracker' | 'duell' | 'schlaf'
 
 /**
  * alles, was in die wochenwertung zählt. `AreaId` bleibt absichtlich bei den

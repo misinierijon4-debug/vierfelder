@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Backend } from './backend'
+import type { Backend, Wetten } from './backend'
 import { gewichtKey, tickKey } from './types'
 import type {
   AreaId,
@@ -44,6 +44,7 @@ export function useTracker(backend: Backend) {
   // messungen schreibt nur die datenbank, deshalb gibt es hier kein ref und
   // keine optimistische rücknahme: der zustand ändert sich nur beim laden.
   const [aufenthalte, setAufenthalte] = useState<Aufenthalt[]>([])
+  const [wetten, setWetten] = useState<Wetten>({})
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   const [fehler, setFehler] = useState<string | null>(null)
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
@@ -64,6 +65,7 @@ export function useTracker(backend: Backend) {
   const einheitenRef = useRef<Einheiten>({})
   const gewichteRef = useRef<Gewichte>({})
   const meRef = useRef<UserId>('erijon')
+  const wettenRef = useRef<Wetten>({})
 
   /**
    * je einheit der zuletzt losgeschickte schreibvorgang. schreiben derselben
@@ -107,11 +109,13 @@ export function useTracker(backend: Backend) {
         meRef.current = anfang.me
         einheitenRef.current = anfang.einheiten
         gewichteRef.current = anfang.gewichte
+        wettenRef.current = anfang.wetten
         setMe(anfang.me)
         setEinheiten(anfang.einheiten)
         setGewichte(anfang.gewichte)
         setSchlaf(anfang.schlaf)
         setAufenthalte(anfang.aufenthalte)
+        setWetten(anfang.wetten)
         setAltbestand(anfang.altbestand)
         setLadezustand('bereit')
         setFehler(null)
@@ -130,6 +134,12 @@ export function useTracker(backend: Backend) {
     void versuche(1)
 
     const abmelden = backend.abonniere((e) => {
+      if (e.typ === 'wette') {
+        const next = { ...wettenRef.current, [e.woche]: e.text }
+        wettenRef.current = next
+        setWetten(next)
+        return
+      }
       const einheit = e.einheit
       // über die id zusammengeführt: ein doppelt gemeldetes ereignis ändert
       // nichts, und ein eigener schreibvorgang kommt nicht doppelt zurück.
@@ -353,12 +363,31 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
+  const setzeWette = useCallback(
+    (woche: string, text: string) => {
+      const sauber = text.trim().replace(/\s+/g, ' ').slice(0, 160)
+      if (!sauber) return
+      const vorher = wettenRef.current
+      const next = { ...vorher, [woche]: sauber }
+      wettenRef.current = next
+      setWetten(next)
+      setFehler(null)
+      backend.schreibeWette(woche, sauber).catch(() => {
+        wettenRef.current = vorher
+        setWetten(vorher)
+        setFehler('wetteinsatz nicht gespeichert. versuch es nochmal.')
+      })
+    },
+    [backend]
+  )
+
   const zustand: Zustand = { einheiten, gewichte, aufenthalte }
 
   return {
     me,
     zustand,
     schlaf,
+    wetten,
     ladezustand,
     fehler,
     ereignis,
@@ -368,5 +397,6 @@ export function useTracker(backend: Backend) {
     rueckgaengig,
     wertAendern,
     setzeGewicht,
+    setzeWette,
   }
 }

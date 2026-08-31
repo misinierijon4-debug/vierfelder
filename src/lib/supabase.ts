@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import type { Anfangszustand, Backend, EinheitEreignis } from './backend'
+import type { Anfangszustand, Backend, EinheitEreignis, Wetten } from './backend'
 import { gewichtKey, tickKey } from './types'
 import type {
   Aufenthalt,
@@ -65,6 +65,7 @@ type AufenthaltZeile = {
   ankunft: string
   abgang: string | null
 }
+type WetteZeile = { woche: string; text: string }
 
 export type Anmeldestatus = 'laden' | 'an' | 'aus'
 
@@ -119,6 +120,7 @@ export function supabaseBackend(eigeneId: string): Backend {
    * und der deploy nicht in derselben minute passieren.
    */
   let altbestand = false
+  let wettenVerfuegbar = false
   let modusBekannt: () => void = () => {}
   const modus = new Promise<void>((r) => {
     modusBekannt = r
@@ -163,7 +165,7 @@ export function supabaseBackend(eigeneId: string): Backend {
     art: 'supabase',
 
     async laden(): Promise<Anfangszustand> {
-      const [profile, einheitZeilen, schlafZeilen, gewichtZeilen, aufenthaltZeilen] =
+      const [profile, einheitZeilen, schlafZeilen, gewichtZeilen, aufenthaltZeilen, wetteZeilen] =
         await Promise.all([
           db.from('profile').select('id, person'),
           db.from('einheiten').select('id, user_id, bereich, tag, wert, erfasst'),
@@ -178,6 +180,7 @@ export function supabaseBackend(eigeneId: string): Backend {
             .from('aufenthalte')
             .select('user_id, bereich, ort, ankunft, abgang')
             .order('ankunft', { ascending: true }),
+          db.from('duell_wetten').select('woche, text'),
         ])
 
       if (profile.error) throw profile.error
@@ -190,6 +193,8 @@ export function supabaseBackend(eigeneId: string): Backend {
       if (aufenthaltZeilen.error && !fehltNoch(aufenthaltZeilen.error.code)) {
         throw aufenthaltZeilen.error
       }
+      if (wetteZeilen.error && !fehltNoch(wetteZeilen.error.code)) throw wetteZeilen.error
+      wettenVerfuegbar = !wetteZeilen.error
 
       altbestand = Boolean(einheitZeilen.error)
       modusBekannt()
@@ -286,7 +291,10 @@ export function supabaseBackend(eigeneId: string): Backend {
         })
       }
 
-      return { me, einheiten, gewichte, schlaf, aufenthalte, altbestand }
+      const wetten: Wetten = {}
+      for (const w of (wetteZeilen.data ?? []) as WetteZeile[]) wetten[w.woche] = w.text
+
+      return { me, einheiten, gewichte, schlaf, aufenthalte, wetten, altbestand }
     },
 
     async schreibeEinheit(e) {
@@ -384,6 +392,15 @@ export function supabaseBackend(eigeneId: string): Backend {
       }
     },
 
+    async schreibeWette(woche, text) {
+      if (!wettenVerfuegbar) throw new Error('duell_wetten fehlt noch')
+      const { error } = await db.from('duell_wetten').upsert(
+        { woche, text, updated_by: eigeneId, updated_at: new Date().toISOString() },
+        { onConflict: 'woche' }
+      )
+      if (error) throw error
+    },
+
     abonniere(cb) {
       // welcher kanal der richtige ist, steht erst nach dem laden fest.
       let kanal: ReturnType<typeof db.channel> | null = null
@@ -397,10 +414,10 @@ export function supabaseBackend(eigeneId: string): Backend {
             if (!zeile) return
             const person = personen.get(zeile.user_id)
             if (!person) return
-            cb({ art, einheit: alteEinheit(person, zeile.bereich, zeile.tag, null) })
+            cb({ typ: 'einheit', art, einheit: alteEinheit(person, zeile.bereich, zeile.tag, null) })
           }
 
-          kanal = db
+          let builder = db
             .channel('eintraege')
             .on(
               'postgres_changes',
@@ -412,17 +429,29 @@ export function supabaseBackend(eigeneId: string): Backend {
               { event: 'DELETE', schema: 'public', table: 'eintraege' },
               (p) => melde(p.old as EintragZeile, 'weg')
             )
-            .subscribe()
+          if (wettenVerfuegbar) {
+            builder = builder.on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'duell_wetten' },
+              (p) => {
+                const w = p.new as WetteZeile | null
+                if (w?.woche && typeof w.text === 'string') {
+                  cb({ typ: 'wette', woche: w.woche, text: w.text })
+                }
+              }
+            )
+          }
+          kanal = builder.subscribe()
           return
         }
 
         const melde = (zeile: EinheitZeile | null, art: EinheitEreignis['art']) => {
           if (!zeile) return
           const einheit = zeileZuEinheit(zeile)
-          if (einheit) cb({ art, einheit })
+          if (einheit) cb({ typ: 'einheit', art, einheit })
         }
 
-        kanal = db
+        let builder = db
           .channel('einheiten')
           .on(
             'postgres_changes',
@@ -440,7 +469,19 @@ export function supabaseBackend(eigeneId: string): Backend {
             { event: 'DELETE', schema: 'public', table: 'einheiten' },
             (p) => melde(p.old as EinheitZeile, 'weg')
           )
-          .subscribe()
+        if (wettenVerfuegbar) {
+          builder = builder.on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'duell_wetten' },
+            (p) => {
+              const w = p.new as WetteZeile | null
+              if (w?.woche && typeof w.text === 'string') {
+                cb({ typ: 'wette', woche: w.woche, text: w.text })
+              }
+            }
+          )
+        }
+        kanal = builder.subscribe()
       })
 
       return () => {

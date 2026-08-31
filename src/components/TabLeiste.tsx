@@ -9,6 +9,7 @@ type Props = {
 
 const TABS: Array<{ id: AppTab; label: string }> = [
   { id: 'tracker', label: 'tracker' },
+  { id: 'duell', label: 'duell' },
   { id: 'schlaf', label: 'schlaf' },
 ]
 
@@ -28,7 +29,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
             role="tab"
             aria-selected={istAktiv}
             onClick={() => onTabWechsel(tab.id)}
-            className="relative min-h-9 flex-1 py-1.5 text-center text-[12px] font-semibold transition-colors duration-150 focus-visible:outline-none"
+            className="relative min-h-11 flex-1 py-2 text-center text-[12px] font-semibold transition-colors duration-150"
             style={{
               color: istAktiv ? 'var(--kreide)' : 'var(--kreide-52)',
             }}

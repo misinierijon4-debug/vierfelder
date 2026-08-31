@@ -1,4 +1,4 @@
-import type { Anfangszustand, Backend, EinheitEreignis } from './backend'
+import type { Anfangszustand, Backend, BackendEreignis, EinheitEreignis, Wetten } from './backend'
 import { toKey, weekDays } from './dates'
 import { gewichtKey, neueEinheitId, tickKey, wertKey } from './types'
 import type {
@@ -25,12 +25,13 @@ const SCHLAF_KEY = 'vierfelder.schlaf.v2'
 const GEWICHT_KEY = 'vierfelder.gewicht.v1'
 /** eine zeile pro durchführung, flach über beide personen */
 const EINHEITEN_KEY = 'vierfelder.einheiten.v1'
+const WETTEN_KEY = 'vierfelder.wetten.v1'
 /** damit die übernahme des altbestands genau einmal läuft */
 const MIGRIERT_KEY = 'vierfelder.einheiten.migriert.v1'
 const KANAL = 'vierfelder'
 
 type AlleWerte = Record<UserId, Werte>
-type Nachricht = EinheitEreignis & { von: string }
+type Nachricht = BackendEreignis & { von: string }
 
 function lade<T>(key: string, fallback: T): T {
   try {
@@ -253,7 +254,7 @@ export function lokalesBackend(): Backend {
   const absender = Math.random().toString(36).slice(2)
 
   const sende = (art: EinheitEreignis['art'], einheit: Einheit) => {
-    holeKanal()?.postMessage({ von: absender, art, einheit } satisfies Nachricht)
+    holeKanal()?.postMessage({ von: absender, typ: 'einheit', art, einheit } satisfies Nachricht)
   }
 
   return {
@@ -280,6 +281,7 @@ export function lokalesBackend(): Backend {
         gewichte: lade<Gewichte>(GEWICHT_KEY, {}),
         schlaf,
         aufenthalte: erzeugeBeispielAufenthalte(),
+        wetten: lade<Wetten>(WETTEN_KEY, {}),
         altbestand: false,
       }
     },
@@ -320,13 +322,21 @@ export function lokalesBackend(): Backend {
       localStorage.setItem(GEWICHT_KEY, JSON.stringify(gewichte))
     },
 
+    async schreibeWette(woche: string, text: string) {
+      const wetten = lade<Wetten>(WETTEN_KEY, {})
+      wetten[woche] = text
+      localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
+      holeKanal()?.postMessage({ von: absender, typ: 'wette', woche, text } satisfies Nachricht)
+    },
+
     abonniere(cb) {
       const ch = holeKanal()
       if (!ch) return () => {}
       const onMessage = (e: MessageEvent<Nachricht>) => {
         const n = e.data
-        if (!n || n.von === absender || !n.einheit) return
-        cb({ art: n.art, einheit: n.einheit })
+        if (!n || n.von === absender) return
+        if (n.typ === 'wette') cb({ typ: 'wette', woche: n.woche, text: n.text })
+        else if (n.einheit) cb({ typ: 'einheit', art: n.art, einheit: n.einheit })
       }
       ch.addEventListener('message', onMessage)
       return () => ch.removeEventListener('message', onMessage)
