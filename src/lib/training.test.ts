@@ -12,6 +12,7 @@ import {
 import {
   anzahlEinheiten,
   baueEinheit,
+  hatTageswert,
   fuegeEinheitHinzu,
   istGesetzt,
   quelle,
@@ -225,6 +226,14 @@ describe('lesen: gemessen in minuten, gezählt in seiten', () => {
     const z = mit(fokus('2026-08-26', 'lesen', [21, 40], 35))
     expect(istGesetzt(z, 'erijon', 'lesen', '2026-08-26')).toBe(true)
     expect(tagesWert(z, 'erijon', 'lesen', '2026-08-26')).toBe(0)
+    // 0 seiten wären eine behauptung: gezählt wurde nie, gemessen schon
+    expect(hatTageswert(z, 'erijon', 'lesen', '2026-08-26')).toBe(false)
+    expect(messungsMinuten(z, 'erijon', 'lesen', '2026-08-26')).toBe(35)
+  })
+
+  it('nennt die gemessenen minuten beim gym einen tageswert', () => {
+    const z = mit(besuch('2026-08-26', [18, 0], 74))
+    expect(hatTageswert(z, 'erijon', 'gym', '2026-08-26')).toBe(true)
   })
 
   it('rechnet beim gym weiter alles in minuten', () => {

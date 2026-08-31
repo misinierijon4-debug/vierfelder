@@ -327,3 +327,16 @@ export function bilanz(
     er: wocheBereich(z, er, f.id, woche),
   }))
 }
+
+/**
+ * ob an diesem tag überhaupt eine dauer erfasst ist. null und 0 sind nicht
+ * dasselbe: „ohne wert" heißt nie erfasst, 0 heißt heruntergezählt bis auf
+ * null. die bereichszeile zeigt deshalb zwei verschiedene dinge an.
+ */
+export function hatTageswert(z: Zustand, u: UserId, f: FeldId, tag: string): boolean {
+  if (f === 'gewicht') return false
+  // in der einheit des bereichs gefragt: eine gemessene lesestunde ist kein
+  // seitenwert, dort steht weiter „ohne wert" — die minuten stehen rechts.
+  const einheit = area(f).unit
+  return tageseinheiten(z, u, f, tag).some((e) => e.einheit === einheit && e.wert !== null)
+}

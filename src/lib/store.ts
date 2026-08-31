@@ -65,6 +65,27 @@ export function useTracker(backend: Backend) {
   const gewichteRef = useRef<Gewichte>({})
   const meRef = useRef<UserId>('erijon')
 
+  /**
+   * je einheit der zuletzt losgeschickte schreibvorgang. schreiben derselben
+   * einheit laufen nacheinander, weil das netz die reihenfolge nicht garantiert:
+   * käme das anlegen nach dem ersten wertupdate an, ginge das update auf eine
+   * zeile, die es noch nicht gibt — ohne fehler, die minuten wären still weg.
+   * Und zwei schnelle schritte könnten sich in der datenbank vertauschen.
+   */
+  const kette = useRef(new Map<string, Promise<unknown>>())
+
+  const nacheinander = useCallback((ids: string[], schreibe: () => Promise<void>) => {
+    const laufende = ids.map((id) => kette.current.get(id)).filter(Boolean)
+    const lauf = Promise.allSettled(laufende).then(schreibe)
+    // die kette selbst darf nicht abreißen; den fehler behandelt der aufrufer
+    const still = lauf.catch(() => {})
+    for (const id of ids) kette.current.set(id, still)
+    void still.then(() => {
+      for (const id of ids) if (kette.current.get(id) === still) kette.current.delete(id)
+    })
+    return lauf
+  }, [])
+
   const uebernimm = useCallback((next: Einheiten) => {
     einheitenRef.current = next
     setEinheiten(next)
@@ -163,14 +184,14 @@ export function useTracker(backend: Backend) {
       })
       setFehler(null)
 
-      backend.schreibeEinheit(einheit).catch(() => {
+      nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch(() => {
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
 
       return einheit
     },
-    [backend, uebernimm]
+    [backend, nacheinander, uebernimm]
   )
 
   /** nimmt eine einzelne durchführung zurück */
@@ -189,12 +210,12 @@ export function useTracker(backend: Backend) {
       })
       setFehler(null)
 
-      backend.loescheEinheit(einheit).catch(() => {
+      nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch(() => {
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, uebernimm]
+    [backend, nacheinander, uebernimm]
   )
 
   /** der an/aus-schalter: an legt die erste einheit an, aus räumt den tag */
@@ -214,12 +235,15 @@ export function useTracker(backend: Backend) {
       setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt: false, quelle: 'selbst' })
       setFehler(null)
 
-      backend.loescheTag(vorhandene).catch(() => {
+      nacheinander(
+        vorhandene.map((e) => e.id),
+        () => backend.loescheTag(vorhandene)
+      ).catch(() => {
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, einheitHinzu, uebernimm]
+    [backend, einheitHinzu, nacheinander, uebernimm]
   )
 
   /**
@@ -250,27 +274,58 @@ export function useTracker(backend: Backend) {
       setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt: true, quelle: 'selbst' })
       setFehler(null)
 
-      Promise.all(aktion.einheiten.map((e) => backend.schreibeEinheit(e))).catch(() => {
+      Promise.all(
+        aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
+      ).catch(() => {
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, einheitWeg, toggle, uebernimm]
+    [backend, einheitWeg, nacheinander, toggle, uebernimm]
   )
 
-  /** minuten oder seiten einer einzelnen einheit */
-  const setWert = useCallback(
-    (einheit: Einheit, v: number) => {
+  /**
+   * minuten oder seiten der jüngsten einheit eines tages, um `delta` verschoben.
+   * gerechnet wird auf dem ref, nicht auf dem wert, den der render gerade
+   * zeigt: zwei schritte kurz hintereinander gingen sonst beide von derselben
+   * zahl aus, und der zweite überschriebe den ersten mit demselben ergebnis.
+   */
+  const wertAendern = useCallback(
+    (area: AreaId, tag: string, delta: number) => {
+      const u = meRef.current
       const vorher = einheitenRef.current
-      const sauber = Math.max(0, Math.round(v))
-      uebernimm(mitWert(vorher, einheit.id, sauber))
+      const liste = vorher[tickKey(u, area, tag)] ?? []
+      const letzte = liste[liste.length - 1]
 
-      backend.schreibeEinheitWert(einheit, sauber).catch(() => {
+      if (!letzte) {
+        // gemessen und trotzdem nichts getippt: das gibt es beim lesen, wo der
+        // fokus die zeit misst und die seiten niemand kennt. dann legt der
+        // erste schritt die einheit an, statt ins leere zu laufen.
+        if (delta <= 0) return
+        const neue = einheitHinzu(area, tag)
+        const nachAnlegen = einheitenRef.current
+        const erster = Math.max(0, Math.round(delta))
+        uebernimm(mitWert(nachAnlegen, neue.id, erster))
+
+        // dieselbe id in der schlange: das anlegen ist durch, bevor der wert
+        // auf eine zeile geht, die es sonst noch nicht gäbe.
+        nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
+          uebernimm(nachAnlegen)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+        return
+      }
+
+      const sauber = Math.max(0, Math.round((letzte.wert ?? 0) + delta))
+      uebernimm(mitWert(vorher, letzte.id, sauber))
+      setFehler(null)
+
+      nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch(() => {
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, uebernimm]
+    [backend, einheitHinzu, nacheinander, uebernimm]
   )
 
   const setzeGewicht = useCallback(
@@ -311,7 +366,7 @@ export function useTracker(backend: Backend) {
     toggle,
     einheitHinzu,
     rueckgaengig,
-    setWert,
+    wertAendern,
     setzeGewicht,
   }
 }

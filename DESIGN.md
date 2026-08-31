@@ -503,7 +503,52 @@ vollständig sichtbar und über die tagesansicht lesbar, aber die zeilen oben
 gehören unverändert dem heutigen tag. Damit bleibt die regel aus abschnitt 19
 unangetastet: was gestern war, war gestern.
 
-## 21. Nachtrag: der fokus als beleg (31.08.2026)
+## 21. Nachtrag: der schritt, den man nicht sah (31.08.2026)
+
+**Zwei knöpfe, die nichts taten — und doch alles richtig machten.** Wer auf
+plus, minus oder „+ einheit" tippte, sah nichts passieren. Gespeichert wurde
+jedesmal korrekt: die minuten standen in der datenbank, die rasterzelle bekam
+ihre ziffer. Nur die zeile, in der man gerade den finger hatte, schwieg. Das
+ist der schlimmste fehler von allen, weil er wie datenverlust aussieht und
+zum nochmal-tippen einlädt.
+
+**Der grund war ein platz, den sich zwei dinge teilten.** Rechts in der zweiten
+zeile stand der tageswert — und dort stand auch „rückgängig", fünf sekunden
+lang, mit vorrang. Fünf sekunden sind genau das fenster, in dem man tippt: erst
+den haken, dann die minuten. Also verdeckte die rücknahme immer die zahl, die
+sie hätte zeigen müssen. Kein zustand war falsch, nur unsichtbar.
+
+**Die zahl steht jetzt zwischen den knöpfen, die sie ändern.** Minus, wert,
+plus — ein schritt hat sein ergebnis unmittelbar daneben, statt am anderen ende
+der zeile. Die breite des feldes ist fest, damit aus 45 die 120 werden kann,
+ohne dass das plus unter dem daumen wegwandert; dieselbe regel wie beim
+abstand im kopf der zeile. Rechts bleibt allein „rückgängig", und es reicht
+jetzt bis unter die marke.
+
+**„+ einheit" hatte gar keine antwort.** Eine zweite einheit ändert den
+wochenstand nicht (der zählt tage, abschnitt 19) und den tageswert auch nicht,
+solange sie leer ist — es gab schlicht nichts, was sich hätte rühren können.
+Ab der zweiten einheit steht deshalb ein zähler neben dem wert: `2×`. Er sagt,
+woraus die summe besteht, und er sagt, dass der knopf etwas getan hat. Sein
+platz bleibt auch leer stehen, sonst rutschte „+ einheit" beim ersten druck
+unter dem finger weg.
+
+**0 minuten und „ohne wert" bleiben zwei verschiedene dinge.** Beide ergeben
+die tagessumme null. „Ohne wert" heißt: nie erfasst. Die 0 heißt: bis auf null
+heruntergezählt. `hatTageswert` unterscheidet sie, damit das feld zwischen den
+knöpfen nicht eine erfassung behauptet, die es nicht gab.
+
+**Und zwei rennen, die niemand sieht, bis sie einmal verloren gehen.** Der
+schritt rechnete auf der zahl, die der render gerade zeigte — zwei schnelle
+taps gingen damit beide von derselben zahl aus, der zweite überschrieb den
+ersten mit demselben ergebnis. Gerechnet wird jetzt auf dem ref, wie überall
+sonst in diesem store. Und schreibvorgänge derselben einheit laufen
+nacheinander: das netz garantiert keine reihenfolge, und käme das anlegen nach
+dem ersten wertupdate an, ginge dieses update auf eine zeile, die es noch nicht
+gibt — ohne fehlermeldung. Die minuten wären still weg gewesen, sichtbar erst
+beim nächsten laden.
+
+## 22. Nachtrag: der fokus als beleg (31.08.2026)
 
 **Abschnitt 18 endete mit einer lücke, und die lücke war die hälfte.** Gym und
 boxen hatten einen beleg, lernen und lesen nicht — „kein gerät weiß, ob du

@@ -36,7 +36,7 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 112 tests
+npm test      # logik, 116 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 

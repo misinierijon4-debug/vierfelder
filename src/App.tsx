@@ -12,6 +12,7 @@ import { abmelden, hatSupabase, supabaseBackend, useSession } from './lib/supaba
 import {
   abstand,
   anzahlEinheiten,
+  hatTageswert,
   istGesetzt,
   letzteEinheit,
   messungsMinuten,
@@ -72,7 +73,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     toggle,
     einheitHinzu,
     rueckgaengig,
-    setWert,
+    wertAendern,
     setzeGewicht,
   } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
@@ -191,8 +192,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 style={{ opacity: ladezustand === 'laden' ? 0.4 : 1 }}
               >
                 {AREAS.map((area, i) => {
-                  // die schritte gelten der neuesten einheit, die zahl rechts
-                  // dem ganzen tag
+                  // die schritte gelten der neuesten einheit, die zahl zwischen
+                  // ihnen dem ganzen tag
                   const letzte = letzteEinheit(zustand, me, area.id, heuteKey)
                   return (
                     <Bereichszeile
@@ -204,6 +205,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       abstand={abstand(zustand, area.id, woche, me, er.id)}
                       streak={streak(zustand, me, area.id, heute)}
                       wert={tagesWert(zustand, me, area.id, heuteKey)}
+                      hatWert={hatTageswert(zustand, me, area.id, heuteKey)}
                       einheitWert={letzte?.wert ?? 0}
                       anzahl={anzahlEinheiten(zustand, me, area.id, heuteKey)}
                       mehrfachMoeglich={!altbestand}
@@ -217,16 +219,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       onTap={() => toggle(area.id, heuteKey)}
                       onUndo={() => zurueck(area.id)}
                       onNeueEinheit={() => einheitHinzu(area.id, heuteKey)}
-                      onWert={(delta) => {
-                        if (letzte) {
-                          setWert(letzte, (letzte.wert ?? 0) + delta)
-                          return
-                        }
-                        // gemessen und trotzdem noch nichts getippt: das gibt es
-                        // beim lesen, wo der fokus die zeit misst und die seiten
-                        // niemand kennt. der erste schritt legt die einheit an.
-                        if (delta > 0) setWert(einheitHinzu(area.id, heuteKey), delta)
-                      }}
+                      onWert={(delta) => wertAendern(area.id, heuteKey, delta)}
                     />
                   )
                 })}
