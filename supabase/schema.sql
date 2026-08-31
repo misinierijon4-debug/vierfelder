@@ -310,6 +310,9 @@ create policy "duell wetten aendern" on duell_wetten
 
 alter table duell_wetten replica identity full;
 
+create index if not exists duell_wetten_updated_by_idx
+  on public.duell_wetten (updated_by);
+
 do $$
 begin
   alter publication supabase_realtime add table duell_wetten;
