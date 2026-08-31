@@ -33,7 +33,7 @@ export function Anmeldung() {
     <div className="flex min-h-[100dvh] items-center bg-grund">
       <main className="mx-auto w-full max-w-[420px] px-5 pb-16">
         <motion.div {...eingang(0)}>
-          <h1 className="display text-[16px] font-bold lowercase leading-none">vierfelder</h1>
+          <h1 className="display text-[16px] font-bold lowercase leading-none">zweikampf</h1>
           <p className="mt-1.5 text-[12px] text-kreide-52">
             lernen, gym, boxen, lesen. zu zweit, eine woche.
           </p>

@@ -1,4 +1,4 @@
-# vierfelder — Designplan (zur Freigabe)
+# zweikampf — Designplan (zur Freigabe)
 
 Stand: 26.08.2026. Kein Code, bis das hier freigegeben ist.
 
@@ -71,7 +71,7 @@ Bereichsnamen laufen in Archivo 22px/600 in Kleinschreibung. Sekundärtext 12px 
 Eine Seite, kein Tab, kein Menü.
 
 ```
-kopf        vierfelder                    kw 35
+kopf        zweikampf                     kw 35
             du 12 · koray 9
 
 eintragen   lernen        4  (+1)   [marke]
@@ -359,8 +359,9 @@ komma mitten im tippen. `inputMode="decimal"` zeigt auf ios keine return-taste, 
 `fertig`-knopf. Und ein vertipper wie `814` wird schon im client abgelehnt: die sichtbare
 rücknahme ist die rückmeldung, dafür braucht es keinen zweiten fehlertext.
 
-Die app heisst weiter `vierfelder`. Die vier bereiche sind die vier felder; das wiegen ist die
-messung dazu, die mitzählt.
+Die app hiess damals weiter `vierfelder`: die vier bereiche waren die vier felder, das wiegen
+die messung dazu, die mitzählt. Diese begründung hat später nicht mehr getragen, siehe
+abschnitt 23.
 
 ## 18. Nachtrag: der beweis (28.08.2026)
 
@@ -628,3 +629,59 @@ zwei stellen, die auseinanderlaufen. Der preis steht in der anleitung: das
 token liegt dann in der url und damit in den function-logs. Wer das nicht will,
 baut das formular (anhang der anleitung); dasselbe ergebnis, nur teurer im
 aufbau.
+
+## 23. Nachtrag: name und zeichen (31.08.2026)
+
+**Warum der name fiel.** `vierfelder` war eine zählung, keine benennung. Zählungen
+veralten: mit dem gewicht (abschnitt 17) waren es fünf dinge, die in die woche
+zählen, und der name musste in abschnitt 17 schon einmal verteidigt werden. Ein
+name, der beim nächsten bereich wieder gerade gebogen werden muss, ist der
+falsche. Dazu kommt: `vierfelder` beschrieb das raster — also die oberfläche —
+und nicht den inhalt. Der inhalt ist der vergleich zwischen genau zwei personen;
+das ist der satz, der schon in abschnitt 1 die zwei identitätsfarben begründet
+hat.
+
+**Warum `zweikampf`.** Er benennt die zwei, nicht die felder, und kann deshalb
+nicht veralten, wenn ein sechster bereich dazukommt. Er ist ein wort aus dem
+kampfsport, und boxen steht ohnehin in der liste. Und er sagt den ton der app
+richtig: ein zweikampf ist hart, aber verabredet — konkurrenz unter zweien, die
+sich dafür entschieden haben, nicht feindschaft.
+
+**Das alte zeichen war das falsche versprechen.** Auf dem homescreen stand ein
+lila icon mit vier weichen kacheln, weissen fugen, plastik-glanz und einem
+gesicht. Nichts davon steht in diesem dokument: die bildsprache ist
+anzeigetafel, dunkler grund, haarlinien, radius 2px, keine schatten. Ein icon,
+das freundlicher aussieht als die app, verspricht beim antippen etwas, das
+danach niemand einlöst.
+
+**Das neue zeichen.** Zwei keile stossen ineinander: der warme (`--erijon`) von
+links oben, der kühle (`--koray`) von rechts unten. Ihre spitzen laufen
+aneinander vorbei, statt sich zu berühren, und zwischen ihnen bleibt ein
+schmaler diagonaler schlitz stehen — das ist der clinch, die stelle, an der sich
+die beiden halten. Die figur ist punktsymmetrisch um die mitte, weil keiner der
+beiden im vorteil ist; wäre sie spiegelsymmetrisch, wären die keile
+gegenübergestellt statt verkeilt. Grund ist `--flaeche` statt `--grund`, damit
+das icon sich auf einem schwarzen hintergrundbild noch als fläche abhebt. Keine
+sechste farbe, kein verlauf, kein glanz.
+
+**Warum ein skript und keine datei.** `scripts/icons.py` hält die geometrie
+einmal und erzeugt daraus beide svgs und alle vier pngs. Sechs von hand
+gepflegte bilddateien laufen auseinander, sobald eine kante um zwei pixel
+wandert. Das skript bringt seinen rasterizer (scanline-füllung, 4× überabtastung)
+und den png-encoder selbst mit und hängt an nichts ausser der python-standard-
+bibliothek — ein icon-build, der `npm install` oder ein grafikprogramm braucht,
+läuft in einem jahr nicht mehr.
+
+**Was am format hängt.** Die ecken des zeichens liegen innerhalb des kreises mit
+radius 205 um die mitte, den android für `maskable` icons freihält; sonst
+schneidet ein rundes systemtheme die spitzen ab. Die pngs für homescreen und
+manifest sind volle quadrate ohne eigene rundung — ios und android runden
+selbst, ein vorgerundetes png bekäme einen zweiten rand. Nur das 32-px-favicon
+ist gerundet, weil es im browsertab niemand maskiert, und es hat eine eigene,
+fettere fassung mit breiterem schlitz: die feine version fällt bei 32 px zu.
+
+**Was den namen nicht bekommt.** Repository, pages-url, supabase-projekt und die
+localStorage-schlüssel des prototyp-modus heissen weiter `vierfelder`. Das
+repository umzubenennen ändert `VITE_BASE` und die öffentliche adresse, die
+schlüssel umzubenennen wirft lokale daten weg. Ein technischer name ist kein
+markenname; er muss stabil sein, nicht schön.
