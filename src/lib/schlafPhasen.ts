@@ -415,3 +415,153 @@ export function duell(a: Wochenwerte, b: Wochenwerte): Duellzeile[] {
     }
   })
 }
+
+/* ------------------------------------------------------------- hypnogramm */
+
+/**
+ * Tiefe je Phase: 0 liegt ganz oben, 1 ganz unten.
+ *
+ * Die Reihenfolge ist die schlafmedizinische und dieselbe, die Sleep Cycle
+ * zeichnet: wach oben, darunter REM (der Traum liegt dicht unter dem
+ * Wachsein), dann Kernschlaf, zuunterst Tiefschlaf. `unspez` teilt sich die
+ * Hoehe mit `kern`, weil Health dort nur "geschlafen" gemeldet hat.
+ */
+export const TIEFE: Record<PhasenArt, number> = {
+  wach: 0,
+  rem: 0.26,
+  kern: 0.6,
+  unspez: 0.6,
+  tief: 1,
+}
+
+/** eine phase der nacht in nachtminuten, absolut statt ab dem einschlafen */
+export type Verlaufsstueck = {
+  art: PhasenArt
+  von: number
+  bis: number
+}
+
+/**
+ * Die Phasen einer Nacht als durchgehende Folge in Nachtminuten.
+ *
+ * Zwei direkt aneinander grenzende Stuecke gleicher Hoehe werden zu einem
+ * zusammengefasst — sie waeren in der Kurve dieselbe waagerechte Linie, und
+ * eine Naht mittendrin wuerde nur die Farbe doppelt zeichnen. Eine echte
+ * Luecke bleibt eine Luecke.
+ */
+export function verlauf(analyse: NachtPhasenAnalyse): Verlaufsstueck[] {
+  const roh = analyse.stuecke
+    .map((p) => ({
+      art: p.art,
+      von: analyse.einschlafMinute + p.start,
+      bis: analyse.einschlafMinute + p.start + p.dauer,
+    }))
+    .filter((s) => s.bis > s.von)
+    .sort((a, b) => a.von - b.von)
+
+  const zusammen: Verlaufsstueck[] = []
+  for (const stueck of roh) {
+    const letztes = zusammen[zusammen.length - 1]
+    if (letztes && TIEFE[letztes.art] === TIEFE[stueck.art] && stueck.von <= letztes.bis) {
+      letztes.bis = Math.max(letztes.bis, stueck.bis)
+      continue
+    }
+    zusammen.push({ ...stueck })
+  }
+  return zusammen
+}
+
+/** ein stueck der kurve: ein svg-pfad, der seine phasenfarbe traegt */
+export type Kurvenstueck = {
+  art: PhasenArt
+  d: string
+}
+
+export type Kurvenmasse = {
+  breite: number
+  /** y der wach-linie */
+  oben: number
+  /** y der tiefschlaf-linie */
+  unten: number
+  /** waagerechte laenge eines uebergangs, in denselben einheiten wie breite */
+  radius: number
+}
+
+function rund(wert: number): number {
+  return Math.round(wert * 100) / 100
+}
+
+/**
+ * Der Verlauf als Kurve statt als Balken: die Hoehe ist die Schlaftiefe, die
+ * Breite bleibt die Uhr.
+ *
+ * Jede Phase ist eine waagerechte Linie auf ihrer Hoehe, zwischen zwei Phasen
+ * liegt ein weicher Uebergang. Der Uebergang wird in der Mitte geteilt, damit
+ * jede Haelfte die Farbe ihrer eigenen Phase behaelt — so ergibt die Folge der
+ * Pfade eine einzige, luecklose Linie mit wechselnder Farbe.
+ *
+ * Die Teilung ist die Halbierung einer kubischen Bezierkurve nach de
+ * Casteljau; die Kontrollpunkte liegen senkrecht ueber der Phasengrenze,
+ * darum bleibt die Kurve waagerecht, wo sie eine Phase verlaesst.
+ */
+export function hypnogramm(
+  stuecke: Verlaufsstueck[],
+  von: number,
+  bis: number,
+  masse: Kurvenmasse
+): Kurvenstueck[] {
+  if (stuecke.length === 0 || bis <= von) return []
+
+  const x = (m: number) => position(Math.min(bis, Math.max(von, m)), von, bis) * masse.breite
+  const hoehe = (art: PhasenArt) => masse.oben + TIEFE[art] * (masse.unten - masse.oben)
+  const kanten = stuecke.map((s) => ({ art: s.art, x0: x(s.von), x1: x(s.bis), y: hoehe(s.art) }))
+
+  // wo health nichts gemessen hat, bleibt die kurve unterbrochen: eine linie
+  // ueber die luecke waere geraten
+  const verbunden = kanten.map((k, i) => {
+    const naechste = kanten[i + 1]
+    return naechste !== undefined && naechste.x0 - k.x1 < 0.01
+  })
+
+  // ein uebergang darf nie laenger werden als die haelfte der kuerzeren
+  // nachbarphase, sonst frisst er die phase, aus der er kommt
+  const radien = kanten.map((k, i) => {
+    const naechste = kanten[i + 1]
+    if (!naechste || !verbunden[i]) return 0
+    return Math.max(0, Math.min(masse.radius, (k.x1 - k.x0) / 2, (naechste.x1 - naechste.x0) / 2))
+  })
+
+  return kanten.map((k, i) => {
+    const vorige = verbunden[i - 1] ? kanten[i - 1] : undefined
+    const naechste = verbunden[i] ? kanten[i + 1] : undefined
+    const rLinks = vorige ? radien[i - 1]! : 0
+    const rRechts = radien[i]!
+    const teile: string[] = []
+
+    if (vorige) {
+      // zweite haelfte des uebergangs von der vorigen phase herunter (oder herauf)
+      const mitte = (vorige.y + k.y) / 2
+      teile.push(`M ${rund(k.x0)} ${rund(mitte)}`)
+      teile.push(
+        `C ${rund(k.x0 + rLinks / 4)} ${rund((vorige.y + 3 * k.y) / 4)}` +
+          ` ${rund(k.x0 + rLinks / 2)} ${rund(k.y)}` +
+          ` ${rund(k.x0 + rLinks)} ${rund(k.y)}`
+      )
+    } else {
+      teile.push(`M ${rund(k.x0)} ${rund(k.y)}`)
+    }
+
+    teile.push(`L ${rund(k.x1 - rRechts)} ${rund(k.y)}`)
+
+    if (naechste) {
+      // erste haelfte des uebergangs zur naechsten phase
+      teile.push(
+        `C ${rund(k.x1 - rRechts / 2)} ${rund(k.y)}` +
+          ` ${rund(k.x1 - rRechts / 4)} ${rund((3 * k.y + naechste.y) / 4)}` +
+          ` ${rund(k.x1)} ${rund((k.y + naechste.y) / 2)}`
+      )
+    }
+
+    return { art: k.art, d: teile.join(' ') }
+  })
+}

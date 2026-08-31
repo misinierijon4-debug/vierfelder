@@ -8,9 +8,11 @@ import {
   formatStunden,
   nachtMinute,
   nachtUhrzeit,
+  hypnogramm,
   qualitaet,
   registrierteSchlafNutzer,
   stundenmarken,
+  verlauf,
   wochenwerte,
 } from './schlafPhasen'
 import type { Phase, Schlafnacht, UserId } from './types'
@@ -249,5 +251,98 @@ describe('achse', () => {
     expect(achse([])).toEqual({ von: 1260, bis: 1980 })
     expect(achse([spaet]).bis).toBe(1440 + 12 * 60)
     expect(stundenmarken(1260, 1980)).toEqual([1260, 1440, 1620, 1800, 1980])
+  })
+})
+
+describe('verlauf', () => {
+  it('legt die phasen absolut auf die nacht und fasst gleiche zusammen', () => {
+    const a = analysiereSchlafnacht(nacht())
+    const v = verlauf(a)
+
+    // 23:10 hingelegt, 23:25 eingeschlafen: das wachliegen steht vorn
+    expect(v[0]).toEqual({ art: 'wach', von: 23 * 60 + 10, bis: 23 * 60 + 25 })
+    expect(v.map((s) => s.art)).toEqual(['wach', 'kern', 'tief', 'wach', 'rem', 'kern', 'wach'])
+    // luecklos innerhalb der gemessenen phasen
+    expect(v[1]!.von).toBe(v[0]!.bis)
+    expect(v[2]!.von).toBe(v[1]!.bis)
+  })
+
+  it('macht aus unspez und kern eine einzige linie', () => {
+    const a = analysiereSchlafnacht(
+      nacht({
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+        phasen: [
+          { art: 'kern', start: 0, dauer: 60 },
+          { art: 'unspez', start: 60, dauer: 60 },
+          { art: 'tief', start: 120, dauer: 30 },
+        ],
+      })
+    )
+    const v = verlauf(a)
+    expect(v.map((s) => s.art)).toEqual(['kern', 'tief'])
+    expect(v[0]!.bis - v[0]!.von).toBe(120)
+  })
+})
+
+describe('hypnogramm', () => {
+  const masse = { breite: 100, oben: 0, unten: 100, radius: 4 }
+
+  it('zeichnet je phase ein stueck auf ihrer tiefe', () => {
+    const kurve = hypnogramm(
+      [
+        { art: 'wach', von: 0, bis: 50 },
+        { art: 'tief', von: 50, bis: 100 },
+      ],
+      0,
+      100,
+      masse
+    )
+
+    expect(kurve.map((k) => k.art)).toEqual(['wach', 'tief'])
+    // wach liegt oben, tief unten
+    expect(kurve[0]!.d.startsWith('M 0 0')).toBe(true)
+    expect(kurve[1]!.d.endsWith('L 100 100')).toBe(true)
+    // beide haelften des uebergangs treffen sich in der mitte der grenze
+    expect(kurve[0]!.d).toContain('50 50')
+    expect(kurve[1]!.d.startsWith('M 50 50')).toBe(true)
+  })
+
+  it('kuerzt den uebergang an kurzen phasen, statt sie zu ueberrennen', () => {
+    const kurve = hypnogramm(
+      [
+        { art: 'kern', von: 0, bis: 49 },
+        { art: 'wach', von: 49, bis: 50 },
+        { art: 'kern', von: 50, bis: 100 },
+      ],
+      0,
+      100,
+      masse
+    )
+
+    // die wachphase ist eine einheit breit, der uebergang darf nur eine halbe sein
+    expect(kurve[1]!.d).toBe('M 49 30 C 49.13 15 49.25 0 49.5 0 L 49.5 0 C 49.75 0 49.88 15 50 30')
+  })
+
+  it('laesst eine luecke ohne messung offen', () => {
+    const kurve = hypnogramm(
+      [
+        { art: 'kern', von: 0, bis: 20 },
+        { art: 'kern', von: 60, bis: 100 },
+      ],
+      0,
+      100,
+      masse
+    )
+
+    // kein uebergang ueber die luecke: beide stuecke enden flach auf ihrer hoehe
+    expect(kurve[0]!.d).toBe('M 0 60 L 20 60')
+    expect(kurve[1]!.d).toBe('M 60 60 L 100 60')
+  })
+
+  it('bleibt ohne phasen und ohne spanne leer', () => {
+    expect(hypnogramm([], 0, 100, masse)).toEqual([])
+    expect(hypnogramm([{ art: 'kern', von: 0, bis: 1 }], 100, 100, masse)).toEqual([])
   })
 })

@@ -17,11 +17,13 @@
   --linie-hell: color-mix(in srgb, var(--kreide) 26%, var(--grund));
   /* unterschiedliche prozente, weil petrol dunkler startet als gold: beide landen bei ~2,7:1 */
   /* die vier schlafphasen sind kein zweiter akzent, sondern eine legende:
-     sie stehen nur im nachtdetail und gehoeren keiner person */
-  --phase-tief: #3b82f6;
-  --phase-rem: #a855f7;
-  --phase-kern: #38bdf8;
-  --phase-wach: #f97316;
+     sie stehen nur im nachtdetail und gehoeren keiner person.
+     die skala laeuft mit der tiefe: wach ist die helle linie ganz oben,
+     der traum leuchtet, und je tiefer der schlaf, desto dunkler das petrol */
+  --phase-wach: var(--kreide);
+  --phase-rem: #b45ff0;
+  --phase-kern: #7fd1e8;
+  --phase-tief: #2f7f96;
 
   --erijon-leer: color-mix(in srgb, var(--erijon) 40%, var(--grund));
   --koray-leer: color-mix(in srgb, var(--koray) 48%, var(--grund));
