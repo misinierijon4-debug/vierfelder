@@ -9,7 +9,7 @@ import type {
   UserId,
   Zustand,
 } from './types'
-import { dauerMinuten, gemessen, messungen } from './training'
+import { dauerMinuten, gemessen, messungen, tagVon, zaehlt } from './training'
 
 /**
  * beim gewicht gibt es keine einheit: gesetzt heißt schlicht, dass für diesen
@@ -122,6 +122,32 @@ export function wocheBereich(
   woche: string[]
 ): number {
   return woche.reduce((n, tag) => n + (istGesetzt(z, u, f, tag) ? 1 : 0), 0)
+}
+
+/** wie viele der fünf felder an diesem tag stehen. maximum 5 */
+export function erledigteFelder(z: Zustand, u: UserId, tag: string): number {
+  return FELDER.reduce((n, f) => n + (istGesetzt(z, u, f.id, tag) ? 1 : 0), 0)
+}
+
+/**
+ * jeder tag, an dem diese person überhaupt etwas hat — einheiten, ein gewicht
+ * oder einen gemessenen aufenthalt. der kalender braucht das, um zu wissen, wie
+ * weit die historie zurückreicht.
+ */
+export function tageMitDaten(z: Zustand, u: UserId): string[] {
+  const tage = new Set<string>()
+
+  for (const [key, liste] of Object.entries(z.einheiten)) {
+    if (liste.length > 0 && key.startsWith(`${u}|`)) tage.add(key.slice(key.lastIndexOf('|') + 1))
+  }
+  for (const key of Object.keys(z.gewichte)) {
+    if (key.startsWith(`${u}|`)) tage.add(key.slice(key.indexOf('|') + 1))
+  }
+  for (const a of z.aufenthalte) {
+    if (a.user === u && zaehlt(a)) tage.add(tagVon(a))
+  }
+
+  return [...tage].sort()
 }
 
 /** alle ticks der woche über die vier bereiche und das gewicht, maximum 35 */

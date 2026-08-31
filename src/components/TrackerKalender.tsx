@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { X } from '@phosphor-icons/react'
-import type { Schlafnacht, UserId } from '../../lib/types'
-import { TAGKUERZEL, fromKey } from '../../lib/dates'
-import { abendDatum, qualitaet } from '../../lib/schlafPhasen'
-import { kalenderMonate } from '../../lib/kalender'
-import { user as userDef } from '../../lib/types'
+import { FELDER, user as userDef } from '../lib/types'
+import type { UserId, Zustand } from '../lib/types'
+import { TAGKUERZEL, fromKey } from '../lib/dates'
+import { kalenderMonate } from '../lib/kalender'
+import { erledigteFelder, tageMitDaten } from '../lib/tracker'
 
 const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
 const DATUM = new Intl.DateTimeFormat('de-DE', {
@@ -16,18 +16,24 @@ const DATUM = new Intl.DateTimeFormat('de-DE', {
 
 type Props = {
   offen: boolean
-  naechte: Schlafnacht[]
-  ansichtUser: UserId
+  zustand: Zustand
+  me: UserId
   gewaehlterTag: string
   heuteKey: string
   onTagWaehlen: (tag: string) => void
   onSchliessen: () => void
 }
 
-export function SchlafKalender({
+/**
+ * die historie der gewohnheiten, nach dem muster des schlafkalenders: derselbe
+ * vollbild-dialog, dieselbe monatsliste, dieselbe bedienung. der ring zeigt,
+ * wie viele der fünf felder an dem tag standen — die woche bleibt die schnelle
+ * navigation, der kalender ist nur der weg zurück.
+ */
+export function TrackerKalender({
   offen,
-  naechte,
-  ansichtUser,
+  zustand,
+  me,
   gewaehlterTag,
   heuteKey,
   onTagWaehlen,
@@ -35,21 +41,11 @@ export function SchlafKalender({
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const person = userDef(ansichtUser)
-
-  const nachTag = useMemo(() => {
-    const index = new Map<string, Schlafnacht>()
-    for (const nacht of naechte) {
-      if (nacht.user === ansichtUser && nacht.schlafMinuten > 0) {
-        index.set(abendDatum(nacht.einschlafzeit), nacht)
-      }
-    }
-    return index
-  }, [ansichtUser, naechte])
+  const person = userDef(me)
 
   const monate = useMemo(
-    () => kalenderMonate([...nachTag.keys()], heuteKey, gewaehlterTag),
-    [gewaehlterTag, heuteKey, nachTag]
+    () => kalenderMonate(tageMitDaten(zustand, me), heuteKey, gewaehlterTag),
+    [gewaehlterTag, heuteKey, me, zustand]
   )
 
   useEffect(() => {
@@ -81,7 +77,7 @@ export function SchlafKalender({
   return (
     <dialog
       ref={dialogRef}
-      aria-labelledby="schlaf-kalender-titel"
+      aria-labelledby="tracker-kalender-titel"
       onClose={onSchliessen}
       className="m-0 size-full max-h-none max-w-none overflow-hidden bg-grund p-0 text-kreide backdrop:bg-grund"
     >
@@ -92,14 +88,14 @@ export function SchlafKalender({
         >
           <button
             type="button"
-            aria-label="Schlafkalender schließen"
+            aria-label="Kalender schließen"
             onClick={onSchliessen}
             className="flex size-11 items-center justify-center rounded-full border border-linie bg-flaeche text-kreide transition-colors duration-150 hover:border-linie-hell focus-visible:outline-none"
           >
             <X size={20} weight="bold" aria-hidden="true" />
           </button>
 
-          <h2 id="schlaf-kalender-titel" className="text-balance text-[16px] font-bold text-kreide">
+          <h2 id="tracker-kalender-titel" className="text-balance text-[16px] font-bold text-kreide">
             kalender
           </h2>
 
@@ -117,7 +113,10 @@ export function SchlafKalender({
           <div className="mx-auto w-full max-w-[420px]">
             <div className="sticky top-0 z-10 grid grid-cols-7 border-b border-linie bg-grund pb-2 pt-1">
               {TAGKUERZEL.map((tag) => (
-                <span key={tag} className="text-center text-[10px] font-semibold uppercase text-kreide-52">
+                <span
+                  key={tag}
+                  className="text-center text-[10px] font-semibold uppercase text-kreide-52"
+                >
                   {tag}
                 </span>
               ))}
@@ -126,7 +125,10 @@ export function SchlafKalender({
             <div className="space-y-7 pt-5">
               {monate.map((monat) => (
                 <section key={monat.key} data-monat={monat.key} aria-labelledby={`monat-${monat.key}`}>
-                  <h3 id={`monat-${monat.key}`} className="text-balance text-[22px] font-bold text-kreide">
+                  <h3
+                    id={`monat-${monat.key}`}
+                    className="text-balance text-[22px] font-bold text-kreide"
+                  >
                     {MONAT.format(new Date(monat.jahr, monat.monat, 1)).toLowerCase()}
                     {monat.jahr !== fromKey(heuteKey).getFullYear() && (
                       <span className="ml-2 text-[13px] font-medium text-kreide-52">{monat.jahr}</span>
@@ -138,17 +140,19 @@ export function SchlafKalender({
                       if (!tag) return <span key={`${monat.key}-leer-${index}`} aria-hidden="true" />
 
                       const datum = fromKey(tag)
-                      const nacht = nachTag.get(tag)
                       const istGewaehlt = tag === gewaehlterTag
                       const istHeute = tag === heuteKey
                       const istZukunft = tag > heuteKey
-                      const wert = nacht ? qualitaet(nacht.schlafMinuten) : null
-                      const grad = wert === null ? 0 : wert * 3.6
+                      const erledigt = istZukunft ? 0 : erledigteFelder(zustand, me, tag)
+                      const grad = (erledigt / FELDER.length) * 360
                       const ring =
-                        wert === null
+                        erledigt === 0
                           ? 'var(--linie)'
                           : `conic-gradient(from -90deg, ${person.farbe} 0deg ${grad}deg, var(--linie) ${grad}deg 360deg)`
-                      const status = wert === null ? 'keine Schlafdaten' : `${wert} Prozent Qualität`
+                      const status =
+                        erledigt === 0
+                          ? 'nichts eingetragen'
+                          : `${erledigt} von ${FELDER.length} feldern`
 
                       return (
                         <button
@@ -163,7 +167,9 @@ export function SchlafKalender({
                             istZukunft ? 'cursor-default opacity-25' : 'hover:bg-flaeche/60'
                           }`}
                         >
-                          <span className="tnum text-[11px] font-semibold text-kreide">{datum.getDate()}</span>
+                          <span className="tnum text-[11px] font-semibold text-kreide">
+                            {datum.getDate()}
+                          </span>
                           <span
                             aria-hidden="true"
                             className="relative mt-1 size-9 rounded-full min-[360px]:size-10"
@@ -172,7 +178,15 @@ export function SchlafKalender({
                               boxShadow: istGewaehlt ? '0 0 0 2px var(--kreide)' : undefined,
                             }}
                           >
-                            <span className="absolute inset-1 rounded-full bg-grund" />
+                            {/* die zahl in der mitte, weil fünf felder ein
+                                abzählbarer stand sind und kein prozentwert */}
+                            <span className="absolute inset-1 flex items-center justify-center rounded-full bg-grund">
+                              {erledigt > 0 && (
+                                <span className="tnum text-[11px] font-semibold text-kreide-60">
+                                  {erledigt}
+                                </span>
+                              )}
+                            </span>
                           </span>
                           <span
                             aria-hidden="true"

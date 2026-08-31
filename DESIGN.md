@@ -476,3 +476,29 @@ immer lokal gebildet, nie aus einer utc-zeit — sonst landet das training um
 ein wiederholter schreibversuch nach einem timeout läuft damit in den primary
 key, statt eine zweite einheit zu erfinden. Dasselbe gilt für ein doppelt
 gemeldetes realtime-ereignis, das über die id zusammengeführt wird.
+
+## 20. Nachtrag: der weg in die vergangenheit (31.08.2026)
+
+**Montagmorgen sah aus wie datenverlust.** Das raster zeigt die laufende woche,
+und um mitternacht des ersten wochentags stand alles auf null — die einträge der
+vorwoche waren gespeichert, aber nirgends mehr erreichbar. Mit den einheiten
+wurde das teurer als vorher: jetzt hängen an jedem tag minuten und uhrzeiten,
+die man nachschlagen können will.
+
+**Derselbe knopf wie beim schlaf.** Der schlaf-tab hat die historie längst
+(abschnitt 18 der doku, `docs/schlaf-kalender.md`): ein runder kalenderknopf
+über der woche, ein vollbild-monatsraster, ein gewählter tag führt zu seiner
+woche. Genau das bekommt der tracker — nicht als zweite, eigene erfindung,
+sondern mit denselben bausteinen. `schlafKalender.ts` heißt deshalb jetzt
+`kalender.ts`: `kalenderMonate`, `istSelbeWoche` und `wochenZeitraum` gehören
+beiden.
+
+**Der ring zählt felder, nicht prozente.** Beim schlaf steht im ring die
+qualität einer nacht. Hier sind es fünf felder — lernen, gym, boxen, lesen,
+gewicht —, also steht die zahl in der mitte und der bogen zeigt ihren anteil.
+Fünf ist abzählbar; ein prozentwert wäre eine genauigkeit, die es nicht gibt.
+
+**Eingetragen wird weiter nur heute.** Die vergangene woche ist im raster
+vollständig sichtbar und über die tagesansicht lesbar, aber die zeilen oben
+gehören unverändert dem heutigen tag. Damit bleibt die regel aus abschnitt 19
+unangetastet: was gestern war, war gestern.

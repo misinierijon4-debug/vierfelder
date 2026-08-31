@@ -3,6 +3,8 @@ import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import {
   abstand,
   anzahlEinheiten,
+  erledigteFelder,
+  tageMitDaten,
   baueEinheit,
   einheitenAn,
   entferneEinheit,
@@ -233,5 +235,32 @@ describe('an- und abhaken', () => {
     z = setzeTick(z, 'erijon', 'gym', '2026-08-26', false)
     expect(einheitenAn(z, 'erijon', 'gym', '2026-08-26')).toHaveLength(0)
     expect(istGesetzt(z, 'erijon', 'gym', '2026-08-26')).toBe(false)
+  })
+})
+
+describe('kalender', () => {
+  it('zählt die erledigten felder eines tages, das gewicht mit', () => {
+    let z = setzeTick(leer, 'erijon', 'gym', '2026-08-26', true)
+    z = setzeTick(z, 'erijon', 'lesen', '2026-08-26', true)
+    z = { ...z, gewichte: { ...z.gewichte, [gewichtKey('erijon', '2026-08-26')]: 81 } }
+
+    expect(erledigteFelder(z, 'erijon', '2026-08-26')).toBe(3)
+    expect(erledigteFelder(z, 'koray', '2026-08-26')).toBe(0)
+    expect(erledigteFelder(z, 'erijon', '2026-08-25')).toBe(0)
+  })
+
+  it('zählt einen tag mit zwei einheiten trotzdem als ein feld', () => {
+    let z = setzeTick(leer, 'erijon', 'gym', '2026-08-26', true)
+    z = fuegeEinheitHinzu(z, baueEinheit('erijon', 'gym', '2026-08-26', 28))
+    expect(erledigteFelder(z, 'erijon', '2026-08-26')).toBe(1)
+  })
+
+  it('kennt die tage mit daten, einheiten und gewicht zusammen', () => {
+    let z = setzeTick(leer, 'erijon', 'gym', '2026-08-26', true)
+    z = setzeTick(z, 'koray', 'lesen', '2026-08-20', true)
+    z = { ...z, gewichte: { ...z.gewichte, [gewichtKey('erijon', '2026-08-24')]: 81 } }
+
+    expect(tageMitDaten(z, 'erijon')).toEqual(['2026-08-24', '2026-08-26'])
+    expect(tageMitDaten(z, 'koray')).toEqual(['2026-08-20'])
   })
 })

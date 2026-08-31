@@ -2,6 +2,9 @@
 
 Wochentracker für zwei: lernen, gym, boxen, lesen. Ein Tick pro Bereich und Tag, geteiltes Wochenraster, sonntags Bilanz, montags von vorn.
 
+Ein Kalenderknopf über dem Raster öffnet die Historie: ein Tag darin führt zu seiner Woche, und
+das Raster zeigt sie statt der laufenden. „Zurück zu heute" holt einen wieder ab.
+
 Jede Durchführung wird einzeln gespeichert: zweimal Gym an einem Tag sind zwei Einheiten mit
 eigener Dauer und eigener Uhrzeit, in der Zeile steht die Tagessumme und ein `2×`. Ein Tipp auf
 ein Kalenderfeld öffnet die Tagesansicht mit den einzelnen Einheiten und der Gesamtdauer —
@@ -27,7 +30,7 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 103 tests
+npm test      # logik, 106 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 
@@ -105,10 +108,12 @@ src/lib/store.ts       zustand, optimistisches schreiben, rücknahme bei fehlern
 src/lib/tracker.ts     reine logik, getestet
 src/lib/gewicht.ts     gleitender schnitt, achse, parsen — reine logik, getestet
 src/lib/training.ts    aufenthalte zu ticks — reine logik, getestet
+src/lib/kalender.ts    monatsraster und wochenzeitraum, von beiden kalendern benutzt
 src/lib/motion.ts      alle dauern an einer stelle
 supabase/functions/    schlafimport und gemeinsame berechnung
 src/components/        kopf, bereichszeile, marke, schritt, raster, tagesdetail,
-                       schlafdiagramm, gewichtszeile, gewichtsdiagramm, zahl, anmeldung
+                       trackerkalender, schlafdiagramm, gewichtszeile,
+                       gewichtsdiagramm, zahl, anmeldung
 ```
 
 Welches Backend läuft, entscheidet allein, ob `VITE_SUPABASE_URL` gesetzt ist.

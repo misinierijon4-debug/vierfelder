@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { kalenderMonate, tageImMonat, wochenZeitraum } from './schlafKalender'
+import { kalenderMonate, tageImMonat, wochenZeitraum } from './kalender'
 
 describe('schlafkalender', () => {
   it('ordnet einen monat montagsbasiert in volle wochen ein', () => {

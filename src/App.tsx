@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
+import { CalendarBlank } from '@phosphor-icons/react'
 import { AREAS, other, user as userDef } from './lib/types'
 import type { AppTab, AreaId, UserId } from './lib/types'
 import type { Backend } from './lib/backend'
-import { istBilanzzeit, toKey, weekDays } from './lib/dates'
+import { fromKey, istBilanzzeit, toKey, weekDays } from './lib/dates'
+import { istSelbeWoche, wochenZeitraum } from './lib/kalender'
 import { useTracker } from './lib/store'
 import { lokalWechseln, lokalesBackend, lokalesMe } from './lib/lokal'
 import { abmelden, hatSupabase, supabaseBackend, useSession } from './lib/supabase'
@@ -23,6 +25,7 @@ import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
 import { Tagesdetail } from './components/Tagesdetail'
 import type { Tagesauswahl } from './components/Tagesdetail'
+import { TrackerKalender } from './components/TrackerKalender'
 import { Anmeldung } from './components/Anmeldung'
 import { TabLeiste } from './components/TabLeiste'
 import { SchlafTab } from './components/schlaf/SchlafTab'
@@ -75,9 +78,19 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
   const [detail, setDetail] = useState<Tagesauswahl | null>(null)
+  const [kalenderOffen, setKalenderOffen] = useState(false)
+  /**
+   * der tag, den das raster zeigt. `null` heißt heute — so wandert die ansicht
+   * um mitternacht von allein mit, statt auf einem datum stehen zu bleiben.
+   */
+  const [blick, setBlick] = useState<string | null>(null)
+  const rasterRef = useRef<HTMLDivElement>(null)
 
   const heuteKey = useMemo(() => toKey(heute), [heute])
   const woche = useMemo(() => weekDays(heute), [heute])
+  const gewaehlterTag = blick ?? heuteKey
+  const sichtbareWoche = useMemo(() => weekDays(fromKey(gewaehlterTag)), [gewaehlterTag])
+  const dieseWoche = istSelbeWoche(sichtbareWoche, woche)
   const ich = userDef(me)
   const er = other(me)
 
@@ -111,7 +124,21 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     setUndoFuer(null)
   }
 
-  const meineWoche = wocheGesamt(zustand, me, woche)
+  const sichtbarLeer = wocheGesamt(zustand, me, sichtbareWoche) === 0
+  const rasterTitel = dieseWoche
+    ? sichtbarLeer
+      ? 'noch nichts diese woche'
+      : 'woche'
+    : `woche ${wochenZeitraum(sichtbareWoche)}`
+
+  /** ein tag aus dem kalender führt zu seiner woche und scrollt sie ins bild */
+  const waehleTag = (tag: string) => {
+    setBlick(tag === heuteKey ? null : tag)
+    setKalenderOffen(false)
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => rasterRef.current?.scrollIntoView({ block: 'start' }))
+    })
+  }
 
   return (
     <div className="min-h-[100dvh] bg-grund">
@@ -197,14 +224,48 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 })}
               </section>
 
-              <Raster
-                zustand={zustand}
-                woche={woche}
-                heute={heuteKey}
-                ereignis={ereignis}
-                leer={meineWoche === 0}
-                onZelle={(user, area, tag) => setDetail({ user, area, tag })}
-              />
+              <div ref={rasterRef}>
+                {/* der weg in die vergangenheit sitzt über dem raster, weil das
+                    raster die woche ist, die er verschiebt */}
+                <div className="mt-6 flex items-center justify-end gap-2">
+                  <AnimatePresence initial={false}>
+                    {!dieseWoche && (
+                      <motion.button
+                        key="heute"
+                        type="button"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.14 }}
+                        onClick={() => setBlick(null)}
+                        className="text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
+                      >
+                        zurück zu heute
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+
+                  <button
+                    type="button"
+                    aria-label="kalender öffnen"
+                    aria-haspopup="dialog"
+                    onClick={() => setKalenderOffen(true)}
+                    className="flex size-11 items-center justify-center rounded-full border border-linie bg-flaeche text-kreide transition-colors duration-150 hover:border-linie-hell focus-visible:outline-none"
+                  >
+                    <CalendarBlank size={21} weight="bold" aria-hidden="true" />
+                  </button>
+                </div>
+
+                <Raster
+                  zustand={zustand}
+                  woche={sichtbareWoche}
+                  heute={heuteKey}
+                  ereignis={ereignis}
+                  titel={rasterTitel}
+                  gewaehlterTag={gewaehlterTag}
+                  onZelle={(user, area, tag) => setDetail({ user, area, tag })}
+                />
+              </div>
 
               {/* gewicht ist eine messung statt eines ticks und steht deshalb
                   zusammen mit seinem verlauf unter dem wochenraster */}
@@ -241,6 +302,16 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>
+
+      <TrackerKalender
+        offen={kalenderOffen}
+        zustand={zustand}
+        me={me}
+        gewaehlterTag={gewaehlterTag}
+        heuteKey={heuteKey}
+        onTagWaehlen={waehleTag}
+        onSchliessen={() => setKalenderOffen(false)}
+      />
 
       <AnimatePresence>
         {detail && (

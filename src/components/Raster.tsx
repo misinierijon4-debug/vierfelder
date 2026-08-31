@@ -16,15 +16,27 @@ type Props = {
   woche: string[]
   heute: string
   ereignis: Ereignis | null
-  /** die eigene woche ist noch komplett leer */
-  leer: boolean
+  /** überschrift links: „woche", der zeitraum, oder der leere zustand */
+  titel: string
+  /** der tag im fokus. in der laufenden woche ist das heute */
+  gewaehlterTag: string
   /** ein vergangenes oder heutiges feld öffnet die tagesansicht */
   onZelle: (user: UserId, area: FeldId, tag: string) => void
 }
 
-export function Raster({ zustand, woche, heute, ereignis, leer, onZelle }: Props) {
+export function Raster({
+  zustand,
+  woche,
+  heute,
+  ereignis,
+  titel,
+  gewaehlterTag,
+  onZelle,
+}: Props) {
   const reduced = useReducedMotion()
-  const heuteIndex = woche.indexOf(heute)
+  // das band steht unter dem tag, den man gerade anschaut — in der laufenden
+  // woche ist das heute, in einer vergangenen der im kalender gewählte tag.
+  const heuteIndex = woche.indexOf(gewaehlterTag)
 
   return (
     <motion.section
@@ -32,13 +44,11 @@ export function Raster({ zustand, woche, heute, ereignis, leer, onZelle }: Props
       initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduced ? 0 : 0.28, ease: EASE, delay: reduced ? 0 : 0.22 }}
-      className="mt-6"
+      className="mt-3"
     >
       <div className="mb-3 flex items-baseline justify-between">
         {/* der leere zustand steht in derselben zeile wie das label, sonst springt das raster */}
-        <span className="text-[12px] text-kreide-52">
-          {leer ? 'noch nichts diese woche' : 'woche'}
-        </span>
+        <span className="text-[12px] text-kreide-52">{titel}</span>
         <div className="flex items-center gap-3">
           {USERS.map((u) => (
             <span key={u.id} className="flex items-center gap-1.5 text-[12px] text-kreide-52">
