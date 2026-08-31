@@ -201,17 +201,25 @@ create table if not exists einheiten (
 
 alter table einheiten enable row level security;
 
+revoke all on table einheiten from anon;
+revoke all on table einheiten from authenticated;
+grant select, insert, update, delete on table einheiten to authenticated;
+
+drop policy if exists "einheiten lesen" on einheiten;
 create policy "einheiten lesen" on einheiten
   for select to authenticated using (
     (select auth.uid()) in (select id from public.profile)
   );
 
+drop policy if exists "einheiten schreiben" on einheiten;
 create policy "einheiten schreiben" on einheiten
   for insert to authenticated with check ((select auth.uid()) = user_id);
 
+drop policy if exists "einheiten aendern" on einheiten;
 create policy "einheiten aendern" on einheiten
   for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
+drop policy if exists "einheiten loeschen" on einheiten;
 create policy "einheiten loeschen" on einheiten
   for delete to authenticated using ((select auth.uid()) = user_id);
 
@@ -224,7 +232,9 @@ alter publication supabase_realtime add table einheiten;
 
 -- `eintraege` und `werte` oben bleiben als altbestand stehen: sie sind die
 -- quelle des backfills und der rueckfallweg, solange eine aeltere version der
--- app laeuft. geschrieben werden sie nicht mehr.
+-- app laeuft. geschrieben werden sie nicht mehr. ein wert ohne eintrag wird
+-- dabei nicht uebernommen — das ist der rest eines abgehakten tages und kein
+-- verlorener eintrag.
 
 -- gemessene aufenthalte an einem trainingsort (nachtrag 28.08.2026). eine zeile
 -- pro besuch: die ankunft legt sie an, der abgang schliesst sie. beides schickt

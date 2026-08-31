@@ -36,20 +36,32 @@ create table if not exists einheiten (
 
 alter table einheiten enable row level security;
 
+-- ausdruecklich statt ueber die default-grants, wie bei `gewicht`: anon hat
+-- hier nichts zu suchen, auch nicht theoretisch.
+revoke all on table einheiten from anon;
+revoke all on table einheiten from authenticated;
+grant select, insert, update, delete on table einheiten to authenticated;
+
+-- `drop policy if exists` davor, damit ein zweiter lauf des skripts nicht auf
+-- halber strecke abbricht. alles uebrige ist `if not exists`.
 -- lesen beide, schreiben nur die eigene person — vorbild ist `eintraege`.
+drop policy if exists "einheiten lesen" on einheiten;
 create policy "einheiten lesen" on einheiten
   for select to authenticated using (
     (select auth.uid()) in (select id from public.profile)
   );
 
+drop policy if exists "einheiten schreiben" on einheiten;
 create policy "einheiten schreiben" on einheiten
   for insert to authenticated with check ((select auth.uid()) = user_id);
 
 -- anders als bei `eintraege` gibt es ein update: die minuten einer laufenden
 -- einheit wachsen ueber den tag, die zeile bleibt dieselbe.
+drop policy if exists "einheiten aendern" on einheiten;
 create policy "einheiten aendern" on einheiten
   for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
+drop policy if exists "einheiten loeschen" on einheiten;
 create policy "einheiten loeschen" on einheiten
   for delete to authenticated using ((select auth.uid()) = user_id);
 
@@ -69,15 +81,13 @@ where not exists (
   where x.user_id = e.user_id and x.bereich = e.bereich and x.tag = e.tag
 );
 
--- ein wert ohne haken sollte es nicht geben, aber wenn doch, geht er nicht
--- verloren. der zeitpunkt fehlt hier, weil `werte` keinen gespeichert hat.
-insert into einheiten (id, user_id, bereich, tag, wert, erfasst, erstellt)
-select gen_random_uuid(), w.user_id, w.bereich, w.tag, w.wert, null, now()
-from werte w
-where not exists (
-  select 1 from einheiten x
-  where x.user_id = w.user_id and x.bereich = w.bereich and x.tag = w.tag
-);
+-- Ein wert ohne zeile in `eintraege` wird bewusst NICHT uebernommen. So eine
+-- zeile ist kein verlorener eintrag, sondern der rest eines abgehakten tages:
+-- das alte abhaken loeschte nur den eintrag, der wert blieb stehen und war
+-- danach nirgends mehr sichtbar. Ihn jetzt zur einheit zu machen hiesse, einen
+-- geloeschten tick wiederzubeleben — samt punkt in einer laengst
+-- abgeschlossenen woche. Die zeilen bleiben in `werte` stehen, geloescht wird
+-- nichts.
 
 -- `eintraege` und `werte` bleiben als altbestand stehen und werden von der app
 -- nicht mehr geschrieben. sie sind die quelle dieses backfills und der

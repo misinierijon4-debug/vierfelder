@@ -457,6 +457,13 @@ hintergrund, das kreuz oder escape, und der treffbereich der rasterzelle wächst
 über ein pseudoelement nach oben und unten: 22px hoch bleibt sie trotzdem,
 sonst wäre die geometrie aus abschnitt 15 hinüber.
 
+**Was der backfill nicht übernimmt.** In `werte` stehen zeilen ohne haken: das
+alte abhaken löschte nur den eintrag, der wert blieb liegen und war danach
+nirgends mehr sichtbar. Aus so einer zeile jetzt eine einheit zu machen hiesse,
+einen gelöschten tick wiederzubeleben, mitsamt punkt in einer abgeschlossenen
+woche. Übernommen wird deshalb nur, was einen eintrag hatte. Gelöscht wird
+nichts — die reste bleiben in `werte` stehen.
+
 **„Rückgängig" nimmt genau eine handlung zurück.** Nach der zweiten einheit
 verschwindet nur diese zweite, der haken und die erste bleiben — sonst wäre der
 knopf ein abhaken mit anderem namen. Und wer den tag versehentlich abhakt,
