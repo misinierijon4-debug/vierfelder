@@ -1,5 +1,5 @@
 import { addDays, toKey } from './dates'
-import { FELDER, gewichtKey, istMessbar, neueEinheitId, tickKey } from './types'
+import { FELDER, area, gewichtKey, istMessbar, neueEinheitId, tickKey } from './types'
 import type {
   AreaId,
   Einheit,
@@ -16,10 +16,11 @@ import { dauerMinuten, gemessen, messungen, tagVon, zaehlt } from './training'
  * tag ein gewichtseintrag existiert. eine einheit ohne messung wäre eine zweite
  * wahrheit.
  *
- * bei gym und boxen kommt eine zweite quelle dazu: ein gemessener aufenthalt
- * setzt den tick von allein. das antippen bleibt trotzdem möglich, weil eine
- * standort-automation ausfallen kann und boxen auch zuhause stattfindet — was
- * dabei herauskommt, unterscheidet `quelle`.
+ * bei den vier bereichen kommt eine zweite quelle dazu: eine gemessene sitzung
+ * setzt den tick von allein — ein aufenthalt am trainingsort oder ein fokus,
+ * der lang genug lief. das antippen bleibt trotzdem möglich, weil eine
+ * automation ausfallen kann und man auch ohne fokus liest — was dabei
+ * herauskommt, unterscheidet `quelle`.
  *
  * seit den einheiten heißt „getippt gesetzt": es gibt mindestens eine einheit.
  * ob es eine oder drei sind, ändert am haken nichts — der wochenstand zählt
@@ -33,13 +34,13 @@ export function istGesetzt(z: Zustand, u: UserId, f: FeldId, tag: string): boole
 
 /**
  * wie der tick zustande kam — die einzige antwort auf „man kann ja einfach
- * behaupten, man war da". `null` heißt nicht ungesetzt, sondern: hier gibt es
- * nichts zu unterscheiden (lernen, lesen), also wird auch nichts angezeigt.
+ * behaupten, man war da". seit es für jeden bereich eine messquelle gibt, gilt
+ * die unterscheidung überall: `null` heißt nur noch, dass der tick gar nicht
+ * gesetzt ist.
  */
 export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TickQuelle | null {
   if (!istGesetzt(z, u, f, tag)) return null
   if (f === 'gewicht') return 'gemessen'
-  if (!istMessbar(f)) return null
   return gemessen(z.aufenthalte, u, f, tag) ? 'gemessen' : 'getippt'
 }
 
@@ -57,10 +58,15 @@ export function einheitenAn(z: Zustand, u: UserId, f: FeldId, tag: string): Einh
 export type Tageseinheit = {
   id: string
   wert: number | null
-  /** zeitpunkt der eintragung (getippt) oder der ankunft (gemessen) */
+  /**
+   * einheit des werts. eine messung liefert immer minuten, auch beim lesen:
+   * ein fokus misst zeit und kann keine seiten zählen.
+   */
+  einheit: 'min' | 'seiten'
+  /** zeitpunkt der eintragung (getippt) oder des beginns (gemessen) */
   erfasst: string | null
   herkunft: TickQuelle
-  /** nur bei einer messung: der trainingsort */
+  /** nur bei einer messung: der name der quelle, ein ort oder ein fokus */
   ort?: string
 }
 
@@ -71,6 +77,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
   const liste: Tageseinheit[] = einheitenAn(z, u, f, tag).map((e) => ({
     id: e.id,
     wert: e.wert,
+    einheit: area(f).unit,
     erfasst: e.erfasst,
     herkunft: 'getippt' as const,
   }))
@@ -79,6 +86,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
     liste.push({
       id: `messung|${a.ankunft}|${a.ort}`,
       wert: Math.round(dauerMinuten(a)!),
+      einheit: 'min',
       erfasst: a.ankunft,
       herkunft: 'gemessen',
       ort: a.ort,
@@ -101,11 +109,26 @@ export function anzahlEinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): 
 }
 
 /**
- * summe der werte eines tages. einheiten ohne wert zählen mit null minuten mit,
- * nicht mit einem geschätzten durchschnitt.
+ * summe der werte eines tages, in der einheit des bereichs. einheiten ohne wert
+ * zählen mit null mit, nicht mit einem geschätzten durchschnitt.
+ *
+ * beim lesen bleiben die gemessenen minuten hier draußen: minuten zu seiten zu
+ * addieren ergäbe eine zahl, die nichts bedeutet. sie stehen dafür in
+ * `messungsMinuten`.
  */
 export function tagesWert(z: Zustand, u: UserId, f: FeldId, tag: string): number {
-  return tageseinheiten(z, u, f, tag).reduce((s, e) => s + (e.wert ?? 0), 0)
+  if (f === 'gewicht') return 0
+  const einheit = area(f).unit
+  return tageseinheiten(z, u, f, tag)
+    .filter((e) => e.einheit === einheit)
+    .reduce((s, e) => s + (e.wert ?? 0), 0)
+}
+
+/** summe der gemessenen minuten eines tages, über alle sitzungen */
+export function messungsMinuten(z: Zustand, u: UserId, f: FeldId, tag: string): number {
+  return tageseinheiten(z, u, f, tag)
+    .filter((e) => e.herkunft === 'gemessen')
+    .reduce((s, e) => s + (e.wert ?? 0), 0)
 }
 
 /** die jüngste getippte einheit — die, auf die die schritte wirken */
@@ -131,8 +154,8 @@ export function erledigteFelder(z: Zustand, u: UserId, tag: string): number {
 
 /**
  * jeder tag, an dem diese person überhaupt etwas hat — einheiten, ein gewicht
- * oder einen gemessenen aufenthalt. der kalender braucht das, um zu wissen, wie
- * weit die historie zurückreicht.
+ * oder eine gemessene sitzung. der kalender braucht das, um zu wissen, wie weit
+ * die historie zurückreicht.
  */
 export function tageMitDaten(z: Zustand, u: UserId): string[] {
   const tage = new Set<string>()
@@ -311,5 +334,9 @@ export function bilanz(
  * null. die bereichszeile zeigt deshalb zwei verschiedene dinge an.
  */
 export function hatTageswert(z: Zustand, u: UserId, f: FeldId, tag: string): boolean {
-  return tageseinheiten(z, u, f, tag).some((e) => e.wert !== null)
+  if (f === 'gewicht') return false
+  // in der einheit des bereichs gefragt: eine gemessene lesestunde ist kein
+  // seitenwert, dort steht weiter „ohne wert" — die minuten stehen rechts.
+  const einheit = area(f).unit
+  return tageseinheiten(z, u, f, tag).some((e) => e.einheit === einheit && e.wert !== null)
 }

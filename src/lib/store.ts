@@ -296,7 +296,25 @@ export function useTracker(backend: Backend) {
       const vorher = einheitenRef.current
       const liste = vorher[tickKey(u, area, tag)] ?? []
       const letzte = liste[liste.length - 1]
-      if (!letzte) return
+
+      if (!letzte) {
+        // gemessen und trotzdem nichts getippt: das gibt es beim lesen, wo der
+        // fokus die zeit misst und die seiten niemand kennt. dann legt der
+        // erste schritt die einheit an, statt ins leere zu laufen.
+        if (delta <= 0) return
+        const neue = einheitHinzu(area, tag)
+        const nachAnlegen = einheitenRef.current
+        const erster = Math.max(0, Math.round(delta))
+        uebernimm(mitWert(nachAnlegen, neue.id, erster))
+
+        // dieselbe id in der schlange: das anlegen ist durch, bevor der wert
+        // auf eine zeile geht, die es sonst noch nicht gäbe.
+        nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
+          uebernimm(nachAnlegen)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+        return
+      }
 
       const sauber = Math.max(0, Math.round((letzte.wert ?? 0) + delta))
       uebernimm(mitWert(vorher, letzte.id, sauber))
@@ -307,7 +325,7 @@ export function useTracker(backend: Backend) {
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, nacheinander, uebernimm]
+    [backend, einheitHinzu, nacheinander, uebernimm]
   )
 
   const setzeGewicht = useCallback(

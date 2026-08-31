@@ -547,3 +547,84 @@ nacheinander: das netz garantiert keine reihenfolge, und käme das anlegen nach
 dem ersten wertupdate an, ginge dieses update auf eine zeile, die es noch nicht
 gibt — ohne fehlermeldung. Die minuten wären still weg gewesen, sichtbar erst
 beim nächsten laden.
+
+## 22. Nachtrag: der fokus als beleg (31.08.2026)
+
+**Abschnitt 18 endete mit einer lücke, und die lücke war die hälfte.** Gym und
+boxen hatten einen beleg, lernen und lesen nicht — „kein gerät weiß, ob du
+gelesen hast". Das stimmte, solange man nur nach einem gerät suchte, das das
+lesen erkennt. Es stimmt nicht mehr, sobald man nach etwas sucht, das man
+selbst einschaltet, bevor man anfängt.
+
+**Ein fokus ist eine handlung von vorher.** „Nicht stören" ist nur einer von
+beliebig vielen fokus-modi; drei weitere heißen lernen, lesen und training. Wer
+einen davon einschaltet, tut das vor der sitzung und schaltet ihn danach aus.
+Aus dem paar ergibt sich eine dauer, ab 20 minuten setzt sich der tick — genau
+die kette aus abschnitt 18, nur ohne ort.
+
+**Der beleg ist nicht schwächer als der standort.** Der standort belegt
+anwesenheit, nicht anstrengung; der fokus belegt eine stumme stunde, nicht
+einen gelernten satz. Beide belegen die sitzung und nicht ihren inhalt. Der
+unterschied zum tick ist in beiden fällen derselbe und der einzige, auf den es
+ankommt: **vorher gegen nachher.** Ein erfundener lerntag kostet abends einen
+tap; mit dem fokus kostet er 20 minuten aussitzen, in denen man auch hätte
+lernen können.
+
+**Und der fokus ist nicht für uns da.** Er schaltet die mitteilungen stumm, das
+ist sein zweck, und den hätte man auch ohne tracker. Eine automation, die auf
+etwas aufsitzt, das man ohnehin täte, fällt nicht aus vergesslichkeit aus.
+Genau daran ist die standort-automation schwach: sie verlangt, dass man mit dem
+telefon durch einen radius läuft.
+
+**Keine zweite tabelle.** `aufenthalte` hält weiter eine zeile je sitzung; nur
+der bereich darf jetzt jeder der vier sein, und `ort` heißt nicht mehr zwingend
+adresse, sondern name der quelle — `gym nord` oder `fokus lernen`. Eine zweite
+tabelle hätte zwei wahrheiten über dasselbe angelegt, und die frage „was zählt
+als einheit" hätte man danach zweimal beantworten müssen.
+
+**Blass heißt jetzt überall getippt.** Damit fällt die einschränkung aus
+abschnitt 18: die halbe marke bei lernen und lesen war dort „eine trübung ohne
+aussage", weil es nichts zu unterscheiden gab. Jetzt gibt es etwas: der eine
+hat den fokus laufen lassen, der andere hat abends getippt. Alte einträge sehen
+dadurch rückwirkend getippt aus — das sind sie auch.
+
+**Zwei quellen für dieselbe stunde sind eine einheit.** Wer im gym den fokus
+training einschaltet, während die standort-automation ohnehin läuft, hat einmal
+trainiert. Überschneiden sich zwei sitzungen desselben bereichs, bleibt die
+längere. Ohne diese regel würde ausgerechnet der am besten belegte tag doppelt
+gezählt.
+
+**Beim lesen misst der fokus die falsche größe, und das bleibt sichtbar.**
+Lesen zählt seiten, ein fokus misst minuten. Beides steht nebeneinander (`24
+seiten · 35 min · gemessen`) und wird nicht addiert; die schritte für die seiten
+bleiben antippbar, obwohl die zeile gemessen ist. Eine summe aus minuten und
+seiten wäre eine zahl, die nichts bedeutet — und eine gemessene lesestunde, in
+der man die seiten nicht mehr eintragen kann, wäre ein rückschritt.
+
+**Zehn minuten fürs lesen, zwanzig für alles andere.** Die schwelle soll die
+vorbeifahrt aussortieren, nicht den kurzen abend — und was eine vorbeifahrt
+ist, hängt vom bereich ab. Am gym fährt man versehentlich vorbei; den fokus
+lesen schaltet niemand versehentlich ein, und ein kapitel ist kürzer als eine
+trainingseinheit. Eine einheitliche zahl wäre nicht strenger, sondern nur an
+einer stelle falsch.
+
+**Was der fokus nicht kann.** Er läuft auf einem zeitplan genauso wie von hand.
+Die datenbank sieht nicht, wer den schalter umgelegt hat, also steht die einzige
+regel dagegen in der anleitung und nicht im code: auf diesen drei modi kein
+zeitplan. Wer sich selbst betrügen will, findet ohnehin einen weg; der punkt ist
+nicht, es unmöglich zu machen, sondern es nicht versehentlich einzubauen.
+
+**Und ein kurzbefehl, den man nicht verschenken kann, muss trivial sein.** Eine
+`.shortcut`-datei vom iphone ist ein von apple signiertes archiv (`AEA1`, mit
+der zertifikatskette „Apple Root CA G3 → System Integration CA 4" darin); seit
+ios 15 nimmt die kurzbefehle-app nichts anderes an. Fertige kurzbefehle lassen
+sich also nicht ins repo legen, jeder baut sie von hand nach — und was von hand
+nachgebaut wird, sollte keine sechs formularfelder haben, von denen ios eines
+gern als boolean anlegt. Deshalb gibt es die edge function `fokus`: sie nimmt
+token, bereich und ereignis aus der url, damit ein kurzbefehl aus einer aktion
+und einer zeile besteht. Sie entscheidet nichts selbst, sondern ruft
+`record_aufenthalt` auf — zwei stellen mit regeln für dieselbe sitzung wären
+zwei stellen, die auseinanderlaufen. Der preis steht in der anleitung: das
+token liegt dann in der url und damit in den function-logs. Wer das nicht will,
+baut das formular (anhang der anleitung); dasselbe ergebnis, nur teurer im
+aufbau.

@@ -18,6 +18,12 @@ Abgang am Trainingsort, ab 20 Minuten setzt sich der Tick. Das Raster zeigt, wie
 entstanden ist — voll heißt gemessen, blass heißt getippt. Anleitung in
 [TRAINING-STANDORT.md](TRAINING-STANDORT.md).
 
+Lernen und Lesen haben keinen Ort, aber einen Fokus. Drei Fokus-Modi — lernen, lesen, training —
+melden beim Ein- und Ausschalten dasselbe wie eine Ankunft und ein Abgang, und ab 20 Minuten
+steht auch dort der Haken von allein — beim Lesen ab 10, weil ein Kapitel kürzer ist als eine
+Trainingseinheit. Damit gilt die Unterscheidung zwischen gemessen und
+getippt in allen vier Bereichen. Anleitung in [FOKUS-KURZBEFEHL.md](FOKUS-KURZBEFEHL.md).
+
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
 ## Starten
@@ -30,7 +36,7 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 106 tests
+npm test      # logik, 116 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 
@@ -54,10 +60,19 @@ Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
 gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung
 stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
 
+Die Edge Function `fokus` ist der Aufruf-Link der Fokus-Automationen:
+`/fokus?t=TOKEN&b=lernen&e=an`. Sie schreibt nichts selbst, sondern ruft
+`record_aufenthalt` auf — dieselbe Funktion wie die Standort-Kurzbefehle. Ihr
+Zweck ist allein, dass ein Kurzbefehl aus einer Aktion und einer Zeile besteht:
+ein fertiger Kurzbefehl lässt sich nicht weitergeben, weil iOS nur von Apple
+signierte Dateien annimmt, also muss das Nachbauen trivial sein.
+
 Die Tabelle `aufenthalte` liegt bewusst anders als alle übrigen: angemeldete Konten dürfen nur
 lesen. Geschrieben wird ausschließlich über `record_aufenthalt`, die die Person aus demselben
 Import-Token bestimmt. Ohne dieses entzogene Schreibrecht könnte die App eine Messung erfinden,
-und die Unterscheidung zwischen gemessen und getippt wäre wertlos.
+und die Unterscheidung zwischen gemessen und getippt wäre wertlos. Sie hält jede gemessene
+Sitzung, egal woher sie kommt: `ort` trägt den Namen der Quelle, einen Trainingsort oder einen
+Fokus (`supabase/migrations/20260831210000_fokus.sql`).
 
 Zugangsdaten liegen in `.env.local` (nicht im Git). Ohne diese Datei startet die App im Prototyp-Modus mit localStorage.
 

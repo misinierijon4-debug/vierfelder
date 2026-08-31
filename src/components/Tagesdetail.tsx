@@ -46,7 +46,13 @@ export function Tagesdetail({ zustand, auswahl, heute, onSchliessen }: Props) {
   const einheit = bereich?.unit ?? 'kg'
 
   const liste = tageseinheiten(zustand, auswahl.user, auswahl.area, auswahl.tag)
-  const gesamt = liste.reduce((s, e) => s + (e.wert ?? 0), 0)
+  const gesamt = liste.reduce((s, e) => (e.einheit === einheit ? s + (e.wert ?? 0) : s), 0)
+  /**
+   * beim lesen misst der fokus minuten, gezählt werden aber seiten. die dauer
+   * steht deshalb neben der summe und nicht darin — addiert ergäbe sie eine
+   * zahl, die nichts bedeutet.
+   */
+  const dauer = liste.reduce((s, e) => (e.einheit === einheit ? s : s + (e.wert ?? 0)), 0)
   const ohneWert = liste.some((e) => e.wert === null)
   const kg = istGewicht ? zustand.gewichte[gewichtKey(auswahl.user, auswahl.tag)] : undefined
 
@@ -145,6 +151,13 @@ export function Tagesdetail({ zustand, auswahl, heute, onSchliessen }: Props) {
                     {einheit} gesamt
                   </>
                 )}
+                {dauer > 0 && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span className="tnum text-[15px] font-semibold text-kreide">{dauer}</span>
+                    min gemessen
+                  </>
+                )}
               </p>
 
               <ul className="mt-3 divide-y divide-linie border-t border-linie">
@@ -167,7 +180,7 @@ export function Tagesdetail({ zustand, auswahl, heute, onSchliessen }: Props) {
                             <span className="tnum text-[14px] font-semibold text-kreide">
                               {e.wert}
                             </span>
-                            <span className="text-[12px] text-kreide-52">{einheit}</span>
+                            <span className="text-[12px] text-kreide-52">{e.einheit}</span>
                           </>
                         )}
                         <span className="w-[52px] text-right text-[10px] text-kreide-52">
