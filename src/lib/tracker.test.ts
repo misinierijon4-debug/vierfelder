@@ -9,6 +9,7 @@ import {
   einheitenAn,
   entferneEinheit,
   fuegeEinheitHinzu,
+  hatTageswert,
   istGesetzt,
   letzteEinheit,
   setzeEinheitWert,
@@ -204,6 +205,30 @@ describe('einheiten', () => {
     const { z, e } = mitEinheit(leer, 'lesen', '2026-08-26', 10)
     const runter = setzeEinheitWert(z, e.id, -10)
     expect(tagesWert(runter, 'erijon', 'lesen', '2026-08-26')).toBe(0)
+  })
+
+  it('unterscheidet null minuten von nie erfassten minuten', () => {
+    // beides ergibt die tagessumme 0, aber die zeile sagt zwei verschiedene
+    // dinge: „ohne wert" heißt nie erfasst, die 0 heißt heruntergezählt.
+    const ohne = mitEinheit(leer, 'lernen', '2026-08-26', null).z
+    expect(tagesWert(ohne, 'erijon', 'lernen', '2026-08-26')).toBe(0)
+    expect(hatTageswert(ohne, 'erijon', 'lernen', '2026-08-26')).toBe(false)
+
+    const { z, e } = mitEinheit(leer, 'lernen', '2026-08-27', 15)
+    const runter = setzeEinheitWert(z, e.id, 0)
+    expect(tagesWert(runter, 'erijon', 'lernen', '2026-08-27')).toBe(0)
+    expect(hatTageswert(runter, 'erijon', 'lernen', '2026-08-27')).toBe(true)
+  })
+
+  it('sieht den wert des tages, auch wenn nur eine von zwei einheiten ihn hat', () => {
+    let z = mitEinheit(leer, 'gym', '2026-08-26', 45).z
+    z = mitEinheit(z, 'gym', '2026-08-26', null).z
+    expect(hatTageswert(z, 'erijon', 'gym', '2026-08-26')).toBe(true)
+    expect(tagesWert(z, 'erijon', 'gym', '2026-08-26')).toBe(45)
+  })
+
+  it('hat ohne einheit auch keinen wert', () => {
+    expect(hatTageswert(leer, 'erijon', 'gym', '2026-08-26')).toBe(false)
   })
 
   it('legt die einheit auf den lokalen tag, nicht auf den utc-tag', () => {

@@ -16,6 +16,8 @@ type Props = {
   streak: number
   /** summe des tages über alle einheiten */
   wert: number
+  /** ob überhaupt eine dauer erfasst ist. 0 minuten und „nie erfasst" sind zwei dinge */
+  hatWert: boolean
   /** wert der jüngsten einheit — auf sie wirken die schritte */
   einheitWert: number
   /** wie oft die aktivität heute stattgefunden hat */
@@ -47,6 +49,7 @@ export function Bereichszeile({
   abstand,
   streak,
   wert,
+  hatWert,
   einheitWert,
   anzahl,
   mehrfachMoeglich,
@@ -79,15 +82,11 @@ export function Bereichszeile({
 
   const links =
     !gemessen && gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
-  const rechts = gemessen
-    ? 'messung'
-    : zeigeUndo
-      ? 'undo'
-      : gesetzt
-        ? wert > 0
-          ? `wert-${anzahl}`
-          : `ohne-${anzahl}`
-        : 'nichts'
+  // der tageswert steht seit jeher rechts — und wurde dort fünf sekunden lang
+  // von „rückgängig" verdeckt, also genau so lange, wie man tippt. er steht
+  // jetzt zwischen den schritten, die ihn ändern, und der platz rechts gehört
+  // allein dem rückgängig.
+  const rechts = gemessen ? 'messung' : zeigeUndo ? 'undo' : 'nichts'
 
   return (
     <motion.div
@@ -160,7 +159,7 @@ export function Bereichszeile({
         </div>
 
         {/* zweite zeile: immer 24px hoch, egal was drinsteht */}
-        <div className="flex h-6 items-center justify-between pr-2">
+        <div className="flex h-6 items-center justify-between">
           <Wechsel schluessel={links}>
             {!gemessen && gesetzt ? (
               <div className="flex items-center gap-1.5">
@@ -171,22 +170,72 @@ export function Bereichszeile({
                 >
                   <Minus size={11} weight="bold" />
                 </Schritt>
+
+                {/* der tageswert steht zwischen den knöpfen, die ihn ändern:
+                    ein schritt ohne sichtbare folge ist kein schritt. die
+                    breite ist fest, damit das plus nicht unter dem daumen
+                    wegwandert, wenn aus 45 die 120 wird. */}
+                <span
+                  className="flex w-[60px] items-baseline justify-center gap-1 leading-none"
+                  aria-hidden
+                >
+                  {hatWert ? (
+                    <>
+                      <Zahl
+                        value={wert}
+                        className="text-[13px] font-semibold"
+                        style={{ color: 'var(--kreide)' }}
+                      />
+                      <span className="text-[11px] text-kreide-52">{area.unit}</span>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-kreide-52">ohne wert</span>
+                  )}
+                </span>
+                <span className="sr-only">
+                  {hatWert ? `heute ${wert} ${area.unit}` : 'heute ohne wert'}
+                </span>
+
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} erhöhen`}
                   onClick={() => onWert(area.step)}
                 >
                   <Plus size={11} weight="bold" />
                 </Schritt>
+
+                {/* die zahl ist die summe des tages, die schritte gelten der
+                    neuesten einheit — ab der zweiten sagt das der zähler, und
+                    er sagt zugleich, dass „+ einheit" etwas getan hat. der
+                    platz bleibt leer stehen, damit der knopf daneben liegen
+                    bleibt, wo er war. */}
+                <span className="w-5 text-[12px] leading-none text-kreide-52">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {anzahl > 1 && (
+                      <motion.span
+                        key={anzahl}
+                        initial={reduced ? false : { opacity: 0, y: 3 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -3 }}
+                        transition={{ duration: 0.16, ease: EASE }}
+                        className="tnum inline-block"
+                      >
+                        {anzahl}×
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </span>
+
                 {/* eine zweite runde ersetzt die erste nicht, sie kommt dazu.
                     die schritte darüber gelten dann für die neueste einheit. */}
                 {mehrfachMoeglich && (
                   <button
                     type="button"
+                    aria-label={`weitere einheit ${area.label} eintragen`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onNeueEinheit()
                     }}
-                    className="ml-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                    className="text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
                   >
                     + einheit
                   </button>
@@ -222,24 +271,6 @@ export function Bereichszeile({
               >
                 rückgängig
               </button>
-            ) : gesetzt ? (
-              <span className="flex items-baseline gap-1.5">
-                {wert > 0 ? (
-                  <>
-                    <Zahl
-                      value={wert}
-                      className="text-[14px] font-semibold"
-                      style={{ color: 'var(--kreide-60)' }}
-                    />
-                    <span className="text-[12px] text-kreide-52">{area.unit}</span>
-                  </>
-                ) : (
-                  <span className="text-[12px] text-kreide-52">ohne wert</span>
-                )}
-                {anzahl > 1 && (
-                  <span className="tnum text-[12px] text-kreide-52">· {anzahl}×</span>
-                )}
-              </span>
             ) : null}
           </Wechsel>
         </div>

@@ -304,3 +304,12 @@ export function bilanz(
     er: wocheBereich(z, er, f.id, woche),
   }))
 }
+
+/**
+ * ob an diesem tag überhaupt eine dauer erfasst ist. null und 0 sind nicht
+ * dasselbe: „ohne wert" heißt nie erfasst, 0 heißt heruntergezählt bis auf
+ * null. die bereichszeile zeigt deshalb zwei verschiedene dinge an.
+ */
+export function hatTageswert(z: Zustand, u: UserId, f: FeldId, tag: string): boolean {
+  return tageseinheiten(z, u, f, tag).some((e) => e.wert !== null)
+}
