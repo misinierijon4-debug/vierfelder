@@ -29,7 +29,9 @@ Ruhe da. Der Tracker fährt nur mit.
 
 ## Einmalig in Supabase
 
-Zwei Dinge, beides einmal:
+**Beides ist am 31.08.2026 auf `ogxwazageufvalkocywh` eingespielt** — die
+Migration `20260831210000_fokus.sql` und die Edge Function `fokus` (Version 1,
+`verify_jwt` aus). Am Rechner ist nichts mehr zu tun. Bei einem neuen Projekt:
 
 ```powershell
 npx supabase link --project-ref ogxwazageufvalkocywh
@@ -37,9 +39,9 @@ npx supabase db push
 npx supabase functions deploy fokus --no-verify-jwt
 ```
 
-Die Migration `20260831210000_fokus.sql` erlaubt der Tabelle `aufenthalte` alle
-vier Bereiche statt nur `gym` und `boxen`. Die Function `fokus` macht aus dem
-Melden einen einzigen Link — dazu gleich mehr.
+Die Migration erlaubt der Tabelle `aufenthalte` alle vier Bereiche statt nur
+`gym` und `boxen`. Die Function `fokus` macht aus dem Melden einen einzigen
+Link — dazu gleich mehr.
 
 Ein neues Token braucht es nicht. Es gilt dasselbe persönliche Import-Token wie
 beim Schlaf und beim Standort (siehe [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md),
