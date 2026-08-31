@@ -1,2 +1,5 @@
 [functions.schlaf-import]
 verify_jwt = false
+
+[functions.fokus]
+verify_jwt = false

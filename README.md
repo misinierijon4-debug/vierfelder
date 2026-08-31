@@ -59,6 +59,13 @@ Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
 gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung
 stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
 
+Die Edge Function `fokus` ist der Aufruf-Link der Fokus-Automationen:
+`/fokus?t=TOKEN&b=lernen&e=an`. Sie schreibt nichts selbst, sondern ruft
+`record_aufenthalt` auf — dieselbe Funktion wie die Standort-Kurzbefehle. Ihr
+Zweck ist allein, dass ein Kurzbefehl aus einer Aktion und einer Zeile besteht:
+ein fertiger Kurzbefehl lässt sich nicht weitergeben, weil iOS nur von Apple
+signierte Dateien annimmt, also muss das Nachbauen trivial sein.
+
 Die Tabelle `aufenthalte` liegt bewusst anders als alle übrigen: angemeldete Konten dürfen nur
 lesen. Geschrieben wird ausschließlich über `record_aufenthalt`, die die Person aus demselben
 Import-Token bestimmt. Ohne dieses entzogene Schreibrecht könnte die App eine Messung erfinden,

@@ -561,3 +561,18 @@ Die datenbank sieht nicht, wer den schalter umgelegt hat, also steht die einzige
 regel dagegen in der anleitung und nicht im code: auf diesen drei modi kein
 zeitplan. Wer sich selbst betrügen will, findet ohnehin einen weg; der punkt ist
 nicht, es unmöglich zu machen, sondern es nicht versehentlich einzubauen.
+
+**Und ein kurzbefehl, den man nicht verschenken kann, muss trivial sein.** Eine
+`.shortcut`-datei vom iphone ist ein von apple signiertes archiv (`AEA1`, mit
+der zertifikatskette „Apple Root CA G3 → System Integration CA 4" darin); seit
+ios 15 nimmt die kurzbefehle-app nichts anderes an. Fertige kurzbefehle lassen
+sich also nicht ins repo legen, jeder baut sie von hand nach — und was von hand
+nachgebaut wird, sollte keine sechs formularfelder haben, von denen ios eines
+gern als boolean anlegt. Deshalb gibt es die edge function `fokus`: sie nimmt
+token, bereich und ereignis aus der url, damit ein kurzbefehl aus einer aktion
+und einer zeile besteht. Sie entscheidet nichts selbst, sondern ruft
+`record_aufenthalt` auf — zwei stellen mit regeln für dieselbe sitzung wären
+zwei stellen, die auseinanderlaufen. Der preis steht in der anleitung: das
+token liegt dann in der url und damit in den function-logs. Wer das nicht will,
+baut das formular (anhang der anleitung); dasselbe ergebnis, nur teurer im
+aufbau.

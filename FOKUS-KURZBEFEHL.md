@@ -8,7 +8,8 @@ Ende, und ab 20 Minuten steht der Haken.
 Das ist dieselbe Mechanik wie bei den Trainingsorten
 ([TRAINING-STANDORT.md](TRAINING-STANDORT.md)), nur ohne Ort. Der Fokus
 schreibt in dieselbe Tabelle, über dieselbe Datenbankfunktion, mit demselben
-Token. Deshalb kostet er keine neue Infrastruktur, sondern sechs Kurzbefehle.
+Token. Was dazukommt, ist ein einziger Aufruf-Link — damit ein Kurzbefehl aus
+einer Zeile besteht statt aus einem Formular.
 
 ## Warum ein Fokus ein Beleg ist und ein Tick nicht
 
@@ -28,13 +29,17 @@ Ruhe da. Der Tracker fährt nur mit.
 
 ## Einmalig in Supabase
 
-Die Migration `supabase/migrations/20260831210000_fokus.sql` erlaubt der
-Tabelle `aufenthalte` alle vier Bereiche statt nur `gym` und `boxen`:
+Zwei Dinge, beides einmal:
 
 ```powershell
 npx supabase link --project-ref ogxwazageufvalkocywh
 npx supabase db push
+npx supabase functions deploy fokus
 ```
+
+Die Migration `20260831210000_fokus.sql` erlaubt der Tabelle `aufenthalte` alle
+vier Bereiche statt nur `gym` und `boxen`. Die Function `fokus` macht aus dem
+Melden einen einzigen Link — dazu gleich mehr.
 
 Ein neues Token braucht es nicht. Es gilt dasselbe persönliche Import-Token wie
 beim Schlaf und beim Standort (siehe [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md),
@@ -51,52 +56,47 @@ dazu: **kein Zeitplan.** Ein Fokus, der sich montags um 18 Uhr von selbst
 einschaltet, setzt einen Tick für einen Abend, an dem niemand gelernt hat. Der
 Fokus muss von Hand kommen, sonst misst er sich selbst.
 
-## Die sechs Kurzbefehle
+## Die sechs Kurzbefehle: eine Aktion, eine URL
 
-Wie beim Standort: einen bauen, fünfmal duplizieren, je zwei Felder ändern.
+Ein fertiger Kurzbefehl lässt sich nicht weitergeben — iOS nimmt nur Dateien
+an, die Apple signiert hat, und signieren kann nur ein Apple-Gerät. Also ist
+der Kurzbefehl stattdessen so klein, dass beim Nachbauen nichts schiefgehen
+kann:
 
-**Den ersten bauen:**
-
-1. In **Kurzbefehle** einen neuen Kurzbefehl anlegen, Name `lernen an`.
+1. In **Kurzbefehle** einen neuen anlegen, Name `lernen an`.
 2. Genau eine Aktion: **Inhalte von URL abrufen**.
-3. Pfeil antippen, Details ausfüllen:
-   - URL: `https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_aufenthalt`
-   - Methode: `POST`
-   - Header — `Content-Type` mit dem Wert `application/json`
-   - Header — `apikey` mit dem Publishable Key des Projekts
-   - Haupttext anfordern: `JSON`
-4. Vier Felder anlegen, **alle vier vom Typ Text**:
+3. Die URL aus der Tabelle einsetzen, `DEIN-TOKEN` durch das eigene ersetzen.
 
-   | Schlüssel | Wert |
-   |---|---|
-   | `p_token` | dein persönliches Import-Token |
-   | `p_bereich` | `lernen` |
-   | `p_ereignis` | `an` |
-   | `p_ort` | `fokus lernen` |
+Das war alles. Keine Methode umstellen, keine Header, keine JSON-Felder — und
+damit auch nicht die Falle, dass iOS ein Feld als Boolean anlegt und statt des
+Tokens ein `true` schickt.
 
-Der Typ **Text** ist wichtig. iOS legt neue Felder gern als Boolean an, und dann
-kommt statt des Tokens ein `true` an.
+| Kurzbefehl | URL |
+|---|---|
+| lernen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lernen&e=an` |
+| lernen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lernen&e=aus` |
+| lesen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lesen&e=an` |
+| lesen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lesen&e=aus` |
+| training an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=boxen&e=an` |
+| training aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=boxen&e=aus` |
 
-**Die fünf anderen** durch Duplizieren, mit diesen Werten:
-
-| Kurzbefehl | `p_bereich` | `p_ereignis` | `p_ort` |
-|---|---|---|---|
-| lernen an | `lernen` | `an` | `fokus lernen` |
-| lernen aus | `lernen` | `aus` | `fokus lernen` |
-| lesen an | `lesen` | `an` | `fokus lesen` |
-| lesen aus | `lesen` | `aus` | `fokus lesen` |
-| training an | `boxen` | `an` | `fokus training` |
-| training aus | `boxen` | `aus` | `fokus training` |
-
-`p_ereignis` versteht `an`/`aus` genauso wie `ankunft`/`abgang` — es ist
-dieselbe Funktion, sie spricht nur beide Sprachen.
+`b` ist der Bereich, `e` das Ereignis (`an` oder `aus`), `t` das Token. Ein
+`o=...` für den Namen der Quelle ist möglich, aber nicht nötig: ohne Angabe
+heißt sie `fokus lernen`, `fokus lesen`, `fokus boxen`.
 
 **Warum `training` auf `boxen` zeigt:** die beiden Gyms haken sich schon per
 Standort ab. Was dort fehlt, ist das Training ohne Adresse — Boxen zuhause,
 Laufen, Hof. Wer stattdessen ein Gym ohne Standort-Automation hat, ändert in
-den zwei Kurzbefehlen `p_bereich` auf `gym`. Es ist ein Feld, keine Migration.
+den zwei URLs `b=boxen` auf `b=gym`. Ein Buchstabe, keine Migration.
 
-`p_zeit` wird nicht mitgeschickt: ohne Angabe gilt der Moment des Aufrufs, und
+**Das Token steht in der URL.** Behandle die sechs Kurzbefehle wie ein
+Passwort: keine Screenshots, nicht weiterschicken. Wer die URL hat, kann
+Sitzungen für dich eintragen — mehr nicht, lesen oder löschen kann er nichts.
+In den Function-Logs von Supabase taucht die aufgerufene Adresse auf; das ist
+der Preis dafür, dass ein Kurzbefehl aus einer einzigen Zeile besteht. Wem das
+zu viel ist, nimmt die Variante ganz unten.
+
+Eine Zeitangabe wird nicht mitgeschickt: es gilt der Moment des Aufrufs, und
 das ist genau der Moment, in dem der Fokus umschaltet.
 
 ## Die sechs Automationen
@@ -115,8 +115,9 @@ Zwei Automationen je Fokus, also sechs. Danach nie wieder.
 
 ## Testen
 
-`lernen an` von Hand ausführen: die Antwort muss `"ok": true` und `"neu": true`
-enthalten. Dann `lernen aus` — die Antwort enthält zusätzlich `dauer_minuten`.
+Die URL von `lernen an` in Safari öffnen — das ist derselbe Aufruf, den der
+Kurzbefehl macht. Die Antwort muss `"ok": true` und `"neu": true` enthalten.
+Dann die von `lernen aus`: die Antwort enthält zusätzlich `dauer_minuten`.
 In Supabase nachsehen:
 
 ```sql
@@ -135,9 +136,9 @@ liegt unter der Schwelle. Wegräumen:
 delete from aufenthalte where abgang - ankunft < interval '5 minutes';
 ```
 
-Kommt `kein gueltiges import-token`, stimmt `p_token` nicht oder das Feld wurde
-nicht als **Text** angelegt. Kommt `p_bereich muss lernen, gym, boxen oder
-lesen sein`, ist die Migration noch nicht eingespielt.
+Kommt `kein gueltiges import-token`, stimmt `t` nicht. Kommt `p_bereich muss
+lernen, gym, boxen oder lesen sein`, ist die Migration noch nicht eingespielt.
+Kommt gar nichts oder ein 404, fehlt `npx supabase functions deploy fokus`.
 
 ## Was von allein passiert, und was nicht
 
@@ -171,3 +172,27 @@ einschaltet und Netflix schaut, bekommt seinen Haken — genau wie der, der sein
 Handy im Gym liegen lässt. Technik kann Lügen teuer machen, nicht unmöglich.
 20 Minuten Fokus kosten ungefähr so viel wie 20 Minuten lernen; der Unterschied
 ist, dass man in der Zeit auch hätte lernen können.
+
+## Anhang: dieselbe Sache ohne Edge Function
+
+Wer das Token nicht in der URL haben will, baut die Kurzbefehle wie die
+Standort-Kurzbefehle in [TRAINING-STANDORT.md](TRAINING-STANDORT.md): **Inhalte
+von URL abrufen** auf
+`https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_aufenthalt`,
+Methode `POST`, Header `Content-Type: application/json` und `apikey` mit dem
+Publishable Key, Haupttext `JSON` mit vier Feldern — **alle vom Typ Text**:
+
+| Kurzbefehl | `p_token` | `p_bereich` | `p_ereignis` | `p_ort` |
+|---|---|---|---|---|
+| lernen an | Token | `lernen` | `an` | `fokus lernen` |
+| lernen aus | Token | `lernen` | `aus` | `fokus lernen` |
+| lesen an | Token | `lesen` | `an` | `fokus lesen` |
+| lesen aus | Token | `lesen` | `aus` | `fokus lesen` |
+| training an | Token | `boxen` | `an` | `fokus boxen` |
+| training aus | Token | `boxen` | `aus` | `fokus boxen` |
+
+Es ist dieselbe Datenbankfunktion und dasselbe Ergebnis — nur sechsmal sechs
+Felder statt sechsmal einer Zeile. `p_ort` steht hier genauso, wie die Function
+ihn ohne `o=` bildet; nur wenn Ein- und Ausschalten denselben Namen schreiben,
+findet der Abgang seine Ankunft wieder. `p_ereignis` versteht `an`/`aus` genauso wie
+`ankunft`/`abgang`.
