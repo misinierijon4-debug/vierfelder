@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Fach, Note } from './types'
-import { abiPrognose, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, klausurAnteil, notenGewicht, punkteKurz, punkteZuNote, trend } from './noten'
+import { abiPrognose, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, klausurAnteil, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
 
 const fach = (id: string, kursart: 'lk' | 'gk' = 'gk'): Fach => ({
   id, user: 'erijon', name: id, kursart, pruefungsfach: null, sortierung: 0,
@@ -100,5 +100,45 @@ describe('ziel und trend', () => {
     const noten = [note('m', 12, 'klausur', 10, '2026-09-03'), note('m', 8, 'klausur', 10, '2026-09-01'), note('m', 10, 'klausur', 10, '2026-09-02')]
     expect(trend(noten, 'm', 2)).toEqual([10, 12])
     expect(trend(noten, 'm', 6)).toEqual([8, 10, 12])
+  })
+})
+
+describe('vergleich', () => {
+  const stundenplan = (): Fach[] => {
+    const bau = (user: 'erijon' | 'koray', liste: Array<[string, 'lk' | 'gk']>): Fach[] =>
+      liste.map(([name, kursart], i) => ({ id: `${user}-${name}`, user, name, kursart, pruefungsfach: null, sortierung: i }))
+    return [
+      ...bau('erijon', [['bio', 'lk'], ['englisch', 'lk'], ['geschichte', 'lk'], ['mathe', 'gk'], ['deutsch', 'gk'], ['sozialkunde', 'gk'], ['ethik', 'gk'], ['sport', 'gk'], ['informatik', 'gk'], ['bildende kunst', 'gk']]),
+      ...bau('koray', [['deutsch', 'lk'], ['physik', 'lk'], ['geschichte', 'lk'], ['mathe', 'gk'], ['englisch', 'gk'], ['sozialkunde', 'gk'], ['katholische religion', 'gk'], ['französisch', 'gk'], ['sport', 'gk'], ['bildende kunst', 'gk']]),
+    ]
+  }
+
+  it('stellt nur kurse derselben art gegeneinander', () => {
+    for (const zeile of vergleich(stundenplan()).zeilen) {
+      expect(zeile.erijon.kursart).toBe(zeile.koray.kursart)
+    }
+  })
+  it('paart ueber den platz im stundenplan, nicht ueber den namen', () => {
+    const paare = vergleich(stundenplan()).zeilen.map((z) => [z.erijon.name, z.koray.name])
+    expect(paare).toContainEqual(['bio', 'physik'])
+    expect(paare).toContainEqual(['englisch', 'deutsch'])
+    expect(paare).toContainEqual(['deutsch', 'englisch'])
+    expect(paare).toContainEqual(['ethik', 'katholische religion'])
+    expect(paare).toContainEqual(['geschichte', 'geschichte'])
+  })
+  it('nimmt jedes fach hoechstens in eine zeile', () => {
+    const { zeilen, ohnePaar } = vergleich(stundenplan())
+    const ids = [...zeilen.flatMap((z) => [z.erijon.id, z.koray.id]), ...ohnePaar.map((f) => f.id)]
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids.length).toBe(20)
+  })
+  it('laesst faecher ohne gegenstueck stehen, statt sie zu verrechnen', () => {
+    expect(vergleich(stundenplan()).ohnePaar.map((f) => f.name)).toEqual(['informatik', 'französisch'])
+  })
+  it('ueberspringt ein paar, von dem nur eine seite existiert', () => {
+    const nurErijon = stundenplan().filter((f) => f.user === 'erijon' || f.name !== 'physik')
+    const { zeilen, ohnePaar } = vergleich(nurErijon)
+    expect(zeilen.some((z) => z.erijon.name === 'bio')).toBe(false)
+    expect(ohnePaar.map((f) => f.name)).toContain('bio')
   })
 })

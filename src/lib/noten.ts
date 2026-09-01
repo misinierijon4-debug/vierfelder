@@ -80,6 +80,51 @@ export function gesamtSchnitt(faecher: Fach[], noten: Note[], user: UserId): num
   return werte.length === 0 ? null : werte.reduce((summe, wert) => summe + wert, 0) / werte.length
 }
 
+/**
+ * wer mit wem verglichen wird. die beiden haben nicht dieselben kurse: einen
+ * lk gegen einen gk zu stellen waere kein vergleich, und `bio` hat auf der
+ * anderen seite gar keinen namensvetter. deshalb steht hier von hand, welches
+ * fach des einen dem fach des anderen entspricht — leistungskurse zuerst.
+ */
+export const VERGLEICHSPAARE: Array<{ erijon: string; koray: string }> = [
+  { erijon: 'geschichte', koray: 'geschichte' },
+  { erijon: 'bio', koray: 'physik' },
+  { erijon: 'englisch', koray: 'deutsch' },
+  { erijon: 'mathe', koray: 'mathe' },
+  { erijon: 'deutsch', koray: 'englisch' },
+  { erijon: 'sozialkunde', koray: 'sozialkunde' },
+  { erijon: 'ethik', koray: 'katholische religion' },
+  { erijon: 'sport', koray: 'sport' },
+  { erijon: 'bildende kunst', koray: 'bildende kunst' },
+]
+
+export type Vergleichszeile = { erijon: Fach; koray: Fach }
+export type Vergleich = { zeilen: Vergleichszeile[]; ohnePaar: Fach[] }
+
+/**
+ * die paare, die es wirklich gibt, und alles, was ohne gegenstueck bleibt. ein
+ * fach ohne partner faellt nicht unter den tisch, aber es steht auch nicht als
+ * vergleich da — informatik gegen franzoesisch waere eine erfundene zahl.
+ */
+export function vergleich(faecher: Fach[]): Vergleich {
+  const finde = (user: UserId, name: string) =>
+    faecher.find((fach) => fach.user === user && fach.name === name) ?? null
+  const zeilen: Vergleichszeile[] = []
+  const gepaart = new Set<string>()
+  for (const paar of VERGLEICHSPAARE) {
+    const erijon = finde('erijon', paar.erijon)
+    const koray = finde('koray', paar.koray)
+    if (!erijon || !koray) continue
+    zeilen.push({ erijon, koray })
+    gepaart.add(erijon.id)
+    gepaart.add(koray.id)
+  }
+  const ohnePaar = faecher
+    .filter((fach) => !gepaart.has(fach.id))
+    .sort((a, b) => a.user.localeCompare(b.user) || a.sortierung - b.sortierung)
+  return { zeilen, ohnePaar }
+}
+
 export function defizite(faecher: Fach[], noten: Note[], user: UserId): Fach[] {
   return faecher.filter((fach) => {
     if (fach.user !== user) return false

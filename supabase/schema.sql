@@ -418,7 +418,7 @@ select gen_random_uuid(), p.id, f.name, f.kursart, f.sortierung
 from profile p
 join (values
   ('bio', 'lk', 0), ('englisch', 'lk', 1), ('geschichte', 'lk', 2),
-  ('mathe', 'gk', 3), ('deutsch', 'gk', 4), ('sozialkunde/erdkunde', 'gk', 5),
+  ('mathe', 'gk', 3), ('deutsch', 'gk', 4), ('sozialkunde', 'gk', 5),
   ('ethik', 'gk', 6), ('sport', 'gk', 7),
   ('informatik', 'gk', 8), ('bildende kunst', 'gk', 9)
 ) as f(name, kursart, sortierung) on true
@@ -430,7 +430,7 @@ select gen_random_uuid(), p.id, f.name, f.kursart, f.sortierung
 from profile p
 join (values
   ('deutsch', 'lk', 0), ('physik', 'lk', 1), ('geschichte', 'lk', 2),
-  ('mathe', 'gk', 3), ('englisch', 'gk', 4), ('sozialkunde/erdkunde', 'gk', 5),
+  ('mathe', 'gk', 3), ('englisch', 'gk', 4), ('sozialkunde', 'gk', 5),
   ('katholische religion', 'gk', 6), ('französisch', 'gk', 7),
   ('sport', 'gk', 8), ('bildende kunst', 'gk', 9)
 ) as f(name, kursart, sortierung) on true
