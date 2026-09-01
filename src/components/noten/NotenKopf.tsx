@@ -39,7 +39,7 @@ export function NotenKopf({ stand, me }: { stand: Notenstand; me: UserId }) {
       )}
       <p className="mt-3 text-[10px] leading-4 text-kreide-52">
         {ABI_FORMEL_GEPRUEFT ? 'mss rheinland-pfalz · abitur 2027 geprüft.' : 'die mss-zahlen dieser prognose sind ungeprüft.'}
-        {' '}bis zur wahl des mündlichen prüfungsfachs rechnet die hochrechnung mit dem gf-schnitt.
+        {' '}bis zur wahl des mündlichen prüfungsfachs rechnet die hochrechnung mit dem gk-schnitt.
       </p>
     </section>
   )

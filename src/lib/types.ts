@@ -42,16 +42,15 @@ export type UserDef = {
   leer: string
 }
 
-/** mss: leistungsfach oder grundfach. rheinland-pfalz hat drei lf */
-export type Kursart = 'lf' | 'gf'
-export type Notenart = 'klausur' | 'muendlich'
+/** mss: leistungskurs oder grundkurs. rheinland-pfalz hat drei lk */
+export type Kursart = 'lk' | 'gk'
+export type Notenart = 'klausur' | 'epo' | 'hue'
 
 export type Fach = {
   id: string
   user: UserId
   name: string
   kursart: Kursart
-  klausurAnteil: number
   pruefungsfach: number | null
   sortierung: number
 }
@@ -62,7 +61,7 @@ export type Note = {
   fachId: string
   art: Notenart
   punkte: number
-  /** gewicht innerhalb der eigenen art, in zehnteln. 10 ist normal */
+  /** festes gewicht: epo 20, klausur und hü 10 */
   gewicht: number
   /** lokaler kalendertag, gebildet mit `toKey` */
   datum: string
@@ -71,7 +70,6 @@ export type Note = {
 
 export type Notenstand = { faecher: Fach[]; noten: Note[] }
 
-export const KLAUSUR_ANTEIL_STANDARD = 50
 export const GEWICHT_STANDARD = 10
 
 export const AREAS: AreaDef[] = [

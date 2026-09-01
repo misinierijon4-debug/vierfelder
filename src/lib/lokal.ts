@@ -9,6 +9,7 @@ import type {
 } from './backend'
 import { toKey, weekDays } from './dates'
 import { gewichtKey, neueEinheitId, tickKey, wertKey } from './types'
+import { notenGewicht } from './noten'
 import type {
   Aufenthalt,
   AreaId,
@@ -39,8 +40,8 @@ const GEWICHT_KEY = 'vierfelder.gewicht.v1'
 /** eine zeile pro durchführung, flach über beide personen */
 const EINHEITEN_KEY = 'vierfelder.einheiten.v1'
 const WETTEN_KEY = 'vierfelder.wetten.v1'
-const FAECHER_KEY = 'vierfelder.faecher.v1'
-const NOTEN_KEY = 'vierfelder.noten.v1'
+const FAECHER_KEY = 'vierfelder.faecher.v2'
+const NOTEN_KEY = 'vierfelder.noten.v2'
 /** damit die übernahme des altbestands genau einmal läuft */
 const MIGRIERT_KEY = 'vierfelder.einheiten.migriert.v1'
 const KANAL = 'vierfelder'
@@ -74,49 +75,47 @@ function sichere(einheiten: Einheit[]) {
 }
 
 const START_FAECHER: Fach[] = [
-  { id: 'a0000000-0000-4000-8000-000000000001', user: 'erijon', name: 'bio', kursart: 'lf', klausurAnteil: 50, pruefungsfach: null, sortierung: 0 },
-  { id: 'a0000000-0000-4000-8000-000000000002', user: 'erijon', name: 'englisch', kursart: 'lf', klausurAnteil: 50, pruefungsfach: null, sortierung: 1 },
-  { id: 'a0000000-0000-4000-8000-000000000003', user: 'erijon', name: 'geschichte', kursart: 'lf', klausurAnteil: 50, pruefungsfach: null, sortierung: 2 },
-  { id: 'a0000000-0000-4000-8000-000000000004', user: 'erijon', name: 'mathe', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 3 },
-  { id: 'a0000000-0000-4000-8000-000000000005', user: 'erijon', name: 'deutsch', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 4 },
-  { id: 'a0000000-0000-4000-8000-000000000006', user: 'erijon', name: 'sozialkunde/erdkunde', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 5 },
-  { id: 'a0000000-0000-4000-8000-000000000007', user: 'erijon', name: 'ethik', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 6 },
-  { id: 'a0000000-0000-4000-8000-000000000008', user: 'erijon', name: 'chor', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 7 },
-  { id: 'a0000000-0000-4000-8000-000000000009', user: 'erijon', name: 'sport', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 8 },
-  { id: 'a0000000-0000-4000-8000-000000000010', user: 'erijon', name: 'informatik', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 9 },
-  { id: 'a0000000-0000-4000-8000-000000000011', user: 'erijon', name: 'bildende kunst', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 10 },
-  { id: 'b0000000-0000-4000-8000-000000000001', user: 'koray', name: 'deutsch', kursart: 'lf', klausurAnteil: 50, pruefungsfach: null, sortierung: 0 },
-  { id: 'b0000000-0000-4000-8000-000000000002', user: 'koray', name: 'physik', kursart: 'lf', klausurAnteil: 50, pruefungsfach: null, sortierung: 1 },
-  { id: 'b0000000-0000-4000-8000-000000000003', user: 'koray', name: 'geschichte', kursart: 'lf', klausurAnteil: 50, pruefungsfach: null, sortierung: 2 },
-  { id: 'b0000000-0000-4000-8000-000000000004', user: 'koray', name: 'mathe', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 3 },
-  { id: 'b0000000-0000-4000-8000-000000000005', user: 'koray', name: 'englisch', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 4 },
-  { id: 'b0000000-0000-4000-8000-000000000006', user: 'koray', name: 'sozialkunde/erdkunde', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 5 },
-  { id: 'b0000000-0000-4000-8000-000000000007', user: 'koray', name: 'katholische religion', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 6 },
-  { id: 'b0000000-0000-4000-8000-000000000008', user: 'koray', name: 'französisch', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 7 },
-  { id: 'b0000000-0000-4000-8000-000000000009', user: 'koray', name: 'chor', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 8 },
-  { id: 'b0000000-0000-4000-8000-000000000010', user: 'koray', name: 'sport', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 9 },
-  { id: 'b0000000-0000-4000-8000-000000000011', user: 'koray', name: 'bildende kunst', kursart: 'gf', klausurAnteil: 50, pruefungsfach: null, sortierung: 10 },
+  { id: 'a0000000-0000-4000-8000-000000000001', user: 'erijon', name: 'bio', kursart: 'lk', pruefungsfach: null, sortierung: 0 },
+  { id: 'a0000000-0000-4000-8000-000000000002', user: 'erijon', name: 'englisch', kursart: 'lk', pruefungsfach: null, sortierung: 1 },
+  { id: 'a0000000-0000-4000-8000-000000000003', user: 'erijon', name: 'geschichte', kursart: 'lk', pruefungsfach: null, sortierung: 2 },
+  { id: 'a0000000-0000-4000-8000-000000000004', user: 'erijon', name: 'mathe', kursart: 'gk', pruefungsfach: null, sortierung: 3 },
+  { id: 'a0000000-0000-4000-8000-000000000005', user: 'erijon', name: 'deutsch', kursart: 'gk', pruefungsfach: null, sortierung: 4 },
+  { id: 'a0000000-0000-4000-8000-000000000006', user: 'erijon', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
+  { id: 'a0000000-0000-4000-8000-000000000007', user: 'erijon', name: 'ethik', kursart: 'gk', pruefungsfach: null, sortierung: 6 },
+  { id: 'a0000000-0000-4000-8000-000000000009', user: 'erijon', name: 'sport', kursart: 'gk', pruefungsfach: null, sortierung: 7 },
+  { id: 'a0000000-0000-4000-8000-000000000010', user: 'erijon', name: 'informatik', kursart: 'gk', pruefungsfach: null, sortierung: 8 },
+  { id: 'a0000000-0000-4000-8000-000000000011', user: 'erijon', name: 'bildende kunst', kursart: 'gk', pruefungsfach: null, sortierung: 9 },
+  { id: 'b0000000-0000-4000-8000-000000000001', user: 'koray', name: 'deutsch', kursart: 'lk', pruefungsfach: null, sortierung: 0 },
+  { id: 'b0000000-0000-4000-8000-000000000002', user: 'koray', name: 'physik', kursart: 'lk', pruefungsfach: null, sortierung: 1 },
+  { id: 'b0000000-0000-4000-8000-000000000003', user: 'koray', name: 'geschichte', kursart: 'lk', pruefungsfach: null, sortierung: 2 },
+  { id: 'b0000000-0000-4000-8000-000000000004', user: 'koray', name: 'mathe', kursart: 'gk', pruefungsfach: null, sortierung: 3 },
+  { id: 'b0000000-0000-4000-8000-000000000005', user: 'koray', name: 'englisch', kursart: 'gk', pruefungsfach: null, sortierung: 4 },
+  { id: 'b0000000-0000-4000-8000-000000000006', user: 'koray', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
+  { id: 'b0000000-0000-4000-8000-000000000007', user: 'koray', name: 'katholische religion', kursart: 'gk', pruefungsfach: null, sortierung: 6 },
+  { id: 'b0000000-0000-4000-8000-000000000008', user: 'koray', name: 'französisch', kursart: 'gk', pruefungsfach: null, sortierung: 7 },
+  { id: 'b0000000-0000-4000-8000-000000000010', user: 'koray', name: 'sport', kursart: 'gk', pruefungsfach: null, sortierung: 8 },
+  { id: 'b0000000-0000-4000-8000-000000000011', user: 'koray', name: 'bildende kunst', kursart: 'gk', pruefungsfach: null, sortierung: 9 },
 ]
 
 function beispielNoten(): Note[] {
   const tag = (tage: number) => toKey(new Date(Date.now() - tage * 86400000))
-  const daten: Array<[string, UserId, 'klausur' | 'muendlich', number, number]> = [
+  const daten: Array<[string, UserId, Note['art'], number, number]> = [
     ['a0000000-0000-4000-8000-000000000001', 'erijon', 'klausur', 12, 12],
-    ['a0000000-0000-4000-8000-000000000001', 'erijon', 'muendlich', 13, 7],
+    ['a0000000-0000-4000-8000-000000000001', 'erijon', 'epo', 13, 7],
     ['a0000000-0000-4000-8000-000000000002', 'erijon', 'klausur', 11, 11],
-    ['a0000000-0000-4000-8000-000000000003', 'erijon', 'muendlich', 10, 8],
+    ['a0000000-0000-4000-8000-000000000003', 'erijon', 'hue', 10, 8],
     ['a0000000-0000-4000-8000-000000000004', 'erijon', 'klausur', 9, 6],
-    ['a0000000-0000-4000-8000-000000000010', 'erijon', 'muendlich', 14, 3],
+    ['a0000000-0000-4000-8000-000000000010', 'erijon', 'epo', 14, 3],
     ['b0000000-0000-4000-8000-000000000001', 'koray', 'klausur', 10, 12],
-    ['b0000000-0000-4000-8000-000000000001', 'koray', 'muendlich', 11, 7],
+    ['b0000000-0000-4000-8000-000000000001', 'koray', 'epo', 11, 7],
     ['b0000000-0000-4000-8000-000000000002', 'koray', 'klausur', 12, 10],
-    ['b0000000-0000-4000-8000-000000000003', 'koray', 'muendlich', 9, 8],
+    ['b0000000-0000-4000-8000-000000000003', 'koray', 'hue', 9, 8],
     ['b0000000-0000-4000-8000-000000000004', 'koray', 'klausur', 8, 5],
-    ['b0000000-0000-4000-8000-000000000005', 'koray', 'muendlich', 13, 2],
+    ['b0000000-0000-4000-8000-000000000005', 'koray', 'epo', 13, 2],
   ]
   return daten.map(([fachId, user, art, punkte, tage], i) => ({
     id: `c0000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
-    user, fachId, art, punkte, gewicht: 10, datum: tag(tage), titel: '',
+    user, fachId, art, punkte, gewicht: notenGewicht(art), datum: tag(tage), titel: '',
   }))
 }
 
@@ -421,24 +420,12 @@ export function lokalesBackend(): Backend {
       holeKanal()?.postMessage({ von: absender, typ: 'wette', woche, text } satisfies Nachricht)
     },
 
-    async schreibeFach(fach: Fach) {
-      const alle = alleFaecher()
-      if (alle.some((x) => x.id === fach.id)) return
-      localStorage.setItem(FAECHER_KEY, JSON.stringify([...alle, fach]))
-      sendeFach('neu', fach)
-    },
-
-    async aendereFach(fach: Fach) {
-      localStorage.setItem(FAECHER_KEY, JSON.stringify(alleFaecher().map((x) => x.id === fach.id ? fach : x)))
-      sendeFach('wert', fach)
-    },
-
-    async loescheFach(id: string) {
+    async setzePruefungsfach(id: string, nummer: number | null) {
       const fach = alleFaecher().find((x) => x.id === id)
       if (!fach) return
-      localStorage.setItem(FAECHER_KEY, JSON.stringify(alleFaecher().filter((x) => x.id !== id)))
-      localStorage.setItem(NOTEN_KEY, JSON.stringify(alleNoten().filter((x) => x.fachId !== id)))
-      sendeFach('weg', fach)
+      const next = { ...fach, pruefungsfach: nummer }
+      localStorage.setItem(FAECHER_KEY, JSON.stringify(alleFaecher().map((x) => x.id === id ? next : x)))
+      sendeFach('wert', next)
     },
 
     async schreibeNote(note: Note) {
@@ -446,11 +433,6 @@ export function lokalesBackend(): Backend {
       if (alle.some((x) => x.id === note.id)) return
       localStorage.setItem(NOTEN_KEY, JSON.stringify([...alle, note]))
       sendeNote('neu', note)
-    },
-
-    async aendereNote(note: Note) {
-      localStorage.setItem(NOTEN_KEY, JSON.stringify(alleNoten().map((x) => x.id === note.id ? note : x)))
-      sendeNote('wert', note)
     },
 
     async loescheNote(id: string) {

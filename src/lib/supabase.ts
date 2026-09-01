@@ -90,7 +90,6 @@ type FachZeile = {
   user_id: string
   name: string
   kursart: Kursart
-  klausur_anteil: number
   pruefungsfach: number | null
   sortierung: number
 }
@@ -250,7 +249,6 @@ export function supabaseBackend(eigeneId: string): Backend {
       user: person,
       name: f.name,
       kursart: f.kursart,
-      klausurAnteil: Number(f.klausur_anteil),
       pruefungsfach: f.pruefungsfach,
       sortierung: Number(f.sortierung),
     }
@@ -309,7 +307,7 @@ export function supabaseBackend(eigeneId: string): Backend {
           db.from('duell_wetten').select('woche, text'),
           db
             .from('faecher')
-            .select('id, user_id, name, kursart, klausur_anteil, pruefungsfach, sortierung')
+            .select('id, user_id, name, kursart, pruefungsfach, sortierung')
             .order('sortierung', { ascending: true }),
           db
             .from('noten')
@@ -533,41 +531,12 @@ export function supabaseBackend(eigeneId: string): Backend {
       if (error) throw error
     },
 
-    async schreibeFach(fach) {
-      if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
-      const { error } = await db.from('faecher').upsert(
-        {
-          id: fach.id,
-          user_id: eigeneId,
-          name: fach.name,
-          kursart: fach.kursart,
-          klausur_anteil: fach.klausurAnteil,
-          pruefungsfach: fach.pruefungsfach,
-          sortierung: fach.sortierung,
-        },
-        { onConflict: 'id', ignoreDuplicates: true }
-      )
-      if (error) throw error
-    },
-
-    async aendereFach(fach) {
+    async setzePruefungsfach(fachId, nummer) {
       if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
       const { error } = await db
         .from('faecher')
-        .update({
-          name: fach.name,
-          kursart: fach.kursart,
-          klausur_anteil: fach.klausurAnteil,
-          pruefungsfach: fach.pruefungsfach,
-          sortierung: fach.sortierung,
-        })
-        .match({ id: fach.id, user_id: eigeneId })
-      if (error) throw error
-    },
-
-    async loescheFach(id) {
-      if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
-      const { error } = await db.from('faecher').delete().match({ id, user_id: eigeneId })
+        .update({ pruefungsfach: nummer })
+        .match({ id: fachId, user_id: eigeneId, kursart: 'gk' })
       if (error) throw error
     },
 
@@ -586,21 +555,6 @@ export function supabaseBackend(eigeneId: string): Backend {
         },
         { onConflict: 'id', ignoreDuplicates: true }
       )
-      if (error) throw error
-    },
-
-    async aendereNote(note) {
-      if (!notenVerfuegbar) throw new Error('noten fehlt noch')
-      const { error } = await db
-        .from('noten')
-        .update({
-          art: note.art,
-          punkte: note.punkte,
-          gewicht: note.gewicht,
-          datum: note.datum,
-          titel: note.titel,
-        })
-        .match({ id: note.id, user_id: eigeneId })
       if (error) throw error
     },
 
