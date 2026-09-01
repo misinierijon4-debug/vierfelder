@@ -82,6 +82,19 @@ describe('prognose', () => {
     const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), fach('d')]
     expect(abiPrognose(faecher, faecher.map((f) => note(f.id, 10)), 'erijon')?.huerden).toEqual([])
   })
+  it('rechnet vier pruefungen à 15 punkte auf block ii 300', () => {
+    const gk = { ...fach('gk'), pruefungsfach: 4 }
+    const faecher = [fach('lk1', 'lk'), fach('lk2', 'lk'), fach('lk3', 'lk'), gk]
+    const noten = faecher.map((f) => note(f.id, 15))
+    expect(abiPrognose(faecher, noten, 'erijon')?.blockII).toBe(300)
+  })
+  it('nimmt den gewaehlten gk als vierte pruefung, nicht den gk-schnitt', () => {
+    const gut = { ...fach('gut'), pruefungsfach: 4 }
+    const faecher = [fach('lk1', 'lk'), fach('lk2', 'lk'), fach('lk3', 'lk'), gut, fach('schwach')]
+    const noten = [note('lk1', 10), note('lk2', 10), note('lk3', 10), note('gut', 14), note('schwach', 2)]
+    // ohne wahl stuende hier der gk-schnitt aus 14 und 2, also 8
+    expect(abiPrognose(faecher, noten, 'erijon')?.blockII).toBe(Math.round((30 + 14) * 5))
+  })
 })
 
 describe('ziel und trend', () => {

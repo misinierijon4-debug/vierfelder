@@ -4,6 +4,7 @@ import { FELDER, user as userDef } from '../lib/types'
 import type { UserId, Zustand } from '../lib/types'
 import { TAGKUERZEL, fromKey } from '../lib/dates'
 import { kalenderMonate } from '../lib/kalender'
+import { useScrollSperre } from '../lib/scrollsperre'
 import { erledigteFelder, tageMitDaten } from '../lib/tracker'
 
 const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
@@ -56,11 +57,11 @@ export function TrackerKalender({
     if (!offen && dialog.open) dialog.close()
   }, [offen])
 
+  useScrollSperre(offen)
+
   useEffect(() => {
     if (!offen) return
 
-    const vorher = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
     const frame = window.requestAnimationFrame(() => {
       const monat = scrollRef.current?.querySelector<HTMLElement>(
         `[data-monat="${gewaehlterTag.slice(0, 7)}"]`
@@ -68,10 +69,7 @@ export function TrackerKalender({
       monat?.scrollIntoView({ block: 'center' })
     })
 
-    return () => {
-      window.cancelAnimationFrame(frame)
-      document.documentElement.style.overflow = vorher
-    }
+    return () => window.cancelAnimationFrame(frame)
   }, [gewaehlterTag, offen])
 
   return (

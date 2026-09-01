@@ -34,9 +34,6 @@ export function NotenVergleich({ stand }: { stand: Notenstand }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-[10px] leading-4 text-kreide-52">
-        verglichen wird nur, was denselben platz im stundenplan hat. wo die fächer verschieden heißen, steht jeder name in der farbe seiner spalte.
-      </p>
       {ohnePaar.length > 0 && (
         <>
           <p className="mt-3 text-[10px] text-kreide-52">ohne gegenstück</p>

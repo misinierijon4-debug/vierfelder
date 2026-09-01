@@ -492,17 +492,35 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
+  /**
+   * es gibt genau ein muendliches pruefungsfach je person — die vierte pruefung
+   * neben den drei lk. der eindeutige index in der datenbank laesst kein zweites
+   * zu, deshalb faellt das alte erst weg und das neue kommt danach.
+   */
   const setzePruefungsfach = useCallback(
     (fachId: string, nummer: number | null) => {
-      if (nummer !== null && nummer !== 4 && nummer !== 5) return
+      if (nummer !== null && nummer !== 4) return
       const fach = faecherRef.current.find((x) => x.id === fachId)
       if (!fach || fach.user !== meRef.current || fach.kursart !== 'gk') return
+      const altes = nummer === null
+        ? undefined
+        : faecherRef.current.find(
+            (x) => x.user === meRef.current && x.id !== fachId && x.pruefungsfach !== null
+          )
       const vorher = faecherRef.current
-      const next = vorher.map((x) => x.id === fachId ? { ...x, pruefungsfach: nummer } : x)
+      const next = vorher.map((x) =>
+        x.id === fachId ? { ...x, pruefungsfach: nummer }
+          : x.id === altes?.id ? { ...x, pruefungsfach: null }
+          : x
+      )
       faecherRef.current = next
       setFaecher(next)
       setFehler(null)
-      nacheinander([fachId], () => backend.setzePruefungsfach(fachId, nummer)).catch(() => {
+      const ids = altes ? [fachId, altes.id] : [fachId]
+      nacheinander(ids, async () => {
+        if (altes) await backend.setzePruefungsfach(altes.id, null)
+        await backend.setzePruefungsfach(fachId, nummer)
+      }).catch(() => {
         faecherRef.current = vorher
         setFaecher(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')

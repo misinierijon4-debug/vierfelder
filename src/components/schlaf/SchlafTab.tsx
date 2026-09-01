@@ -1,9 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
-import { CalendarBlank } from '@phosphor-icons/react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import { abendDatum, registrierteSchlafNutzer } from '../../lib/schlafPhasen'
-import { fromKey, weekDays } from '../../lib/dates'
+import { addDays, fromKey, weekDays } from '../../lib/dates'
 import { istSelbeWoche, wochenZeitraum } from '../../lib/kalender'
 import { SchlafWochenVergleich } from './SchlafWochenVergleich'
 import { SchlafNachtDetail } from './SchlafNachtDetail'
@@ -24,6 +23,8 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
   const detailRef = useRef<HTMLDivElement>(null)
   const [kalenderOffen, setKalenderOffen] = useState(false)
   const [ansichtUser, setAnsichtUser] = useState<UserId>(me)
+  // aus welcher richtung die neue woche hereinkommt: −1 von links, 1 von rechts
+  const [richtung, setRichtung] = useState<-1 | 1>(1)
 
   // Starte standardmäßig mit der letzten Nacht der Woche, für die Daten vorliegen,
   // oder mit heute
@@ -39,6 +40,34 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
   const wochenTitel = istSelbeWoche(sichtbareWoche, woche)
     ? 'diese woche'
     : `woche ${wochenZeitraum(sichtbareWoche)}`
+  // die laufende woche ist das ende der zeitleiste: weiter nach vorn geht nichts
+  const kannVor = sichtbareWoche[0]! < woche[0]!
+
+  /**
+   * welcher tag der neuen woche gemeint ist: die letzte nacht, fuer die daten
+   * vorliegen, sonst derselbe wochentag wie bisher.
+   */
+  const tagInWoche = useCallback(
+    (ziel: string[], bisher: string) => {
+      const mitDaten = [...ziel].reverse().find((tag) =>
+        naechte.some((n) => abendDatum(n.einschlafzeit) === tag && n.schlafMinuten > 0)
+      )
+      const wochentag = weekDays(fromKey(bisher)).indexOf(bisher)
+      return mitDaten ?? ziel[wochentag] ?? ziel[0]!
+    },
+    [naechte]
+  )
+
+  const wocheWechseln = useCallback(
+    (schritt: -1 | 1) => {
+      const ziel = weekDays(addDays(fromKey(gewaehlterTag), schritt * 7))
+      // vorwaerts endet die zeitleiste bei der laufenden woche
+      if (schritt > 0 && ziel[0]! > woche[0]!) return
+      setRichtung(schritt)
+      setGewaehlterTag(tagInWoche(ziel, gewaehlterTag))
+    },
+    [gewaehlterTag, tagInWoche, woche]
+  )
 
   // das ziel kommt aus deinem kurzbefehl, nicht aus einer festen 8-stunden-annahme
   const zielMinuten =
@@ -47,6 +76,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
     480
 
   const waehleKalenderTag = (tag: string) => {
+    setRichtung(tag < gewaehlterTag ? -1 : 1)
     setGewaehlterTag(tag)
     setKalenderOffen(false)
     window.requestAnimationFrame(() => {
@@ -62,29 +92,19 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
       transition={{ duration: 0.2 }}
       className="space-y-4"
     >
-      <div className="space-y-2">
-        <div className="flex justify-end pt-1">
-          <button
-            type="button"
-            aria-label="Schlafkalender öffnen"
-            aria-haspopup="dialog"
-            onClick={() => setKalenderOffen(true)}
-            className="flex size-11 items-center justify-center rounded-full border border-linie bg-flaeche text-kreide transition-colors duration-150 hover:border-linie-hell focus-visible:outline-none"
-          >
-            <CalendarBlank size={21} weight="bold" aria-hidden="true" />
-          </button>
-        </div>
-
-        <SchlafWochenVergleich
-          naechte={naechte}
-          registrierte={registrierte}
-          woche={sichtbareWoche}
-          titel={wochenTitel}
-          gewaehlterTag={gewaehlterTag}
-          zielMinuten={zielMinuten}
-          onTagWaehlen={setGewaehlterTag}
-        />
-      </div>
+      <SchlafWochenVergleich
+        naechte={naechte}
+        registrierte={registrierte}
+        woche={sichtbareWoche}
+        titel={wochenTitel}
+        gewaehlterTag={gewaehlterTag}
+        zielMinuten={zielMinuten}
+        richtung={richtung}
+        kannVor={kannVor}
+        onTagWaehlen={setGewaehlterTag}
+        onWocheWechseln={wocheWechseln}
+        onKalenderOeffnen={() => setKalenderOffen(true)}
+      />
 
       <div ref={detailRef}>
         <SchlafNachtDetail
