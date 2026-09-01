@@ -134,7 +134,7 @@ export function SchlafWochenVergleich({
                   </div>
                 </div>
 
-                <div className="flex h-7 flex-col items-center justify-center text-[9px] font-semibold leading-[13px]">
+                <div className="flex h-7 flex-col items-center justify-center text-[11px] font-semibold leading-[13px]">
                   {erijonMin > 0 && (
                     <span className="tnum" style={{ color: 'var(--erijon)' }}>
                       {formatStunden(erijonMin)}

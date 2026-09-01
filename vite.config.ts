@@ -33,7 +33,44 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png'],
+      workbox: {
+        /**
+         * Die Schriften gehoeren in den Cache, aber nicht in den Precache:
+         * `@fontsource` liefert je Familie mehrere Schnitte (latin, latin-ext,
+         * vietnamesisch), von denen der Browser ueber `unicode-range` nur die
+         * holt, die er braucht. Vorsorglich alle sechs zu laden waeren rund
+         * 270 KiB beim Einrichten, die groesstenteils nie gebraucht werden.
+         *
+         * Also: was einmal geholt wurde, bleibt. Damit steht die App beim
+         * zweiten Start auch ohne Netz in ihrer eigenen Schrift da, statt in
+         * der des Systems.
+         *
+         * Bewusst nur Schriften und nur aus eigener Herkunft. Alles andere —
+         * die Antworten von Supabase zuallererst — laeuft weiter am Cache
+         * vorbei; Gesundheitsdaten haben auf der Platte des Browsers nichts
+         * verloren.
+         */
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, sameOrigin }) => sameOrigin && request.destination === 'font',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'zweikampf-schriften',
+              expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
       manifest: {
+        /**
+         * Ohne `id` leitet der Browser die Identitaet der App aus `start_url`
+         * ab. Aendert sich die je — etwa weil das Repository und damit der
+         * Pfad unter github.io umzieht —, gilt die installierte App als eine
+         * andere: neues Symbol auf dem Homescreen, leerer lokaler Speicher.
+         * Eine feste `id` haelt sie zusammen.
+         */
+        id: base,
         name: 'zweikampf',
         short_name: 'zweikampf',
         description: 'lernen, gym, boxen, lesen. zu zweit, eine woche.',

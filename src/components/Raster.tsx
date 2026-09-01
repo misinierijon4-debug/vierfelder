@@ -130,12 +130,13 @@ function Bereichsblock({
         {label}
       </div>
 
-      {USERS.map((u) => {
+      {USERS.map((u, reihe) => {
         const treffer =
           ereignis && ereignis.area === area && ereignis.user === u.id ? ereignis : null
         return (
           <Zeile
             key={u.id}
+            lage={reihe === 0 ? 'oben' : 'unten'}
             area={area}
             areaLabel={label}
             user={u.id}
@@ -158,6 +159,7 @@ function Bereichsblock({
 }
 
 function Zeile({
+  lage,
   area,
   areaLabel,
   user,
@@ -171,6 +173,8 @@ function Zeile({
   sweep,
   onZelle,
 }: {
+  /** welche der beiden personenzeilen eines bereichs — entscheidet den treffbereich */
+  lage: 'oben' | 'unten'
   area: FeldId
   areaLabel: string
   user: UserId
@@ -205,6 +209,7 @@ function Zeile({
             sweep={sweep}
             sweepIndex={i}
             label={`${name}, ${areaLabel}, ${tag}`}
+            lage={lage}
             onOeffne={() => onZelle(user, area, tag)}
           />
         )
@@ -236,6 +241,7 @@ function Zelle({
   sweep,
   sweepIndex,
   label,
+  lage,
   onOeffne,
 }: {
   gefuellt: boolean
@@ -248,6 +254,7 @@ function Zelle({
   animiert: Ereignis | null
   sweep: number | null
   sweepIndex: number
+  lage: 'oben' | 'unten'
   label: string
   onOeffne: () => void
 }) {
@@ -336,9 +343,19 @@ function Zelle({
         gefuellt ? (anzahl > 1 ? `, ${anzahl} einheiten` : ', erledigt') : ', offen'
       }, tagesansicht öffnen`}
       onClick={onOeffne}
-      // 22px bleiben 22px: der treffbereich wächst über das pseudoelement nach
-      // oben und unten, das raster behält seine geometrie.
-      className="relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200 after:absolute after:inset-x-0 after:-inset-y-[9px] after:content-['']"
+      /*
+       * 22px bleiben 22px: der treffbereich wächst über das pseudoelement, das
+       * raster behält seine geometrie. er wächst aber höchstens bis zur mitte
+       * der lücke zum nachbarn — zwischen den beiden personen eines bereichs
+       * sind das nur 4px, und ein beidseitiges plus von 9px hat dort die
+       * unteren vier pixel der oberen zelle verschluckt: ein tipp auf erijons
+       * feld öffnete korays tag. seitlich sind es 5px lücke, also 2px je seite.
+       */
+      className={
+        lage === 'oben'
+          ? "relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200 after:absolute after:-inset-x-[2px] after:-top-[9px] after:-bottom-[2px] after:content-['']"
+          : "relative z-10 block h-[22px] rounded-[2px] border transition-colors duration-200 after:absolute after:-inset-x-[2px] after:-top-[2px] after:-bottom-[9px] after:content-['']"
+      }
       style={{ borderColor: rand }}
     >
       {inhalt}
