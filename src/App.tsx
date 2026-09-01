@@ -36,6 +36,7 @@ import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
+import { berechneDuell } from './lib/duell'
 
 const UNDO_MS = 5000
 
@@ -97,13 +98,24 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   const gewaehlterTag = blick ?? heuteKey
   const sichtbareWoche = useMemo(() => weekDays(fromKey(gewaehlterTag)), [gewaehlterTag])
   const dieseWoche = istSelbeWoche(sichtbareWoche, woche)
+  const match = useMemo(
+    () => berechneDuell(zustand, woche, heuteKey, me),
+    [zustand, woche, heuteKey, me]
+  )
   const ich = userDef(me)
   const er = other(me)
 
-  // Uhrzeit und Datum aktuell halten: dadurch schaltet auch das Sonntagsfinale
-  // um 18 Uhr um, ohne dass die App neu geöffnet werden muss.
+  // datumswechsel und das sonntagsfinale um 18 uhr, ohne die app neu zu öffnen.
+  // ein neues date-objekt kommt nur, wenn sich tag oder bilanzzeit ändern —
+  // sonst hinge an jedem takt ein render der ganzen app.
   useEffect(() => {
-    const pruefe = () => setHeute(new Date())
+    const pruefe = () =>
+      setHeute((vorher) => {
+        const jetzt = new Date()
+        const gleich =
+          toKey(jetzt) === toKey(vorher) && istBilanzzeit(jetzt) === istBilanzzeit(vorher)
+        return gleich ? vorher : jetzt
+      })
     const timer = window.setInterval(pruefe, 30_000)
     document.addEventListener('visibilitychange', pruefe)
     return () => {
@@ -149,6 +161,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           woche={woche}
           zustand={zustand}
           me={me}
+          match={match}
           bilanzzeit={istBilanzzeit(heute)}
         />
 
@@ -295,9 +308,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
               <DuellTab
                 zustand={zustand}
                 woche={woche}
-                heuteKey={heuteKey}
                 me={me}
                 heute={heute}
+                match={match}
                 wette={wetten[woche[0] ?? heuteKey] ?? ''}
                 onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
                 onZumTracker={() => setAktiverTab('tracker')}

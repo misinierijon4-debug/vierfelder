@@ -1,8 +1,8 @@
-import { AREAS, other } from './types'
+import { AREAS, FELDER, other } from './types'
 import type { FeldId, TickQuelle, UserId, Zustand } from './types'
 import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
-import { erledigteFelder, istGesetzt, quelle, wocheBereich, wocheGesamt } from './tracker'
+import { erledigteFelder, quelle, wocheBereich, wocheGesamt } from './tracker'
 
 export type DruckStatus =
   | 'offen'
@@ -25,7 +25,6 @@ export type FrontInfo = {
   label: string
   ichPunkte: number
   erPunkte: number
-  diff: number
   halter: FrontenHalter
 }
 
@@ -37,8 +36,6 @@ export type BelegInfo = {
 }
 
 export type RestprogrammInfo = {
-  restTage: number
-  restMaxPunkte: number
   restMaxIch: number
   restMaxEr: number
   uneinholbarIch: boolean
@@ -51,13 +48,10 @@ export type RestprogrammInfo = {
 export type DuellMatch = {
   heuteIch: number
   heuteEr: number
-  heuteDiff: number
-  heuteSieger: 'ich' | 'er' | 'unentschieden'
 
   wocheIch: number
   wocheEr: number
   wocheDiff: number
-  wocheSieger: 'ich' | 'er' | 'unentschieden'
 
   dominanzVerhaeltnis: number
   statusText: string
@@ -130,18 +124,10 @@ export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
   let getipptAnzahl = 0
 
   for (const tag of woche) {
-    for (const a of AREAS) {
-      if (istGesetzt(z, u, a.id, tag)) {
-        const q = quelle(z, u, a.id, tag)
-        if (q === 'gemessen') {
-          gemessenAnzahl++
-        } else {
-          getipptAnzahl++
-        }
-      }
-    }
-    if (istGesetzt(z, u, 'gewicht', tag)) {
-      gemessenAnzahl++
+    for (const f of FELDER) {
+      const q = quelle(z, u, f.id, tag)
+      if (q === 'gemessen') gemessenAnzahl++
+      else if (q === 'getippt') getipptAnzahl++
     }
   }
 
@@ -157,32 +143,19 @@ export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
 }
 
 export function duellFronten(z: Zustand, woche: string[], ichId: UserId, erId: UserId): FrontInfo[] {
-  const alleFelder: Array<{ id: FeldId; label: string }> = [
-    ...AREAS.map((a) => ({ id: a.id as FeldId, label: a.label })),
-    { id: 'gewicht', label: 'gewicht' },
-  ]
-
-  return alleFelder.map(({ id, label }) => {
+  return FELDER.map(({ id, label }) => {
     const ichPunkte = wocheBereich(z, ichId, id, woche)
     const erPunkte = wocheBereich(z, erId, id, woche)
-    const diff = ichPunkte - erPunkte
     const halter: FrontenHalter =
       ichPunkte === 0 && erPunkte === 0
         ? 'offen'
-        : diff > 0
+        : ichPunkte > erPunkte
           ? 'ich'
-          : diff < 0
+          : ichPunkte < erPunkte
             ? 'er'
             : 'unentschieden'
 
-    return {
-      id,
-      label,
-      ichPunkte,
-      erPunkte,
-      diff,
-      halter,
-    }
+    return { id, label, ichPunkte, erPunkte, halter }
   })
 }
 
@@ -200,8 +173,6 @@ export function berechneRestprogramm(
   const heuteRestEr = heuteIdx >= 0 ? Math.max(0, 5 - heuteEr) : 0
   const restMaxIch = nachHeute + heuteRestIch
   const restMaxEr = nachHeute + heuteRestEr
-  const restMaxPunkte = Math.max(restMaxIch, restMaxEr)
-  const restTage = heuteIdx >= 0 ? 7 - heuteIdx : 0
 
   const uneinholbarIch = punkteIch > punkteEr + restMaxEr
   const uneinholbarEr = punkteEr > punkteIch + restMaxIch
@@ -210,8 +181,6 @@ export function berechneRestprogramm(
   const zugzwangIch = punkteIch < punkteEr && !uneinholbarEr
 
   return {
-    restTage,
-    restMaxPunkte,
     restMaxIch,
     restMaxEr,
     uneinholbarIch,
@@ -288,7 +257,7 @@ export function duellStatusText(
 
   if (heuteDiff < 0) {
     return {
-      text: erName + ' führt heute ' + heuteEr + ':' + heuteIch + ' – zeit nachzulegen',
+      text: erName + ' führt heute ' + heuteEr + ':' + heuteIch + ' · zeit nachzulegen',
       druck: 'heuteRueckstand',
     }
   }
@@ -323,7 +292,7 @@ export function duellStatusText(
 
   if (wocheDiff < 0) {
     return {
-      text: erName + ' führt die woche ' + wocheEr + ':' + wocheIch + ' – du unter zugzwang',
+      text: erName + ' führt die woche ' + wocheEr + ':' + wocheIch + ' · du unter zugzwang',
       druck: 'wocheRueckstand',
     }
   }
@@ -340,13 +309,10 @@ export function berechneDuell(
   const er = other(ichId)
   const heuteIch = erledigteFelder(z, ichId, heuteKey)
   const heuteEr = erledigteFelder(z, er.id, heuteKey)
-  const heuteDiff = heuteIch - heuteEr
-  const heuteSieger = heuteDiff > 0 ? 'ich' : heuteDiff < 0 ? 'er' : 'unentschieden'
 
   const wocheIch = wocheGesamt(z, ichId, woche)
   const wocheEr = wocheGesamt(z, er.id, woche)
   const wocheDiff = wocheIch - wocheEr
-  const wocheSieger = wocheDiff > 0 ? 'ich' : wocheDiff < 0 ? 'er' : 'unentschieden'
 
   const gesamtSumme = wocheIch + wocheEr
   const dominanzVerhaeltnis = gesamtSumme > 0 ? wocheIch / gesamtSumme : 0.5
@@ -384,12 +350,9 @@ export function berechneDuell(
   return {
     heuteIch,
     heuteEr,
-    heuteDiff,
-    heuteSieger,
     wocheIch,
     wocheEr,
     wocheDiff,
-    wocheSieger,
     dominanzVerhaeltnis,
     statusText,
     druck,
@@ -519,13 +482,17 @@ export function saisonHistorie(
   for (let i = 1; i <= wochenZurueck; i++) {
     const montag = addDays(aktuellerMontag, -7 * i)
     const wocheTage = weekDays(montag)
-    const pIch = wocheGesamt(z, me, wocheTage)
-    const pEr = wocheGesamt(z, er.id, wocheTage)
+    // jedes gewertete feld ist genau ein punkt, deshalb ist `gesamt` der
+    // wochenstand. eine zweite runde über dieselben 35 felder wäre dieselbe
+    // zahl noch einmal — und in der historie mal die anzahl der wochen.
+    const belegIch = belegQuote(z, me, wocheTage)
+    const belegEr = belegQuote(z, er.id, wocheTage)
+    const pIch = belegIch.gesamt
+    const pEr = belegEr.gesamt
+    const bIch = belegIch.gemessen
+    const bEr = belegEr.gemessen
 
     if (pIch === 0 && pEr === 0) continue
-
-    const bIch = belegQuote(z, me, wocheTage).gemessen
-    const bEr = belegQuote(z, er.id, wocheTage).gemessen
 
     const sieger = entscheideDuell(pIch, pEr, bIch, bEr).sieger
     if (sieger === 'ich') siegeIch++

@@ -48,7 +48,7 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
           <span className="text-kreide">{top.feld}</span>
           {top.zusatz && <span className="tnum text-kreide-52">({top.zusatz})</span>}
           {top.quelle === 'gemessen' && (
-            <span className="inline-flex items-center gap-0.5 rounded-[1px] bg-linie px-1 py-0.2 text-[9px] font-semibold text-kreide">
+            <span className="inline-flex items-center gap-0.5 rounded-[1px] bg-linie px-1 py-0.5 text-[9px] font-semibold text-kreide">
               <ShieldCheck size={10} weight="bold" />
               gemessen
             </span>

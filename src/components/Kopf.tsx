@@ -3,8 +3,9 @@ import { Trophy } from '@phosphor-icons/react'
 import { other, user as userDef } from '../lib/types'
 import type { UserId, Zustand } from '../lib/types'
 import { isoWeek, langesDatum } from '../lib/dates'
-import { bilanz, wocheGesamt } from '../lib/tracker'
-import { belegQuote, berechneDuell, entscheideDuell } from '../lib/duell'
+import { bilanz } from '../lib/tracker'
+import { entscheideDuell } from '../lib/duell'
+import type { DuellMatch } from '../lib/duell'
 import { EASE_WEICH } from '../lib/motion'
 import { Zahl } from './Zahl'
 
@@ -13,14 +14,14 @@ type Props = {
   woche: string[]
   zustand: Zustand
   me: UserId
+  /** der stand der laufenden woche, in App.tsx einmal gerechnet */
+  match: DuellMatch
   bilanzzeit: boolean
 }
 
-export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
+export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
   const reduced = useReducedMotion()
   const kw = isoWeek(heute)
-  const heuteKey = woche[heute.getDay() === 0 ? 6 : heute.getDay() - 1] ?? ''
-  const match = berechneDuell(zustand, woche, heuteKey, me)
   const ich = userDef(me)
   const er = other(me)
 
@@ -35,7 +36,7 @@ export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: reduced ? 0 : 0.26, ease: EASE_WEICH }}
           >
-            <Bilanz heute={heute} woche={woche} zustand={zustand} me={me} kw={kw} />
+            <Bilanz woche={woche} zustand={zustand} me={me} match={match} kw={kw} />
           </motion.div>
         ) : (
           <motion.div
@@ -77,7 +78,7 @@ export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
                 <div className="flex items-center gap-1.5 text-[11px] leading-none text-kreide-52">
                   <span className="size-1.5 rounded-full" style={{ background: ich.farbe }} />
                   <span>{ich.name}</span>
-                  <span className="text-[10px] text-kreide-60">({match.heuteIch}/5 h)</span>
+                  <span className="text-[10px] text-kreide-60">({match.heuteIch}/5)</span>
                 </div>
                 <div className="mt-1 flex h-[38px] items-end">
                   {match.wocheIch > 0 ? (
@@ -107,7 +108,7 @@ export function Kopf({ heute, woche, zustand, me, bilanzzeit }: Props) {
               {/* KORAY / ER */}
               <div className="text-right">
                 <div className="flex items-center justify-end gap-1.5 text-[11px] leading-none text-kreide-52">
-                  <span className="text-[10px] text-kreide-60">({match.heuteEr}/5 h)</span>
+                  <span className="text-[10px] text-kreide-60">({match.heuteEr}/5)</span>
                   <span>{er.name}</span>
                   <span className="size-1.5 rounded-full" style={{ background: er.farbe }} />
                 </div>
@@ -169,22 +170,23 @@ function Bilanz({
   woche,
   zustand,
   me,
+  match,
   kw,
 }: {
-  heute: Date
   woche: string[]
   zustand: Zustand
   me: UserId
+  match: DuellMatch
   kw: number
 }) {
   const ich = userDef(me)
   const er = other(me)
   const zeilen = bilanz(zustand, woche, me, er.id)
-  const meins = wocheGesamt(zustand, me, woche)
-  const seins = wocheGesamt(zustand, er.id, woche)
+  const meins = match.wocheIch
+  const seins = match.wocheEr
   const diff = meins - seins
-  const belegIch = belegQuote(zustand, me, woche).gemessen
-  const belegEr = belegQuote(zustand, er.id, woche).gemessen
+  const belegIch = match.belegIch.gemessen
+  const belegEr = match.belegEr.gemessen
   const entscheidung = entscheideDuell(meins, seins, belegIch, belegEr)
   const sieger = entscheidung.sieger === 'ich' ? ich : entscheidung.sieger === 'er' ? er : null
 
@@ -230,7 +232,7 @@ function Bilanz({
 
       {entscheidung.grund === 'beleg' && (
         <p className="text-[11px] font-semibold text-kreide-60">
-          Punktgleichstand · der Verifizierungs-Tiebreak entscheidet.
+          punktgleichstand · der beleg entscheidet.
         </p>
       )}
 

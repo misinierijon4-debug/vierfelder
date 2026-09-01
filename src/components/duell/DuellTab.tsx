@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CaretRight, PencilSimple, ShieldCheck, Trophy } from '@phosphor-icons/react'
 import { user as userDef, other } from '../../lib/types'
 import type { UserId, Zustand } from '../../lib/types'
-import { berechneDuell, historieWochen, saisonHistorie } from '../../lib/duell'
+import { historieWochen, saisonHistorie } from '../../lib/duell'
+import type { DuellMatch } from '../../lib/duell'
 import { RivalitaetsTicker } from './RivalitaetsTicker'
 
 type Props = {
   zustand: Zustand
   woche: string[]
-  heuteKey: string
   me: UserId
   heute: Date
+  /** der stand der laufenden woche, in App.tsx einmal gerechnet */
+  match: DuellMatch
   wette: string
   onWette: (text: string) => void
   onZumTracker: () => void
@@ -19,17 +21,19 @@ type Props = {
 export function DuellTab({
   zustand,
   woche,
-  heuteKey,
   me,
   heute,
+  match,
   wette,
   onWette,
   onZumTracker,
 }: Props) {
   const ich = userDef(me)
   const er = other(me)
-  const match = berechneDuell(zustand, woche, heuteKey, me)
-  const historie = saisonHistorie(zustand, heute, historieWochen(zustand, heute), me)
+  const historie = useMemo(
+    () => saisonHistorie(zustand, heute, historieWochen(zustand, heute), me),
+    [zustand, heute, me]
+  )
   const [wetteEdit, setWetteEdit] = useState(false)
   const [wetteTemp, setWetteTemp] = useState(wette)
 
@@ -51,7 +55,7 @@ export function DuellTab({
       <section aria-labelledby="fronten-titel" className="border-t border-linie">
         <div className="flex min-h-11 items-center justify-between">
           <h2 id="fronten-titel" className="text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
-            die 5 fronten
+            die {match.fronten.length} fronten
           </h2>
           <span className="tnum text-[12px] text-kreide-60">
             <b style={{ color: ich.farbe }}>{match.frontenScore.ich}</b> :{' '}
@@ -83,7 +87,7 @@ export function DuellTab({
                 className="group flex min-h-12 w-full items-center justify-between gap-3 bg-flaeche/35 px-3 text-left transition-colors hover:bg-flaeche focus-visible:bg-flaeche"
                 aria-label={`${front.label}: ${front.ichPunkte} zu ${front.erPunkte}, ${status}. Zum Tracker`}
               >
-                <span className="text-[13px] font-bold capitalize text-kreide">{front.label}</span>
+                <span className="text-[13px] font-bold text-kreide">{front.label}</span>
                 <span className="ml-auto text-[11px] font-semibold" style={{ color: farbe }}>
                   {status}
                 </span>
@@ -110,15 +114,15 @@ export function DuellTab({
         </div>
         <p className="mt-2 text-[13px] leading-5 text-kreide-60">
           {match.restprogramm.uneinholbarIch ? (
-            <strong style={{ color: ich.farbe }}>Dein Wochensieg ist rechnerisch sicher.</strong>
+            <strong style={{ color: ich.farbe }}>dein wochensieg ist rechnerisch sicher.</strong>
           ) : match.restprogramm.uneinholbarEr ? (
             <strong style={{ color: er.farbe }}>{er.name} ist rechnerisch nicht mehr einzuholen.</strong>
           ) : match.restprogramm.matchballIch ? (
-            <strong style={{ color: ich.farbe }}>Matchball: Noch ein Punkt sichert dir die Woche.</strong>
+            <strong style={{ color: ich.farbe }}>matchball: noch ein punkt sichert dir die woche.</strong>
           ) : match.restprogramm.matchballEr ? (
-            <strong style={{ color: er.farbe }}>Matchball für {er.name}. Du musst jetzt antworten.</strong>
+            <strong style={{ color: er.farbe }}>matchball für {er.name} · du musst jetzt antworten.</strong>
           ) : (
-            <>Heute und die Folgetage sind vollständig eingerechnet. Kein Vorsprung ist bereits sicher.</>
+            <>heute und die folgetage sind voll eingerechnet. kein vorsprung ist bereits sicher.</>
           )}
         </p>
         <button
@@ -135,7 +139,7 @@ export function DuellTab({
           <h2 id="beleg-titel" className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             <ShieldCheck size={15} weight="fill" aria-hidden="true" /> belegquote
           </h2>
-          <span className="min-w-0 text-right text-[11px] leading-4 text-kreide-52">entscheidet bei Punktgleichstand</span>
+          <span className="min-w-0 text-right text-[11px] leading-4 text-kreide-52">entscheidet bei punktgleichstand</span>
         </div>
         <div className="mt-3 grid grid-cols-2 divide-x divide-linie border-y border-linie bg-flaeche/35">
           {[
@@ -182,7 +186,7 @@ export function DuellTab({
           <BilanzZahl label={er.name} wert={historie.siegeEr} farbe={er.farbe} />
         </div>
         {historie.letzteWochen.length === 0 ? (
-          <p className="py-3 text-[12px] text-kreide-52">Noch keine abgeschlossene Woche mit Punkten.</p>
+          <p className="py-3 text-[12px] text-kreide-52">noch keine abgeschlossene woche mit punkten.</p>
         ) : (
           <div className="divide-y divide-linie">
             {historie.letzteWochen.slice(0, 4).map((w) => (
@@ -228,7 +232,7 @@ export function DuellTab({
               onChange={(e) => setWetteTemp(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') speichereWette() }}
               className="min-h-11 w-full rounded-[2px] border border-linie bg-flaeche px-3 text-[13px] text-kreide focus:border-linie-hell"
-              placeholder="Verlierer kocht Abendessen"
+              placeholder="verlierer kocht abendessen"
               autoFocus
             />
             <div className="grid grid-cols-2 gap-2">
@@ -242,7 +246,7 @@ export function DuellTab({
           </div>
         ) : (
           <p className="border-y border-linie bg-flaeche/35 px-3 py-3 text-[13px] font-semibold leading-5 text-kreide">
-            {wette || 'Noch kein Einsatz vereinbart.'}
+            {wette || 'noch kein einsatz vereinbart.'}
           </p>
         )}
       </section>

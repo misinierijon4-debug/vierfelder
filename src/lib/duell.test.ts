@@ -127,7 +127,7 @@ describe('duell.ts logik & berechnungen', () => {
     const match = berechneDuell(z, woche, heuteKey, 'erijon')
     expect(match.heuteIch).toBe(1)
     expect(match.heuteEr).toBe(0)
-    expect(match.heuteSieger).toBe('ich')
+    expect(match.wocheIch).toBe(1)
     expect(match.dominanzVerhaeltnis).toBe(1)
   })
 

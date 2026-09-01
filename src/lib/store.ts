@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Backend, Wetten } from './backend'
 import { gewichtKey, tickKey } from './types'
 import type {
@@ -381,7 +381,12 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
-  const zustand: Zustand = { einheiten, gewichte, aufenthalte }
+  // eine stabile identität: sonst wäre jeder render ein neuer zustand und
+  // jedes useMemo darauf wertlos.
+  const zustand = useMemo<Zustand>(
+    () => ({ einheiten, gewichte, aufenthalte }),
+    [einheiten, gewichte, aufenthalte]
+  )
 
   return {
     me,
