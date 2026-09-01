@@ -117,7 +117,7 @@ export function Tagesdetail({ zustand, auswahl, heute, onSchliessen }: Props) {
             type="button"
             onClick={onSchliessen}
             aria-label="tagesansicht schließen"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[2px] border border-linie text-kreide-60"
+            className="flex size-11 shrink-0 items-center justify-center rounded-[2px] border border-linie text-kreide-60"
           >
             <X size={14} weight="bold" />
           </button>

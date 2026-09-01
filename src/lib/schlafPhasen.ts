@@ -77,7 +77,16 @@ const QUALITAET_SAETTIGUNG = 530
 const QUALITAET_EXPONENT = 0.7
 
 /**
- * Qualitaet einer Nacht, nachempfunden dem Prozentwert von Sleep Cycle.
+ * Ersatzkurve fuer den Nachtwert, nachempfunden dem Prozentwert von Sleep Cycle.
+ *
+ * Gerechnet wird der Nachtwert seit Score v2 in der Datenbank: ein Trigger auf
+ * `schlafnaechte` setzt ihn bei jedem Schreibweg gleich, aus Dauer, Effizienz,
+ * Phasen, Regelmaessigkeit und Unterbrechungen, normiert auf die Komponenten,
+ * die diese Nacht wirklich hergibt. Kommt eine Nacht von dort, steht der Wert
+ * schon in `Schlafnacht.nachtwert`, und diese Kurve wird nicht gebraucht.
+ *
+ * Sie bleibt fuer den Prototyp-Modus ohne Supabase: dort gibt es keinen Server,
+ * der rechnet, und ein leerer Ring waere schlechter als eine grobe Schaetzung.
  *
  * Sleep Cycle rechnet mit Zeit im Bett, Tiefschlaf, Haeufigkeit und Intensitaet
  * der Bewegungen und der Anzahl vollstaendiger Aufwachvorgaenge, und kalibriert
@@ -137,8 +146,10 @@ export type NachtPhasenAnalyse = {
   inBedMinuten: number
   inBedBasis: 'bett' | 'fenster'
   effizienz: number | null
-  /** nachempfundener sleep-cycle-prozentwert, siehe `qualitaet` */
+  /** nachtwert v2 aus der datenbank; ohne datenbank die kurve aus `qualitaet` */
   qualitaet: number
+  /** belegdichte des nachtwerts, 1 bis 100. null, wenn er geschaetzt ist */
+  qualitaetKonfidenz: number | null
   hatPhasenDaten: boolean
   hatZeitfensterDaten: boolean
   einschlafUhrzeit: string
@@ -231,7 +242,9 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
       gemessenesEnde && inBedMinuten > 0
         ? Math.min(100, Math.round((schlafMinuten / inBedMinuten) * 100))
         : null,
-    qualitaet: qualitaet(schlafMinuten),
+    // der gerechnete wert hat vorrang: er sieht mehr als die dauer
+    qualitaet: nacht.nachtwert ?? qualitaet(schlafMinuten),
+    qualitaetKonfidenz: nacht.nachtwert === null ? null : nacht.scoreKonfidenz,
     hatPhasenDaten,
     hatZeitfensterDaten: gemessenesEnde,
     einschlafUhrzeit: formatUhrzeit(nacht.einschlafzeit),
