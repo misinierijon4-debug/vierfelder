@@ -68,13 +68,15 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 116 tests
+npm test      # logik, 158 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 
 ## Supabase
 
-Projekt `vierfelder` (der technische Name blieb bei der Umbenennung stehen, siehe unten), Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt (siehe `supabase/schema.sql`).
+Projekt `vierfelder` (der technische Name blieb bei der Umbenennung stehen, siehe unten), Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt: `supabase/schema.sql` legt den Grundstand an, `supabase/migrations/` alles danach.
+
+Der Schlaf liegt seit dem 01.09.2026 in zwei Schichten: `schlafnaechte` hält die Rohsegmente und ist für niemanden außer der Importfunktion lesbar, `schlaf_updates` hält die Kennzahlen samt fertig gerechnetem Nachtwert. Die App liest ausschließlich `schlafnaechte_ansicht` darüber — Kennzahlen und Phasen, keine Rohdaten. Der Nachtwert entsteht in einem Trigger, damit Edge Function und Kurzbefehl nicht zwei verschiedene Zahlen für dieselbe Nacht speichern können; Grenzen und Rechnung stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
 
 Die Tabelle `einheiten` hält eine Zeile je Durchführung (`supabase/migrations/20260830190000_einheiten.sql`).
 Sie ist die Quelle des Hakens — mindestens eine Einheit heißt erledigt —, liegt offen für beide

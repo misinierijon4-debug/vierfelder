@@ -145,8 +145,9 @@ export type Phase = {
 }
 
 /**
- * eine nacht, so wie `schlafnaechte_ansicht` sie liefert. kein score:
- * jedes feld hier ist eine gemessene größe aus apple health.
+ * eine nacht, so wie `schlafnaechte_ansicht` sie liefert. alles bis auf den
+ * nachtwert ist eine gemessene größe aus apple health; der nachtwert kommt
+ * fertig gerechnet aus der datenbank.
  */
 export type Schlafnacht = {
   user: UserId
@@ -166,6 +167,18 @@ export type Schlafnacht = {
   zielMinuten: number
   /** leer, wenn die quelle keine stadien liefert. dann bleibt die dauer */
   phasen: Phase[]
+  /**
+   * nachtwert v2 aus der datenbank, 0 bis 100. der trigger auf
+   * `schlafnaechte` rechnet ihn für jeden schreibweg gleich, deshalb steht
+   * hier nie eine zweite meinung. null im prototyp-modus ohne supabase.
+   */
+  nachtwert: number | null
+  /**
+   * wie viel der bewertungsbasis gemessen war, 1 bis 100. eine nacht ohne
+   * bettzeit und ohne historie wird nach demselben maßstab bewertet, aber
+   * aus weniger belegen.
+   */
+  scoreKonfidenz: number | null
 }
 
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {

@@ -1,6 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
-import { berechneSchlafnacht } from '../_shared/schlaf.ts'
-import type { Rohsegment, SchlafHistorie } from '../_shared/schlaf.ts'
+import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 
 type ImportBody = {
   person?: unknown
@@ -9,6 +7,7 @@ type ImportBody = {
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
+const MAX_PAYLOAD_BYTES = 512 * 1024
 
 function antwort(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS })
@@ -26,9 +25,18 @@ Deno.serve(async (request) => {
   const token = request.headers.get('x-schlaf-token')?.trim() ?? ''
   if (token.length < 32) return antwort(401, { error: 'import-token fehlt oder ist zu kurz' })
 
+  const angekuendigt = Number(request.headers.get('content-length') ?? 0)
+  if (angekuendigt > MAX_PAYLOAD_BYTES) {
+    return antwort(413, { error: 'payload ist größer als 512 kibibyte' })
+  }
+
   let body: ImportBody
   try {
-    body = (await request.json()) as ImportBody
+    const raw = await request.text()
+    if (new TextEncoder().encode(raw).byteLength > MAX_PAYLOAD_BYTES) {
+      return antwort(413, { error: 'payload ist größer als 512 kibibyte' })
+    }
+    body = JSON.parse(raw) as ImportBody
   } catch {
     return antwort(400, { error: 'body ist kein gültiges JSON' })
   }
@@ -37,6 +45,9 @@ Deno.serve(async (request) => {
     return antwort(400, { error: 'person muss erijon oder koray sein' })
   }
   if (!Array.isArray(body.segments)) return antwort(400, { error: 'segments muss eine liste sein' })
+  if (body.segments.length === 0 || body.segments.length > 300) {
+    return antwort(422, { error: 'zwischen 1 und 300 segmente sind erlaubt' })
+  }
 
   const url = Deno.env.get('SUPABASE_URL')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -68,77 +79,65 @@ Deno.serve(async (request) => {
     return antwort(403, { error: 'person passt nicht zum import-token' })
   }
 
-  const segmente = body.segments as Rohsegment[]
   const ziel = body.sleepGoalMinutes
-  if (!Number.isInteger(ziel)) {
-    return antwort(400, { error: 'sleepGoalMinutes muss eine ganze zahl sein' })
+  if (!Number.isInteger(ziel) || (ziel as number) < 240 || (ziel as number) > 720) {
+    return antwort(400, {
+      error: 'sleepGoalMinutes muss eine ganze zahl zwischen 240 und 720 sein',
+    })
   }
 
-  // Die Nacht wird aus dem Ende des letzten Schlafsegments abgeleitet. Für den
-  // Median reichen die höchstens 13 unmittelbar davor liegenden Nächte.
-  let vorlaeufig
-  try {
-    vorlaeufig = berechneSchlafnacht(segmente, ziel as number, [])
-  } catch (error) {
-    return antwort(422, { error: error instanceof Error ? error.message : 'segmente sind ungültig' })
+  // Ein kanonischer Datenbankweg fuer Edge Function und bestehende direkte
+  // Kurzbefehle: Nachtauswahl, Ueberlappungen, Wachabzug, lokale Datumszuordnung
+  // und Rundung laufen ausschliesslich in record_sleep_night. Der v2-Trigger
+  // setzt danach unabhaengig vom Aufrufer denselben nachvollziehbaren Score.
+  const { data: importiert, error: importError } = await db.rpc('record_sleep_night', {
+    p_night_date: null,
+    p_raw_segments: body.segments,
+    p_source_name: 'schlaf-import',
+    p_target_hours: (ziel as number) / 60,
+    p_user_id: null,
+    p_token: token,
+  })
+
+  if (importError || !importiert || typeof importiert !== 'object') {
+    const status =
+      importError?.code === '53300'
+        ? 429
+        : importError?.code === '54000'
+          ? 413
+          : importError?.code === '22023' || importError?.code === '28000'
+            ? 422
+            : 500
+    return antwort(status, {
+      error: status < 500 ? importError?.message : 'schlafnacht konnte nicht gespeichert werden',
+    })
   }
 
-  const { data: historieRows, error: historieError } = await db
-    .from('schlafnaechte')
-    .select('nacht, einschlafzeit')
-    .eq('user_id', tokenRow.user_id)
-    .lt('nacht', vorlaeufig.nacht)
-    .order('nacht', { ascending: false })
-    .limit(13)
-
-  if (historieError) return antwort(500, { error: 'schlafhistorie konnte nicht geladen werden' })
-
-  let berechnung
-  try {
-    berechnung = berechneSchlafnacht(
-      segmente,
-      ziel as number,
-      (historieRows ?? []) as SchlafHistorie[]
+  const rpc = importiert as Record<string, unknown>
+  const nacht = typeof rpc.nacht === 'string' ? rpc.nacht : ''
+  const { data: gespeichert, error: leseFehler } = await db
+    .from('schlaf_updates')
+    .select(
+      'schlaf_minuten, nachtwert, score_version, score_konfidenz, score_komponenten, wach_minuten'
     )
-  } catch (error) {
-    return antwort(422, { error: error instanceof Error ? error.message : 'segmente sind ungültig' })
+    .eq('user_id', tokenRow.user_id)
+    .eq('nacht', nacht)
+    .single()
+
+  if (leseFehler || !gespeichert) {
+    return antwort(500, { error: 'gespeicherte schlafnacht konnte nicht bestätigt werden' })
   }
-
-  const { error: upsertError } = await db.from('schlafnaechte').upsert(
-    {
-      user_id: tokenRow.user_id,
-      nacht: berechnung.nacht,
-      schlaf_minuten: berechnung.schlafMinuten,
-      einschlafzeit: berechnung.einschlafzeit,
-      wachphasen: berechnung.wachphasen,
-      wach_minuten: berechnung.wachMinuten,
-      nachtwert: berechnung.nachtwert,
-      bewertungsbasis: berechnung.bewertungsbasis,
-      dauer_punkte: berechnung.dauerPunkte,
-      konsistenz_punkte: berechnung.konsistenzPunkte,
-      unterbrechung_punkte: berechnung.unterbrechungPunkte,
-      median_abweichung_minuten: berechnung.medianAbweichungMinuten,
-      historie_naechte: berechnung.historieNaechte,
-      schlafziel_minuten: ziel,
-      wachsegmente_vorhanden: berechnung.wachsegmenteVorhanden,
-      quellen: berechnung.quellen,
-      rohsegmente: segmente,
-      aktualisiert: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,nacht' }
-  )
-
-  if (upsertError) return antwort(500, { error: 'schlafnacht konnte nicht gespeichert werden' })
 
   return antwort(200, {
     ok: true,
     person: profil.person,
-    night: berechnung.nacht,
-    sleepMinutes: berechnung.schlafMinuten,
-    awakePhases: berechnung.wachphasen,
-    awakeMinutes: berechnung.wachMinuten,
-    nightValue: berechnung.nachtwert,
-    scoreBasis: berechnung.bewertungsbasis,
-    historyNights: berechnung.historieNaechte,
+    night: nacht,
+    sleepMinutes: gespeichert.schlaf_minuten,
+    awakePhases: rpc.wachphasen ?? null,
+    awakeMinutes: gespeichert.wach_minuten,
+    nightValue: gespeichert.nachtwert,
+    scoreVersion: gespeichert.score_version,
+    scoreConfidence: gespeichert.score_konfidenz,
+    scoreComponents: gespeichert.score_komponenten,
   })
 })

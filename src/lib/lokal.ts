@@ -188,6 +188,10 @@ function erzeugeBeispielSchlaf(): Schlafnacht[] {
         wachMinuten: wach,
         zielMinuten: 540,
         phasen,
+        // ohne datenbank gibt es keinen gerechneten nachtwert. die anzeige
+        // faellt dann auf die kurve in `qualitaet` zurueck.
+        nachtwert: null,
+        scoreKonfidenz: null,
       })
     }
   })

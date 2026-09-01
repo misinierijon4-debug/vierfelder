@@ -61,7 +61,7 @@ export function SchlafNachtDetail({
                 type="button"
                 aria-pressed={istAktiv}
                 onClick={() => onAnsichtUserWaehlen(user.id)}
-                className={`relative flex min-h-9 items-center justify-center gap-1.5 text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none ${
+                className={`relative flex min-h-11 items-center justify-center gap-1.5 text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none ${
                   istAktiv ? 'text-kreide' : 'text-kreide-52 hover:text-kreide'
                 }`}
               >

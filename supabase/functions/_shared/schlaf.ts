@@ -1,3 +1,16 @@
+/**
+ * Nicht mehr im Einsatz — seit `20260901132347_schlaf_import_kanonisch` rechnet
+ * ausschliesslich `record_sleep_night` in der Datenbank. Die Edge Function ist
+ * nur noch Tuersteher davor, damit Kurzbefehl und Funktion nicht zwei
+ * verschiedene Naechte aus denselben Segmenten machen koennen.
+ *
+ * Was hier bleibt, ist die lesbare Fassung derselben Regeln samt Tests in
+ * `src/lib/schlaf.test.ts`: welcher Wert welchem Stadium entspricht, wie
+ * ueberlappende Segmente vereinigt werden, welche Episode in einem
+ * 24-Stunden-Fenster die Nacht ist. Wer die SQL-Fassung aendert, kann hier
+ * nachlesen, was sie tun soll. Deployt wird davon nichts.
+ */
+
 export type Schlafwert =
   | 'in_bed'
   | 'asleep_unspecified'

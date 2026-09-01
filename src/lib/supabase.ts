@@ -50,6 +50,8 @@ type SchlafZeile = {
   wach_minuten: number | string | null
   schlafziel_minuten: number
   phasen: Phase[] | null
+  nachtwert: number | null
+  score_konfidenz: number | null
 }
 
 function zahl(wert: number | string | null | undefined): number {
@@ -172,7 +174,7 @@ export function supabaseBackend(eigeneId: string): Backend {
           db
             .from('schlafnaechte_ansicht')
             .select(
-              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen'
+              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen, nachtwert, score_konfidenz'
             )
             .order('nacht', { ascending: true }),
           db.from('gewicht').select('user_id, tag, kg').order('tag', { ascending: true }),
@@ -266,6 +268,8 @@ export function supabaseBackend(eigeneId: string): Backend {
           wachMinuten: zahl(n.wach_minuten),
           zielMinuten: n.schlafziel_minuten,
           phasen: Array.isArray(n.phasen) ? n.phasen : [],
+          nachtwert: n.nachtwert ?? null,
+          scoreKonfidenz: n.score_konfidenz ?? null,
         })
       }
 

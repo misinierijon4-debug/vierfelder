@@ -1,5 +1,12 @@
 -- zweikampf: schema für genau zwei konten.
 -- ausführen im supabase sql editor, sobald das projekt steht.
+--
+-- dieses skript baut den stand bis zum 31.08.2026 auf. alles danach — die
+-- einheiten, der fokus, die duell-wetten, das schlaf-lesemodell und score v2 —
+-- steht in supabase/migrations/ und wird in dateinamen-reihenfolge darüber
+-- gelegt (`npx supabase db push`). ein teil der policies hier wird dabei durch
+-- schärfere ersetzt; wer das produktive schema sucht, findet es in der summe
+-- aus beidem, nicht in dieser datei allein.
 
 -- ordnet ein konto einer der beiden personen zu. die farbe hängt an der person,
 -- nicht am konto, deshalb steht hier der schlüssel und kein freitext.

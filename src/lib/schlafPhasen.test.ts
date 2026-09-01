@@ -14,6 +14,7 @@ import {
   verlauf,
   wochenwerte,
 } from './schlafPhasen'
+import type { NachtPhasenAnalyse } from './schlafPhasen'
 import type { Phase, Schlafnacht, UserId } from './types'
 
 /** baut ein iso-datum aus lokaler zeit — der test bleibt damit zeitzonenfest */
@@ -48,6 +49,8 @@ function nacht(over: Partial<Schlafnacht> & { user?: UserId } = {}): Schlafnacht
     wachMinuten: 12,
     zielMinuten: 540,
     phasen: zyklus,
+    nachtwert: 74,
+    scoreKonfidenz: 100,
     ...over,
   }
 }
@@ -187,11 +190,40 @@ describe('qualitaet', () => {
     }
   })
 
-  it('haengt an der schlafzeit, nicht an der bettzeit', () => {
-    const kurz = analysiereSchlafnacht(nacht({ bettMinuten: 400 }))
-    const lang = analysiereSchlafnacht(nacht({ bettMinuten: 700 }))
+  it('haengt als ersatzkurve an der schlafzeit, nicht an der bettzeit', () => {
+    const kurz = analysiereSchlafnacht(nacht({ nachtwert: null, bettMinuten: 400 }))
+    const lang = analysiereSchlafnacht(nacht({ nachtwert: null, bettMinuten: 700 }))
     expect(kurz.qualitaet).toBe(lang.qualitaet)
     expect(kurz.effizienz).not.toBe(lang.effizienz)
+  })
+})
+
+describe('nachtwert', () => {
+  it('nimmt den gerechneten wert der datenbank, nicht die ersatzkurve', () => {
+    const a = analysiereSchlafnacht(nacht({ nachtwert: 47, scoreKonfidenz: 100 }))
+    expect(a.qualitaet).toBe(47)
+    expect(a.qualitaetKonfidenz).toBe(100)
+    // die kurve saehe hier nur die dauer und gaebe eine andere zahl
+    expect(a.qualitaet).not.toBe(qualitaet(a.schlafMinuten))
+  })
+
+  it('faellt ohne datenbank auf die kurve zurueck, ohne konfidenz zu behaupten', () => {
+    const a = analysiereSchlafnacht(nacht({ nachtwert: null, scoreKonfidenz: null }))
+    expect(a.qualitaet).toBe(qualitaet(a.schlafMinuten))
+    expect(a.qualitaetKonfidenz).toBeNull()
+  })
+
+  it('behauptet keine konfidenz fuer einen geschaetzten wert', () => {
+    // scoreKonfidenz gehoert zum gerechneten wert. ohne ihn ist sie bedeutungslos
+    const a = analysiereSchlafnacht(nacht({ nachtwert: null, scoreKonfidenz: 100 }))
+    expect(a.qualitaetKonfidenz).toBeNull()
+  })
+
+  it('rechnet fuer erijon und koray dieselbe nacht gleich', () => {
+    const meins = analysiereSchlafnacht(nacht({ user: 'erijon' }))
+    const seins = analysiereSchlafnacht(nacht({ user: 'koray' }))
+    const ohnePerson = ({ user: _user, ...rest }: NachtPhasenAnalyse) => rest
+    expect(ohnePerson(seins)).toEqual(ohnePerson(meins))
   })
 })
 

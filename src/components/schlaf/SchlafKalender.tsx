@@ -142,7 +142,7 @@ export function SchlafKalender({
                       const istGewaehlt = tag === gewaehlterTag
                       const istHeute = tag === heuteKey
                       const istZukunft = tag > heuteKey
-                      const wert = nacht ? qualitaet(nacht.schlafMinuten) : null
+                      const wert = nacht ? (nacht.nachtwert ?? qualitaet(nacht.schlafMinuten)) : null
                       const grad = wert === null ? 0 : wert * 3.6
                       const ring =
                         wert === null
