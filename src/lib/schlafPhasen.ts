@@ -40,6 +40,20 @@ export function formatProzent(anteil: number): string {
   return `${Math.round(anteil * 100)}%`
 }
 
+/**
+ * echte minuten zwischen zwei zeitpunkten.
+ *
+ * Nicht dasselbe wie die Differenz zweier Uhrzeiten: In der Nacht zum letzten
+ * Sonntag im Oktober liegen zwischen 23:00 und 07:00 neun Stunden, im Maerz
+ * sieben. Alles, was eine Dauer ist — das Schlaffenster, das Wachliegen vor
+ * dem Einschlafen, das Nachliegen danach —, kommt deshalb von hier und nicht
+ * aus `nachtMinute`. Die Phasen der Ansicht sind ebenfalls echte Minuten ab
+ * dem Einschlafen; nur so passen Kurve und Achse zusammen.
+ */
+export function minutenZwischen(von: string, bis: string): number {
+  return (new Date(bis).getTime() - new Date(von).getTime()) / 60000
+}
+
 /** lokale uhrzeit als nachtminute: 21:00 → 1260, 06:30 → 1830 */
 export function nachtMinute(iso: string): number {
   const d = new Date(iso)
@@ -141,6 +155,8 @@ export const PHASEN_SCHWELLE = 5
 export type NachtPhasenAnalyse = {
   nacht: string
   user: UserId
+  /** der anker der achse als zeitpunkt, fuer beschriftungen ueber die umstellung */
+  einschlafzeit: string
   schlafMinuten: number
   /** zeit im bett aus den InBed-segmenten, sonst die schlafspanne */
   inBedMinuten: number
@@ -186,10 +202,13 @@ export type NachtPhasenAnalyse = {
 }
 
 export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
+  // der anker steht auf der uhr, alles danach zaehlt in echten minuten von ihm
+  // aus. an einem umstellungswochenende ist das der unterschied zwischen einer
+  // effizienz von 100 prozent und der wahren von 96
   const einschlafMinute = nachtMinute(nacht.einschlafzeit)
   const gemessenesEnde = nacht.aufwachzeit !== null
   const fenster = gemessenesEnde
-    ? Math.max(1, nachtMinute(nacht.aufwachzeit!) - einschlafMinute)
+    ? Math.max(1, Math.round(minutenZwischen(nacht.einschlafzeit, nacht.aufwachzeit!)))
     : Math.max(1, Math.round(nacht.schlafMinuten + nacht.wachMinuten))
 
   const schlafMinuten = Math.round(nacht.schlafMinuten)
@@ -207,8 +226,14 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
   const remProzent = anteil(nacht.remMinuten)
 
   const aufwachMinute = einschlafMinute + fenster
-  const bettVon = nacht.bettStart === null ? null : nachtMinute(nacht.bettStart)
-  const bettBis = nacht.bettEnde === null ? null : nachtMinute(nacht.bettEnde)
+  const bettVon =
+    nacht.bettStart === null
+      ? null
+      : einschlafMinute - Math.round(minutenZwischen(nacht.bettStart, nacht.einschlafzeit))
+  const bettBis =
+    nacht.bettEnde === null
+      ? null
+      : einschlafMinute + Math.round(minutenZwischen(nacht.einschlafzeit, nacht.bettEnde))
 
   // das wachliegen vor dem einschlafen und das noch-liegenbleiben danach
   const einschlafdauerMinuten =
@@ -244,6 +269,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
   return {
     nacht: nacht.nacht,
     user: nacht.user,
+    einschlafzeit: nacht.einschlafzeit,
     schlafMinuten,
     inBedMinuten,
     inBedBasis: hatBett ? 'bett' : 'fenster',
@@ -308,6 +334,22 @@ export function stundenmarken(von: number, bis: number, schritt = 180): number[]
 
 export function position(m: number, von: number, bis: number): number {
   return (m - von) / (bis - von)
+}
+
+/**
+ * die uhrzeit an einer stelle der nachtachse.
+ *
+ * `nachtUhrzeit` rechnet auf der achse und ist fuer mediane ueber viele
+ * Naechte richtig. Innerhalb einer Nacht zaehlt die Achse echte Minuten — an
+ * einem Umstellungswochenende laegen Achse und Uhr sonst eine Stunde
+ * auseinander und die letzte Marke stuende auf 08:00, waehrend daneben 07:00
+ * als Aufwachzeit steht.
+ */
+export function achsenUhrzeit(analyse: NachtPhasenAnalyse, minute: number): string {
+  const d = new Date(
+    new Date(analyse.einschlafzeit).getTime() + (minute - analyse.einschlafMinute) * 60000
+  )
+  return `${zwei(d.getHours())}:${zwei(d.getMinutes())}`
 }
 
 /* -------------------------------------------------------------------- duell */

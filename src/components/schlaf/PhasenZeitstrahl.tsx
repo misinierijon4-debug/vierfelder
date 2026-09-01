@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import type { NachtPhasenAnalyse } from '../../lib/schlafPhasen'
 import {
   formatDauer,
-  nachtUhrzeit,
+  achsenUhrzeit,
   position,
   stundenmarken,
   verlauf,
@@ -115,8 +115,8 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     )
   }
 
-  const vonUhr = nachtUhrzeit(von)
-  const bisUhr = nachtUhrzeit(bis)
+  const vonUhr = achsenUhrzeit(analyse, von)
+  const bisUhr = achsenUhrzeit(analyse, bis)
   const wachHoehe = EBENE.wach * KURVE_HOEHE
   /** die vier ebenen als hilfslinien, in derselben hoehe, die auch die kurve benutzt */
   const ebenen = [EBENE.wach, EBENE.rem, EBENE.kern, EBENE.tief]
@@ -309,7 +309,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
               fontSize={ACHSE_SCHRIFT}
               className="tnum"
             >
-              {nachtUhrzeit(m).slice(0, 2)}
+              {achsenUhrzeit(analyse, m).slice(0, 2)}
             </text>
           ))}
           <text

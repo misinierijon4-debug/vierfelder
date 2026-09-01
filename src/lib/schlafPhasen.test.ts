@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   abendDatum,
   achse,
+  achsenUhrzeit,
   analysiereSchlafnacht,
   duell,
   formatDauer,
@@ -9,13 +10,14 @@ import {
   nachtMinute,
   nachtUhrzeit,
   qualitaet,
+  PHASEN_SCHWELLE,
   registrierteSchlafNutzer,
   stundenmarken,
   verlauf,
   wochenwerte,
 } from './schlafPhasen'
 import type { NachtPhasenAnalyse } from './schlafPhasen'
-import type { Phase, Schlafnacht, UserId } from './types'
+import type { Phase, PhasenArt, Schlafnacht, UserId } from './types'
 
 /** baut ein iso-datum aus lokaler zeit — der test bleibt damit zeitzonenfest */
 function iso(tag: string, hhmm: string): string {
@@ -195,6 +197,123 @@ describe('qualitaet', () => {
     const lang = analysiereSchlafnacht(nacht({ nachtwert: null, bettMinuten: 700 }))
     expect(kurz.qualitaet).toBe(lang.qualitaet)
     expect(kurz.effizienz).not.toBe(lang.effizienz)
+  })
+})
+
+describe('zeitumstellung', () => {
+  /**
+   * Berlin stellt am letzten Sonntag im Oktober 03:00 auf 02:00 (die Nacht hat
+   * 25 Stunden) und am letzten Sonntag im Maerz 02:00 auf 03:00 (23 Stunden).
+   * Beides sind Naechte, in denen die Uhrzeitdifferenz nicht die Dauer ist.
+   */
+  const ueberDieUmstellung = (over: Partial<Schlafnacht>): Schlafnacht =>
+    nacht({
+      bettStart: null,
+      bettEnde: null,
+      bettMinuten: null,
+      tiefMinuten: 90,
+      remMinuten: 110,
+      kernMinuten: 320,
+      unspezMinuten: 0,
+      wachMinuten: 20,
+      phasen: [],
+      ...over,
+    })
+
+  it('zaehlt die lange oktobernacht mit ihren echten neun stunden', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-10-25',
+        schlafMinuten: 520,
+        einschlafzeit: '2026-10-24T21:00:00.000Z', // 23:00 MESZ
+        aufwachzeit: '2026-10-25T06:00:00.000Z', // 07:00 MEZ
+      })
+    )
+
+    expect(a.aufwachMinute - a.einschlafMinute).toBe(540)
+    expect(a.inBedMinuten).toBe(540)
+    // aus der uhrzeitdifferenz waeren es 480 minuten und damit glatte 100%
+    expect(a.effizienz).toBe(96)
+    expect(a.aufwachUhrzeit).toBe('07:00')
+  })
+
+  it('zaehlt die kurze maerznacht mit ihren echten sieben stunden', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-03-29',
+        schlafMinuten: 400,
+        einschlafzeit: '2026-03-28T22:00:00.000Z', // 23:00 MEZ
+        aufwachzeit: '2026-03-29T05:00:00.000Z', // 07:00 MESZ
+      })
+    )
+
+    expect(a.aufwachMinute - a.einschlafMinute).toBe(420)
+    expect(a.inBedMinuten).toBe(420)
+    // aus der uhrzeitdifferenz waeren es 480 minuten und nur 83%
+    expect(a.effizienz).toBe(95)
+  })
+
+  it('beschriftet die achse mit der uhr, nicht mit der gezaehlten minute', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-10-25',
+        schlafMinuten: 520,
+        einschlafzeit: '2026-10-24T21:00:00.000Z',
+        aufwachzeit: '2026-10-25T06:00:00.000Z',
+      })
+    )
+
+    expect(achsenUhrzeit(a, a.einschlafMinute)).toBe('23:00')
+    // 540 echte minuten nach 23:00 ist sieben uhr, nicht acht
+    expect(achsenUhrzeit(a, a.aufwachMinute)).toBe('07:00')
+  })
+
+  it('misst einschlafen und nachliegen ueber die umstellung hinweg', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-10-25',
+        schlafMinuten: 520,
+        einschlafzeit: '2026-10-24T21:00:00.000Z', // 23:00 MESZ
+        aufwachzeit: '2026-10-25T06:00:00.000Z', // 07:00 MEZ
+        bettStart: '2026-10-24T20:45:00.000Z', // 22:45 MESZ
+        bettEnde: '2026-10-25T06:10:00.000Z', // 07:10 MEZ
+        bettMinuten: 565,
+      })
+    )
+
+    expect(a.einschlafdauerMinuten).toBe(15)
+    expect(a.bettBis! - a.aufwachMinute).toBe(10)
+  })
+})
+
+describe('naechte um mitternacht', () => {
+  it('legt 00:15 neben 23:45, nicht dreiundzwanzig stunden davor', () => {
+    const spaet = analysiereSchlafnacht(
+      nacht({
+        einschlafzeit: iso('2026-08-26', '00:15'),
+        aufwachzeit: iso('2026-08-26', '07:15'),
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+      })
+    )
+    const frueh = analysiereSchlafnacht(
+      nacht({
+        einschlafzeit: iso('2026-08-25', '23:45'),
+        aufwachzeit: iso('2026-08-26', '06:45'),
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+      })
+    )
+
+    expect(spaet.einschlafMinute - frueh.einschlafMinute).toBe(30)
+    expect(spaet.aufwachMinute).toBeGreaterThan(spaet.einschlafMinute)
+  })
+
+  it('traegt eine nacht nach dem abend, an dem sie begonnen hat', () => {
+    expect(abendDatum(iso('2026-08-26', '00:15'))).toBe('2026-08-25')
+    expect(abendDatum(iso('2026-08-25', '23:45'))).toBe('2026-08-25')
   })
 })
 
@@ -393,3 +512,65 @@ describe('verlauf', () => {
     expect(a.wachphasenAnzahl).toBe(1)
   })
 })
+
+describe('eine sehr zerrissene nacht auf dem ganzen weg', () => {
+  /**
+   * Vom Rohsegment bis zum Pfad, an der Obergrenze der Datenbank von 300
+   * Segmenten. Eine echte Nacht bringt rund sechzig — dieser Fall ist der
+   * schlimmste, den ein Import ueberhaupt erzeugen kann.
+   */
+  const zerrisseneNacht = (anzahl: number): Schlafnacht => {
+    const arten: PhasenArt[] = ['kern', 'tief', 'wach', 'rem']
+    const phasen: Phase[] = []
+    let t = 0
+    for (let i = 0; i < anzahl; i++) {
+      const dauer = i % 4 === 2 ? 1 + (i % 3) : 4 + (i % 7)
+      phasen.push({ art: arten[i % 4]!, start: t, dauer })
+      t += dauer
+    }
+    const start = '2026-08-25T21:00:00.000Z'
+    return nacht({
+      schlafMinuten: t - 40,
+      einschlafzeit: start,
+      aufwachzeit: new Date(Date.parse(start) + t * 60000).toISOString(),
+      bettStart: null,
+      bettEnde: null,
+      bettMinuten: null,
+      wachMinuten: 40,
+      phasen,
+    })
+  }
+
+  it('fasst kurze stuecke zusammen, statt jedes zu zeichnen', () => {
+    const a = analysiereSchlafnacht(zerrisseneNacht(300))
+    const { linie, unruhen } = verlauf(a)
+
+    // was gezeichnet wird, ist weniger als das, was ankam
+    expect(linie.length).toBeLessThan(300)
+    // und kein stueck der linie ist kuerzer als die schwelle
+    for (const s of linie) expect(s.bis - s.von).toBeGreaterThanOrEqual(PHASEN_SCHWELLE)
+    // kurzes wachwerden bleibt als strich sichtbar, nicht als ausschlag
+    expect(unruhen.length).toBeGreaterThan(0)
+    for (const u of unruhen) expect(u.art).toBe('wach')
+  })
+
+  it('laesst keine zeit verschwinden und keine luecke entstehen', () => {
+    const a = analysiereSchlafnacht(zerrisseneNacht(300))
+    const { linie } = verlauf(a)
+
+    // die linie spannt dieselbe zeit wie die nacht, ohne loch dazwischen
+    expect(linie[0]!.von).toBeCloseTo(a.einschlafMinute, 6)
+    expect(linie[linie.length - 1]!.bis).toBeCloseTo(a.aufwachMinute, 6)
+    for (let i = 0; i < linie.length - 1; i++) {
+      expect(linie[i + 1]!.von).toBeCloseTo(linie[i]!.bis, 6)
+    }
+  })
+
+  it('rechnet den ganzen weg in wenigen millisekunden', () => {
+    const n = zerrisseneNacht(300)
+    const start = performance.now()
+    for (let i = 0; i < 20; i++) verlauf(analysiereSchlafnacht(n))
+    expect((performance.now() - start) / 20).toBeLessThan(50)
+  })
+})
+

@@ -10,6 +10,16 @@ const base = process.env.VITE_BASE || '/'
 
 export default defineConfig({
   base,
+  test: {
+    /**
+     * Die Schlafanalyse rechnet in lokaler Zeit. Eine Nacht ueber die
+     * Umstellung gibt es nur in einer Zone, die umstellt — in UTC waeren
+     * genau die zwei Naechte im Jahr nicht pruefbar, in denen die Rechnung
+     * frueher danebenlag. Alle uebrigen Tests bauen ihre Daten aus lokalen
+     * Bestandteilen und sind von der Zone unabhaengig.
+     */
+    env: { TZ: 'Europe/Berlin' },
+  },
   server: {
     port: 5199,
     strictPort: true,

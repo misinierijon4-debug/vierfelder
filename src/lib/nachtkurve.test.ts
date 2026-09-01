@@ -276,3 +276,59 @@ describe('nachtkurve', () => {
     expect(kurve.d.match(/C/g)).toHaveLength(1)
   })
 })
+
+describe('eine zerrissene nacht an der obergrenze', () => {
+  /**
+   * Die Datenbank laesst hoechstens 300 Segmente je Import durch. Health
+   * zerlegt eine unruhige Nacht tatsaechlich so fein: minutenlanges Umdrehen
+   * zwischen den Stadien. Genau dann muss die Kurve ein Pfad bleiben und darf
+   * nicht in dreihundert Knoten zerfallen — sonst kostet eine schlechte Nacht
+   * auf dem Telefon mehr als eine gute.
+   */
+  const zerrissen = (anzahl: number) => {
+    const arten = ['kern', 'tief', 'wach', 'rem'] as const
+    const stuecke: Abschnitt[] = []
+    let t = 0
+    for (let i = 0; i < anzahl; i++) {
+      // wechselnde, teils sehr kurze stuecke — wie ein echter health-export
+      const dauer = i % 4 === 2 ? 1 + (i % 3) : 4 + (i % 7)
+      stuecke.push({ art: arten[i % 4]!, von: t, bis: t + dauer })
+      t += dauer
+    }
+    return { stuecke, ende: t }
+  }
+
+  it('bleibt bei 300 stuecken ein einziger pfad', () => {
+    const { stuecke, ende } = zerrissen(300)
+    const kurve = nachtkurve(stuecke, 0, ende, masse)
+
+    // ein `M` heisst: eine durchgehende linie, kein zerfallener zaun
+    expect(kurve.d.match(/M/g)).toHaveLength(1)
+    expect(kurve.d.length).toBeGreaterThan(0)
+  })
+
+  it('setzt je uebergang ein markenpaar und haelt die reihenfolge', () => {
+    const { stuecke, ende } = zerrissen(300)
+    const kurve = nachtkurve(stuecke, 0, ende, masse)
+
+    // ein hartes umschalten der farbe braucht zwei stopps an derselben stelle.
+    // mehr als das darf nicht entstehen — und svg verlangt aufsteigende
+    // offsets, sonst zeichnet der browser den verlauf gar nicht
+    expect(kurve.marken.length).toBeLessThanOrEqual(2 * stuecke.length)
+    const offsets = kurve.marken.map((m) => m.offset)
+    expect([...offsets].sort((a, b) => a - b)).toEqual(offsets)
+    expect(offsets[0]).toBe(0)
+    expect(offsets[offsets.length - 1]).toBe(1)
+  })
+
+  it('rechnet eine solche nacht in wenigen millisekunden', () => {
+    const { stuecke, ende } = zerrissen(300)
+    const start = performance.now()
+    for (let i = 0; i < 20; i++) nachtkurve(stuecke, 0, ende, masse)
+    const proLauf = (performance.now() - start) / 20
+
+    // grosszuegig: die grenze faengt eine entgleisung ab, nicht eine schwankung
+    expect(proLauf).toBeLessThan(50)
+  })
+})
+
