@@ -198,6 +198,33 @@ describe('qualitaet', () => {
   })
 })
 
+describe('verlauf einer nacht, der noch nicht geladen ist', () => {
+  it('trennt "noch nicht geladen" von "ohne stadien gemessen"', () => {
+    const offen = analysiereSchlafnacht(nacht({ phasen: null }))
+    const ohneStadien = analysiereSchlafnacht(nacht({ phasen: [] }))
+
+    expect(offen.verlaufGeladen).toBe(false)
+    expect(ohneStadien.verlaufGeladen).toBe(true)
+  })
+
+  it('erfindet ohne verlauf keine wachphasen', () => {
+    const offen = analysiereSchlafnacht(nacht({ phasen: null }))
+    expect(offen.wachphasenAnzahl).toBe(0)
+  })
+
+  it('laesst die kennzahlen einer nacht ohne verlauf unangetastet', () => {
+    // die minuten je stadium kommen aus den summen der ansicht, nicht aus dem
+    // verlauf — eine nacht ohne verlauf zeigt sie deshalb vollstaendig
+    const mit = analysiereSchlafnacht(nacht())
+    const ohne = analysiereSchlafnacht(nacht({ phasen: null }))
+
+    expect(ohne.tiefMinuten).toBe(mit.tiefMinuten)
+    expect(ohne.remMinuten).toBe(mit.remMinuten)
+    expect(ohne.qualitaet).toBe(mit.qualitaet)
+    expect(ohne.effizienz).toBe(mit.effizienz)
+  })
+})
+
 describe('nachtwert', () => {
   it('nimmt den gerechneten wert der datenbank, nicht die ersatzkurve', () => {
     const a = analysiereSchlafnacht(nacht({ nachtwert: 47, scoreKonfidenz: 100 }))

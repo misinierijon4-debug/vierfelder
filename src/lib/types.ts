@@ -165,8 +165,16 @@ export type Schlafnacht = {
   wachMinuten: number
   /** persönliches schlafziel aus dem kurzbefehl */
   zielMinuten: number
-  /** leer, wenn die quelle keine stadien liefert. dann bleibt die dauer */
-  phasen: Phase[]
+  /**
+   * der verlauf der nacht.
+   *
+   * `[]` heisst: die quelle liefert keine stadien, es bleibt die dauer.
+   * `null` heisst: noch nicht geladen. die phasen sind mit rund drei kilobyte
+   * je nacht das einzige, was mit der historie spuerbar waechst, und gebraucht
+   * werden sie nur im nachtdetail — also kommen aeltere naechte ohne sie und
+   * holen sie sich, wenn jemand sie oeffnet.
+   */
+  phasen: Phase[] | null
   /**
    * nachtwert v2 aus der datenbank, 0 bis 100. der trigger auf
    * `schlafnaechte` rechnet ihn für jeden schreibweg gleich, deshalb steht

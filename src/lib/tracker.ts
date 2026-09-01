@@ -2,9 +2,12 @@ import { addDays, toKey } from './dates'
 import { FELDER, area, gewichtKey, istMessbar, neueEinheitId, tickKey } from './types'
 import type {
   AreaId,
+  Aufenthalt,
   Einheit,
   Einheiten,
   FeldId,
+  Gewichte,
+  Schlafnacht,
   TickQuelle,
   UserId,
   Zustand,
@@ -245,6 +248,55 @@ export function ohneEinheit(einheiten: Einheiten, id: string): Einheiten {
     if (rest.length > 0) next[key] = rest
   }
   return getroffen ? next : einheiten
+}
+
+/**
+ * eine live gemeldete nacht in die liste einsortieren.
+ *
+ * Person und Nacht sind der Schluessel, nicht die Reihenfolge des Eintreffens:
+ * ein zweiter Lauf des Kurzbefehls meldet dieselbe Nacht noch einmal, und zwei
+ * Zeilen fuer eine Nacht wuerden im Kalender doppelt stehen und den
+ * Wochenschnitt verfaelschen. Sortiert bleibt die Liste wie beim Laden.
+ */
+export function mitNacht(naechte: Schlafnacht[], neue: Schlafnacht): Schlafnacht[] {
+  const ohne = naechte.filter((n) => !(n.user === neue.user && n.nacht === neue.nacht))
+  ohne.push(neue)
+  return ohne.sort((a, b) => (a.nacht < b.nacht ? -1 : a.nacht > b.nacht ? 1 : 0))
+}
+
+/** ein gewicht vom zweiten geraet. `kg === null` entfernt den eintrag */
+export function mitGewicht(
+  gewichte: Gewichte,
+  user: UserId,
+  tag: string,
+  kg: number | null
+): Gewichte {
+  const key = gewichtKey(user, tag)
+  // unveraendert heisst unveraendert: dieselbe identitaet spart den render
+  if (kg === null ? !(key in gewichte) : gewichte[key] === kg) return gewichte
+  const next = { ...gewichte }
+  if (kg === null) delete next[key]
+  else next[key] = kg
+  return next
+}
+
+/**
+ * eine gemessene ankunft oder ein abgang.
+ *
+ * Die Ankunft legt den Aufenthalt an, der Abgang schliesst ihn — dieselbe
+ * Ankunft kommt also zweimal, das zweite Mal mit `abgang`. Person, Bereich und
+ * Ankunftszeit sind der Schluessel; die Ankunftszeit aendert sich nie.
+ */
+export function mitAufenthalt(aufenthalte: Aufenthalt[], neuer: Aufenthalt): Aufenthalt[] {
+  const idx = aufenthalte.findIndex(
+    (x) => x.user === neuer.user && x.bereich === neuer.bereich && x.ankunft === neuer.ankunft
+  )
+  if (idx === -1) return [...aufenthalte, neuer]
+  const vorhanden = aufenthalte[idx]!
+  if (vorhanden.abgang === neuer.abgang && vorhanden.ort === neuer.ort) return aufenthalte
+  const next = [...aufenthalte]
+  next[idx] = neuer
+  return next
 }
 
 export function mitWert(einheiten: Einheiten, id: string, wert: number | null): Einheiten {

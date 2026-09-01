@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { USERS, user as userDef } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
@@ -15,6 +16,8 @@ type Props = {
   gewaehlterTag: string
   ansichtUser: UserId
   onAnsichtUserWaehlen: (user: UserId) => void
+  /** wird gerufen, sobald eine nacht ohne verlauf angezeigt werden soll */
+  onVerlaufBrauchen: (user: UserId, nacht: string) => void
 }
 
 export function SchlafNachtDetail({
@@ -23,11 +26,22 @@ export function SchlafNachtDetail({
   gewaehlterTag,
   ansichtUser,
   onAnsichtUserWaehlen,
+  onVerlaufBrauchen,
 }: Props) {
   const aktuelleNacht = naechte.find(
     (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
   )
   const analyse = aktuelleNacht ? analysiereSchlafnacht(aktuelleNacht) : null
+
+  // aeltere naechte kommen ohne verlauf. sichtbar wird er erst, wenn jemand
+  // die nacht aufschlaegt — also wird er auch erst dann geholt.
+  const fehlenderVerlauf =
+    aktuelleNacht && aktuelleNacht.phasen === null
+      ? { user: aktuelleNacht.user, nacht: aktuelleNacht.nacht }
+      : null
+  useEffect(() => {
+    if (fehlenderVerlauf) onVerlaufBrauchen(fehlenderVerlauf.user, fehlenderVerlauf.nacht)
+  }, [fehlenderVerlauf?.user, fehlenderVerlauf?.nacht, onVerlaufBrauchen])
   const person = userDef(ansichtUser)
   const istRegistriert = registrierte.has(ansichtUser)
 

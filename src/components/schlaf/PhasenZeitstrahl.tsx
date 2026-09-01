@@ -143,6 +143,27 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     />
   )
 
+  // Eine Nacht ausserhalb des geladenen Fensters hat ihre Kennzahlen, aber
+  // ihren Verlauf noch nicht. Ein durchgehender Block waere hier keine
+  // Wartemeldung, sondern eine Behauptung ueber die Nacht — also steht hier,
+  // was wirklich der Fall ist, in derselben Karte und ohne Sprung im Layout.
+  if (!analyse.verlaufGeladen) {
+    return (
+      <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
+        <div className="px-3.5 pt-3">
+          <span className="text-[11px] font-medium text-kreide">verlauf der nacht</span>
+        </div>
+        <div
+          className="flex items-center justify-center px-3.5"
+          style={{ height: `${KURVE_HOEHE}px` }}
+          role="status"
+        >
+          <span className="text-[11px] text-kreide-52">verlauf wird geladen …</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
       <div className="px-3.5 pt-3">

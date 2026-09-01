@@ -151,6 +151,11 @@ export type NachtPhasenAnalyse = {
   /** belegdichte des nachtwerts, 1 bis 100. null, wenn er geschaetzt ist */
   qualitaetKonfidenz: number | null
   hatPhasenDaten: boolean
+  /**
+   * ob der verlauf schon da ist. false heisst nicht "ohne stadien", sondern
+   * "noch nicht geladen" — die kurve zeigt dann keinen erfundenen block
+   */
+  verlaufGeladen: boolean
   hatZeitfensterDaten: boolean
   einschlafUhrzeit: string
   aufwachUhrzeit: string
@@ -220,9 +225,14 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     ? Math.max(Math.round(nacht.wachMinuten), inBedMinuten - schlafMinuten)
     : Math.round(nacht.wachMinuten)
 
+  // `null` heisst nicht geladen, `[]` heisst ohne stadien gemessen. beides
+  // ergibt hier denselben block — aber nur eines davon darf als aussage ueber
+  // die nacht gelesen werden, deshalb steht der unterschied in der analyse
+  const phasen = nacht.phasen ?? []
+
   // der verlauf zeigt die ganze bettzeit, nicht erst ab dem einschlafen
-  const stuecke: Phase[] = nacht.phasen.length
-    ? [...nacht.phasen]
+  const stuecke: Phase[] = phasen.length
+    ? [...phasen]
     : [{ art: 'unspez' as PhasenArt, start: 0, dauer: schlafMinuten }]
   if (einschlafdauerMinuten !== null && einschlafdauerMinuten >= 1) {
     stuecke.unshift({ art: 'wach', start: -einschlafdauerMinuten, dauer: einschlafdauerMinuten })
@@ -246,6 +256,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     qualitaet: nacht.nachtwert ?? qualitaet(schlafMinuten),
     qualitaetKonfidenz: nacht.nachtwert === null ? null : nacht.scoreKonfidenz,
     hatPhasenDaten,
+    verlaufGeladen: nacht.phasen !== null,
     hatZeitfensterDaten: gemessenesEnde,
     einschlafUhrzeit: formatUhrzeit(nacht.einschlafzeit),
     aufwachUhrzeit: formatUhrzeit(nacht.aufwachzeit),
@@ -260,9 +271,8 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     remMinuten: Math.round(nacht.remMinuten),
     coreMinuten: Math.round(nacht.kernMinuten + nacht.unspezMinuten),
     wachMinuten,
-    wachphasenAnzahl: nacht.phasen.filter(
-      (p) => p.art === 'wach' && p.dauer >= PHASEN_SCHWELLE
-    ).length,
+    wachphasenAnzahl: phasen.filter((p) => p.art === 'wach' && p.dauer >= PHASEN_SCHWELLE)
+      .length,
     tiefProzent,
     remProzent,
     coreProzent: erfasst > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0,
