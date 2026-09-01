@@ -34,6 +34,7 @@ import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
+import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
@@ -357,6 +358,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             </motion.div>
           )}
         </AnimatePresence>
+
+        <Benachrichtigungen />
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>

@@ -31,6 +31,9 @@ jobs:
           VITE_BASE: ${{ vars.VITE_BASE }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # öffentlicher vapid-schlüssel. ohne ihn baut die app weiter, der
+          # schalter für benachrichtigungen sagt dann, dass nichts eingerichtet ist.
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
