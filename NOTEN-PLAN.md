@@ -12,7 +12,7 @@ dabei herauskommt.
 
 Was der Tab können muss:
 
-- Fächer anlegen.
+- Die Fächer beider Personen kennen — sie kommen aus den Stundenplänen.
 - Noten eintragen — laufend, unter drei Sekunden, wie ein Tick.
 - Fachschnitt und Gesamtschnitt zeigen.
 - Beide Personen vergleichen.
@@ -31,14 +31,21 @@ nichts aus `src/lib/duell.ts`, und `duell.ts` weiß nichts von Noten.
 | Skala | Notenpunkte 0–15. Die Note 1+ bis 6 ist Anzeige, nicht Speicherwert. |
 | Umfang | Nur das laufende Halbjahr. Kein Halbjahres-Umschalter, keine Q1–Q3-Historie. |
 | Zwei Töpfe | Klausur und mündlich getrennt, Anteil pro Fach einstellbar, Standard 50/50. |
-| Abiformel | KMK-Standard, bis das Bundesland feststeht (siehe offene Frage). |
+| Abiformel | Rheinland-Pfalz, Mainzer Studienstufe (MSS). |
+| Fächer | Kommen aus den Stundenplänen der beiden, nicht aus einem leeren Formular. |
 | Sichtbarkeit | Beide sehen beide, schreiben darf jeder nur sich selbst — wie `einheiten`. |
 
-**Offene Frage:** Das Bundesland. Die Einbringungsregeln von Block I (wie viele
-Kurse zählen, wie viele Defizite erlaubt sind) unterscheiden sich. Bis die
-Antwort da ist, wird nach KMK-Standard gerechnet und in der Oberfläche als
-solcher benannt. Die Formel steht an genau einer Stelle in `src/lib/noten.ts`
-und ist austauschbar, ohne die Oberfläche anzufassen.
+**Rheinland-Pfalz heißt MSS.** Das ist kein Detail, sondern der wichtigste
+Unterschied zum verbreiteten Modell: die MSS hat **drei Leistungsfächer**, nicht
+zwei. Sie heißen auch anders — Leistungsfach und Grundfach, nicht
+Leistungskurs und Grundkurs. Die App benutzt durchgehend `lf` und `gf`.
+
+**Pflicht vor dem Ausliefern:** die Zahlen in Abschnitt 6 gegen die geltende
+Abiturprüfungsordnung von Rheinland-Pfalz und die MSS-Broschüre der Schule
+prüfen. Sie entscheiden über ein Abitur — eine Formel aus dem Gedächtnis ist
+dafür nicht gut genug. Die ganze Rechnung steht deshalb in einer Datei
+(`src/lib/noten.ts`) und in einem Block Konstanten, damit eine Korrektur eine
+Zahl ist und kein Umbau.
 
 **Folge aus „nur dieses Halbjahr":** Block I lässt sich nicht aus echten
 Zeugnisnoten bilden. Die Abiprognose rechnet die Kursschnitte dieses Halbjahres
@@ -60,12 +67,15 @@ create table if not exists faecher (
   id uuid primary key,
   user_id uuid not null references auth.users on delete cascade default auth.uid(),
   name text not null check (length(btrim(name)) between 1 and 24),
-  kursart text not null default 'gk' check (kursart in ('lk','gk')),
+  -- mss: leistungsfach oder grundfach. rheinland-pfalz hat drei lf
+  kursart text not null default 'gf' check (kursart in ('lf','gf')),
   -- anteil der klausuren am fachschnitt in prozent, der rest ist muendlich.
   -- die schule legt das fest, deshalb steht es am fach und nicht im code
   klausur_anteil int not null default 50 check (klausur_anteil between 0 and 100),
-  -- 1 bis 5 fuer ein pruefungsfach, null fuer einen normalen kurs
+  -- 1 bis 5 fuer ein pruefungsfach, null fuer einen normalen kurs.
+  -- in der mss sind das die drei lf plus zwei gf
   pruefungsfach int check (pruefungsfach is null or pruefungsfach between 1 and 5),
+  -- reihenfolge in der liste. kommt aus dem stundenplan: lf zuerst
   sortierung int not null default 0,
   erstellt timestamptz not null default now(),
   -- zwei faecher gleichen namens waeren ein tippfehler, kein zweiter kurs
@@ -115,12 +125,67 @@ UUID, und die Zeile ließe sich auf dem zweiten Gerät nicht zuordnen.
 ist das eine eigene Migration mit `halbjahr text not null default 'q4'` — eine
 Spalte auf Vorrat, die niemand liest, ist kein Vorteil.
 
-## 4. Typen (`src/lib/types.ts`)
+## 4. Die Fächer kommen aus den Stundenplänen
+
+Erijon und Koray geben zusammen mit der Aufgabe **Bilder ihrer Stundenpläne**
+mit. Daraus stehen die Fächer beider Personen fest, und daraus geht auch
+hervor, welche drei Fächer je Person Leistungsfächer sind.
+
+Die App startet deshalb nicht mit einer leeren Liste und einem
+„+ fach"-Knopf als einziger Möglichkeit. Sie startet mit den richtigen Fächern.
+Ein Abiturjahrgang tippt seine Fächer nicht ab.
+
+**So ablesen:**
+
+- Jedes Fach im Plan wird ein Eintrag. Doppelte Stunden desselben Fachs sind
+  ein Fach, nicht zwei.
+- Leistungsfächer stehen im MSS-Plan meist mit mehr Wochenstunden da (vier bis
+  fünf statt zwei bis drei) und oft eigens gekennzeichnet. Es müssen **genau
+  drei je Person** sein — kommt etwas anderes heraus, ist der Plan falsch
+  gelesen.
+- Fachnamen kleinschreiben, wie alles in dieser App: `mathe`, `deutsch`,
+  `bio`. Kürzel aus dem Plan (`M`, `D`, `BIO`) ausschreiben.
+- Kein Fach erfinden und keines raten. Ist eine Zeile im Bild nicht lesbar oder
+  unklar, **nachfragen** statt tippen — ein falscher Kurs verfälscht jede Zahl,
+  die darauf steht.
+- `pruefungsfach` bleibt zunächst `null`, außer die beiden sagen es dazu. Die
+  drei LF sind in der MSS immer Prüfungsfächer, die zwei Grundfächer wählt man
+  aber selbst.
+
+**So einbauen:** als Startdatensatz in derselben Migration, hinter den
+Tabellen. Die `profile`-Tabelle liefert die `user_id`, `on conflict do nothing`
+macht das Einspielen wiederholbar:
+
+```sql
+insert into faecher (id, user_id, name, kursart, sortierung)
+select gen_random_uuid(), p.id, f.name, f.kursart, f.sortierung
+from profile p
+join (values
+  ('mathe', 'lf', 0),
+  ('deutsch', 'lf', 1)
+  -- … die echten faecher aus den stundenplaenen, je person
+) as f(name, kursart, sortierung) on true
+where p.person = 'erijon'
+on conflict (user_id, name) do nothing;
+```
+
+Zwei getrennte `insert`-Blöcke, einer je Person — die Stundenpläne sind nicht
+identisch.
+
+Dieselben Fächer noch einmal als Beispieldaten in `src/lib/lokal.ts`, damit der
+Prototyp ohne Supabase dasselbe zeigt.
+
+Angelegt heißt nicht festgenagelt: Fächer bleiben im Fachdetail umbenennbar,
+zwischen `lf` und `gf` umschaltbar und löschbar. Der Startdatensatz spart das
+Abtippen, er nimmt keine Entscheidung weg.
+
+## 5. Typen (`src/lib/types.ts`)
 
 ```ts
 export type AppTab = 'tracker' | 'duell' | 'schlaf' | 'noten'
 
-export type Kursart = 'lk' | 'gk'
+/** mss: leistungsfach oder grundfach. drei lf, der rest gf */
+export type Kursart = 'lf' | 'gf'
 export type Notenart = 'klausur' | 'muendlich'
 
 export type Fach = {
@@ -157,7 +222,7 @@ export const GEWICHT_STANDARD = 10
 export const neueNotenId = neueEinheitId
 ```
 
-## 5. Rechnen (`src/lib/noten.ts`)
+## 6. Rechnen (`src/lib/noten.ts`)
 
 Reine Funktionen, keine React-Abhängigkeit, testbar wie `duell.ts` und
 `gewicht.ts`. Gerundet wird erst in der Anzeige, nie im Zwischenschritt.
@@ -197,7 +262,7 @@ defizite(faecher, noten, user): Fach[]               // kurse unter 5 punkten
 trend(noten, fachId, n = 6): number[]                // die letzten n punkte, aelteste zuerst
 ```
 
-### Abitur
+### Abitur (Rheinland-Pfalz, MSS)
 
 ```ts
 type Abiprognose = {
@@ -205,23 +270,48 @@ type Abiprognose = {
   blockII: number       // 0…300
   gesamt: number        // 0…900
   note: number          // 1,0 … 4,0
-  belegt: number        // wie viele faecher wirklich noten haben
+  /** kurse unter 5 punkten, getrennt nach lf und gf */
+  unterkurse: { lf: number; gf: number }
+  /** was die zulassung kippt: zu viele unterkurse, block I unter 200, … */
+  huerden: string[]
+  /** wie viele faecher wirklich noten haben */
+  belegt: number
   hochgerechnet: boolean
 }
 
 abiPrognose(faecher, noten, user): Abiprognose | null
 ```
 
-KMK-Standard, bis das Bundesland feststeht:
+Die Zahlen der MSS, alle als benannte Konstanten oben in der Datei:
 
-- **Block I:** 40 Einbringungen, davon 8 Leistungskurse doppelt gewichtet
-  → Teiler 48. `E1 = (Summe der Punkte × Gewicht) / 48 × 40`, gedeckelt auf 600.
-  Ohne echte Halbjahresnoten wird der Kursschnitt dieses Halbjahres für jede
-  Einbringung desselben Kurses eingesetzt (`hochgerechnet: true`).
-- **Block II:** fünf Prüfungsfächer, jedes Ergebnis × 4 → max. 300. Ohne
-  Prüfungsergebnisse wird der Kursschnitt des Prüfungsfachs eingesetzt.
-- **Note:** `17/3 − gesamt/180`, geklemmt auf [1,0 · 4,0], auf eine
+- **Einbringung:** 36 Kurshalbjahre. 12 Leistungsfachkurse (3 LF × 4 Halbjahre),
+  jeder **doppelt** gewertet, plus 24 Grundfachkurse einfach.
+  Wertungen gesamt: 12 × 2 + 24 = **48**.
+- **Block I:** `blockI = summe(punkte × wertung) / 48 × 40`, gedeckelt auf 600.
+  Volle 15 Punkte überall ergeben genau 600.
+- **Block II:** fünf Prüfungsfächer, jedes Ergebnis **vierfach** → max. 300.
+  In der MSS sind das die drei Leistungsfächer und ein Grundfach schriftlich,
+  dazu ein Grundfach mündlich.
+- **Note:** `17/3 − gesamt/180`, geklemmt auf [1,0 · 4,0], eine
   Nachkommastelle. Die Formel trifft beide Enden exakt: 900 → 1,0, 300 → 4,0.
+
+Hürden, die `huerden` benennt, sobald sie gerissen sind:
+
+- Block I unter 200 Punkten.
+- Block II unter 100 Punkten.
+- Mehr als 7 Unterkurse (unter 5 Punkte) unter den 36 eingebrachten.
+- Mehr als 3 Unterkurse in den Leistungsfächern.
+- Ein Kurs mit 0 Punkten.
+
+> **Diese Liste ist gegen die MSS-Broschüre der Schule zu prüfen, bevor sie
+> jemand zu sehen bekommt.** Solange das nicht passiert ist, steht unter der
+> Prognose ein Satz, der sagt, dass sie ungeprüft ist. Lieber ein ehrlicher
+> Hinweis als eine Zahl, auf die sich zwei Leute im Abiturjahr verlassen.
+
+**Hochrechnung.** Es gibt nur dieses Halbjahr, also keine echten 36
+Kurshalbjahre. Für jede Einbringung eines Kurses wird der aktuelle Fachschnitt
+eingesetzt, für jedes Prüfungsergebnis der Schnitt des Prüfungsfachs.
+`hochgerechnet` ist dann `true`, und die Oberfläche sagt es auch.
 
 `null`, solange kein Fach eine Note hat — eine Prognose aus nichts ist keine
 Prognose.
@@ -240,7 +330,7 @@ Beide geben `null` zurück, wenn das Ziel rechnerisch nicht mehr erreichbar ist
 oder schon übertroffen wurde. Die Oberfläche sagt dann „nicht mehr erreichbar"
 beziehungsweise „schon geschafft" — keine Zahl über 15 und keine unter 0.
 
-## 6. Anbindung
+## 7. Anbindung
 
 ### `src/lib/backend.ts`
 
@@ -284,7 +374,7 @@ beziehungsweise „schon geschafft" — keine Zahl über 15 und keine unter 0.
   schicken: Anlegen und sofortiges Ändern dürfen sich im Netz nicht überholen.
 - Ein `notenstand`-`useMemo` mit stabiler Identität zurückgeben.
 
-## 7. Oberfläche
+## 8. Oberfläche
 
 `src/components/TabLeiste.tsx` bekommt einen vierten Eintrag `noten`. Vier Tabs
 in 420 px sind eng — Schriftgröße bleibt bei 12 px, das Padding von `p-1` und
@@ -310,9 +400,9 @@ Neue Dateien unter `src/components/noten/`:
   11,4 punkte                  prognose
   2,1                              1,9
   ────────────────────────────────────
-  mathe          lk    12,5  ▁▂▄▅  ↑
-  deutsch        lk     9,0  ▄▃▂▂  ↓
-  englisch       gk    13,0  ▃▄▅▅
+  mathe          lf    12,5  ▁▂▄▅  ↑
+  deutsch        lf     9,0  ▄▃▂▂  ↓
+  englisch       gf    13,0  ▃▄▅▅
   + fach
   ────────────────────────────────────
   vergleich
@@ -341,9 +431,12 @@ Ziel: unter drei Sekunden. Im Fachdetail eine Reihe mit 16 Feldern 0–15 —
 tippen, fertig. Art (Klausur / mündlich) ist ein Umschalter mit zwei Stellungen,
 Datum steht auf heute, Titel ist optional. Kein Formular mit Speichern-Knopf.
 
-## 8. Reihenfolge beim Bauen
+## 9. Reihenfolge beim Bauen
 
-1. Migration schreiben, in `supabase/schema.sql` spiegeln.
+0. Die Stundenplan-Bilder lesen und die Fächerliste je Person aufschreiben.
+   Bei Unklarheiten nachfragen, bevor irgendetwas gebaut wird.
+1. Migration schreiben — Tabellen und Startdatensatz —, in
+   `supabase/schema.sql` spiegeln.
 2. Typen in `types.ts`.
 3. `noten.ts` mit `noten.test.ts` — erst die Rechnung, dann die Anzeige.
 4. `backend.ts`, `lokal.ts` (mit Beispieldaten), `supabase.ts`.
@@ -354,7 +447,7 @@ Datum steht auf heute, Titel ist optional. Kein Formular mit Speichern-Knopf.
 9. `npm test` und `npm run build`.
 10. Nachtrag in `DESIGN.md`, Absatz in `README.md`.
 
-## 9. Tests (`src/lib/noten.test.ts`)
+## 10. Tests (`src/lib/noten.test.ts`)
 
 Mindestens:
 
@@ -363,12 +456,16 @@ Mindestens:
 - `fachSchnitt`: nur Klausuren, nur mündlich, beides, mit Gewicht 20.
 - `fachSchnitt` mit leerem Topf — der leere Topf zählt nicht als Null.
 - `defizite`: genau die Kurse unter 5 Punkten.
-- `abiPrognose`: Grenzen 900 → 1,0 und 300 → 4,0, LK zählt doppelt.
+- `abiPrognose`: Grenzen 900 → 1,0 und 300 → 4,0.
+- `abiPrognose`: ein Leistungsfach zählt doppelt, ein Grundfach einfach.
+- `abiPrognose`: alle Kurse auf 15 Punkte → Block I genau 600.
 - `abiPrognose` ohne Noten → `null`.
+- `huerden`: 8 Unterkurse, 4 Unterkurse im LF, ein Kurs mit 0 Punkten —
+  jede Hürde einzeln, und keine Meldung, solange keine gerissen ist.
 - `brauchtInKlausur`: erreichbar, schon geschafft, nicht mehr erreichbar.
 - `trend`: Reihenfolge älteste zuerst, kürzer als `n` bleibt kürzer.
 
-## 10. Was bewusst nicht gebaut wird
+## 11. Was bewusst nicht gebaut wird
 
 - Halbjahre Q1–Q3. Entschieden: nur dieses Halbjahr.
 - Klausurtermine und Countdown. Naheliegend, aber ein eigener Datentyp und ein
