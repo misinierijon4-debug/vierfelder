@@ -6,8 +6,9 @@ Repository steht bisher keine Zeile davon.
 
 ## 1. Wozu
 
-Erijon und Koray sind beide in der 13. Klasse, das begonnene Halbjahr ist das
-letzte vor dem Abitur. Der Tracker misst, was sie tun; der Notentab misst, was
+Erijon und Koray sind beide in der 13. Klasse am Bertha-von-Suttner-Gymnasium
+in Andernach (BvS), Rheinland-Pfalz. Das begonnene Halbjahr ist das letzte vor
+dem Abitur. Der Tracker misst, was sie tun; der Notentab misst, was
 dabei herauskommt.
 
 Was der Tab können muss:
@@ -40,12 +41,25 @@ Unterschied zum verbreiteten Modell: die MSS hat **drei Leistungsfächer**, nich
 zwei. Sie heißen auch anders — Leistungsfach und Grundfach, nicht
 Leistungskurs und Grundkurs. Die App benutzt durchgehend `lf` und `gf`.
 
-**Pflicht vor dem Ausliefern:** die Zahlen in Abschnitt 6 gegen die geltende
-Abiturprüfungsordnung von Rheinland-Pfalz und die MSS-Broschüre der Schule
-prüfen. Sie entscheiden über ein Abitur — eine Formel aus dem Gedächtnis ist
-dafür nicht gut genug. Die ganze Rechnung steht deshalb in einer Datei
-(`src/lib/noten.ts`) und in einem Block Konstanten, damit eine Korrektur eine
-Zahl ist und kein Umbau.
+**Pflicht vor dem Ausliefern:** die Zahlen in Abschnitt 6 prüfen. Sie
+entscheiden über ein Abitur — eine Formel aus dem Gedächtnis ist dafür nicht
+gut genug. Die ganze Rechnung steht deshalb in einer Datei
+(`src/lib/noten.ts`) und in einem Block benannter Konstanten, damit eine
+Korrektur eine Zahl ist und kein Umbau.
+
+Quellen, in dieser Reihenfolge:
+
+1. Die MSS-Broschüre des BvS Andernach und das Merkblatt zur
+   Gesamtqualifikation, das die Schule zur Q-Phase ausgibt. Das ist die
+   verbindliche Fassung für genau diesen Jahrgang.
+2. Das Landesangebot `mss.rlp.de` und die PDF-Fassung des Bildungsministeriums
+   (`bildung.rlp.de`, MSS-Webseite, Stand Februar 2025).
+3. Die geltende Abiturprüfungsordnung von Rheinland-Pfalz.
+
+**Ohne Netzzugriff wird nicht geraten.** Kommst du an keine dieser Quellen,
+frag Erijon und Koray nach einem Foto der MSS-Broschüre und warte darauf.
+Eine ungeprüfte Zahl darf ausgeliefert werden, wenn direkt darunter steht,
+dass sie ungeprüft ist — schweigend geraten wird sie nie.
 
 **Folge aus „nur dieses Halbjahr":** Block I lässt sich nicht aus echten
 Zeugnisnoten bilden. Die Abiprognose rechnet die Kursschnitte dieses Halbjahres
