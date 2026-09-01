@@ -32,6 +32,7 @@ import { Anmeldung } from './components/Anmeldung'
 import { TabLeiste } from './components/TabLeiste'
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
+import { NotenTab } from './components/noten/NotenTab'
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
@@ -70,6 +71,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     zustand,
     schlaf,
     wetten,
+    notenstand,
     ladezustand,
     fehler,
     ereignis,
@@ -80,6 +82,12 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     wertAendern,
     setzeGewicht,
     setzeWette,
+    fachHinzu,
+    fachAendern,
+    fachLoeschen,
+    noteHinzu,
+    noteAendern,
+    noteLoeschen,
     phasenNachladen,
   } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
@@ -317,7 +325,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 onZumTracker={() => setAktiverTab('tracker')}
               />
             </motion.div>
-          ) : (
+          ) : aktiverTab === 'schlaf' ? (
             <motion.div
               key="tab-schlaf"
               initial={{ opacity: 0, y: 6 }}
@@ -331,6 +339,26 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 heuteKey={heuteKey}
                 me={me}
                 onVerlaufBrauchen={phasenNachladen}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="tab-noten"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+            >
+              <NotenTab
+                stand={notenstand}
+                me={me}
+                heute={heuteKey}
+                onFachHinzu={fachHinzu}
+                onFach={fachAendern}
+                onFachLoeschen={fachLoeschen}
+                onNote={noteHinzu}
+                onNoteAendern={noteAendern}
+                onNoteLoeschen={noteLoeschen}
               />
             </motion.div>
           )}

@@ -2,7 +2,10 @@ import type {
   Aufenthalt,
   Einheit,
   Einheiten,
+  Fach,
   Gewichte,
+  Note,
+  Notenstand,
   Phase,
   Schlafnacht,
   UserId,
@@ -16,6 +19,8 @@ export type EinheitEreignis = {
 }
 
 export type WetteEreignis = { typ: 'wette'; woche: string; text: string }
+export type FachEreignis = { typ: 'fach'; art: 'neu' | 'weg' | 'wert'; fach: Fach }
+export type NoteEreignis = { typ: 'note'; art: 'neu' | 'weg' | 'wert'; note: Note }
 
 /**
  * eine nacht, die gerade importiert oder neu bewertet wurde. sie ersetzt die
@@ -41,6 +46,8 @@ export type BackendEreignis =
   | SchlafEreignis
   | GewichtEreignis
   | AufenthaltEreignis
+  | FachEreignis
+  | NoteEreignis
 export type Wetten = Record<string, string>
 
 export type Anfangszustand = {
@@ -51,6 +58,7 @@ export type Anfangszustand = {
   /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
   aufenthalte: Aufenthalt[]
   wetten: Wetten
+  noten: Notenstand
   /**
    * die tabelle `einheiten` fehlt noch, gelesen wurde aus `eintraege` und
    * `werte`. dann gibt es genau eine einheit pro tag und die oberfläche bietet
@@ -79,6 +87,12 @@ export interface Backend {
   schreibeGewicht(tag: string, kg: number): Promise<void>
   /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
   schreibeWette(woche: string, text: string): Promise<void>
+  schreibeFach(fach: Fach): Promise<void>
+  aendereFach(fach: Fach): Promise<void>
+  loescheFach(id: string): Promise<void>
+  schreibeNote(note: Note): Promise<void>
+  aendereNote(note: Note): Promise<void>
+  loescheNote(id: string): Promise<void>
   /**
    * holt den verlauf einer einzelnen nacht nach. nur das nachtdetail braucht
    * ihn, deshalb kommt er nicht mit der ganzen historie mit.
