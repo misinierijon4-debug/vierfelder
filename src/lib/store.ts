@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Backend, Wetten } from './backend'
 import {
-  GEWICHT_STANDARD,
-  KLAUSUR_ANTEIL_STANDARD,
   gewichtKey,
   neueNotenId,
   tickKey,
@@ -32,6 +30,7 @@ import {
   ohneEinheit,
   ohneTag,
 } from './tracker'
+import { notenGewicht } from './noten'
 
 let ereignisId = 0
 
@@ -493,77 +492,19 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
-  const fachHinzu = useCallback(
-    (name: string): Fach | null => {
-      const sauber = name.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 24)
-      if (!sauber) return null
-      const u = meRef.current
-      if (faecherRef.current.some((fach) => fach.user === u && fach.name === sauber)) return null
+  const setzePruefungsfach = useCallback(
+    (fachId: string, nummer: number | null) => {
+      if (nummer !== null && nummer !== 4 && nummer !== 5) return
+      const fach = faecherRef.current.find((x) => x.id === fachId)
+      if (!fach || fach.user !== meRef.current || fach.kursart !== 'gk') return
       const vorher = faecherRef.current
-      const sortierung = Math.max(-1, ...vorher.filter((fach) => fach.user === u).map((fach) => fach.sortierung)) + 1
-      const fach: Fach = {
-        id: neueNotenId(),
-        user: u,
-        name: sauber,
-        kursart: 'gf',
-        klausurAnteil: KLAUSUR_ANTEIL_STANDARD,
-        pruefungsfach: null,
-        sortierung,
-      }
-      const next = [...vorher, fach]
+      const next = vorher.map((x) => x.id === fachId ? { ...x, pruefungsfach: nummer } : x)
       faecherRef.current = next
       setFaecher(next)
       setFehler(null)
-      nacheinander([fach.id], () => backend.schreibeFach(fach)).catch(() => {
+      nacheinander([fachId], () => backend.setzePruefungsfach(fachId, nummer)).catch(() => {
         faecherRef.current = vorher
         setFaecher(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
-      return fach
-    },
-    [backend, nacheinander]
-  )
-
-  const fachAendern = useCallback(
-    (fach: Fach) => {
-      const sauber: Fach = {
-        ...fach,
-        name: fach.name.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 24),
-        klausurAnteil: Math.min(100, Math.max(0, Math.round(fach.klausurAnteil))),
-      }
-      if (!sauber.name || sauber.user !== meRef.current) return
-      const vorher = faecherRef.current
-      const next = vorher.map((x) => x.id === sauber.id ? sauber : x)
-      faecherRef.current = next
-      setFaecher(next)
-      setFehler(null)
-      nacheinander([sauber.id], () => backend.aendereFach(sauber)).catch(() => {
-        faecherRef.current = vorher
-        setFaecher(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
-    },
-    [backend, nacheinander]
-  )
-
-  const fachLoeschen = useCallback(
-    (id: string) => {
-      const fach = faecherRef.current.find((x) => x.id === id)
-      if (!fach || fach.user !== meRef.current) return
-      const vorherFaecher = faecherRef.current
-      const vorherNoten = notenRef.current
-      const nextFaecher = vorherFaecher.filter((x) => x.id !== id)
-      const nextNoten = vorherNoten.filter((x) => x.fachId !== id)
-      faecherRef.current = nextFaecher
-      notenRef.current = nextNoten
-      setFaecher(nextFaecher)
-      setNoten(nextNoten)
-      setFehler(null)
-      nacheinander([id], () => backend.loescheFach(id)).catch(() => {
-        faecherRef.current = vorherFaecher
-        notenRef.current = vorherNoten
-        setFaecher(vorherFaecher)
-        setNoten(vorherNoten)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
@@ -580,7 +521,7 @@ export function useTracker(backend: Backend) {
         fachId,
         art,
         punkte: Math.min(15, Math.max(0, Math.round(punkte))),
-        gewicht: GEWICHT_STANDARD,
+        gewicht: notenGewicht(art),
         datum,
         titel: titel.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 40),
       }
@@ -595,23 +536,6 @@ export function useTracker(backend: Backend) {
         setFehler('nicht gespeichert. tippe nochmal.')
       })
       return note
-    },
-    [backend, nacheinander]
-  )
-
-  const noteAendern = useCallback(
-    (note: Note) => {
-      if (note.user !== meRef.current) return
-      const vorher = notenRef.current
-      const next = vorher.map((x) => x.id === note.id ? note : x)
-      notenRef.current = next
-      setNoten(next)
-      setFehler(null)
-      nacheinander([note.id], () => backend.aendereNote(note)).catch(() => {
-        notenRef.current = vorher
-        setNoten(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
     },
     [backend, nacheinander]
   )
@@ -659,11 +583,8 @@ export function useTracker(backend: Backend) {
     wertAendern,
     setzeGewicht,
     setzeWette,
-    fachHinzu,
-    fachAendern,
-    fachLoeschen,
+    setzePruefungsfach,
     noteHinzu,
-    noteAendern,
     noteLoeschen,
     phasenNachladen,
   }

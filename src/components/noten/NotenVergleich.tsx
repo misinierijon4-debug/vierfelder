@@ -26,7 +26,7 @@ export function NotenVergleich({ stand, me }: { stand: Notenstand; me: UserId })
           const k = stand.faecher.find((fach) => fach.user === 'koray' && fach.name === name)
           return (
             <li key={name} className="grid min-h-11 grid-cols-[1fr_64px_64px] items-center gap-2 border-b border-linie text-[12px]">
-              <span className="truncate">{name}{meine?.kursart === 'lf' || seine?.kursart === 'lf' ? <span className="ml-1 text-[9px] text-kreide-52"> lf</span> : null}</span>
+              <span className="truncate">{name}{meine?.kursart === 'lk' || seine?.kursart === 'lk' ? <span className="ml-1 text-[9px] text-kreide-52"> lk</span> : null}</span>
               <span className="tnum text-right">{wert(e ? fachSchnitt(stand.noten, e).gesamt : null)}</span>
               <span className="tnum text-right">{wert(k ? fachSchnitt(stand.noten, k).gesamt : null)}</span>
             </li>

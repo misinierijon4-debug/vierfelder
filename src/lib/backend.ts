@@ -87,11 +87,9 @@ export interface Backend {
   schreibeGewicht(tag: string, kg: number): Promise<void>
   /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
   schreibeWette(woche: string, text: string): Promise<void>
-  schreibeFach(fach: Fach): Promise<void>
-  aendereFach(fach: Fach): Promise<void>
-  loescheFach(id: string): Promise<void>
+  /** einzige veränderliche fachangabe: mündliches prüfungsfach 4 oder 5 */
+  setzePruefungsfach(fachId: string, nummer: number | null): Promise<void>
   schreibeNote(note: Note): Promise<void>
-  aendereNote(note: Note): Promise<void>
   loescheNote(id: string): Promise<void>
   /**
    * holt den verlauf einer einzelnen nacht nach. nur das nachtdetail braucht

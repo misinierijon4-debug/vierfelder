@@ -5,9 +5,9 @@ import { GEWICHT_STANDARD, neueNotenId } from './types'
 export const ABI_FORMEL_GEPRUEFT = true
 export const ABI_FORMEL_QUELLE = 'mss rheinland-pfalz, fassung februar 2025, abitur 2027'
 export const EINGEBRACHTE_KURSE = 36
-export const LF_KURSE = 12
-export const GF_KURSE = 24
-export const DOPPELT_GEWERTETE_LF_KURSE = 8
+export const LK_KURSE = 12
+export const GK_KURSE = 24
+export const DOPPELT_GEWERTETE_LK_KURSE = 8
 export const BLOCK_I_WERTUNGEN = 44
 export const BLOCK_I_FAKTOR = 40 / BLOCK_I_WERTUNGEN
 export const BLOCK_I_MINIMUM = 200
@@ -26,7 +26,7 @@ export type Abiprognose = {
   blockII: number
   gesamt: number
   note: number
-  unterkurse: { lf: number; gf: number }
+  unterkurse: { lk: number; gk: number }
   huerden: string[]
   belegt: number
   hochgerechnet: boolean
@@ -51,12 +51,23 @@ function gewichteterSchnitt(noten: Note[]): number | null {
   return noten.reduce((summe, note) => summe + note.punkte * note.gewicht, 0) / gewicht
 }
 
+/** feste schulische gewichtung: lk 50/50, gk 33/67. */
+export function klausurAnteil(kursart: Fach['kursart']): number {
+  return kursart === 'lk' ? 50 : 33
+}
+
+/** epo zählt im mündlichen topf doppelt, eine hü einfach. */
+export function notenGewicht(art: Note['art']): number {
+  return art === 'epo' ? 20 : GEWICHT_STANDARD
+}
+
 export function fachSchnitt(noten: Note[], fach: Fach): Fachschnitt {
   const imFach = noten.filter((note) => note.fachId === fach.id)
   const klausur = gewichteterSchnitt(imFach.filter((note) => note.art === 'klausur'))
-  const muendlich = gewichteterSchnitt(imFach.filter((note) => note.art === 'muendlich'))
+  const muendlich = gewichteterSchnitt(imFach.filter((note) => note.art === 'epo' || note.art === 'hue'))
+  const anteil = klausurAnteil(fach.kursart)
   const gesamt = klausur !== null && muendlich !== null
-    ? (klausur * fach.klausurAnteil + muendlich * (100 - fach.klausurAnteil)) / 100
+    ? (klausur * anteil + muendlich * (100 - anteil)) / 100
     : klausur ?? muendlich
   return { klausur, muendlich, gesamt, anzahl: imFach.length }
 }
@@ -108,7 +119,7 @@ function mittel(werte: number[]): number | null {
 /**
  * Nur das laufende Halbjahr ist vorhanden. Jeder aktuelle Fachschnitt wird
  * deshalb auf vier Kurshalbjahre hochgerechnet. Ab Abitur 2027 werden nur die
- * zwei staerkeren der drei LF doppelt gewertet.
+ * zwei staerkeren der drei LK doppelt gewertet.
  */
 export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abiprognose | null {
   const eigene = faecher.filter((fach) => fach.user === user)
@@ -117,39 +128,39 @@ export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abipr
   if (belegte.length === 0) return null
 
   const fallback = mittel(belegte.map((x) => x.schnitt))!
-  const lf = mitSchnitt
-    .filter((x) => x.fach.kursart === 'lf')
+  const lk = mitSchnitt
+    .filter((x) => x.fach.kursart === 'lk')
     .map((x) => x.schnitt ?? fallback)
     .slice(0, 3)
-  while (lf.length < 3) lf.push(fallback)
-  const gfBelegt = belegte.filter((x) => x.fach.kursart === 'gf')
-  const gfSchnitt = mittel(gfBelegt.map((x) => x.schnitt)) ?? fallback
-  const lfAbsteigend = [...lf].sort((a, b) => b - a)
+  while (lk.length < 3) lk.push(fallback)
+  const gkBelegt = belegte.filter((x) => x.fach.kursart === 'gk')
+  const gkSchnitt = mittel(gkBelegt.map((x) => x.schnitt)) ?? fallback
+  const lkAbsteigend = [...lk].sort((a, b) => b - a)
 
-  const p = lf.reduce((summe, wert) => summe + wert * 4, 0)
-    + lfAbsteigend.slice(0, 2).reduce((summe, wert) => summe + wert * 4, 0)
-    + gfSchnitt * GF_KURSE
+  const p = lk.reduce((summe, wert) => summe + wert * 4, 0)
+    + lkAbsteigend.slice(0, 2).reduce((summe, wert) => summe + wert * 4, 0)
+    + gkSchnitt * GK_KURSE
   const blockI = Math.min(600, Math.max(0, Math.round(p * BLOCK_I_FAKTOR)))
 
-  // Drei LF schriftlich, dazu mindestens ein muendliches GF. Solange dieses
-  // noch nicht gewaehlt ist, steht der aktuelle GF-Schnitt dafuer ein.
-  const gfPruefungen = mitSchnitt
-    .filter((x) => x.fach.kursart === 'gf' && x.fach.pruefungsfach !== null)
+  // Drei LK schriftlich, dazu mindestens ein muendlicher GK. Solange dieser
+  // noch nicht gewaehlt ist, steht der aktuelle GK-Schnitt dafuer ein.
+  const gkPruefungen = mitSchnitt
+    .filter((x) => x.fach.kursart === 'gk' && x.fach.pruefungsfach !== null)
     .sort((a, b) => (a.fach.pruefungsfach ?? 9) - (b.fach.pruefungsfach ?? 9))
-    .map((x) => x.schnitt ?? gfSchnitt)
+    .map((x) => x.schnitt ?? gkSchnitt)
   const hatFuenftes = eigene.some((fach) => fach.pruefungsfach === 5)
-  const pruefungen = [...lf, gfPruefungen[0] ?? gfSchnitt]
-  if (hatFuenftes) pruefungen.push(gfPruefungen[1] ?? gfSchnitt)
+  const pruefungen = [...lk, gkPruefungen[0] ?? gkSchnitt]
+  if (hatFuenftes) pruefungen.push(gkPruefungen[1] ?? gkSchnitt)
   const faktor = hatFuenftes ? 4 : 5
   const blockII = Math.min(300, Math.max(0, Math.round(pruefungen.reduce((s, p) => s + p, 0) * faktor)))
 
   const unter = defizite(eigene, noten, user)
-  const lfUnter = Math.min(LF_KURSE, unter.filter((f) => f.kursart === 'lf').length * 4)
-  const gfUnter = Math.min(GF_KURSE, unter.filter((f) => f.kursart === 'gf').length * 4)
+  const lkUnter = Math.min(LK_KURSE, unter.filter((f) => f.kursart === 'lk').length * 4)
+  const gkUnter = Math.min(GK_KURSE, unter.filter((f) => f.kursart === 'gk').length * 4)
   const huerden: string[] = []
   if (blockI < BLOCK_I_MINIMUM) huerden.push('block i unter 200 punkten')
   if (blockII < BLOCK_II_MINIMUM) huerden.push('block ii unter 100 punkten')
-  if (lfUnter + gfUnter > UNTERKURSE_MAXIMUM) huerden.push('mehr als 7 unterkurse')
+  if (lkUnter + gkUnter > UNTERKURSE_MAXIMUM) huerden.push('mehr als 7 unterkurse')
   if (belegte.some((x) => x.schnitt === 0)) huerden.push('ein kurs mit 0 punkten ist nicht einbringbar')
   const bestandenePruefungen = pruefungen.filter((punkte) => punkte >= 5).length
   const benoetigt = hatFuenftes ? 3 : 2
@@ -163,7 +174,7 @@ export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abipr
     blockII,
     gesamt,
     note: gesamtpunkteZuAbinote(gesamt),
-    unterkurse: { lf: lfUnter, gf: gfUnter },
+    unterkurse: { lk: lkUnter, gk: gkUnter },
     huerden,
     belegt: belegte.length,
     hochgerechnet: true,

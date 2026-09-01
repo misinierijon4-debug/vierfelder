@@ -82,11 +82,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     wertAendern,
     setzeGewicht,
     setzeWette,
-    fachHinzu,
-    fachAendern,
-    fachLoeschen,
+    setzePruefungsfach,
     noteHinzu,
-    noteAendern,
     noteLoeschen,
     phasenNachladen,
   } = useTracker(backend)
@@ -353,11 +350,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 stand={notenstand}
                 me={me}
                 heute={heuteKey}
-                onFachHinzu={fachHinzu}
-                onFach={fachAendern}
-                onFachLoeschen={fachLoeschen}
+                onPruefungsfach={setzePruefungsfach}
                 onNote={noteHinzu}
-                onNoteAendern={noteAendern}
                 onNoteLoeschen={noteLoeschen}
               />
             </motion.div>
