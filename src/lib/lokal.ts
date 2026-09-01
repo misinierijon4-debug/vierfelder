@@ -74,11 +74,13 @@ function sichere(einheiten: Einheit[]) {
   localStorage.setItem(EINHEITEN_KEY, JSON.stringify(einheiten))
 }
 
+// vier pruefungen je person: die drei lk schriftlich, dazu genau ein
+// muendlicher gk — bei erijon mathe, bei koray englisch
 const START_FAECHER: Fach[] = [
   { id: 'a0000000-0000-4000-8000-000000000001', user: 'erijon', name: 'bio', kursart: 'lk', pruefungsfach: null, sortierung: 0 },
   { id: 'a0000000-0000-4000-8000-000000000002', user: 'erijon', name: 'englisch', kursart: 'lk', pruefungsfach: null, sortierung: 1 },
   { id: 'a0000000-0000-4000-8000-000000000003', user: 'erijon', name: 'geschichte', kursart: 'lk', pruefungsfach: null, sortierung: 2 },
-  { id: 'a0000000-0000-4000-8000-000000000004', user: 'erijon', name: 'mathe', kursart: 'gk', pruefungsfach: null, sortierung: 3 },
+  { id: 'a0000000-0000-4000-8000-000000000004', user: 'erijon', name: 'mathe', kursart: 'gk', pruefungsfach: 4, sortierung: 3 },
   { id: 'a0000000-0000-4000-8000-000000000005', user: 'erijon', name: 'deutsch', kursart: 'gk', pruefungsfach: null, sortierung: 4 },
   { id: 'a0000000-0000-4000-8000-000000000006', user: 'erijon', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
   { id: 'a0000000-0000-4000-8000-000000000007', user: 'erijon', name: 'ethik', kursart: 'gk', pruefungsfach: null, sortierung: 6 },
@@ -89,7 +91,7 @@ const START_FAECHER: Fach[] = [
   { id: 'b0000000-0000-4000-8000-000000000002', user: 'koray', name: 'physik', kursart: 'lk', pruefungsfach: null, sortierung: 1 },
   { id: 'b0000000-0000-4000-8000-000000000003', user: 'koray', name: 'geschichte', kursart: 'lk', pruefungsfach: null, sortierung: 2 },
   { id: 'b0000000-0000-4000-8000-000000000004', user: 'koray', name: 'mathe', kursart: 'gk', pruefungsfach: null, sortierung: 3 },
-  { id: 'b0000000-0000-4000-8000-000000000005', user: 'koray', name: 'englisch', kursart: 'gk', pruefungsfach: null, sortierung: 4 },
+  { id: 'b0000000-0000-4000-8000-000000000005', user: 'koray', name: 'englisch', kursart: 'gk', pruefungsfach: 4, sortierung: 4 },
   { id: 'b0000000-0000-4000-8000-000000000006', user: 'koray', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
   { id: 'b0000000-0000-4000-8000-000000000007', user: 'koray', name: 'katholische religion', kursart: 'gk', pruefungsfach: null, sortierung: 6 },
   { id: 'b0000000-0000-4000-8000-000000000008', user: 'koray', name: 'französisch', kursart: 'gk', pruefungsfach: null, sortierung: 7 },

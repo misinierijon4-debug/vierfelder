@@ -1,9 +1,11 @@
 import type { Fach, Note, UserId } from './types'
 import { GEWICHT_STANDARD, neueNotenId } from './types'
 
-/** Offizielle MSS-Regeln fuer den Abiturjahrgang 2027. */
-export const ABI_FORMEL_GEPRUEFT = true
-export const ABI_FORMEL_QUELLE = 'mss rheinland-pfalz, fassung februar 2025, abitur 2027'
+/**
+ * Offizielle MSS-Regeln fuer den Abiturjahrgang 2027. Die Zahlen sind gegen
+ * die MSS-Fassung Rheinland-Pfalz vom Februar 2025 fuer das Abitur 2027
+ * geprueft — wer sie aendert, prueft dort nach.
+ */
 export const EINGEBRACHTE_KURSE = 36
 export const LK_KURSE = 12
 export const GK_KURSE = 24
@@ -187,17 +189,12 @@ export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abipr
     + gkSchnitt * GK_KURSE
   const blockI = Math.min(600, Math.max(0, Math.round(p * BLOCK_I_FAKTOR)))
 
-  // Drei LK schriftlich, dazu mindestens ein muendlicher GK. Solange dieser
-  // noch nicht gewaehlt ist, steht der aktuelle GK-Schnitt dafuer ein.
-  const gkPruefungen = mitSchnitt
-    .filter((x) => x.fach.kursart === 'gk' && x.fach.pruefungsfach !== null)
-    .sort((a, b) => (a.fach.pruefungsfach ?? 9) - (b.fach.pruefungsfach ?? 9))
-    .map((x) => x.schnitt ?? gkSchnitt)
-  const hatFuenftes = eigene.some((fach) => fach.pruefungsfach === 5)
-  const pruefungen = [...lk, gkPruefungen[0] ?? gkSchnitt]
-  if (hatFuenftes) pruefungen.push(gkPruefungen[1] ?? gkSchnitt)
-  const faktor = hatFuenftes ? 4 : 5
-  const blockII = Math.min(300, Math.max(0, Math.round(pruefungen.reduce((s, p) => s + p, 0) * faktor)))
+  // Vier Pruefungen: die drei LK schriftlich, dazu der eine muendliche GK.
+  // Solange dieser noch nicht gewaehlt ist, steht der GK-Schnitt dafuer ein.
+  // Jede Pruefung zaehlt fuenffach, zusammen also hoechstens 300 Punkte.
+  const gkPruefung = mitSchnitt.find((x) => x.fach.kursart === 'gk' && x.fach.pruefungsfach !== null)
+  const pruefungen = [...lk, gkPruefung ? gkPruefung.schnitt ?? gkSchnitt : gkSchnitt]
+  const blockII = Math.min(300, Math.max(0, Math.round(pruefungen.reduce((s, p) => s + p, 0) * 5)))
 
   const unter = defizite(eigene, noten, user)
   const lkUnter = Math.min(LK_KURSE, unter.filter((f) => f.kursart === 'lk').length * 4)
@@ -207,10 +204,10 @@ export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abipr
   if (blockII < BLOCK_II_MINIMUM) huerden.push('block ii unter 100 punkten')
   if (lkUnter + gkUnter > UNTERKURSE_MAXIMUM) huerden.push('mehr als 7 unterkurse')
   if (belegte.some((x) => x.schnitt === 0)) huerden.push('ein kurs mit 0 punkten ist nicht einbringbar')
+  // von vier pruefungen muessen zwei mit mindestens 5 punkten bestehen
   const bestandenePruefungen = pruefungen.filter((punkte) => punkte >= 5).length
-  const benoetigt = hatFuenftes ? 3 : 2
-  if (bestandenePruefungen < benoetigt) {
-    huerden.push(`weniger als ${benoetigt} prüfungsfächer mit mindestens 5 punkten`)
+  if (bestandenePruefungen < 2) {
+    huerden.push('weniger als 2 prüfungsfächer mit mindestens 5 punkten')
   }
 
   const gesamt = Math.min(900, blockI + blockII)
