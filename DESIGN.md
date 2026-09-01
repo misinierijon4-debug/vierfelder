@@ -685,3 +685,60 @@ localStorage-schlüssel des prototyp-modus heissen weiter `vierfelder`. Das
 repository umzubenennen ändert `VITE_BASE` und die öffentliche adresse, die
 schlüssel umzubenennen wirft lokale daten weg. Ein technischer name ist kein
 markenname; er muss stabil sein, nicht schön.
+
+## 24. Nachtrag: was von einem fremden entwurf übrig bleibt (01.09.2026)
+
+Ein Entwurf von aussen schlug siebzehn Änderungen am Schlaf-Tab vor, in der
+Bildsprache von Apple Health: pillenförmige Segmented Controls, weiche Ebenen,
+Badges, Fortschrittsbalken, eine gerundete Schrift und ein eigener Token-Satz
+in Amber und Cyan. Übernommen sind drei Punkte. Die Begründung für das
+Verhältnis ist wichtiger als die drei Punkte selbst, deshalb steht sie hier.
+
+**Acht der siebzehn Punkte waren schon gebaut.** Der Segmented Control
+existiert, die Akzentfarbe folgt der Person, die Dreierreihe hat senkrechte
+Haarlinien statt Kästen, `stroke-linecap: round` steht, die Kurve ist längst
+eine monotone kubische Spline, und `tabular-nums` liegt seit dem ersten Tag
+global in `.tnum`. Das ist kein Vorwurf an den Entwurf — es ist der Normalfall,
+wenn jemand ein Bild ansieht und nicht den Code.
+
+**Was nicht übernommen ist, und warum.**
+
+- *Eigener Token-Satz.* Abschnitt 2 kennt fünf Hex-Werte, alles andere ist über
+  `color-mix` abgeleitet. Der Vorschlag ersetzt alle fünf, führt mit
+  `--bg-card-subtle` eine dritte Fläche ein, dupliziert `--linie` und friert die
+  Ableitungen als feste `rgba` ein. Dazu ist Amber/Cyan/Slate die
+  Tailwind-Voreinstellung — dieselbe Begründung, aus der in Abschnitt 3
+  `Bricolage Grotesque` geflogen ist.
+- *„SF Pro Rounded" für Zahlen.* Abschnitt 3 will eine Stadionuhr, keine
+  freundliche Rundung; Abschnitt 23 hat genau dafür schon ein Icon ersetzt.
+  Ausserdem gibt es die Schrift nur auf Apple-Geräten, und die App liefert ihre
+  Schriften mit.
+- *`letter-spacing: -0.03em`, 36px, Grossbuchstaben-Labels.* `.tnum` steht
+  bewusst auf `letter-spacing: 0`; der Charakter kommt aus der Breitenachse.
+  36px steht nicht in der Ziffern-Staffel, und Kleinschreibung ist Abschnitt 11.
+- *`#64748B` für Sub-Labels.* 3,77:1 auf `--grund` — unter der Grenze, die
+  Abschnitt 14 für den kleinsten Text gemessen hat. `--kreide-52` liegt bei
+  4,76:1 und tut dasselbe.
+- *Das Kurvenfeld dunkler als die Karte.* Abschnitt 2: eine Ebene, kein
+  Tiefeneffekt. Der vorgeschlagene Wert wäre zudem dunkler als `--grund`.
+- *Ein 3px-Balken unter jeder Schlafphase und ein Duell-Balken.* Abschnitt 14
+  hat genau so einen Balken schon einmal gestrichen, weil er die dritte
+  Darstellung derselben Zahl war. Unter den Phasen wäre er die vierte — Kurve,
+  Minuten, Prozent, Balken —, und über der Kachel `wach` stünde er unter einem
+  `6×`, das gar kein Anteil ist.
+- *Die Akzentfarbe der ganzen Seite auf die gewählte Person umschalten.* Das
+  ist die eine Designentscheidung aus Abschnitt 1 rückwärts: zwei
+  Identitätsfarben gleichzeitig sind der Inhalt, nicht ein Akzent, den man
+  wechselt.
+
+**Übernommen sind drei.** Zwei davon stehen mit ihrer Begründung in
+`docs/schlaf-hypnogramm.md`: vier Haarlinien auf den Ebenen des Kurvenfeldes,
+und höchstens sechs Uhrzeiten auf der Achse statt einer je Stunde. Beide in
+vorhandenen Tokens — die vorgeschlagenen 3 % Weiss für die Hilfslinien lägen bei
+1,08:1 gegen die Fläche und wären auf dem Telefon schlicht nicht da.
+
+Der dritte betrifft nicht den Schlaf, sondern eine Unstimmigkeit, die der
+fremde Blick gefunden hat: die Tab-Leiste schiebt ihren aktiven Indikator per
+`layoutId` mit dem Stempel-Spring, der Personen-Umschalter im Nachtdetail
+schaltete hart um. Zwei Umschalter, dieselbe Handlung, zwei Bewegungen. Jetzt
+teilen sie eine.

@@ -38,8 +38,9 @@ Vier feste Hoehen, als Anteil des Kurvenfeldes von oben nach unten:
 verlauf der nacht
 
   ‾‾\    __/‾‾\__      /‾‾\        <- wach oben, tiefschlaf unten
+  - - - - - - - - - - - - - -      <- vier haarlinien auf den vier ebenen
      \__/        \____/
-21:53   23   00   01 ...   07:04
+21:53     00     02     04   07:04
 
 wach   2h 19m  6x   |  rem        1h 29m  22%
 kern   4h 24m  64%  |  tiefschlaf 59m     14%
@@ -61,6 +62,9 @@ kern   4h 24m  64%  |  tiefschlaf 59m     14%
 | Unruhe unter fuenf Minuten als Punkt | Als waagerechter Strich; jedes Wachstueck als voller Ausschlag; oder ganz weglassen | Health zerlegt eine Nacht in bis zu dreissig Wachstuecke von ein bis zwei Minuten — umdrehen, Decke richten. Als voller Ausschlag ist eine solche Minute im Bild genauso laut wie eine halbe Stunde Wachliegen, und aus einer ruhigen Nacht wird ein Lattenzaun. Als Punkt bleibt sie sichtbar, an der richtigen Stelle, ohne die Kurve zu uebertoenen. Ein waagerechter Strich waere naeher an der Wahrheit gewesen, weil er auch die Laenge zeigt — aber genau so sah die kaputte Kurve aus, und zwei Dinge duerfen nicht gleich aussehen, wenn eines davon ein Fehler ist. Die Zeit der Unruhe geht je zur Haelfte an die beiden Nachbarn, damit die Uhr weiterhin stimmt. |
 | Flanke in Minuten (13 vor und 13 nach der Grenze) | In Pixeln, wie vorher | Mit der Schwelle ist Platz dafuer: die Kurve fliesst zwischen den Phasen, statt zu springen, und liest sich als Nacht statt als Treppe. In Minuten statt in Pixeln, damit eine Nacht von drei Stunden keine steileren Flanken bekommt als eine von zwoelf. An kurzen Phasen bleibt die Flanke automatisch steil, weil sie nie laenger wird als die halbe Nachbarphase; und nie laenger als 2,5 % der Nacht, damit eine kurze Nacht nicht zu einer einzigen Welle verlaeuft. |
 | Duenne Linie (1,5 Einheiten von 320) | Kraeftige Linie wie im ersten Entwurf | Der Strich ist die Aufloesungsgrenze: bei 320 Einheiten fuer eine Nacht ist eine Minute rund 0,6 Einheiten breit, ein Strich von 2,4 also gut vier Minuten. Alles Kuerzere hatte keinen Platz mehr fuer eine Form und wurde zur Doppellinie mit ineinanderlaufendem Schein — das sah nach Darstellungsfehler aus, nicht nach kurzer Phase. Mit 1,5 traegt der Strich alles ab etwa zweieinhalb Minuten, und der Schein ist entsprechend enger gefasst. |
+| Vier Hilfslinien auf den Ebenen | Kein Raster; oder ein Raster mit Beschriftung | Die Hoehe der Kurve war nur relativ zu sich selbst lesbar: man sah, dass es tiefer wird, nicht, dass es vier Stufen sind. Die Linien liegen auf denselben Anteilen wie die Kurve (10/35/65/90 %) und in `--linie` wie jede andere Haarlinie der App — eine eigene, blassere Stufe (etwa 3 % Weiss) laege bei 1,08:1 gegen die Flaeche und waere auf dem Telefon nicht mehr da. Beschriftet sind sie nicht: die Legende darunter steht in derselben Reihenfolge, und vier zusaetzliche Woerter im Kurvenfeld waeren mehr Text als Bild. |
+| Hoechstens sechs Uhrzeiten | Stuendlich, wie vorher | Stuendlich sind es bei acht Stunden neun Zahlen unter einer Kurve, die von acht Stunden erzaehlt. Sie ueberlappen nicht — der Randschutz hat das verhindert —, aber sie sind Rauschen. Ab sechs Stunden Nacht stehen deshalb Zwei-, ab zwoelf Drei-Stunden-Schritte; die beiden Eckzeiten bleiben immer, weil sie die einzigen gemessenen Zeiten der Achse sind. |
+| Uhrzeiten auf 10 Einheiten | 9 wie vorher; oder 12 | 9 war an der Grenze des Lesbaren, 12 nimmt in einem 320 Einheiten breiten Feld ein Drittel mehr Platz und draengt die Eckzeit in die erste Stundenmarke. Mit 10 waechst der Randschutz von 34 auf 42 Einheiten mit. |
 | Fuenf Minuten als Schwelle | Zwei oder zehn | Die Ansicht fasst bereits zusammen, was hoechstens zwei Minuten auseinanderliegt; was danach noch unter fuenf Minuten liegt, ist im Zweifel Unruhe. Alles darueber hat man am Morgen als Aufwachen in Erinnerung. |
 
 ## Warum die Kurve zerfallen war

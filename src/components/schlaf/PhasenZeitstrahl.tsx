@@ -62,7 +62,9 @@ const ACHSE_Y = 126
  */
 const STRICH = 1.5
 /** so nah an den rand darf keine stundenmarke, sonst stoesst sie an die eckzeit */
-const RANDSCHUTZ = 34
+const RANDSCHUTZ = 42
+/** groesse der uhrzeiten. die eckzeit ist fuenf zeichen breit, daher der randschutz */
+const ACHSE_SCHRIFT = 10
 
 export function PhasenZeitstrahl({ analyse }: Props) {
   const reduced = useReducedMotion()
@@ -80,8 +82,13 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     const alle = [...linie, ...unruhen]
     const von = Math.min(analyse.einschlafMinute, ...alle.map((s) => s.von))
     const bis = Math.max(analyse.aufwachMinute, ...alle.map((s) => s.bis))
-    // ueber zwoelf stunden wuerden stuendliche marken aneinanderkleben
-    const schritt = bis - von > 12 * 60 ? 120 : 60
+    // hoechstens sechs beschriftungen: die zwei eckzeiten und dazwischen volle
+    // stunden. stuendlich sind das bei acht stunden neun zahlen unter einer
+    // kurve, die von acht stunden erzaehlt — sie ueberlappen nicht, aber sie
+    // sind rauschen. ab sechs stunden geht es deshalb in zwei-, ab zwoelf in
+    // drei-stunden-schritten.
+    const dauer = bis - von
+    const schritt = dauer > 12 * 60 ? 180 : dauer > 6 * 60 ? 120 : 60
     return {
       kurve: nachtkurve(linie, von, bis, { breite: BREITE, hoehe: KURVE_HOEHE }),
       unruhen: unruhen.map((u) => ({
@@ -111,6 +118,8 @@ export function PhasenZeitstrahl({ analyse }: Props) {
   const vonUhr = nachtUhrzeit(von)
   const bisUhr = nachtUhrzeit(bis)
   const wachHoehe = EBENE.wach * KURVE_HOEHE
+  /** die vier ebenen als hilfslinien, in derselben hoehe, die auch die kurve benutzt */
+  const ebenen = [EBENE.wach, EBENE.rem, EBENE.kern, EBENE.tief]
 
   // reihenfolge wie in der kurve: von der wach-linie oben bis zum tiefschlaf
   const kacheln = [
@@ -219,6 +228,27 @@ export function PhasenZeitstrahl({ analyse }: Props) {
             </filter>
           </defs>
 
+          {/*
+            Vier Haarlinien auf den Hoehen der vier Ebenen. Ohne sie ist die
+            Hoehe der Kurve nur relativ zu sich selbst lesbar: man sieht, dass
+            es tiefer wird, aber nicht, dass es vier Stufen sind. Sie liegen in
+            `--linie` wie jede andere Haarlinie der App — eine eigene, blassere
+            Stufe waere auf dem Telefon nicht mehr da. Beschriftet sind sie
+            nicht: die Legende darunter steht in derselben Reihenfolge.
+          */}
+          {ebenen.map((ebene) => (
+            <line
+              key={ebene}
+              x1="0"
+              x2={BREITE}
+              y1={ebene * KURVE_HOEHE}
+              y2={ebene * KURVE_HOEHE}
+              stroke="var(--linie)"
+              strokeWidth="1"
+              shapeRendering="crispEdges"
+            />
+          ))}
+
           {/* dreimal derselbe pfad: schein, traumschein, linie */}
           {linie(`url(#${verlaufId})`, STRICH + 2.5, 0.28, `url(#${glanz})`)}
           {linie(`url(#${traumId})`, STRICH + 3.5, 0.5, `url(#${glanz})`)}
@@ -243,7 +273,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
             y={ACHSE_Y}
             textAnchor="start"
             fill="var(--kreide)"
-            fontSize="9"
+            fontSize={ACHSE_SCHRIFT}
             className="tnum"
           >
             {vonUhr}
@@ -255,7 +285,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
               y={ACHSE_Y}
               textAnchor="middle"
               fill="var(--kreide-52)"
-              fontSize="9"
+              fontSize={ACHSE_SCHRIFT}
               className="tnum"
             >
               {nachtUhrzeit(m).slice(0, 2)}
@@ -266,7 +296,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
             y={ACHSE_Y}
             textAnchor="end"
             fill="var(--kreide)"
-            fontSize="9"
+            fontSize={ACHSE_SCHRIFT}
             className="tnum"
           >
             {bisUhr}

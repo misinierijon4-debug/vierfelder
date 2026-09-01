@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { USERS, user as userDef } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import { addDays, fromKey, langesDatum } from '../../lib/dates'
+import { STEMPEL } from '../../lib/motion'
 import { abendDatum, analysiereSchlafnacht, formatDauer } from '../../lib/schlafPhasen'
 import { PhasenZeitstrahl } from './PhasenZeitstrahl'
 import { Ring } from './Ring'
@@ -60,14 +61,23 @@ export function SchlafNachtDetail({
                 type="button"
                 aria-pressed={istAktiv}
                 onClick={() => onAnsichtUserWaehlen(user.id)}
-                className={`flex min-h-9 items-center justify-center gap-1.5 rounded-[1px] border text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none ${
-                  istAktiv
-                    ? 'border-linie-hell bg-grund text-kreide'
-                    : 'border-transparent text-kreide-52 hover:text-kreide'
+                className={`relative flex min-h-9 items-center justify-center gap-1.5 text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none ${
+                  istAktiv ? 'text-kreide' : 'text-kreide-52 hover:text-kreide'
                 }`}
               >
-                <span className="size-2 rounded-[1px]" style={{ backgroundColor: user.farbe }} />
-                <span>{user.name}</span>
+                {/* derselbe wandernde indikator wie in der tab-leiste: die
+                    umschaltung ist dieselbe handlung, also sieht sie gleich aus */}
+                {istAktiv && (
+                  <motion.span
+                    layoutId="aktivePersonIndikator"
+                    transition={STEMPEL}
+                    aria-hidden
+                    className="absolute inset-0 rounded-[1px] bg-grund"
+                    style={{ border: '1px solid var(--linie-hell)' }}
+                  />
+                )}
+                <span className="relative z-10 size-2 rounded-[1px]" style={{ backgroundColor: user.farbe }} />
+                <span className="relative z-10">{user.name}</span>
               </button>
             )
           })}
