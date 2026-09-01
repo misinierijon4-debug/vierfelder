@@ -15,9 +15,11 @@ type Props = {
   woche: string[]
   heuteKey: string
   me: UserId
+  /** der verlauf aelterer naechte kommt erst, wenn eine davon geoeffnet wird */
+  onVerlaufBrauchen: (user: UserId, nacht: string) => void
 }
 
-export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
+export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: Props) {
   const registrierte = registrierteSchlafNutzer(naechte)
   const detailRef = useRef<HTMLDivElement>(null)
   const [kalenderOffen, setKalenderOffen] = useState(false)
@@ -91,6 +93,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me }: Props) {
           gewaehlterTag={gewaehlterTag}
           ansichtUser={ansichtUser}
           onAnsichtUserWaehlen={setAnsichtUser}
+          onVerlaufBrauchen={onVerlaufBrauchen}
         />
       </div>
 

@@ -40,6 +40,20 @@ export function formatProzent(anteil: number): string {
   return `${Math.round(anteil * 100)}%`
 }
 
+/**
+ * echte minuten zwischen zwei zeitpunkten.
+ *
+ * Nicht dasselbe wie die Differenz zweier Uhrzeiten: In der Nacht zum letzten
+ * Sonntag im Oktober liegen zwischen 23:00 und 07:00 neun Stunden, im Maerz
+ * sieben. Alles, was eine Dauer ist — das Schlaffenster, das Wachliegen vor
+ * dem Einschlafen, das Nachliegen danach —, kommt deshalb von hier und nicht
+ * aus `nachtMinute`. Die Phasen der Ansicht sind ebenfalls echte Minuten ab
+ * dem Einschlafen; nur so passen Kurve und Achse zusammen.
+ */
+export function minutenZwischen(von: string, bis: string): number {
+  return (new Date(bis).getTime() - new Date(von).getTime()) / 60000
+}
+
 /** lokale uhrzeit als nachtminute: 21:00 → 1260, 06:30 → 1830 */
 export function nachtMinute(iso: string): number {
   const d = new Date(iso)
@@ -141,6 +155,8 @@ export const PHASEN_SCHWELLE = 5
 export type NachtPhasenAnalyse = {
   nacht: string
   user: UserId
+  /** der anker der achse als zeitpunkt, fuer beschriftungen ueber die umstellung */
+  einschlafzeit: string
   schlafMinuten: number
   /** zeit im bett aus den InBed-segmenten, sonst die schlafspanne */
   inBedMinuten: number
@@ -151,6 +167,11 @@ export type NachtPhasenAnalyse = {
   /** belegdichte des nachtwerts, 1 bis 100. null, wenn er geschaetzt ist */
   qualitaetKonfidenz: number | null
   hatPhasenDaten: boolean
+  /**
+   * ob der verlauf schon da ist. false heisst nicht "ohne stadien", sondern
+   * "noch nicht geladen" — die kurve zeigt dann keinen erfundenen block
+   */
+  verlaufGeladen: boolean
   hatZeitfensterDaten: boolean
   einschlafUhrzeit: string
   aufwachUhrzeit: string
@@ -181,10 +202,13 @@ export type NachtPhasenAnalyse = {
 }
 
 export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
+  // der anker steht auf der uhr, alles danach zaehlt in echten minuten von ihm
+  // aus. an einem umstellungswochenende ist das der unterschied zwischen einer
+  // effizienz von 100 prozent und der wahren von 96
   const einschlafMinute = nachtMinute(nacht.einschlafzeit)
   const gemessenesEnde = nacht.aufwachzeit !== null
   const fenster = gemessenesEnde
-    ? Math.max(1, nachtMinute(nacht.aufwachzeit!) - einschlafMinute)
+    ? Math.max(1, Math.round(minutenZwischen(nacht.einschlafzeit, nacht.aufwachzeit!)))
     : Math.max(1, Math.round(nacht.schlafMinuten + nacht.wachMinuten))
 
   const schlafMinuten = Math.round(nacht.schlafMinuten)
@@ -202,8 +226,14 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
   const remProzent = anteil(nacht.remMinuten)
 
   const aufwachMinute = einschlafMinute + fenster
-  const bettVon = nacht.bettStart === null ? null : nachtMinute(nacht.bettStart)
-  const bettBis = nacht.bettEnde === null ? null : nachtMinute(nacht.bettEnde)
+  const bettVon =
+    nacht.bettStart === null
+      ? null
+      : einschlafMinute - Math.round(minutenZwischen(nacht.bettStart, nacht.einschlafzeit))
+  const bettBis =
+    nacht.bettEnde === null
+      ? null
+      : einschlafMinute + Math.round(minutenZwischen(nacht.einschlafzeit, nacht.bettEnde))
 
   // das wachliegen vor dem einschlafen und das noch-liegenbleiben danach
   const einschlafdauerMinuten =
@@ -220,9 +250,14 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     ? Math.max(Math.round(nacht.wachMinuten), inBedMinuten - schlafMinuten)
     : Math.round(nacht.wachMinuten)
 
+  // `null` heisst nicht geladen, `[]` heisst ohne stadien gemessen. beides
+  // ergibt hier denselben block — aber nur eines davon darf als aussage ueber
+  // die nacht gelesen werden, deshalb steht der unterschied in der analyse
+  const phasen = nacht.phasen ?? []
+
   // der verlauf zeigt die ganze bettzeit, nicht erst ab dem einschlafen
-  const stuecke: Phase[] = nacht.phasen.length
-    ? [...nacht.phasen]
+  const stuecke: Phase[] = phasen.length
+    ? [...phasen]
     : [{ art: 'unspez' as PhasenArt, start: 0, dauer: schlafMinuten }]
   if (einschlafdauerMinuten !== null && einschlafdauerMinuten >= 1) {
     stuecke.unshift({ art: 'wach', start: -einschlafdauerMinuten, dauer: einschlafdauerMinuten })
@@ -234,6 +269,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
   return {
     nacht: nacht.nacht,
     user: nacht.user,
+    einschlafzeit: nacht.einschlafzeit,
     schlafMinuten,
     inBedMinuten,
     inBedBasis: hatBett ? 'bett' : 'fenster',
@@ -246,6 +282,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     qualitaet: nacht.nachtwert ?? qualitaet(schlafMinuten),
     qualitaetKonfidenz: nacht.nachtwert === null ? null : nacht.scoreKonfidenz,
     hatPhasenDaten,
+    verlaufGeladen: nacht.phasen !== null,
     hatZeitfensterDaten: gemessenesEnde,
     einschlafUhrzeit: formatUhrzeit(nacht.einschlafzeit),
     aufwachUhrzeit: formatUhrzeit(nacht.aufwachzeit),
@@ -260,9 +297,8 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
     remMinuten: Math.round(nacht.remMinuten),
     coreMinuten: Math.round(nacht.kernMinuten + nacht.unspezMinuten),
     wachMinuten,
-    wachphasenAnzahl: nacht.phasen.filter(
-      (p) => p.art === 'wach' && p.dauer >= PHASEN_SCHWELLE
-    ).length,
+    wachphasenAnzahl: phasen.filter((p) => p.art === 'wach' && p.dauer >= PHASEN_SCHWELLE)
+      .length,
     tiefProzent,
     remProzent,
     coreProzent: erfasst > 0 ? Math.max(0, 100 - tiefProzent - remProzent) : 0,
@@ -300,6 +336,22 @@ export function position(m: number, von: number, bis: number): number {
   return (m - von) / (bis - von)
 }
 
+/**
+ * die uhrzeit an einer stelle der nachtachse.
+ *
+ * `nachtUhrzeit` rechnet auf der achse und ist fuer mediane ueber viele
+ * Naechte richtig. Innerhalb einer Nacht zaehlt die Achse echte Minuten — an
+ * einem Umstellungswochenende laegen Achse und Uhr sonst eine Stunde
+ * auseinander und die letzte Marke stuende auf 08:00, waehrend daneben 07:00
+ * als Aufwachzeit steht.
+ */
+export function achsenUhrzeit(analyse: NachtPhasenAnalyse, minute: number): string {
+  const d = new Date(
+    new Date(analyse.einschlafzeit).getTime() + (minute - analyse.einschlafMinute) * 60000
+  )
+  return `${zwei(d.getHours())}:${zwei(d.getMinutes())}`
+}
+
 /* -------------------------------------------------------------------- duell */
 
 export function median(werte: number[]): number {
@@ -307,6 +359,16 @@ export function median(werte: number[]): number {
   const mitte = Math.floor(s.length / 2)
   return s.length % 2 ? s[mitte]! : (s[mitte - 1]! + s[mitte]!) / 2
 }
+
+/**
+ * Ab wie vielen Naechten die Streuung eine Aussage ist.
+ *
+ * Aus zwei Naechten ergibt sich immer eine mittlere Abweichung, und sie ist
+ * immer die halbe Differenz der beiden — das ist keine Konstanz, das ist ein
+ * Rechenweg. Wer zweimal misst, gewinnt sonst eine Disziplin, an der er nicht
+ * teilgenommen hat.
+ */
+export const KONSTANZ_MINDESTNAECHTE = 3
 
 export type Wochenwerte = {
   user: UserId
@@ -319,6 +381,10 @@ export type Wochenwerte = {
   streuung: number | null
   tiefAnteil: number | null
   wachSchnitt: number | null
+  /** schnitt des gerechneten nachtwerts. null im prototyp ohne datenbank */
+  nachtwertSchnitt: number | null
+  /** naechte, bei denen nicht jede komponente belegt war */
+  unvollstaendig: number
 }
 
 export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
@@ -333,6 +399,8 @@ export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
       streuung: null,
       tiefAnteil: null,
       wachSchnitt: null,
+      nachtwertSchnitt: null,
+      unvollstaendig: 0,
     }
   }
 
@@ -341,6 +409,7 @@ export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
   const gesamt = eigene.reduce((s, n) => s + n.schlafMinuten, 0)
   const mitStadien = eigene.filter((n) => n.tiefMinuten + n.remMinuten + n.kernMinuten > 0)
   const stadienSchlaf = mitStadien.reduce((s, n) => s + n.schlafMinuten, 0)
+  const mitWert = eigene.filter((n) => n.nachtwert !== null)
 
   return {
     user,
@@ -348,16 +417,43 @@ export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
     schlafSchnitt: gesamt / eigene.length,
     gesamt,
     einschlafMedian: referenz,
-    // eine einzelne nacht hat keine streuung, erst ab zwei ist der wert echt
     streuung:
-      eigene.length > 1
+      eigene.length >= KONSTANZ_MINDESTNAECHTE
         ? einschlaf.reduce((s, m) => s + Math.abs(m - referenz), 0) / eigene.length
         : null,
     tiefAnteil: stadienSchlaf
       ? mitStadien.reduce((s, n) => s + n.tiefMinuten, 0) / stadienSchlaf
       : null,
     wachSchnitt: eigene.reduce((s, n) => s + n.wachMinuten, 0) / eigene.length,
+    nachtwertSchnitt: mitWert.length
+      ? mitWert.reduce((s, n) => s + n.nachtwert!, 0) / mitWert.length
+      : null,
+    // konfidenz unter hundert heisst: eine komponente fehlte, etwa die
+    // bettzeit oder die historie. der wert ist trotzdem nach demselben
+    // masstab gerechnet — nur aus weniger belegen
+    unvollstaendig: eigene.filter((n) => n.scoreKonfidenz !== null && n.scoreKonfidenz < 100)
+      .length,
   }
+}
+
+/**
+ * Naechte, die beide gemessen haben — die einzigen, in denen wirklich
+ * dieselbe Nacht verglichen wird. Der Rest der Tabelle vergleicht zwei
+ * Wochen, was etwas anderes ist und darum danebensteht.
+ */
+export function gemeinsameNaechte(naechte: Schlafnacht[], woche: string[]): number {
+  const proAbend = new Map<string, Set<UserId>>()
+  for (const n of naechte) {
+    if (n.schlafMinuten <= 0) continue
+    const abend = abendDatum(n.einschlafzeit)
+    if (!woche.includes(abend)) continue
+    const vorhanden = proAbend.get(abend) ?? new Set<UserId>()
+    vorhanden.add(n.user)
+    proAbend.set(abend, vorhanden)
+  }
+  let gemeinsam = 0
+  for (const nutzer of proAbend.values()) if (nutzer.size > 1) gemeinsam++
+  return gemeinsam
 }
 
 export type Duellzeile = {
@@ -391,6 +487,16 @@ export function registrierteSchlafNutzer(naechte: Schlafnacht[]): Set<UserId> {
 }
 
 const DISZIPLINEN: Disziplin[] = [
+  {
+    // die leitzahl zuerst: sie ist das einzige, was alle anderen zeilen
+    // zusammenfasst, und sie kommt fertig gerechnet aus der datenbank
+    id: 'nachtwert',
+    label: 'nachtwert',
+    wert: (w) => w.nachtwertSchnitt,
+    text: (w) => (w.nachtwertSchnitt === null ? OHNE : String(Math.round(w.nachtwertSchnitt))),
+    richtung: 'hoch',
+    mindest: 2,
+  },
   {
     id: 'schnitt',
     label: 'schnitt pro nacht',
@@ -433,8 +539,13 @@ const DISZIPLINEN: Disziplin[] = [
   },
 ]
 
+/**
+ * Eine Zeile, in der auf beiden Seiten nichts steht, ist keine Disziplin,
+ * sondern eine Luecke. Sie faellt weg — anders als eine Zeile, in der einer
+ * gemessen hat und der andere nicht: die sagt etwas.
+ */
 export function duell(a: Wochenwerte, b: Wochenwerte): Duellzeile[] {
-  return DISZIPLINEN.map((d) => {
+  return DISZIPLINEN.filter((d) => d.wert(a) !== null || d.wert(b) !== null).map((d) => {
     const wa = d.wert(a)
     const wb = d.wert(b)
     let sieger: UserId | null = null

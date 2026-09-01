@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { USERS, user as userDef } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
@@ -15,6 +16,8 @@ type Props = {
   gewaehlterTag: string
   ansichtUser: UserId
   onAnsichtUserWaehlen: (user: UserId) => void
+  /** wird gerufen, sobald eine nacht ohne verlauf angezeigt werden soll */
+  onVerlaufBrauchen: (user: UserId, nacht: string) => void
 }
 
 export function SchlafNachtDetail({
@@ -23,11 +26,22 @@ export function SchlafNachtDetail({
   gewaehlterTag,
   ansichtUser,
   onAnsichtUserWaehlen,
+  onVerlaufBrauchen,
 }: Props) {
   const aktuelleNacht = naechte.find(
     (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
   )
   const analyse = aktuelleNacht ? analysiereSchlafnacht(aktuelleNacht) : null
+
+  // aeltere naechte kommen ohne verlauf. sichtbar wird er erst, wenn jemand
+  // die nacht aufschlaegt — also wird er auch erst dann geholt.
+  const fehlenderVerlauf =
+    aktuelleNacht && aktuelleNacht.phasen === null
+      ? { user: aktuelleNacht.user, nacht: aktuelleNacht.nacht }
+      : null
+  useEffect(() => {
+    if (fehlenderVerlauf) onVerlaufBrauchen(fehlenderVerlauf.user, fehlenderVerlauf.nacht)
+  }, [fehlenderVerlauf?.user, fehlenderVerlauf?.nacht, onVerlaufBrauchen])
   const person = userDef(ansichtUser)
   const istRegistriert = registrierte.has(ansichtUser)
 
@@ -136,13 +150,13 @@ export function SchlafNachtDetail({
 
               <dl className="grid grid-cols-3 divide-x divide-linie border-t border-linie">
                 <div className="min-w-0 px-2.5 py-2.5">
-                  <dt className="text-[9px] text-kreide-52">eingeschlafen</dt>
+                  <dt className="text-[10px] text-kreide-52">eingeschlafen</dt>
                   <dd className="mt-1 truncate">
                     <span className="tnum text-[13px] font-semibold text-kreide">
                       {analyse.einschlafUhrzeit}
                     </span>
                     {analyse.einschlafdauerMinuten !== null && (
-                      <span className="tnum mt-0.5 block text-[9px] text-kreide-52">
+                      <span className="tnum mt-0.5 block text-[10px] text-kreide-52">
                         {analyse.einschlafdauerMinuten < 1
                           ? 'sofort'
                           : `nach ${formatDauer(analyse.einschlafdauerMinuten)} im bett`}
@@ -151,20 +165,20 @@ export function SchlafNachtDetail({
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
-                  <dt className="text-[9px] text-kreide-52">aufgewacht</dt>
+                  <dt className="text-[10px] text-kreide-52">aufgewacht</dt>
                   <dd className="mt-1 truncate">
                     <span className="tnum text-[13px] font-semibold text-kreide">
                       {analyse.hatZeitfensterDaten ? analyse.aufwachUhrzeit : '—'}
                     </span>
                     {analyse.imBettBisUhrzeit !== null && (
-                      <span className="tnum mt-0.5 block text-[9px] text-kreide-52">
+                      <span className="tnum mt-0.5 block text-[10px] text-kreide-52">
                         bis {analyse.imBettBisUhrzeit} im bett
                       </span>
                     )}
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
-                  <dt className="text-[9px] text-kreide-52">effizienz</dt>
+                  <dt className="text-[10px] text-kreide-52">effizienz</dt>
                   <dd className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
                     {analyse.effizienz === null ? '—' : `${analyse.effizienz}%`}
                   </dd>

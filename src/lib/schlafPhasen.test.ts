@@ -2,20 +2,23 @@ import { describe, expect, it } from 'vitest'
 import {
   abendDatum,
   achse,
+  achsenUhrzeit,
   analysiereSchlafnacht,
   duell,
   formatDauer,
   formatStunden,
+  gemeinsameNaechte,
   nachtMinute,
   nachtUhrzeit,
   qualitaet,
+  PHASEN_SCHWELLE,
   registrierteSchlafNutzer,
   stundenmarken,
   verlauf,
   wochenwerte,
 } from './schlafPhasen'
 import type { NachtPhasenAnalyse } from './schlafPhasen'
-import type { Phase, Schlafnacht, UserId } from './types'
+import type { Phase, PhasenArt, Schlafnacht, UserId } from './types'
 
 /** baut ein iso-datum aus lokaler zeit — der test bleibt damit zeitzonenfest */
 function iso(tag: string, hhmm: string): string {
@@ -198,6 +201,150 @@ describe('qualitaet', () => {
   })
 })
 
+describe('zeitumstellung', () => {
+  /**
+   * Berlin stellt am letzten Sonntag im Oktober 03:00 auf 02:00 (die Nacht hat
+   * 25 Stunden) und am letzten Sonntag im Maerz 02:00 auf 03:00 (23 Stunden).
+   * Beides sind Naechte, in denen die Uhrzeitdifferenz nicht die Dauer ist.
+   */
+  const ueberDieUmstellung = (over: Partial<Schlafnacht>): Schlafnacht =>
+    nacht({
+      bettStart: null,
+      bettEnde: null,
+      bettMinuten: null,
+      tiefMinuten: 90,
+      remMinuten: 110,
+      kernMinuten: 320,
+      unspezMinuten: 0,
+      wachMinuten: 20,
+      phasen: [],
+      ...over,
+    })
+
+  it('zaehlt die lange oktobernacht mit ihren echten neun stunden', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-10-25',
+        schlafMinuten: 520,
+        einschlafzeit: '2026-10-24T21:00:00.000Z', // 23:00 MESZ
+        aufwachzeit: '2026-10-25T06:00:00.000Z', // 07:00 MEZ
+      })
+    )
+
+    expect(a.aufwachMinute - a.einschlafMinute).toBe(540)
+    expect(a.inBedMinuten).toBe(540)
+    // aus der uhrzeitdifferenz waeren es 480 minuten und damit glatte 100%
+    expect(a.effizienz).toBe(96)
+    expect(a.aufwachUhrzeit).toBe('07:00')
+  })
+
+  it('zaehlt die kurze maerznacht mit ihren echten sieben stunden', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-03-29',
+        schlafMinuten: 400,
+        einschlafzeit: '2026-03-28T22:00:00.000Z', // 23:00 MEZ
+        aufwachzeit: '2026-03-29T05:00:00.000Z', // 07:00 MESZ
+      })
+    )
+
+    expect(a.aufwachMinute - a.einschlafMinute).toBe(420)
+    expect(a.inBedMinuten).toBe(420)
+    // aus der uhrzeitdifferenz waeren es 480 minuten und nur 83%
+    expect(a.effizienz).toBe(95)
+  })
+
+  it('beschriftet die achse mit der uhr, nicht mit der gezaehlten minute', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-10-25',
+        schlafMinuten: 520,
+        einschlafzeit: '2026-10-24T21:00:00.000Z',
+        aufwachzeit: '2026-10-25T06:00:00.000Z',
+      })
+    )
+
+    expect(achsenUhrzeit(a, a.einschlafMinute)).toBe('23:00')
+    // 540 echte minuten nach 23:00 ist sieben uhr, nicht acht
+    expect(achsenUhrzeit(a, a.aufwachMinute)).toBe('07:00')
+  })
+
+  it('misst einschlafen und nachliegen ueber die umstellung hinweg', () => {
+    const a = analysiereSchlafnacht(
+      ueberDieUmstellung({
+        nacht: '2026-10-25',
+        schlafMinuten: 520,
+        einschlafzeit: '2026-10-24T21:00:00.000Z', // 23:00 MESZ
+        aufwachzeit: '2026-10-25T06:00:00.000Z', // 07:00 MEZ
+        bettStart: '2026-10-24T20:45:00.000Z', // 22:45 MESZ
+        bettEnde: '2026-10-25T06:10:00.000Z', // 07:10 MEZ
+        bettMinuten: 565,
+      })
+    )
+
+    expect(a.einschlafdauerMinuten).toBe(15)
+    expect(a.bettBis! - a.aufwachMinute).toBe(10)
+  })
+})
+
+describe('naechte um mitternacht', () => {
+  it('legt 00:15 neben 23:45, nicht dreiundzwanzig stunden davor', () => {
+    const spaet = analysiereSchlafnacht(
+      nacht({
+        einschlafzeit: iso('2026-08-26', '00:15'),
+        aufwachzeit: iso('2026-08-26', '07:15'),
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+      })
+    )
+    const frueh = analysiereSchlafnacht(
+      nacht({
+        einschlafzeit: iso('2026-08-25', '23:45'),
+        aufwachzeit: iso('2026-08-26', '06:45'),
+        bettStart: null,
+        bettEnde: null,
+        bettMinuten: null,
+      })
+    )
+
+    expect(spaet.einschlafMinute - frueh.einschlafMinute).toBe(30)
+    expect(spaet.aufwachMinute).toBeGreaterThan(spaet.einschlafMinute)
+  })
+
+  it('traegt eine nacht nach dem abend, an dem sie begonnen hat', () => {
+    expect(abendDatum(iso('2026-08-26', '00:15'))).toBe('2026-08-25')
+    expect(abendDatum(iso('2026-08-25', '23:45'))).toBe('2026-08-25')
+  })
+})
+
+describe('verlauf einer nacht, der noch nicht geladen ist', () => {
+  it('trennt "noch nicht geladen" von "ohne stadien gemessen"', () => {
+    const offen = analysiereSchlafnacht(nacht({ phasen: null }))
+    const ohneStadien = analysiereSchlafnacht(nacht({ phasen: [] }))
+
+    expect(offen.verlaufGeladen).toBe(false)
+    expect(ohneStadien.verlaufGeladen).toBe(true)
+  })
+
+  it('erfindet ohne verlauf keine wachphasen', () => {
+    const offen = analysiereSchlafnacht(nacht({ phasen: null }))
+    expect(offen.wachphasenAnzahl).toBe(0)
+  })
+
+  it('laesst die kennzahlen einer nacht ohne verlauf unangetastet', () => {
+    // die minuten je stadium kommen aus den summen der ansicht, nicht aus dem
+    // verlauf — eine nacht ohne verlauf zeigt sie deshalb vollstaendig
+    const mit = analysiereSchlafnacht(nacht())
+    const ohne = analysiereSchlafnacht(nacht({ phasen: null }))
+
+    expect(ohne.tiefMinuten).toBe(mit.tiefMinuten)
+    expect(ohne.remMinuten).toBe(mit.remMinuten)
+    expect(ohne.qualitaet).toBe(mit.qualitaet)
+    expect(ohne.effizienz).toBe(mit.effizienz)
+  })
+})
+
 describe('nachtwert', () => {
   it('nimmt den gerechneten wert der datenbank, nicht die ersatzkurve', () => {
     const a = analysiereSchlafnacht(nacht({ nachtwert: 47, scoreKonfidenz: 100 }))
@@ -366,3 +513,183 @@ describe('verlauf', () => {
     expect(a.wachphasenAnzahl).toBe(1)
   })
 })
+
+describe('eine sehr zerrissene nacht auf dem ganzen weg', () => {
+  /**
+   * Vom Rohsegment bis zum Pfad, an der Obergrenze der Datenbank von 300
+   * Segmenten. Eine echte Nacht bringt rund sechzig — dieser Fall ist der
+   * schlimmste, den ein Import ueberhaupt erzeugen kann.
+   */
+  const zerrisseneNacht = (anzahl: number): Schlafnacht => {
+    const arten: PhasenArt[] = ['kern', 'tief', 'wach', 'rem']
+    const phasen: Phase[] = []
+    let t = 0
+    for (let i = 0; i < anzahl; i++) {
+      const dauer = i % 4 === 2 ? 1 + (i % 3) : 4 + (i % 7)
+      phasen.push({ art: arten[i % 4]!, start: t, dauer })
+      t += dauer
+    }
+    const start = '2026-08-25T21:00:00.000Z'
+    return nacht({
+      schlafMinuten: t - 40,
+      einschlafzeit: start,
+      aufwachzeit: new Date(Date.parse(start) + t * 60000).toISOString(),
+      bettStart: null,
+      bettEnde: null,
+      bettMinuten: null,
+      wachMinuten: 40,
+      phasen,
+    })
+  }
+
+  it('fasst kurze stuecke zusammen, statt jedes zu zeichnen', () => {
+    const a = analysiereSchlafnacht(zerrisseneNacht(300))
+    const { linie, unruhen } = verlauf(a)
+
+    // was gezeichnet wird, ist weniger als das, was ankam
+    expect(linie.length).toBeLessThan(300)
+    // und kein stueck der linie ist kuerzer als die schwelle
+    for (const s of linie) expect(s.bis - s.von).toBeGreaterThanOrEqual(PHASEN_SCHWELLE)
+    // kurzes wachwerden bleibt als strich sichtbar, nicht als ausschlag
+    expect(unruhen.length).toBeGreaterThan(0)
+    for (const u of unruhen) expect(u.art).toBe('wach')
+  })
+
+  it('laesst keine zeit verschwinden und keine luecke entstehen', () => {
+    const a = analysiereSchlafnacht(zerrisseneNacht(300))
+    const { linie } = verlauf(a)
+
+    // die linie spannt dieselbe zeit wie die nacht, ohne loch dazwischen
+    expect(linie[0]!.von).toBeCloseTo(a.einschlafMinute, 6)
+    expect(linie[linie.length - 1]!.bis).toBeCloseTo(a.aufwachMinute, 6)
+    for (let i = 0; i < linie.length - 1; i++) {
+      expect(linie[i + 1]!.von).toBeCloseTo(linie[i]!.bis, 6)
+    }
+  })
+
+  it('rechnet den ganzen weg in wenigen millisekunden', () => {
+    const n = zerrisseneNacht(300)
+    const start = performance.now()
+    for (let i = 0; i < 20; i++) verlauf(analysiereSchlafnacht(n))
+    expect((performance.now() - start) / 20).toBeLessThan(50)
+  })
+})
+
+describe('duell der woche: fairness bei ungleicher datenlage', () => {
+  const woche = [
+    '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27',
+    '2026-08-28', '2026-08-29', '2026-08-30',
+  ]
+
+  /** eine nacht am abend `abend`, gespeichert unter dem morgen danach */
+  const abendNacht = (user: UserId, abend: string, over: Partial<Schlafnacht> = {}): Schlafnacht => {
+    const morgen = new Date(Date.parse(abend + 'T12:00:00') + 86400000)
+    const key = `${morgen.getFullYear()}-${String(morgen.getMonth() + 1).padStart(2, '0')}-${String(
+      morgen.getDate()
+    ).padStart(2, '0')}`
+    return nacht({
+      user,
+      nacht: key,
+      einschlafzeit: iso(abend, '23:20'),
+      aufwachzeit: iso(key, '07:00'),
+      bettStart: iso(abend, '23:05'),
+      bettEnde: iso(key, '07:10'),
+      ...over,
+    })
+  }
+
+  it('zaehlt nur die naechte, in denen beide gemessen haben', () => {
+    const naechte = [
+      abendNacht('erijon', '2026-08-24'),
+      abendNacht('erijon', '2026-08-25'),
+      abendNacht('erijon', '2026-08-26'),
+      abendNacht('koray', '2026-08-25'),
+      abendNacht('koray', '2026-08-26'),
+    ]
+
+    expect(gemeinsameNaechte(naechte, woche)).toBe(2)
+  })
+
+  it('zaehlt eine nacht ohne schlafzeit nicht als gemessen', () => {
+    const naechte = [
+      abendNacht('erijon', '2026-08-25'),
+      abendNacht('koray', '2026-08-25', { schlafMinuten: 0 }),
+    ]
+
+    expect(gemeinsameNaechte(naechte, woche)).toBe(0)
+  })
+
+  it('vergibt die konstanz nicht aus zwei naechten', () => {
+    // aus zwei werten ist die mittlere abweichung immer die halbe differenz —
+    // das ist ein rechenweg, keine konstanz
+    const zwei = wochenwerte('koray', [
+      abendNacht('koray', '2026-08-25'),
+      abendNacht('koray', '2026-08-26'),
+    ])
+    const drei = wochenwerte('erijon', [
+      abendNacht('erijon', '2026-08-25'),
+      abendNacht('erijon', '2026-08-26'),
+      abendNacht('erijon', '2026-08-27'),
+    ])
+
+    expect(zwei.streuung).toBeNull()
+    expect(drei.streuung).not.toBeNull()
+
+    // und ohne wert gewinnt niemand die zeile
+    const zeile = duell(drei, zwei).find((z) => z.id === 'konstanz')!
+    expect(zeile.sieger).toBeNull()
+  })
+
+  it('gibt einer fehlenden messung keinen sieg — die zeile bleibt offen', () => {
+    const mit = wochenwerte('erijon', [abendNacht('erijon', '2026-08-25')])
+    const ohne = wochenwerte('koray', [])
+    const zeilen = duell(mit, ohne)
+
+    expect(zeilen.length).toBeGreaterThan(0)
+    for (const zeile of zeilen) {
+      // wer nichts gemessen hat, verliert nicht: es gibt schlicht kein duell
+      expect(zeile.sieger).toBeNull()
+      expect(zeile.text.koray).toBe('—')
+    }
+  })
+
+  it('laesst eine zeile weg, in der auf beiden seiten nichts steht', () => {
+    const leer = duell(wochenwerte('erijon', []), wochenwerte('koray', []))
+    expect(leer).toEqual([])
+  })
+
+  it('mittelt den nachtwert ueber die eigenen naechte und kuert den besseren', () => {
+    const stark = wochenwerte('erijon', [
+      abendNacht('erijon', '2026-08-25', { nachtwert: 80 }),
+      abendNacht('erijon', '2026-08-26', { nachtwert: 90 }),
+    ])
+    const schwach = wochenwerte('koray', [abendNacht('koray', '2026-08-25', { nachtwert: 60 })])
+
+    expect(stark.nachtwertSchnitt).toBe(85)
+    const zeile = duell(stark, schwach).find((z) => z.id === 'nachtwert')!
+    expect(zeile.text.erijon).toBe('85')
+    expect(zeile.sieger).toBe('erijon')
+  })
+
+  it('haelt fest, wie viele naechte unvollstaendig gemessen waren', () => {
+    const w = wochenwerte('erijon', [
+      abendNacht('erijon', '2026-08-25', { scoreKonfidenz: 100 }),
+      abendNacht('erijon', '2026-08-26', { scoreKonfidenz: 65 }),
+      abendNacht('erijon', '2026-08-27', { scoreKonfidenz: 80 }),
+    ])
+
+    expect(w.unvollstaendig).toBe(2)
+  })
+
+  it('zeigt gar keine nachtwert-zeile, wo keiner gerechnet wurde', () => {
+    // prototyp-modus ohne datenbank: eine zeile mit zwei gedankenstrichen
+    // waere kein hinweis, sondern eine leere behauptung
+    const w = wochenwerte('erijon', [abendNacht('erijon', '2026-08-25', { nachtwert: null })])
+    expect(w.nachtwertSchnitt).toBeNull()
+
+    const zeilen = duell(w, wochenwerte('koray', []))
+    expect(zeilen.some((z) => z.id === 'nachtwert')).toBe(false)
+    expect(zeilen.some((z) => z.id === 'schnitt')).toBe(true)
+  })
+})
+

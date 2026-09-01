@@ -12,6 +12,9 @@ import {
   hatTageswert,
   istGesetzt,
   letzteEinheit,
+  mitAufenthalt,
+  mitGewicht,
+  mitNacht,
   setzeEinheitWert,
   setzeTick,
   streak,
@@ -21,7 +24,7 @@ import {
   wocheGesamt,
 } from './tracker'
 import { gewichtKey } from './types'
-import type { Zustand } from './types'
+import type { Schlafnacht, UserId, Zustand } from './types'
 
 const leer: Zustand = { einheiten: {}, gewichte: {}, aufenthalte: [] }
 const MITTWOCH = new Date(2026, 7, 26, 12)
@@ -287,5 +290,110 @@ describe('kalender', () => {
 
     expect(tageMitDaten(z, 'erijon')).toEqual(['2026-08-24', '2026-08-26'])
     expect(tageMitDaten(z, 'koray')).toEqual(['2026-08-20'])
+  })
+})
+
+describe('live eintreffende daten zusammenfuehren', () => {
+  const nacht = (user: UserId, tag: string, minuten: number): Schlafnacht => ({
+    user,
+    nacht: tag,
+    schlafMinuten: minuten,
+    einschlafzeit: `${tag}T23:00:00.000Z`,
+    aufwachzeit: null,
+    bettStart: null,
+    bettEnde: null,
+    bettMinuten: null,
+    tiefMinuten: 0,
+    remMinuten: 0,
+    kernMinuten: 0,
+    unspezMinuten: minuten,
+    wachMinuten: 0,
+    zielMinuten: 540,
+    phasen: [],
+    nachtwert: 70,
+    scoreKonfidenz: 45,
+  })
+
+  it('ersetzt dieselbe nacht, statt sie ein zweites mal anzulegen', () => {
+    const vorher = [nacht('erijon', '2026-08-26', 400)]
+    const next = mitNacht(vorher, nacht('erijon', '2026-08-26', 455))
+
+    expect(next).toHaveLength(1)
+    expect(next[0]!.schlafMinuten).toBe(455)
+  })
+
+  it('haelt die nacht der anderen person daneben', () => {
+    const vorher = [nacht('erijon', '2026-08-26', 400)]
+    const next = mitNacht(vorher, nacht('koray', '2026-08-26', 380))
+
+    expect(next).toHaveLength(2)
+    expect(next.map((n) => n.user).sort()).toEqual(['erijon', 'koray'])
+  })
+
+  it('sortiert eine nachgereichte aeltere nacht an ihren platz', () => {
+    const vorher = [nacht('erijon', '2026-08-26', 400), nacht('erijon', '2026-08-28', 420)]
+    const next = mitNacht(vorher, nacht('erijon', '2026-08-27', 410))
+
+    expect(next.map((n) => n.nacht)).toEqual(['2026-08-26', '2026-08-27', '2026-08-28'])
+  })
+
+  it('nimmt ein gewicht an und wieder weg', () => {
+    const leerGewichte = {}
+    const mit = mitGewicht(leerGewichte, 'koray', '2026-08-26', 81.4)
+    expect(mit[gewichtKey('koray', '2026-08-26')]).toBe(81.4)
+
+    const ohne = mitGewicht(mit, 'koray', '2026-08-26', null)
+    expect(gewichtKey('koray', '2026-08-26') in ohne).toBe(false)
+  })
+
+  it('gibt bei unveraendertem gewicht dieselbe identitaet zurueck', () => {
+    // sonst rendert jedes echo des eigenen schreibvorgangs die app neu
+    const mit = mitGewicht({}, 'erijon', '2026-08-26', 78.2)
+    expect(mitGewicht(mit, 'erijon', '2026-08-26', 78.2)).toBe(mit)
+    expect(mitGewicht({}, 'erijon', '2026-08-26', null)).toEqual({})
+  })
+
+  it('schliesst eine ankunft mit dem abgang, statt sie zu verdoppeln', () => {
+    const ankunft = {
+      user: 'erijon' as UserId,
+      bereich: 'gym' as const,
+      ort: 'fitx',
+      ankunft: '2026-08-26T17:00:00.000Z',
+      abgang: null,
+    }
+    const offen = mitAufenthalt([], ankunft)
+    expect(offen).toHaveLength(1)
+
+    const geschlossen = mitAufenthalt(offen, {
+      ...ankunft,
+      abgang: '2026-08-26T18:05:00.000Z',
+    })
+    expect(geschlossen).toHaveLength(1)
+    expect(geschlossen[0]!.abgang).toBe('2026-08-26T18:05:00.000Z')
+  })
+
+  it('haelt zwei besuche am selben tag auseinander', () => {
+    const erster = {
+      user: 'erijon' as UserId,
+      bereich: 'gym' as const,
+      ort: 'fitx',
+      ankunft: '2026-08-26T07:00:00.000Z',
+      abgang: '2026-08-26T08:00:00.000Z',
+    }
+    const zweiter = { ...erster, ankunft: '2026-08-26T19:00:00.000Z', abgang: null }
+
+    expect(mitAufenthalt([erster], zweiter)).toHaveLength(2)
+  })
+
+  it('gibt bei einem doppelt gemeldeten abgang dieselbe identitaet zurueck', () => {
+    const a = {
+      user: 'koray' as UserId,
+      bereich: 'boxen' as const,
+      ort: 'halle',
+      ankunft: '2026-08-26T17:00:00.000Z',
+      abgang: '2026-08-26T18:30:00.000Z',
+    }
+    const liste = [a]
+    expect(mitAufenthalt(liste, { ...a })).toBe(liste)
   })
 })

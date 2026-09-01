@@ -12,7 +12,16 @@ import type {
   UserId,
   Zustand,
 } from './types'
-import { baueEinheit, fuegeHinzu, mitWert, ohneEinheit, ohneTag } from './tracker'
+import {
+  baueEinheit,
+  fuegeHinzu,
+  mitAufenthalt,
+  mitGewicht,
+  mitNacht,
+  mitWert,
+  ohneEinheit,
+  ohneTag,
+} from './tracker'
 
 let ereignisId = 0
 
@@ -61,6 +70,12 @@ export function useTracker(backend: Backend) {
     { art: 'weg'; area: AreaId; tag: string; einheiten: Einheit[] } |
     null
   >(null)
+
+  /**
+   * welche verlaeufe gerade unterwegs sind. ohne das loeste jeder render des
+   * nachtdetails eine weitere abfrage derselben nacht aus.
+   */
+  const verlaeufeUnterwegs = useRef(new Set<string>())
 
   const einheitenRef = useRef<Einheiten>({})
   const gewichteRef = useRef<Gewichte>({})
@@ -140,6 +155,34 @@ export function useTracker(backend: Backend) {
         setWetten(next)
         return
       }
+
+      // eine nacht ersetzt die vorhandene derselben person: ein zweiter lauf
+      // des kurzbefehls meldet dieselbe nacht noch einmal, und zwei zeilen für
+      // eine nacht würden den kalender und den wochenschnitt verdoppeln
+      if (e.typ === 'schlaf') {
+        setSchlaf((vorher) => mitNacht(vorher, e.nacht))
+        return
+      }
+
+      // ein gewicht vom zweiten gerät. eine eigene, noch laufende schreibung
+      // darf es nicht überholen — deshalb geht es über dieselbe ref wie der
+      // optimistische weg und nicht an ihr vorbei
+      if (e.typ === 'gewicht') {
+        const vorher = gewichteRef.current
+        const next = mitGewicht(vorher, e.user, e.tag, e.kg)
+        if (next === vorher) return
+        gewichteRef.current = next
+        setGewichte(next)
+        return
+      }
+
+      // ankunft legt an, abgang schließt: dieselbe ankunft kommt zweimal, das
+      // zweite mal mit abgang. der schlüssel ist person, bereich und ankunft
+      if (e.typ === 'aufenthalt') {
+        setAufenthalte((vorher) => mitAufenthalt(vorher, e.aufenthalt))
+        return
+      }
+
       const einheit = e.einheit
       // über die id zusammengeführt: ein doppelt gemeldetes ereignis ändert
       // nichts, und ein eigener schreibvorgang kommt nicht doppelt zurück.
@@ -363,6 +406,34 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
+  /**
+   * holt den verlauf einer nacht nach, die ohne ihn geladen wurde.
+   *
+   * Fehler bleiben still: der Verlauf ist die Zugabe, die Nacht steht auch
+   * ohne ihn vollstaendig da. Ein zweiter Aufruf laeuft nach einem Fehler
+   * wieder los, weil der Schluessel dann nicht mehr gesperrt ist.
+   */
+  const phasenNachladen = useCallback(
+    (user: UserId, nacht: string) => {
+      const key = `${user}|${nacht}`
+      if (verlaeufeUnterwegs.current.has(key)) return
+      verlaeufeUnterwegs.current.add(key)
+
+      void backend
+        .ladePhasen(user, nacht)
+        .then((phasen) => {
+          setSchlaf((vorher) => {
+            const vorhanden = vorher.find((n) => n.user === user && n.nacht === nacht)
+            if (!vorhanden || vorhanden.phasen !== null) return vorher
+            return mitNacht(vorher, { ...vorhanden, phasen })
+          })
+        })
+        .catch(() => {})
+        .finally(() => verlaeufeUnterwegs.current.delete(key))
+    },
+    [backend]
+  )
+
   const setzeWette = useCallback(
     (woche: string, text: string) => {
       const sauber = text.trim().replace(/\s+/g, ' ').slice(0, 160)
@@ -403,5 +474,6 @@ export function useTracker(backend: Backend) {
     wertAendern,
     setzeGewicht,
     setzeWette,
+    phasenNachladen,
   }
 }

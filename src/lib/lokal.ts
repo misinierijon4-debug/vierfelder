@@ -336,6 +336,13 @@ export function lokalesBackend(): Backend {
       holeKanal()?.postMessage({ von: absender, typ: 'wette', woche, text } satisfies Nachricht)
     },
 
+    // im prototyp liegt alles im browser, es gibt nichts nachzuladen
+    async ladePhasen(user, nacht) {
+      const gespeichert = lade<Schlafnacht[]>(SCHLAF_KEY, [])
+      const alle = gespeichert.length > 0 ? gespeichert : erzeugeBeispielSchlaf()
+      return alle.find((n) => n.user === user && n.nacht === nacht)?.phasen ?? []
+    },
+
     abonniere(cb) {
       const ch = holeKanal()
       if (!ch) return () => {}
@@ -343,7 +350,7 @@ export function lokalesBackend(): Backend {
         const n = e.data
         if (!n || n.von === absender) return
         if (n.typ === 'wette') cb({ typ: 'wette', woche: n.woche, text: n.text })
-        else if (n.einheit) cb({ typ: 'einheit', art: n.art, einheit: n.einheit })
+        else if (n.typ === 'einheit') cb({ typ: 'einheit', art: n.art, einheit: n.einheit })
       }
       ch.addEventListener('message', onMessage)
       return () => ch.removeEventListener('message', onMessage)

@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import type { NachtPhasenAnalyse } from '../../lib/schlafPhasen'
 import {
   formatDauer,
-  nachtUhrzeit,
+  achsenUhrzeit,
   position,
   stundenmarken,
   verlauf,
@@ -115,8 +115,8 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     )
   }
 
-  const vonUhr = nachtUhrzeit(von)
-  const bisUhr = nachtUhrzeit(bis)
+  const vonUhr = achsenUhrzeit(analyse, von)
+  const bisUhr = achsenUhrzeit(analyse, bis)
   const wachHoehe = EBENE.wach * KURVE_HOEHE
   /** die vier ebenen als hilfslinien, in derselben hoehe, die auch die kurve benutzt */
   const ebenen = [EBENE.wach, EBENE.rem, EBENE.kern, EBENE.tief]
@@ -142,6 +142,27 @@ export function PhasenZeitstrahl({ analyse }: Props) {
       filter={filter}
     />
   )
+
+  // Eine Nacht ausserhalb des geladenen Fensters hat ihre Kennzahlen, aber
+  // ihren Verlauf noch nicht. Ein durchgehender Block waere hier keine
+  // Wartemeldung, sondern eine Behauptung ueber die Nacht — also steht hier,
+  // was wirklich der Fall ist, in derselben Karte und ohne Sprung im Layout.
+  if (!analyse.verlaufGeladen) {
+    return (
+      <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
+        <div className="px-3.5 pt-3">
+          <span className="text-[11px] font-medium text-kreide">verlauf der nacht</span>
+        </div>
+        <div
+          className="flex items-center justify-center px-3.5"
+          style={{ height: `${KURVE_HOEHE}px` }}
+          role="status"
+        >
+          <span className="text-[11px] text-kreide-52">verlauf wird geladen …</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
@@ -288,7 +309,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
               fontSize={ACHSE_SCHRIFT}
               className="tnum"
             >
-              {nachtUhrzeit(m).slice(0, 2)}
+              {achsenUhrzeit(analyse, m).slice(0, 2)}
             </text>
           ))}
           <text

@@ -1,4 +1,12 @@
-import type { Aufenthalt, Einheit, Einheiten, Gewichte, Schlafnacht, UserId } from './types'
+import type {
+  Aufenthalt,
+  Einheit,
+  Einheiten,
+  Gewichte,
+  Phase,
+  Schlafnacht,
+  UserId,
+} from './types'
 
 /** eine einheit, so wie realtime oder ein anderer tab sie meldet */
 export type EinheitEreignis = {
@@ -8,7 +16,31 @@ export type EinheitEreignis = {
 }
 
 export type WetteEreignis = { typ: 'wette'; woche: string; text: string }
-export type BackendEreignis = EinheitEreignis | WetteEreignis
+
+/**
+ * eine nacht, die gerade importiert oder neu bewertet wurde. sie ersetzt die
+ * vorhandene nacht derselben person, sonst käme dieselbe nacht doppelt in die
+ * liste, wenn der kurzbefehl zweimal läuft.
+ */
+export type SchlafEreignis = { typ: 'schlaf'; nacht: Schlafnacht }
+
+/** ein gewicht von einem anderen gerät. `kg === null` heißt gelöscht */
+export type GewichtEreignis = {
+  typ: 'gewicht'
+  user: UserId
+  tag: string
+  kg: number | null
+}
+
+/** eine gemessene ankunft oder ein abgang, so wie die automation sie schreibt */
+export type AufenthaltEreignis = { typ: 'aufenthalt'; aufenthalt: Aufenthalt }
+
+export type BackendEreignis =
+  | EinheitEreignis
+  | WetteEreignis
+  | SchlafEreignis
+  | GewichtEreignis
+  | AufenthaltEreignis
 export type Wetten = Record<string, string>
 
 export type Anfangszustand = {
@@ -47,6 +79,11 @@ export interface Backend {
   schreibeGewicht(tag: string, kg: number): Promise<void>
   /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
   schreibeWette(woche: string, text: string): Promise<void>
+  /**
+   * holt den verlauf einer einzelnen nacht nach. nur das nachtdetail braucht
+   * ihn, deshalb kommt er nicht mit der ganzen historie mit.
+   */
+  ladePhasen(user: UserId, nacht: string): Promise<Phase[]>
   /** ruft cb bei jeder fremden oder eigenen einheit auf. gibt die abmeldung zurück */
   abonniere(cb: (e: BackendEreignis) => void): () => void
 }

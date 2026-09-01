@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import type { Anfangszustand, Backend, EinheitEreignis, Wetten } from './backend'
+import { addDays, toKey } from './dates'
 import { gewichtKey, tickKey } from './types'
 import type {
   Aufenthalt,
@@ -19,6 +20,17 @@ const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 export const hatSupabase = Boolean(url && key)
+
+/**
+ * wie weit zurueck die verlaeufe gleich mitkommen.
+ *
+ * Ein Verlauf ist rund drei Kilobyte je Nacht — bei zwei Personen also gut
+ * zwei Megabyte im Jahr, die sonst bei jedem Start ueber das Mobilnetz gingen,
+ * obwohl nur die geoeffnete Nacht sie braucht. Acht Wochen decken die Woche,
+ * die man sieht, und das Blaettern der letzten Wochen ab; alles davor laedt
+ * das Nachtdetail beim Oeffnen nach.
+ */
+const PHASEN_FENSTER_TAGE = 56
 
 export const supabase = hatSupabase ? createClient(url!, key!) : null
 
@@ -49,7 +61,8 @@ type SchlafZeile = {
   unspez_minuten: number | string | null
   wach_minuten: number | string | null
   schlafziel_minuten: number
-  phasen: Phase[] | null
+  /** fehlt, wenn die spalte nicht angefragt wurde */
+  phasen?: Phase[] | null
   nachtwert: number | null
   score_konfidenz: number | null
 }
@@ -163,20 +176,76 @@ export function supabaseBackend(eigeneId: string): Backend {
     }
   }
 
+  /**
+   * eine zeile aus `schlafnaechte_ansicht` als nacht. derselbe weg fuer das
+   * laden und fuer realtime: sonst haette eine live eintreffende nacht andere
+   * zahlen als dieselbe nacht nach einem neuladen.
+   */
+  const zeileZuSchlafnacht = (n: SchlafZeile): Schlafnacht | null => {
+    const person = personen.get(n.user_id)
+    if (!person) return null
+    return {
+      user: person,
+      nacht: n.nacht,
+      schlafMinuten: zahl(n.schlaf_minuten),
+      einschlafzeit: n.einschlafzeit,
+      aufwachzeit: n.aufwachzeit,
+      bettStart: n.bett_start,
+      bettEnde: n.bett_ende,
+      bettMinuten: n.bett_minuten === null ? null : Number(n.bett_minuten),
+      tiefMinuten: zahl(n.tief_minuten),
+      remMinuten: zahl(n.rem_minuten),
+      kernMinuten: zahl(n.kern_minuten),
+      unspezMinuten: zahl(n.unspez_minuten),
+      wachMinuten: zahl(n.wach_minuten),
+      zielMinuten: n.schlafziel_minuten,
+      // ohne die spalte im select bleibt `undefined` — das ist "nicht geladen"
+      phasen: Array.isArray(n.phasen) ? n.phasen : n.phasen === null ? [] : null,
+      nachtwert: n.nachtwert ?? null,
+      scoreKonfidenz: n.score_konfidenz ?? null,
+    }
+  }
+
+  const zeileZuAufenthalt = (a: AufenthaltZeile): Aufenthalt | null => {
+    const person = personen.get(a.user_id)
+    if (!person) return null
+    return {
+      user: person,
+      bereich: a.bereich,
+      ort: a.ort,
+      ankunft: a.ankunft,
+      abgang: a.abgang,
+    }
+  }
+
   return {
     art: 'supabase',
 
     async laden(): Promise<Anfangszustand> {
-      const [profile, einheitZeilen, schlafZeilen, gewichtZeilen, aufenthaltZeilen, wetteZeilen] =
-        await Promise.all([
+      const [
+        profile,
+        einheitZeilen,
+        schlafZeilen,
+        phasenZeilen,
+        gewichtZeilen,
+        aufenthaltZeilen,
+        wetteZeilen,
+      ] = await Promise.all([
           db.from('profile').select('id, person'),
           db.from('einheiten').select('id, user_id, bereich, tag, wert, erfasst'),
           db
             .from('schlafnaechte_ansicht')
             .select(
-              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, phasen, nachtwert, score_konfidenz'
+              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, nachtwert, score_konfidenz'
             )
             .order('nacht', { ascending: true }),
+          // die verlaeufe der letzten wochen kommen mit: was man gleich
+          // aufschlaegt, soll nicht erst nachladen. alles davor holt sich das
+          // nachtdetail bei bedarf
+          db
+            .from('schlafnaechte_ansicht')
+            .select('user_id, nacht, phasen')
+            .gte('nacht', toKey(addDays(new Date(), -PHASEN_FENSTER_TAGE))),
           db.from('gewicht').select('user_id, tag, kg').order('tag', { ascending: true }),
           db
             .from('aufenthalte')
@@ -191,6 +260,7 @@ export function supabaseBackend(eigeneId: string): Backend {
       const fehltNoch = (code?: string) => code === '42P01' || code === 'PGRST205'
       if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
+      if (phasenZeilen.error && !fehltNoch(phasenZeilen.error.code)) throw phasenZeilen.error
       if (gewichtZeilen.error && !fehltNoch(gewichtZeilen.error.code)) throw gewichtZeilen.error
       if (aufenthaltZeilen.error && !fehltNoch(aufenthaltZeilen.error.code)) {
         throw aufenthaltZeilen.error
@@ -248,29 +318,17 @@ export function supabaseBackend(eigeneId: string): Backend {
         }
       }
 
+      const verlaeufe = new Map<string, Phase[]>()
+      for (const z of (phasenZeilen.data ?? []) as SchlafZeile[]) {
+        verlaeufe.set(`${z.user_id}|${z.nacht}`, Array.isArray(z.phasen) ? z.phasen : [])
+      }
+
       const schlaf: Schlafnacht[] = []
       for (const n of ((schlafZeilen.data ?? []) as SchlafZeile[])) {
-        const person = personen.get(n.user_id)
-        if (!person) continue
-        schlaf.push({
-          user: person,
-          nacht: n.nacht,
-          schlafMinuten: zahl(n.schlaf_minuten),
-          einschlafzeit: n.einschlafzeit,
-          aufwachzeit: n.aufwachzeit,
-          bettStart: n.bett_start,
-          bettEnde: n.bett_ende,
-          bettMinuten: n.bett_minuten === null ? null : Number(n.bett_minuten),
-          tiefMinuten: zahl(n.tief_minuten),
-          remMinuten: zahl(n.rem_minuten),
-          kernMinuten: zahl(n.kern_minuten),
-          unspezMinuten: zahl(n.unspez_minuten),
-          wachMinuten: zahl(n.wach_minuten),
-          zielMinuten: n.schlafziel_minuten,
-          phasen: Array.isArray(n.phasen) ? n.phasen : [],
-          nachtwert: n.nachtwert ?? null,
-          scoreKonfidenz: n.score_konfidenz ?? null,
-        })
+        const nacht = zeileZuSchlafnacht(n)
+        if (!nacht) continue
+        const verlauf = verlaeufe.get(`${n.user_id}|${n.nacht}`)
+        schlaf.push(verlauf === undefined ? nacht : { ...nacht, phasen: verlauf })
       }
 
       const gewichte: Gewichte = {}
@@ -284,15 +342,8 @@ export function supabaseBackend(eigeneId: string): Backend {
 
       const aufenthalte: Aufenthalt[] = []
       for (const a of (aufenthaltZeilen.data ?? []) as AufenthaltZeile[]) {
-        const person = personen.get(a.user_id)
-        if (!person) continue
-        aufenthalte.push({
-          user: person,
-          bereich: a.bereich,
-          ort: a.ort,
-          ankunft: a.ankunft,
-          abgang: a.abgang,
-        })
+        const aufenthalt = zeileZuAufenthalt(a)
+        if (aufenthalt) aufenthalte.push(aufenthalt)
       }
 
       const wetten: Wetten = {}
@@ -405,10 +456,74 @@ export function supabaseBackend(eigeneId: string): Backend {
       if (error) throw error
     },
 
+    async ladePhasen(user, nacht) {
+      const id = [...personen.entries()].find(([, person]) => person === user)?.[0]
+      if (!id) return []
+      const { data, error } = await db
+        .from('schlafnaechte_ansicht')
+        .select('phasen')
+        .eq('user_id', id)
+        .eq('nacht', nacht)
+        .maybeSingle()
+      if (error) throw error
+      return Array.isArray(data?.phasen) ? (data.phasen as Phase[]) : []
+    },
+
     abonniere(cb) {
       // welcher kanal der richtige ist, steht erst nach dem laden fest.
       let kanal: ReturnType<typeof db.channel> | null = null
       let abgemeldet = false
+
+      /**
+       * schlaf, gewicht und aufenthalte hängen an denselben kanal wie die
+       * ticks. sie kommen nicht aus der app, sondern vom kurzbefehl auf dem
+       * iphone oder vom zweiten gerät — ohne diese drei bliebe eine offene
+       * app so lange auf dem stand des ladens, bis jemand sie neu startet.
+       *
+       * `schlaf_updates` ist die projektion, nicht die quelltabelle: über den
+       * kanal geht damit dieselbe datensparsame zeile wie über die ansicht,
+       * und die rohsegmente bleiben, wo sie sind.
+       */
+      const mitGesundheit = (b: ReturnType<typeof db.channel>) =>
+        b
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'schlaf_updates' },
+            (p) => {
+              const zeile = p.new as SchlafZeile | null
+              if (!zeile?.user_id) return
+              const nacht = zeileZuSchlafnacht(zeile)
+              if (nacht) cb({ typ: 'schlaf', nacht })
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'gewicht' },
+            (p) => {
+              // beim löschen trägt nur `old` die zeile, und zwar nur den
+              // schlüssel — mehr braucht das entfernen nicht
+              const zeile = (p.eventType === 'DELETE' ? p.old : p.new) as GewichtZeile | null
+              if (!zeile?.user_id || !zeile.tag) return
+              const person = personen.get(zeile.user_id)
+              if (!person) return
+              cb({
+                typ: 'gewicht',
+                user: person,
+                tag: zeile.tag,
+                kg: p.eventType === 'DELETE' ? null : Number(zeile.kg),
+              })
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'aufenthalte' },
+            (p) => {
+              const zeile = p.new as AufenthaltZeile | null
+              if (!zeile?.user_id) return
+              const aufenthalt = zeileZuAufenthalt(zeile)
+              if (aufenthalt) cb({ typ: 'aufenthalt', aufenthalt })
+            }
+          )
 
       void modus.then(() => {
         if (abgemeldet) return
@@ -445,7 +560,7 @@ export function supabaseBackend(eigeneId: string): Backend {
               }
             )
           }
-          kanal = builder.subscribe()
+          kanal = mitGesundheit(builder).subscribe()
           return
         }
 
@@ -485,7 +600,7 @@ export function supabaseBackend(eigeneId: string): Backend {
             }
           )
         }
-        kanal = builder.subscribe()
+        kanal = mitGesundheit(builder).subscribe()
       })
 
       return () => {

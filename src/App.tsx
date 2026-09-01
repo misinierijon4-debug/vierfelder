@@ -80,6 +80,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     wertAendern,
     setzeGewicht,
     setzeWette,
+    phasenNachladen,
   } = useTracker(backend)
   const [heute, setHeute] = useState(() => new Date())
   const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
@@ -329,6 +330,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 woche={woche}
                 heuteKey={heuteKey}
                 me={me}
+                onVerlaufBrauchen={phasenNachladen}
               />
             </motion.div>
           )}
