@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite'
+// vitest steuert die testumgebung mit, deshalb kommt defineConfig von dort:
+// nur diese fassung kennt den `test`-abschnitt weiter unten.
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
