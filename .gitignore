@@ -5,3 +5,4 @@ dist
 *.tsbuildinfo
 dev-dist
 supabase/.temp/
+.env.prototyp
