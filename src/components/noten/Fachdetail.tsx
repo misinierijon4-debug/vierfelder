@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { Trash, X } from '@phosphor-icons/react'
 import type { Fach, Note, Notenart } from '../../lib/types'
+import { user } from '../../lib/types'
 import { EASE } from '../../lib/motion'
 import { fachSchnitt, klausurAnteil, punkteKurz } from '../../lib/noten'
 
@@ -29,6 +30,13 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
   const liste = noten.filter((note) => note.fachId === fach.id).sort((a, b) => b.datum.localeCompare(a.datum))
   const schnitt = fachSchnitt(noten, fach)
   const anteil = klausurAnteil(fach.kursart)
+  // die farbe der person markiert, was gerade ausgewählt ist
+  const farbe = user(fach.user).farbe
+  const hinweis: Record<Notenart, string> = {
+    klausur: `eine klausur zählt ${anteil}% der fachnote.`,
+    epo: `eine epo zählt doppelt im mündlichen teil, also in den ${100 - anteil}%.`,
+    hue: `eine hü zählt einfach im mündlichen teil, also in den ${100 - anteil}%.`,
+  }
 
   useEffect(() => {
     schliessen.current?.focus()
@@ -66,7 +74,15 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <div className="mt-3 flex min-h-11 items-center justify-between gap-3">
             <span className="text-[12px]">prüfungsfach</span>
             <div className="flex gap-1" role="group" aria-label="prüfungsfach">
-              {[null, 4, 5].map((nr) => <button key={nr ?? 'kein'} type="button" aria-pressed={fach.pruefungsfach === nr} onClick={() => onPruefungsfach(fach.id, nr)} className={`flex size-11 items-center justify-center rounded-[2px] border text-[12px] ${fach.pruefungsfach === nr ? 'border-linie-hell bg-flaeche' : 'border-linie text-kreide-52'}`}>{nr ?? '–'}</button>)}
+              {[null, 4, 5].map((nr) => {
+                const gewaehlt = fach.pruefungsfach === nr
+                return (
+                  <button key={nr ?? 'kein'} type="button" aria-pressed={gewaehlt} onClick={() => onPruefungsfach(fach.id, nr)}
+                    style={gewaehlt ? { borderColor: farbe, color: farbe } : undefined}
+                    className={`flex size-11 items-center justify-center rounded-[2px] border text-[12px] transition-colors ${gewaehlt ? 'bg-flaeche font-semibold' : 'border-linie text-kreide-52'}`}
+                  >{nr ?? '–'}</button>
+                )
+              })}
             </div>
           </div>
         ) : <p className="mt-3 text-[11px] text-kreide-52">leistungskurse sind schriftliche prüfungsfächer.</p>}
@@ -77,9 +93,17 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
             <span className="tnum text-[10px] text-kreide-52">{heute}</span>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="notenart">
-            {(['klausur', 'epo', 'hue'] as Notenart[]).map((wert) => <button key={wert} type="button" aria-pressed={art === wert} onClick={() => setArt(wert)} className={`min-h-11 rounded-[2px] border text-[12px] ${art === wert ? 'border-linie-hell bg-flaeche' : 'border-linie text-kreide-52'}`}>{notenartLabel[wert]}</button>)}
+            {(['klausur', 'epo', 'hue'] as Notenart[]).map((wert) => {
+              const gewaehlt = art === wert
+              return (
+                <button key={wert} type="button" aria-pressed={gewaehlt} onClick={() => setArt(wert)}
+                  style={gewaehlt ? { borderColor: farbe, color: farbe } : undefined}
+                  className={`min-h-11 rounded-[2px] border text-[12px] transition-colors ${gewaehlt ? 'bg-flaeche font-semibold' : 'border-linie text-kreide-52'}`}
+                >{notenartLabel[wert]}</button>
+              )
+            })}
           </div>
-          <p className="mt-2 text-[10px] text-kreide-52">epo zählt im mündlichen teil doppelt, eine hü einfach.</p>
+          <p className="mt-2 text-[10px] text-kreide-52">{hinweis[art]}</p>
           <input value={titel} maxLength={40} onChange={(e) => setTitel(e.currentTarget.value.toLocaleLowerCase('de-DE'))} placeholder="titel optional" aria-label="titel der note" className="mt-2 min-h-11 w-full rounded-[2px] border border-linie bg-flaeche px-3 text-[12px] outline-none placeholder:text-kreide-52" />
           <div className="mt-2 grid grid-cols-4 gap-1" aria-label="notenpunkte">
             {Array.from({ length: 16 }, (_, i) => 15 - i).map((punkte) => <button key={punkte} type="button" onClick={() => { onNote(punkte, art, titel); setTitel('') }} aria-label={`${punkte} ${punkte === 1 ? 'punkt' : 'punkte'}, ${punkteKurz(punkte)}`} className="flex min-h-11 min-w-0 flex-col items-center justify-center rounded-[2px] border border-linie bg-flaeche active:scale-[0.98]"><span className="tnum text-[14px] font-semibold">{punkte}</span><span className="text-[8px] text-kreide-52">{punkteKurz(punkte)}</span></button>)}

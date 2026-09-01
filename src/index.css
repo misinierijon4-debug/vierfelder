@@ -103,13 +103,21 @@ body {
   letter-spacing: 0;
 }
 
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
+/*
+ * der reset gehoert in `base`. ungelayertes css schlaegt jede utility, egal in
+ * welcher reihenfolge es steht — `border: 0` hat sonst jedes `border-linie` und
+ * `background: none` jedes `bg-flaeche` auf einem button stillgelegt, und die
+ * ausgewaehlte notenart sah aus wie die nicht ausgewaehlte.
+ */
+@layer base {
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
 }
 
 :focus-visible {
