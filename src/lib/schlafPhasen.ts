@@ -360,6 +360,16 @@ export function median(werte: number[]): number {
   return s.length % 2 ? s[mitte]! : (s[mitte - 1]! + s[mitte]!) / 2
 }
 
+/**
+ * Ab wie vielen Naechten die Streuung eine Aussage ist.
+ *
+ * Aus zwei Naechten ergibt sich immer eine mittlere Abweichung, und sie ist
+ * immer die halbe Differenz der beiden — das ist keine Konstanz, das ist ein
+ * Rechenweg. Wer zweimal misst, gewinnt sonst eine Disziplin, an der er nicht
+ * teilgenommen hat.
+ */
+export const KONSTANZ_MINDESTNAECHTE = 3
+
 export type Wochenwerte = {
   user: UserId
   naechte: number
@@ -371,6 +381,10 @@ export type Wochenwerte = {
   streuung: number | null
   tiefAnteil: number | null
   wachSchnitt: number | null
+  /** schnitt des gerechneten nachtwerts. null im prototyp ohne datenbank */
+  nachtwertSchnitt: number | null
+  /** naechte, bei denen nicht jede komponente belegt war */
+  unvollstaendig: number
 }
 
 export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
@@ -385,6 +399,8 @@ export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
       streuung: null,
       tiefAnteil: null,
       wachSchnitt: null,
+      nachtwertSchnitt: null,
+      unvollstaendig: 0,
     }
   }
 
@@ -393,6 +409,7 @@ export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
   const gesamt = eigene.reduce((s, n) => s + n.schlafMinuten, 0)
   const mitStadien = eigene.filter((n) => n.tiefMinuten + n.remMinuten + n.kernMinuten > 0)
   const stadienSchlaf = mitStadien.reduce((s, n) => s + n.schlafMinuten, 0)
+  const mitWert = eigene.filter((n) => n.nachtwert !== null)
 
   return {
     user,
@@ -400,16 +417,43 @@ export function wochenwerte(user: UserId, naechte: Schlafnacht[]): Wochenwerte {
     schlafSchnitt: gesamt / eigene.length,
     gesamt,
     einschlafMedian: referenz,
-    // eine einzelne nacht hat keine streuung, erst ab zwei ist der wert echt
     streuung:
-      eigene.length > 1
+      eigene.length >= KONSTANZ_MINDESTNAECHTE
         ? einschlaf.reduce((s, m) => s + Math.abs(m - referenz), 0) / eigene.length
         : null,
     tiefAnteil: stadienSchlaf
       ? mitStadien.reduce((s, n) => s + n.tiefMinuten, 0) / stadienSchlaf
       : null,
     wachSchnitt: eigene.reduce((s, n) => s + n.wachMinuten, 0) / eigene.length,
+    nachtwertSchnitt: mitWert.length
+      ? mitWert.reduce((s, n) => s + n.nachtwert!, 0) / mitWert.length
+      : null,
+    // konfidenz unter hundert heisst: eine komponente fehlte, etwa die
+    // bettzeit oder die historie. der wert ist trotzdem nach demselben
+    // masstab gerechnet — nur aus weniger belegen
+    unvollstaendig: eigene.filter((n) => n.scoreKonfidenz !== null && n.scoreKonfidenz < 100)
+      .length,
   }
+}
+
+/**
+ * Naechte, die beide gemessen haben — die einzigen, in denen wirklich
+ * dieselbe Nacht verglichen wird. Der Rest der Tabelle vergleicht zwei
+ * Wochen, was etwas anderes ist und darum danebensteht.
+ */
+export function gemeinsameNaechte(naechte: Schlafnacht[], woche: string[]): number {
+  const proAbend = new Map<string, Set<UserId>>()
+  for (const n of naechte) {
+    if (n.schlafMinuten <= 0) continue
+    const abend = abendDatum(n.einschlafzeit)
+    if (!woche.includes(abend)) continue
+    const vorhanden = proAbend.get(abend) ?? new Set<UserId>()
+    vorhanden.add(n.user)
+    proAbend.set(abend, vorhanden)
+  }
+  let gemeinsam = 0
+  for (const nutzer of proAbend.values()) if (nutzer.size > 1) gemeinsam++
+  return gemeinsam
 }
 
 export type Duellzeile = {
@@ -443,6 +487,16 @@ export function registrierteSchlafNutzer(naechte: Schlafnacht[]): Set<UserId> {
 }
 
 const DISZIPLINEN: Disziplin[] = [
+  {
+    // die leitzahl zuerst: sie ist das einzige, was alle anderen zeilen
+    // zusammenfasst, und sie kommt fertig gerechnet aus der datenbank
+    id: 'nachtwert',
+    label: 'nachtwert',
+    wert: (w) => w.nachtwertSchnitt,
+    text: (w) => (w.nachtwertSchnitt === null ? OHNE : String(Math.round(w.nachtwertSchnitt))),
+    richtung: 'hoch',
+    mindest: 2,
+  },
   {
     id: 'schnitt',
     label: 'schnitt pro nacht',
@@ -485,8 +539,13 @@ const DISZIPLINEN: Disziplin[] = [
   },
 ]
 
+/**
+ * Eine Zeile, in der auf beiden Seiten nichts steht, ist keine Disziplin,
+ * sondern eine Luecke. Sie faellt weg — anders als eine Zeile, in der einer
+ * gemessen hat und der andere nicht: die sagt etwas.
+ */
 export function duell(a: Wochenwerte, b: Wochenwerte): Duellzeile[] {
-  return DISZIPLINEN.map((d) => {
+  return DISZIPLINEN.filter((d) => d.wert(a) !== null || d.wert(b) !== null).map((d) => {
     const wa = d.wert(a)
     const wb = d.wert(b)
     let sieger: UserId | null = null

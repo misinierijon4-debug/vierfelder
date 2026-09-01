@@ -7,6 +7,7 @@ import {
   duell,
   formatDauer,
   formatStunden,
+  gemeinsameNaechte,
   nachtMinute,
   nachtUhrzeit,
   qualitaet,
@@ -571,6 +572,124 @@ describe('eine sehr zerrissene nacht auf dem ganzen weg', () => {
     const start = performance.now()
     for (let i = 0; i < 20; i++) verlauf(analysiereSchlafnacht(n))
     expect((performance.now() - start) / 20).toBeLessThan(50)
+  })
+})
+
+describe('duell der woche: fairness bei ungleicher datenlage', () => {
+  const woche = [
+    '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27',
+    '2026-08-28', '2026-08-29', '2026-08-30',
+  ]
+
+  /** eine nacht am abend `abend`, gespeichert unter dem morgen danach */
+  const abendNacht = (user: UserId, abend: string, over: Partial<Schlafnacht> = {}): Schlafnacht => {
+    const morgen = new Date(Date.parse(abend + 'T12:00:00') + 86400000)
+    const key = `${morgen.getFullYear()}-${String(morgen.getMonth() + 1).padStart(2, '0')}-${String(
+      morgen.getDate()
+    ).padStart(2, '0')}`
+    return nacht({
+      user,
+      nacht: key,
+      einschlafzeit: iso(abend, '23:20'),
+      aufwachzeit: iso(key, '07:00'),
+      bettStart: iso(abend, '23:05'),
+      bettEnde: iso(key, '07:10'),
+      ...over,
+    })
+  }
+
+  it('zaehlt nur die naechte, in denen beide gemessen haben', () => {
+    const naechte = [
+      abendNacht('erijon', '2026-08-24'),
+      abendNacht('erijon', '2026-08-25'),
+      abendNacht('erijon', '2026-08-26'),
+      abendNacht('koray', '2026-08-25'),
+      abendNacht('koray', '2026-08-26'),
+    ]
+
+    expect(gemeinsameNaechte(naechte, woche)).toBe(2)
+  })
+
+  it('zaehlt eine nacht ohne schlafzeit nicht als gemessen', () => {
+    const naechte = [
+      abendNacht('erijon', '2026-08-25'),
+      abendNacht('koray', '2026-08-25', { schlafMinuten: 0 }),
+    ]
+
+    expect(gemeinsameNaechte(naechte, woche)).toBe(0)
+  })
+
+  it('vergibt die konstanz nicht aus zwei naechten', () => {
+    // aus zwei werten ist die mittlere abweichung immer die halbe differenz —
+    // das ist ein rechenweg, keine konstanz
+    const zwei = wochenwerte('koray', [
+      abendNacht('koray', '2026-08-25'),
+      abendNacht('koray', '2026-08-26'),
+    ])
+    const drei = wochenwerte('erijon', [
+      abendNacht('erijon', '2026-08-25'),
+      abendNacht('erijon', '2026-08-26'),
+      abendNacht('erijon', '2026-08-27'),
+    ])
+
+    expect(zwei.streuung).toBeNull()
+    expect(drei.streuung).not.toBeNull()
+
+    // und ohne wert gewinnt niemand die zeile
+    const zeile = duell(drei, zwei).find((z) => z.id === 'konstanz')!
+    expect(zeile.sieger).toBeNull()
+  })
+
+  it('gibt einer fehlenden messung keinen sieg — die zeile bleibt offen', () => {
+    const mit = wochenwerte('erijon', [abendNacht('erijon', '2026-08-25')])
+    const ohne = wochenwerte('koray', [])
+    const zeilen = duell(mit, ohne)
+
+    expect(zeilen.length).toBeGreaterThan(0)
+    for (const zeile of zeilen) {
+      // wer nichts gemessen hat, verliert nicht: es gibt schlicht kein duell
+      expect(zeile.sieger).toBeNull()
+      expect(zeile.text.koray).toBe('—')
+    }
+  })
+
+  it('laesst eine zeile weg, in der auf beiden seiten nichts steht', () => {
+    const leer = duell(wochenwerte('erijon', []), wochenwerte('koray', []))
+    expect(leer).toEqual([])
+  })
+
+  it('mittelt den nachtwert ueber die eigenen naechte und kuert den besseren', () => {
+    const stark = wochenwerte('erijon', [
+      abendNacht('erijon', '2026-08-25', { nachtwert: 80 }),
+      abendNacht('erijon', '2026-08-26', { nachtwert: 90 }),
+    ])
+    const schwach = wochenwerte('koray', [abendNacht('koray', '2026-08-25', { nachtwert: 60 })])
+
+    expect(stark.nachtwertSchnitt).toBe(85)
+    const zeile = duell(stark, schwach).find((z) => z.id === 'nachtwert')!
+    expect(zeile.text.erijon).toBe('85')
+    expect(zeile.sieger).toBe('erijon')
+  })
+
+  it('haelt fest, wie viele naechte unvollstaendig gemessen waren', () => {
+    const w = wochenwerte('erijon', [
+      abendNacht('erijon', '2026-08-25', { scoreKonfidenz: 100 }),
+      abendNacht('erijon', '2026-08-26', { scoreKonfidenz: 65 }),
+      abendNacht('erijon', '2026-08-27', { scoreKonfidenz: 80 }),
+    ])
+
+    expect(w.unvollstaendig).toBe(2)
+  })
+
+  it('zeigt gar keine nachtwert-zeile, wo keiner gerechnet wurde', () => {
+    // prototyp-modus ohne datenbank: eine zeile mit zwei gedankenstrichen
+    // waere kein hinweis, sondern eine leere behauptung
+    const w = wochenwerte('erijon', [abendNacht('erijon', '2026-08-25', { nachtwert: null })])
+    expect(w.nachtwertSchnitt).toBeNull()
+
+    const zeilen = duell(w, wochenwerte('koray', []))
+    expect(zeilen.some((z) => z.id === 'nachtwert')).toBe(false)
+    expect(zeilen.some((z) => z.id === 'schnitt')).toBe(true)
   })
 })
 

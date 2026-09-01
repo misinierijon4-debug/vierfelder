@@ -1,7 +1,13 @@
 import { Fragment } from 'react'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
-import { abendDatum, duell, wochenwerte } from '../../lib/schlafPhasen'
+import {
+  KONSTANZ_MINDESTNAECHTE,
+  abendDatum,
+  duell,
+  gemeinsameNaechte,
+  wochenwerte,
+} from '../../lib/schlafPhasen'
 
 type Props = {
   naechte: Schlafnacht[]
@@ -19,6 +25,11 @@ export function SchlafRhythmus({ naechte, registrierte, woche }: Props) {
   const [a, b] = USERS.map((u) => wochenwerte(u.id, wochenNaechte))
   const zeilen = duell(a!, b!)
   const nichtVerbunden = USERS.filter((u) => !registrierte.has(u.id))
+  const gemeinsam = gemeinsameNaechte(wochenNaechte, woche)
+  const unvollstaendig = a!.unvollstaendig + b!.unvollstaendig
+  const zuWenigFuerKonstanz =
+    a!.naechte + b!.naechte > 0 &&
+    (a!.naechte < KONSTANZ_MINDESTNAECHTE || b!.naechte < KONSTANZ_MINDESTNAECHTE)
 
   if (nichtVerbunden.length > 0) {
     return (
@@ -82,10 +93,38 @@ export function SchlafRhythmus({ naechte, registrierte, woche }: Props) {
         </dl>
       </div>
 
-      <p className="mt-2 text-[10px] leading-snug text-kreide-52">
-        konstanz ist die mittlere abweichung von der eigenen üblichen einschlafzeit. kleiner heißt:
-        du gehst jeden abend etwa zur selben zeit ins bett.
-      </p>
+      <div className="mt-2 space-y-1 text-[10px] leading-snug text-kreide-52">
+        {/*
+          Die Zeilen darüber vergleichen zwei Wochen, nicht dieselben Nächte.
+          Wer an vier Abenden gemessen hat und wer an sieben, steht schon oben —
+          wie oft beide in derselben Nacht gemessen haben, ist die Zahl, die
+          sagt, wie viel der Vergleich wiegt.
+        */}
+        {a!.naechte + b!.naechte > 0 && (
+          <p>
+            {gemeinsam === 0
+              ? 'noch keine nacht, in der beide gemessen haben'
+              : `${gemeinsam} ${gemeinsam === 1 ? 'nacht' : 'nächte'}, in ${
+                  gemeinsam === 1 ? 'der' : 'denen'
+                } beide gemessen haben`}
+          </p>
+        )}
+        {unvollstaendig > 0 && (
+          <p>
+            {unvollstaendig === 1
+              ? 'eine nacht ohne vollständige messung — gleicher maßstab, weniger belege'
+              : `${unvollstaendig} nächte ohne vollständige messung — gleicher maßstab, weniger belege`}
+          </p>
+        )}
+        <p>
+          konstanz ist die mittlere abweichung von der eigenen üblichen einschlafzeit. kleiner
+          heißt: du gehst jeden abend etwa zur selben zeit ins bett
+          {zuWenigFuerKonstanz
+            ? `; sie steht erst ab ${KONSTANZ_MINDESTNAECHTE} nächten`
+            : ''}
+          .
+        </p>
+      </div>
     </section>
   )
 }
