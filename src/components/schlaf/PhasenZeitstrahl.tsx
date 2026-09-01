@@ -3,13 +3,13 @@ import { motion, useReducedMotion } from 'motion/react'
 import type { NachtPhasenAnalyse } from '../../lib/schlafPhasen'
 import {
   formatDauer,
-  hypnogramm,
   nachtUhrzeit,
   position,
   stundenmarken,
   verlauf,
   PHASEN_SCHWELLE,
 } from '../../lib/schlafPhasen'
+import { EBENE, nachtkurve } from '../../lib/nachtkurve'
 import { DIAGRAMM, EASE } from '../../lib/motion'
 import type { PhasenArt } from '../../lib/types'
 
@@ -18,8 +18,11 @@ type Props = {
 }
 
 /**
- * Die vier Phasenfarben gehoeren keiner Person, sie sind eine Legende. Sie
- * stehen nur hier im Nachtdetail; das Wochenraster bleibt zweifarbig.
+ * Die vier Phasenfarben gehoeren keiner Person, sie sind eine Legende: wach
+ * ist die helle Linie oben, der Traum leuchtet, und je tiefer der Schlaf,
+ * desto dunkler das Petrol. Die Farbe wiederholt die Hoehe, statt ihr zu
+ * widersprechen. Sie stehen nur hier im Nachtdetail; das Wochenraster bleibt
+ * zweifarbig.
  */
 const FARBE: Record<PhasenArt, string> = {
   tief: 'var(--phase-tief)',
@@ -30,31 +33,32 @@ const FARBE: Record<PhasenArt, string> = {
 }
 
 /**
- * Der Verlauf ist eine Kurve, kein Balken.
+ * Der Verlauf ist eine Kurve, kein Balken — und ein einziger Pfad, keine Folge
+ * von Teilstuecken.
  *
  * Ein Balken kann nur Farbe nebeneinander legen; die Nacht hat aber eine
  * Richtung — nach unten in den Tiefschlaf und wieder herauf. Die Kurve zeigt
- * genau das: die Breite bleibt die Uhr, die Hoehe ist die Schlaftiefe. Die
- * Zahlen darunter sind dieselben wie vorher, nur die Reihenfolge folgt jetzt
- * der Hoehe der Linien.
+ * genau das: die Breite bleibt die Uhr, die Hoehe ist die Schlaftiefe.
+ *
+ * Dass es ein einziger Pfad ist, ist keine Kosmetik. Vorher bekam jede Phase
+ * ihren eigenen Pfad, und ob zwei davon aneinander stiessen, entschied ein
+ * Vergleich zweier Pixelwerte. Health setzt seine Grenzen sekundengenau: eine
+ * Sekunde Naht ist knapp breiter als die Toleranz war, und ab der ersten
+ * solchen Naht zerfiel die Kurve in waagerechte Striche. Ein Pfad mit einem
+ * einzigen `M` kann das nicht.
  */
 const BREITE = 320
-const HOEHE = 124
-/** y der wach-linie und y der tiefschlaf-linie */
-const OBEN = 16
-const UNTEN = 92
+/** hoehe des kurvenfeldes; die vier ebenen liegen als anteil davon darin */
+const KURVE_HOEHE = 104
+const HOEHE = 132
 /** grundlinie der uhrzeiten */
-const ACHSE_Y = 117
-/** waagerechte laenge eines phasenuebergangs */
-const UEBERGANG = 7.5
+const ACHSE_Y = 126
 /**
  * Strichstaerke der Kurve.
  *
  * Sie ist die Grenze der Aufloesung: was schmaler ist als der Strich, kann
  * keine Form mehr bilden, sondern nur noch eine Doppellinie — und die sieht
- * aus wie ein Fehler, nicht wie eine kurze Phase. Bei 320 Einheiten fuer eine
- * Nacht ist eine Minute rund 0,6 Einheiten breit; mit 1,5 traegt der Strich
- * also alles ab etwa zweieinhalb Minuten.
+ * aus wie ein Fehler, nicht wie eine kurze Phase.
  */
 const STRICH = 1.5
 /** so nah an den rand darf keine stundenmarke, sonst stoesst sie an die eckzeit */
@@ -62,28 +66,27 @@ const RANDSCHUTZ = 34
 
 export function PhasenZeitstrahl({ analyse }: Props) {
   const reduced = useReducedMotion()
-  const glanz = useId()
+  // useId liefert zeichen, die in einer url-referenz nichts zu suchen haben
+  const roheId = useId()
+  const id = roheId.replace(/[^a-zA-Z0-9]/g, '')
+  const glanz = `glow-${id}`
+  const verlaufId = `sleep-gradient-${id}`
+  const traumId = `rem-gradient-${id}`
 
   const { kurve, unruhen, von, bis, marken } = useMemo(() => {
     const { linie, unruhen } = verlauf(analyse)
     // die achse gehoert dieser einen nacht: sie beginnt und endet an den
-    // gemessenen zeiten, damit die auflösung so fein wie moeglich bleibt
+    // gemessenen zeiten, damit die aufloesung so fein wie moeglich bleibt
     const alle = [...linie, ...unruhen]
     const von = Math.min(analyse.einschlafMinute, ...alle.map((s) => s.von))
     const bis = Math.max(analyse.aufwachMinute, ...alle.map((s) => s.bis))
     // ueber zwoelf stunden wuerden stuendliche marken aneinanderkleben
     const schritt = bis - von > 12 * 60 ? 120 : 60
     return {
-      kurve: hypnogramm(linie, von, bis, {
-        breite: BREITE,
-        oben: OBEN,
-        unten: UNTEN,
-        radius: UEBERGANG,
-      }),
+      kurve: nachtkurve(linie, von, bis, { breite: BREITE, hoehe: KURVE_HOEHE }),
       unruhen: unruhen.map((u) => ({
-        von: position(u.von, von, bis) * BREITE,
-        // eine minute waere sonst unsichtbar: der strich hat eine mindestlaenge
-        bis: Math.max(position(u.bis, von, bis) * BREITE, position(u.von, von, bis) * BREITE + 1.6),
+        schluessel: u.von,
+        x: position((u.von + u.bis) / 2, von, bis) * BREITE,
       })),
       von,
       bis,
@@ -94,7 +97,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     }
   }, [analyse])
 
-  if (!analyse.hatPhasenDaten) {
+  if (!analyse.hatPhasenDaten || kurve.d === '') {
     return (
       <div className="mt-4 border-y border-linie py-4">
         <p className="text-[11px] font-medium text-kreide">keine schlafphasen erfasst</p>
@@ -107,6 +110,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
 
   const vonUhr = nachtUhrzeit(von)
   const bisUhr = nachtUhrzeit(bis)
+  const wachHoehe = EBENE.wach * KURVE_HOEHE
 
   // reihenfolge wie in der kurve: von der wach-linie oben bis zum tiefschlaf
   const kacheln = [
@@ -116,21 +120,19 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     { key: 'tief' as const, label: 'tiefschlaf', minuten: analyse.tiefMinuten, prozent: analyse.tiefProzent },
   ]
 
-  const linien = (breite: number, deckkraft: number, nurRem: boolean) =>
-    kurve
-      .filter((stueck) => !nurRem || stueck.art === 'rem')
-      .map((stueck, i) => (
-        <path
-          key={`${nurRem ? 'rem' : 'alle'}-${i}`}
-          d={stueck.d}
-          fill="none"
-          stroke={FARBE[stueck.art]}
-          strokeWidth={breite}
-          strokeOpacity={deckkraft}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))
+  /** dieselbe geometrie, nur in anderer staerke und farbe — nie ein zweiter pfad */
+  const linie = (stroke: string, breite: number, deckkraft: number, filter?: string) => (
+    <path
+      d={kurve.d}
+      fill="none"
+      stroke={stroke}
+      strokeWidth={breite}
+      strokeOpacity={deckkraft}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      filter={filter}
+    />
+  )
 
   return (
     <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
@@ -153,33 +155,86 @@ export function PhasenZeitstrahl({ analyse }: Props) {
             .join(', ')}`}
         >
           <defs>
+            {/*
+              Der Farbverlauf laeuft ueber die Uhr, nicht ueber die Hoehe: jede
+              Marke sitzt an dem Anteil der Nacht, an dem ihre Phase beginnt.
+              `userSpaceOnUse` statt der Voreinstellung, damit die Anteile sich
+              auf die Zeitachse beziehen und nicht auf die zufaellige
+              Bounding-Box des Pfades.
+            */}
+            <linearGradient
+              id={verlaufId}
+              gradientUnits="userSpaceOnUse"
+              x1="0"
+              y1="0"
+              x2={BREITE}
+              y2="0"
+            >
+              {kurve.marken.map((marke, i) => (
+                <stop
+                  key={`${i}-${marke.offset}`}
+                  offset={`${marke.offset * 100}%`}
+                  style={{ stopColor: FARBE[marke.art] }}
+                />
+              ))}
+            </linearGradient>
+
+            {/*
+              Derselbe Verlauf, aber nur dort sichtbar, wo getraeumt wurde. So
+              bekommt REM sein staerkeres Leuchten, ohne dass die Kurve dafuer
+              in Stuecke zerlegt werden muesste.
+            */}
+            <linearGradient
+              id={traumId}
+              gradientUnits="userSpaceOnUse"
+              x1="0"
+              y1="0"
+              x2={BREITE}
+              y2="0"
+            >
+              {kurve.marken.map((marke, i) => (
+                <stop
+                  key={`${i}-${marke.offset}`}
+                  offset={`${marke.offset * 100}%`}
+                  style={{ stopColor: FARBE.rem, stopOpacity: marke.art === 'rem' ? 1 : 0 }}
+                />
+              ))}
+            </linearGradient>
+
             {/* das leuchten ist die einzige stelle mit weicher kante in der app —
                 ohne es wirkt die kurve wie ein technischer plot, nicht wie eine nacht */}
-            <filter id={glanz} x="-5%" y="-40%" width="110%" height="180%">
-              <feGaussianBlur stdDeviation="3" />
+            <filter
+              id={glanz}
+              filterUnits="userSpaceOnUse"
+              x={-16}
+              y={-16}
+              width={BREITE + 32}
+              height={KURVE_HOEHE + 32}
+            >
+              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="coloredBlur" />
+              </feMerge>
             </filter>
           </defs>
 
-          <g filter={`url(#${glanz})`}>
-            {linien(STRICH + 1, 0.16, false)}
-            {/* der traum leuchtet staerker, so wie er die nacht auch praegt */}
-            {linien(STRICH + 2, 0.5, true)}
-          </g>
+          {/* dreimal derselbe pfad: schein, traumschein, linie */}
+          {linie(`url(#${verlaufId})`, STRICH + 2.5, 0.28, `url(#${glanz})`)}
+          {linie(`url(#${traumId})`, STRICH + 3.5, 0.5, `url(#${glanz})`)}
+          {linie(`url(#${verlaufId})`, STRICH, 1)}
 
-          {linien(STRICH, 1, false)}
-
-          {/* kurzes wachwerden: ein strich auf der wachhoehe, kein ausschlag */}
+          {/* kurzes wachwerden: ein punkt auf der wachhoehe, kein ausschlag —
+              als voller ausschlag waere eine minute umdrehen im bild genauso
+              laut wie eine halbe stunde wachliegen */}
           {unruhen.map((u) => (
-            <line
-              key={u.von}
-              x1={u.von}
-              x2={u.bis}
-              y1={OBEN}
-              y2={OBEN}
-              stroke={FARBE.wach}
-              strokeWidth={STRICH + 0.4}
-              strokeOpacity="0.5"
-              strokeLinecap="round"
+            <circle
+              key={u.schluessel}
+              cx={u.x}
+              cy={wachHoehe}
+              r={STRICH}
+              fill={FARBE.wach}
+              fillOpacity="0.45"
             />
           ))}
 
@@ -221,7 +276,7 @@ export function PhasenZeitstrahl({ analyse }: Props) {
 
       {unruhen.length > 0 && (
         <p className="mx-3.5 mt-1 text-pretty text-[10px] text-kreide-52">
-          striche oben: {unruhen.length}× kurz wach, unter {PHASEN_SCHWELLE} minuten
+          punkte oben: {unruhen.length}× kurz wach, unter {PHASEN_SCHWELLE} minuten
         </p>
       )}
 
