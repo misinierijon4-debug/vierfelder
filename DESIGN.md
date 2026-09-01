@@ -742,3 +742,29 @@ fremde Blick gefunden hat: die Tab-Leiste schiebt ihren aktiven Indikator per
 `layoutId` mit dem Stempel-Spring, der Personen-Umschalter im Nachtdetail
 schaltete hart um. Zwei Umschalter, dieselbe Handlung, zwei Bewegungen. Jetzt
 teilen sie eine.
+
+## 25. Nachtrag: noten als ergebnis, nicht als fünfter tick (01.09.2026)
+
+**Der Notentab bleibt Anzeigetafel.** Keine neuen Farben, keine Karten und kein
+Schulheft-Look: Fächer sind feste Ledger-Zeilen zwischen Haarlinien, Zahlen
+laufen tabellarisch in Archivo, und die Miniaturkurve besteht aus genau einem
+Pfad ohne Achsen. Im Vergleich gehören Gold und Petrol weiter den Personen;
+eine schlechte Note bekommt keine Signalfarbe. Nur die Defizitwarnung darf die
+warme Personenfarbe als Warnung benutzen, weil sie eine formale Schwelle unter
+fünf Punkten bezeichnet und kein Urteil über die Person.
+
+**Die schnellste Handlung sitzt im Blatt.** Ein Fach öffnet sich von unten wie
+die Tagesansicht. Klausur oder mündlich steht schon fest, das Datum ist heute,
+und 16 mindestens 44 Pixel hohe Felder zeigen 15 bis 0 zugleich. Der Tipp auf
+eine Zahl ist der Eintrag; ein Speichern-Knopf würde nur dieselbe Entscheidung
+ein zweites Mal verlangen. Die Punktfelder stehen in vier Spalten, damit auch
+auf schmalen Telefonen jede Trefferfläche mindestens 44 Pixel breit bleibt.
+
+**Die Prognose behauptet keine Vergangenheit.** Das große Ergebnis heißt
+`abiprognose`, direkt darunter steht `aus diesem halbjahr hochgerechnet`.
+Solange das mündliche Prüfungsfach nicht gewählt ist, sagt ein zweiter Satz
+offen, dass der Grundfachschnitt dafür einsteht. Die geprüfte MSS-Regel für
+Abitur 2027 wird nicht dekorativ versteckt: zwei der drei Leistungsfächer
+werden doppelt gewertet, Block I wird mit `40/44` normiert, und Block II hängt
+von vier oder fünf Prüfungsfächern ab. Formale Hürden erscheinen als Text; die
+Zahl bleibt in Kreide.

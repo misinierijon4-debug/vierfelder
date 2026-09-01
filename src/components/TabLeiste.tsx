@@ -11,6 +11,7 @@ const TABS: Array<{ id: AppTab; label: string }> = [
   { id: 'tracker', label: 'tracker' },
   { id: 'duell', label: 'duell' },
   { id: 'schlaf', label: 'schlaf' },
+  { id: 'noten', label: 'noten' },
 ]
 
 export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {

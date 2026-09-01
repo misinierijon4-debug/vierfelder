@@ -1,6 +1,6 @@
 export type AreaId = 'lernen' | 'gym' | 'boxen' | 'lesen'
 export type UserId = 'erijon' | 'koray'
-export type AppTab = 'tracker' | 'duell' | 'schlaf'
+export type AppTab = 'tracker' | 'duell' | 'schlaf' | 'noten'
 
 /**
  * alles, was in die wochenwertung zählt. `AreaId` bleibt absichtlich bei den
@@ -41,6 +41,38 @@ export type UserDef = {
   farbe: string
   leer: string
 }
+
+/** mss: leistungsfach oder grundfach. rheinland-pfalz hat drei lf */
+export type Kursart = 'lf' | 'gf'
+export type Notenart = 'klausur' | 'muendlich'
+
+export type Fach = {
+  id: string
+  user: UserId
+  name: string
+  kursart: Kursart
+  klausurAnteil: number
+  pruefungsfach: number | null
+  sortierung: number
+}
+
+export type Note = {
+  id: string
+  user: UserId
+  fachId: string
+  art: Notenart
+  punkte: number
+  /** gewicht innerhalb der eigenen art, in zehnteln. 10 ist normal */
+  gewicht: number
+  /** lokaler kalendertag, gebildet mit `toKey` */
+  datum: string
+  titel: string
+}
+
+export type Notenstand = { faecher: Fach[]; noten: Note[] }
+
+export const KLAUSUR_ANTEIL_STANDARD = 50
+export const GEWICHT_STANDARD = 10
 
 export const AREAS: AreaDef[] = [
   { id: 'lernen', label: 'lernen', unit: 'min', step: 15 },
@@ -210,6 +242,9 @@ export function neueEinheitId(): string {
   const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
+
+/** derselbe uuid-weg wie bei einheiten */
+export const neueNotenId = neueEinheitId
 
 export function wertKey(a: AreaId, tag: string): string {
   return `${a}|${tag}`

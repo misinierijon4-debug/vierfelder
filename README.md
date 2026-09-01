@@ -26,6 +26,16 @@ getippt in allen vier Bereichen. Anleitung in [FOKUS-KURZBEFEHL.md](FOKUS-KURZBE
 
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
+Der Tab `noten` hält das laufende Halbjahr in Notenpunkten von 0 bis 15 fest.
+Die Fächer und jeweils drei Leistungsfächer stammen aus den Stundenplänen von
+Erijon und Koray; ein Tipp auf eine der 16 Punktzahlen trägt ohne
+Speichern-Knopf ein. Fachschnitte, direkter Vergleich und die ausdrücklich als
+Hochrechnung bezeichnete Abiprognose funktionieren auch im Prototyp-Modus.
+Die MSS-Rechnung ist gegen die offizielle RLP-Fassung für Abitur 2027 geprüft:
+36 Kurse, zwei der drei Leistungsfächer doppelt, Block I mit `40/44`, Block II
+je nach vier oder fünf Prüfungsfächern fünf- oder vierfach und die amtliche
+Punktetabelle für die Abiturnote.
+
 ## Der Name und das Zeichen
 
 Die App hieß bis zum 31.08.2026 `vierfelder`. Der Name zählte die Bereiche mit,
@@ -68,7 +78,7 @@ npm run dev
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 158 tests
+npm test      # logik, 213 tests
 npm run build # typecheck + produktionsbuild + pwa
 ```
 
@@ -89,6 +99,11 @@ weiter (eine Einheit pro Tag, kein `+ einheit`), statt leer auszusehen.
 Die Tabelle `gewicht` liegt wie `eintraege` offen für beide Konten — der Vergleich ist der
 Zweck. Es gibt dort bewusst kein Realtime und keine zweite Zeile in `eintraege`: der Wochentick
 fürs Wiegen wird aus dem Gewichtseintrag abgeleitet, damit es keinen Tick ohne Messung gibt.
+
+`faecher` und `noten` kommen aus `supabase/migrations/20260901180000_noten.sql`.
+Beide Konten dürfen beide Stände lesen; anlegen, ändern und löschen darf jedes
+nur beim eigenen Profil. Die UUID entsteht im Client, und Realtime hält den
+Notentab auf dem zweiten Gerät aktuell.
 
 Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
 gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung

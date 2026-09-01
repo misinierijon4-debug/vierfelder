@@ -9,9 +9,13 @@ import type {
   AreaId,
   Einheit,
   Einheiten,
+  Fach,
   Gewichte,
+  Kursart,
   MessbarerBereich,
   Phase,
+  Note,
+  Notenart,
   Schlafnacht,
   UserId,
 } from './types'
@@ -81,6 +85,25 @@ type AufenthaltZeile = {
   abgang: string | null
 }
 type WetteZeile = { woche: string; text: string }
+type FachZeile = {
+  id: string
+  user_id: string
+  name: string
+  kursart: Kursart
+  klausur_anteil: number
+  pruefungsfach: number | null
+  sortierung: number
+}
+type NoteZeile = {
+  id: string
+  user_id: string
+  fach_id: string
+  art: Notenart
+  punkte: number
+  gewicht: number
+  datum: string
+  titel: string
+}
 
 export type Anmeldestatus = 'laden' | 'an' | 'aus'
 
@@ -136,6 +159,7 @@ export function supabaseBackend(eigeneId: string): Backend {
    */
   let altbestand = false
   let wettenVerfuegbar = false
+  let notenVerfuegbar = false
   let modusBekannt: () => void = () => {}
   const modus = new Promise<void>((r) => {
     modusBekannt = r
@@ -218,6 +242,35 @@ export function supabaseBackend(eigeneId: string): Backend {
     }
   }
 
+  const zeileZuFach = (f: FachZeile): Fach | null => {
+    const person = personen.get(f.user_id)
+    if (!person) return null
+    return {
+      id: f.id,
+      user: person,
+      name: f.name,
+      kursart: f.kursart,
+      klausurAnteil: Number(f.klausur_anteil),
+      pruefungsfach: f.pruefungsfach,
+      sortierung: Number(f.sortierung),
+    }
+  }
+
+  const zeileZuNote = (n: NoteZeile): Note | null => {
+    const person = personen.get(n.user_id)
+    if (!person) return null
+    return {
+      id: n.id,
+      user: person,
+      fachId: n.fach_id,
+      art: n.art,
+      punkte: Number(n.punkte),
+      gewicht: Number(n.gewicht),
+      datum: n.datum,
+      titel: n.titel,
+    }
+  }
+
   return {
     art: 'supabase',
 
@@ -230,6 +283,8 @@ export function supabaseBackend(eigeneId: string): Backend {
         gewichtZeilen,
         aufenthaltZeilen,
         wetteZeilen,
+        fachZeilen,
+        notenZeilen,
       ] = await Promise.all([
           db.from('profile').select('id, person'),
           db.from('einheiten').select('id, user_id, bereich, tag, wert, erfasst'),
@@ -252,6 +307,14 @@ export function supabaseBackend(eigeneId: string): Backend {
             .select('user_id, bereich, ort, ankunft, abgang')
             .order('ankunft', { ascending: true }),
           db.from('duell_wetten').select('woche, text'),
+          db
+            .from('faecher')
+            .select('id, user_id, name, kursart, klausur_anteil, pruefungsfach, sortierung')
+            .order('sortierung', { ascending: true }),
+          db
+            .from('noten')
+            .select('id, user_id, fach_id, art, punkte, gewicht, datum, titel')
+            .order('datum', { ascending: true }),
         ])
 
       if (profile.error) throw profile.error
@@ -266,7 +329,10 @@ export function supabaseBackend(eigeneId: string): Backend {
         throw aufenthaltZeilen.error
       }
       if (wetteZeilen.error && !fehltNoch(wetteZeilen.error.code)) throw wetteZeilen.error
+      if (fachZeilen.error && !fehltNoch(fachZeilen.error.code)) throw fachZeilen.error
+      if (notenZeilen.error && !fehltNoch(notenZeilen.error.code)) throw notenZeilen.error
       wettenVerfuegbar = !wetteZeilen.error
+      notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
 
       altbestand = Boolean(einheitZeilen.error)
       modusBekannt()
@@ -349,7 +415,18 @@ export function supabaseBackend(eigeneId: string): Backend {
       const wetten: Wetten = {}
       for (const w of (wetteZeilen.data ?? []) as WetteZeile[]) wetten[w.woche] = w.text
 
-      return { me, einheiten, gewichte, schlaf, aufenthalte, wetten, altbestand }
+      const faecher: Fach[] = []
+      for (const f of (fachZeilen.data ?? []) as FachZeile[]) {
+        const fach = zeileZuFach(f)
+        if (fach) faecher.push(fach)
+      }
+      const noten: Note[] = []
+      for (const n of (notenZeilen.data ?? []) as NoteZeile[]) {
+        const note = zeileZuNote(n)
+        if (note) noten.push(note)
+      }
+
+      return { me, einheiten, gewichte, schlaf, aufenthalte, wetten, noten: { faecher, noten }, altbestand }
     },
 
     async schreibeEinheit(e) {
@@ -456,6 +533,83 @@ export function supabaseBackend(eigeneId: string): Backend {
       if (error) throw error
     },
 
+    async schreibeFach(fach) {
+      if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
+      const { error } = await db.from('faecher').upsert(
+        {
+          id: fach.id,
+          user_id: eigeneId,
+          name: fach.name,
+          kursart: fach.kursart,
+          klausur_anteil: fach.klausurAnteil,
+          pruefungsfach: fach.pruefungsfach,
+          sortierung: fach.sortierung,
+        },
+        { onConflict: 'id', ignoreDuplicates: true }
+      )
+      if (error) throw error
+    },
+
+    async aendereFach(fach) {
+      if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
+      const { error } = await db
+        .from('faecher')
+        .update({
+          name: fach.name,
+          kursart: fach.kursart,
+          klausur_anteil: fach.klausurAnteil,
+          pruefungsfach: fach.pruefungsfach,
+          sortierung: fach.sortierung,
+        })
+        .match({ id: fach.id, user_id: eigeneId })
+      if (error) throw error
+    },
+
+    async loescheFach(id) {
+      if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
+      const { error } = await db.from('faecher').delete().match({ id, user_id: eigeneId })
+      if (error) throw error
+    },
+
+    async schreibeNote(note) {
+      if (!notenVerfuegbar) throw new Error('noten fehlt noch')
+      const { error } = await db.from('noten').upsert(
+        {
+          id: note.id,
+          user_id: eigeneId,
+          fach_id: note.fachId,
+          art: note.art,
+          punkte: note.punkte,
+          gewicht: note.gewicht,
+          datum: note.datum,
+          titel: note.titel,
+        },
+        { onConflict: 'id', ignoreDuplicates: true }
+      )
+      if (error) throw error
+    },
+
+    async aendereNote(note) {
+      if (!notenVerfuegbar) throw new Error('noten fehlt noch')
+      const { error } = await db
+        .from('noten')
+        .update({
+          art: note.art,
+          punkte: note.punkte,
+          gewicht: note.gewicht,
+          datum: note.datum,
+          titel: note.titel,
+        })
+        .match({ id: note.id, user_id: eigeneId })
+      if (error) throw error
+    },
+
+    async loescheNote(id) {
+      if (!notenVerfuegbar) throw new Error('noten fehlt noch')
+      const { error } = await db.from('noten').delete().match({ id, user_id: eigeneId })
+      if (error) throw error
+    },
+
     async ladePhasen(user, nacht) {
       const id = [...personen.entries()].find(([, person]) => person === user)?.[0]
       if (!id) return []
@@ -500,16 +654,12 @@ export function supabaseBackend(eigeneId: string): Backend {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'gewicht' },
             (p) => {
-              // beim löschen trägt nur `old` die zeile, und zwar nur den
-              // schlüssel — mehr braucht das entfernen nicht
               const zeile = (p.eventType === 'DELETE' ? p.old : p.new) as GewichtZeile | null
               if (!zeile?.user_id || !zeile.tag) return
               const person = personen.get(zeile.user_id)
               if (!person) return
               cb({
-                typ: 'gewicht',
-                user: person,
-                tag: zeile.tag,
+                typ: 'gewicht', user: person, tag: zeile.tag,
                 kg: p.eventType === 'DELETE' ? null : Number(zeile.kg),
               })
             }
@@ -524,6 +674,39 @@ export function supabaseBackend(eigeneId: string): Backend {
               if (aufenthalt) cb({ typ: 'aufenthalt', aufenthalt })
             }
           )
+
+      const mitNoten = (b: ReturnType<typeof db.channel>) => {
+        if (!notenVerfuegbar) return b
+        return b
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'faecher' },
+            (p) => {
+              const zeile = (p.eventType === 'DELETE' ? p.old : p.new) as FachZeile | null
+              if (!zeile?.id) return
+              const fach = zeileZuFach(zeile)
+              if (fach) cb({
+                typ: 'fach',
+                art: p.eventType === 'INSERT' ? 'neu' : p.eventType === 'DELETE' ? 'weg' : 'wert',
+                fach,
+              })
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'noten' },
+            (p) => {
+              const zeile = (p.eventType === 'DELETE' ? p.old : p.new) as NoteZeile | null
+              if (!zeile?.id) return
+              const note = zeileZuNote(zeile)
+              if (note) cb({
+                typ: 'note',
+                art: p.eventType === 'INSERT' ? 'neu' : p.eventType === 'DELETE' ? 'weg' : 'wert',
+                note,
+              })
+            }
+          )
+      }
 
       void modus.then(() => {
         if (abgemeldet) return
@@ -560,7 +743,7 @@ export function supabaseBackend(eigeneId: string): Backend {
               }
             )
           }
-          kanal = mitGesundheit(builder).subscribe()
+          kanal = mitNoten(mitGesundheit(builder)).subscribe()
           return
         }
 
@@ -600,7 +783,7 @@ export function supabaseBackend(eigeneId: string): Backend {
             }
           )
         }
-        kanal = mitGesundheit(builder).subscribe()
+        kanal = mitNoten(mitGesundheit(builder)).subscribe()
       })
 
       return () => {

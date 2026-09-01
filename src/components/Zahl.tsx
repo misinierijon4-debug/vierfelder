@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EASE } from '../lib/motion'
 
 type Props = {
-  value: number
+  value: number | string
   delay?: number
   className?: string
   style?: CSSProperties

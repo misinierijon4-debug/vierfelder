@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Backend, Wetten } from './backend'
-import { gewichtKey, tickKey } from './types'
+import {
+  GEWICHT_STANDARD,
+  KLAUSUR_ANTEIL_STANDARD,
+  gewichtKey,
+  neueNotenId,
+  tickKey,
+} from './types'
 import type {
   AreaId,
   Aufenthalt,
   Einheit,
   Einheiten,
   Ereignis,
+  Fach,
   Gewichte,
+  Note,
+  Notenart,
+  Notenstand,
   Schlafnacht,
   UserId,
   Zustand,
@@ -54,6 +64,8 @@ export function useTracker(backend: Backend) {
   // keine optimistische rücknahme: der zustand ändert sich nur beim laden.
   const [aufenthalte, setAufenthalte] = useState<Aufenthalt[]>([])
   const [wetten, setWetten] = useState<Wetten>({})
+  const [faecher, setFaecher] = useState<Fach[]>([])
+  const [noten, setNoten] = useState<Note[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   const [fehler, setFehler] = useState<string | null>(null)
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
@@ -81,6 +93,8 @@ export function useTracker(backend: Backend) {
   const gewichteRef = useRef<Gewichte>({})
   const meRef = useRef<UserId>('erijon')
   const wettenRef = useRef<Wetten>({})
+  const faecherRef = useRef<Fach[]>([])
+  const notenRef = useRef<Note[]>([])
 
   /**
    * je einheit der zuletzt losgeschickte schreibvorgang. schreiben derselben
@@ -125,12 +139,16 @@ export function useTracker(backend: Backend) {
         einheitenRef.current = anfang.einheiten
         gewichteRef.current = anfang.gewichte
         wettenRef.current = anfang.wetten
+        faecherRef.current = anfang.noten.faecher
+        notenRef.current = anfang.noten.noten
         setMe(anfang.me)
         setEinheiten(anfang.einheiten)
         setGewichte(anfang.gewichte)
         setSchlaf(anfang.schlaf)
         setAufenthalte(anfang.aufenthalte)
         setWetten(anfang.wetten)
+        setFaecher(anfang.noten.faecher)
+        setNoten(anfang.noten.noten)
         setAltbestand(anfang.altbestand)
         setLadezustand('bereit')
         setFehler(null)
@@ -153,6 +171,29 @@ export function useTracker(backend: Backend) {
         const next = { ...wettenRef.current, [e.woche]: e.text }
         wettenRef.current = next
         setWetten(next)
+        return
+      }
+
+      if (e.typ === 'fach') {
+        const vorher = faecherRef.current
+        const ohne = vorher.filter((fach) => fach.id !== e.fach.id)
+        const next = e.art === 'weg' ? ohne : [...ohne, e.fach]
+        faecherRef.current = next
+        setFaecher(next)
+        if (e.art === 'weg') {
+          const neueNoten = notenRef.current.filter((note) => note.fachId !== e.fach.id)
+          notenRef.current = neueNoten
+          setNoten(neueNoten)
+        }
+        return
+      }
+
+      if (e.typ === 'note') {
+        const vorher = notenRef.current
+        const ohne = vorher.filter((note) => note.id !== e.note.id)
+        const next = e.art === 'weg' ? ohne : [...ohne, e.note]
+        notenRef.current = next
+        setNoten(next)
         return
       }
 
@@ -452,6 +493,147 @@ export function useTracker(backend: Backend) {
     [backend]
   )
 
+  const fachHinzu = useCallback(
+    (name: string): Fach | null => {
+      const sauber = name.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 24)
+      if (!sauber) return null
+      const u = meRef.current
+      if (faecherRef.current.some((fach) => fach.user === u && fach.name === sauber)) return null
+      const vorher = faecherRef.current
+      const sortierung = Math.max(-1, ...vorher.filter((fach) => fach.user === u).map((fach) => fach.sortierung)) + 1
+      const fach: Fach = {
+        id: neueNotenId(),
+        user: u,
+        name: sauber,
+        kursart: 'gf',
+        klausurAnteil: KLAUSUR_ANTEIL_STANDARD,
+        pruefungsfach: null,
+        sortierung,
+      }
+      const next = [...vorher, fach]
+      faecherRef.current = next
+      setFaecher(next)
+      setFehler(null)
+      nacheinander([fach.id], () => backend.schreibeFach(fach)).catch(() => {
+        faecherRef.current = vorher
+        setFaecher(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+      return fach
+    },
+    [backend, nacheinander]
+  )
+
+  const fachAendern = useCallback(
+    (fach: Fach) => {
+      const sauber: Fach = {
+        ...fach,
+        name: fach.name.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 24),
+        klausurAnteil: Math.min(100, Math.max(0, Math.round(fach.klausurAnteil))),
+      }
+      if (!sauber.name || sauber.user !== meRef.current) return
+      const vorher = faecherRef.current
+      const next = vorher.map((x) => x.id === sauber.id ? sauber : x)
+      faecherRef.current = next
+      setFaecher(next)
+      setFehler(null)
+      nacheinander([sauber.id], () => backend.aendereFach(sauber)).catch(() => {
+        faecherRef.current = vorher
+        setFaecher(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, nacheinander]
+  )
+
+  const fachLoeschen = useCallback(
+    (id: string) => {
+      const fach = faecherRef.current.find((x) => x.id === id)
+      if (!fach || fach.user !== meRef.current) return
+      const vorherFaecher = faecherRef.current
+      const vorherNoten = notenRef.current
+      const nextFaecher = vorherFaecher.filter((x) => x.id !== id)
+      const nextNoten = vorherNoten.filter((x) => x.fachId !== id)
+      faecherRef.current = nextFaecher
+      notenRef.current = nextNoten
+      setFaecher(nextFaecher)
+      setNoten(nextNoten)
+      setFehler(null)
+      nacheinander([id], () => backend.loescheFach(id)).catch(() => {
+        faecherRef.current = vorherFaecher
+        notenRef.current = vorherNoten
+        setFaecher(vorherFaecher)
+        setNoten(vorherNoten)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, nacheinander]
+  )
+
+  const noteHinzu = useCallback(
+    (fachId: string, punkte: number, art: Notenart, datum: string, titel = ''): Note | null => {
+      const fach = faecherRef.current.find((x) => x.id === fachId)
+      if (!fach || fach.user !== meRef.current) return null
+      const note: Note = {
+        id: neueNotenId(),
+        user: meRef.current,
+        fachId,
+        art,
+        punkte: Math.min(15, Math.max(0, Math.round(punkte))),
+        gewicht: GEWICHT_STANDARD,
+        datum,
+        titel: titel.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 40),
+      }
+      const vorher = notenRef.current
+      const next = [...vorher, note]
+      notenRef.current = next
+      setNoten(next)
+      setFehler(null)
+      nacheinander([note.id], () => backend.schreibeNote(note)).catch(() => {
+        notenRef.current = vorher
+        setNoten(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+      return note
+    },
+    [backend, nacheinander]
+  )
+
+  const noteAendern = useCallback(
+    (note: Note) => {
+      if (note.user !== meRef.current) return
+      const vorher = notenRef.current
+      const next = vorher.map((x) => x.id === note.id ? note : x)
+      notenRef.current = next
+      setNoten(next)
+      setFehler(null)
+      nacheinander([note.id], () => backend.aendereNote(note)).catch(() => {
+        notenRef.current = vorher
+        setNoten(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, nacheinander]
+  )
+
+  const noteLoeschen = useCallback(
+    (id: string) => {
+      const note = notenRef.current.find((x) => x.id === id)
+      if (!note || note.user !== meRef.current) return
+      const vorher = notenRef.current
+      const next = vorher.filter((x) => x.id !== id)
+      notenRef.current = next
+      setNoten(next)
+      setFehler(null)
+      nacheinander([id], () => backend.loescheNote(id)).catch(() => {
+        notenRef.current = vorher
+        setNoten(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, nacheinander]
+  )
+
   // eine stabile identität: sonst wäre jeder render ein neuer zustand und
   // jedes useMemo darauf wertlos.
   const zustand = useMemo<Zustand>(
@@ -459,11 +641,14 @@ export function useTracker(backend: Backend) {
     [einheiten, gewichte, aufenthalte]
   )
 
+  const notenstand = useMemo<Notenstand>(() => ({ faecher, noten }), [faecher, noten])
+
   return {
     me,
     zustand,
     schlaf,
     wetten,
+    notenstand,
     ladezustand,
     fehler,
     ereignis,
@@ -474,6 +659,12 @@ export function useTracker(backend: Backend) {
     wertAendern,
     setzeGewicht,
     setzeWette,
+    fachHinzu,
+    fachAendern,
+    fachLoeschen,
+    noteHinzu,
+    noteAendern,
+    noteLoeschen,
     phasenNachladen,
   }
 }
