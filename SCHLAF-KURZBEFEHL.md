@@ -118,15 +118,41 @@ Zum ersten Test den Kurzbefehl einmal manuell ausführen und danach in Supabase
 prüfen:
 
 ```sql
-select p.person, s.nacht, s.schlaf_minuten, s.wachphasen,
-       s.wach_minuten, s.nachtwert, s.bewertungsbasis
-from schlafnaechte s
+select p.person, s.nacht, s.schlaf_minuten, s.wach_minuten,
+       s.nachtwert, s.score_version, s.score_konfidenz
+from schlaf_updates s
 join profile p on p.id = s.user_id
 order by s.nacht desc;
 ```
 
 Ein zweiter Lauf für dieselbe Nacht aktualisiert dieselbe Zeile. Er legt keine
 zweite Nacht an.
+
+## Grenzen des Imports
+
+Beide Wege — Edge Function und direkter RPC-Aufruf — laufen seit dem 01.09.2026
+durch dieselbe Schutzschicht in `record_sleep_night`:
+
+- höchstens **300 Segmente** je Aufruf (eine Nacht hat selten mehr als 80),
+- höchstens **512 KiB** Nutzlast,
+- höchstens **30 Aufrufe je 15 Minuten** und Person.
+
+Wer darüber liegt, bekommt HTTP 422, 413 oder 429 und es wird nichts
+gespeichert. Die tägliche Automation kommt an keine dieser Grenzen; sie fangen
+einen Kurzbefehl ab, der in einer Schleife hängt.
+
+## Der Nachtwert kommt aus der Datenbank
+
+Gerechnet wird der Nachtwert seit Score v2 in einem Trigger auf `schlafnaechte`,
+nicht im Kurzbefehl und nicht in der App: Dauer, Effizienz, Phasen,
+Regelmäßigkeit und Unterbrechungen, normiert auf die Komponenten, die die
+jeweilige Nacht wirklich hergibt. Eine Nacht ohne gemessene Bettzeit wird
+deshalb nach demselben Maßstab bewertet wie eine mit — nur aus weniger Belegen,
+und genau das steht in `score_konfidenz`. Weil der Trigger an der Tabelle hängt
+und nicht am Schreibweg, kann kein Aufrufer eine zweite Meinung speichern.
+
+Die App liest den fertigen Wert aus `schlafnaechte_ansicht` mit. Die Ansicht
+zeigt Kennzahlen und Phasen, aber keine Rohsegmente.
 
 ## Alternative: direkter Aufruf der RPC-Funktion
 
