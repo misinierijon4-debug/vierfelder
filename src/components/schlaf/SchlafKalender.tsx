@@ -4,6 +4,7 @@ import type { Schlafnacht, UserId } from '../../lib/types'
 import { TAGKUERZEL, fromKey } from '../../lib/dates'
 import { abendDatum, qualitaet } from '../../lib/schlafPhasen'
 import { kalenderMonate } from '../../lib/kalender'
+import { useScrollSperre } from '../../lib/scrollsperre'
 import { user as userDef } from '../../lib/types'
 
 const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
@@ -60,11 +61,11 @@ export function SchlafKalender({
     if (!offen && dialog.open) dialog.close()
   }, [offen])
 
+  useScrollSperre(offen)
+
   useEffect(() => {
     if (!offen) return
 
-    const vorher = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
     const frame = window.requestAnimationFrame(() => {
       const monat = scrollRef.current?.querySelector<HTMLElement>(
         `[data-monat="${gewaehlterTag.slice(0, 7)}"]`
@@ -72,10 +73,7 @@ export function SchlafKalender({
       monat?.scrollIntoView({ block: 'center' })
     })
 
-    return () => {
-      window.cancelAnimationFrame(frame)
-      document.documentElement.style.overflow = vorher
-    }
+    return () => window.cancelAnimationFrame(frame)
   }, [gewaehlterTag, offen])
 
   return (

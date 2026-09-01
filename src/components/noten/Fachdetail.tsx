@@ -5,6 +5,7 @@ import type { Fach, Note, Notenart } from '../../lib/types'
 import { user } from '../../lib/types'
 import { EASE } from '../../lib/motion'
 import { fachSchnitt, klausurAnteil, punkteKurz } from '../../lib/noten'
+import { useScrollSperre } from '../../lib/scrollsperre'
 
 type Props = {
   fach: Fach
@@ -30,6 +31,7 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
   const liste = noten.filter((note) => note.fachId === fach.id).sort((a, b) => b.datum.localeCompare(a.datum))
   const schnitt = fachSchnitt(noten, fach)
   const anteil = klausurAnteil(fach.kursart)
+  const istPruefung = fach.pruefungsfach !== null
   // die farbe der person markiert, was gerade ausgewählt ist
   const farbe = user(fach.user).farbe
   const hinweis: Record<Notenart, string> = {
@@ -37,6 +39,8 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
     epo: `eine epo zählt doppelt im mündlichen teil, also in den ${100 - anteil}%.`,
     hue: `eine hü zählt einfach im mündlichen teil, also in den ${100 - anteil}%.`,
   }
+
+  useScrollSperre(true)
 
   useEffect(() => {
     schliessen.current?.focus()
@@ -70,20 +74,14 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <p className="mt-1 text-[10px] text-kreide-52">{anteil}% klausur · {100 - anteil}% mündlich</p>
         </div>
 
+        {/* vier prüfungen: die drei lk schriftlich, dazu genau ein mündlicher gk */}
         {fach.kursart === 'gk' ? (
           <div className="mt-3 flex min-h-11 items-center justify-between gap-3">
-            <span className="text-[12px]">prüfungsfach</span>
-            <div className="flex gap-1" role="group" aria-label="prüfungsfach">
-              {[null, 4, 5].map((nr) => {
-                const gewaehlt = fach.pruefungsfach === nr
-                return (
-                  <button key={nr ?? 'kein'} type="button" aria-pressed={gewaehlt} onClick={() => onPruefungsfach(fach.id, nr)}
-                    style={gewaehlt ? { borderColor: farbe, color: farbe } : undefined}
-                    className={`flex size-11 items-center justify-center rounded-[2px] border text-[12px] transition-colors ${gewaehlt ? 'bg-flaeche font-semibold' : 'border-linie text-kreide-52'}`}
-                  >{nr ?? '–'}</button>
-                )
-              })}
-            </div>
+            <span className="min-w-0 text-[12px]">mündliches prüfungsfach</span>
+            <button type="button" aria-pressed={istPruefung} onClick={() => onPruefungsfach(fach.id, istPruefung ? null : 4)}
+              style={istPruefung ? { borderColor: farbe, color: farbe } : undefined}
+              className={`min-h-11 shrink-0 rounded-[2px] border px-4 text-[12px] transition-colors ${istPruefung ? 'bg-flaeche font-semibold' : 'border-linie text-kreide-52'}`}
+            >{istPruefung ? 'gewählt' : 'wählen'}</button>
           </div>
         ) : <p className="mt-3 text-[11px] text-kreide-52">leistungskurse sind schriftliche prüfungsfächer.</p>}
 

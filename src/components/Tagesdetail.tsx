@@ -6,6 +6,7 @@ import type { FeldId, UserId, Zustand } from '../lib/types'
 import { fromKey, langesDatum } from '../lib/dates'
 import { tageseinheiten } from '../lib/tracker'
 import { EASE } from '../lib/motion'
+import { useScrollSperre } from '../lib/scrollsperre'
 
 const UHRZEIT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
 const KURZDATUM = new Intl.DateTimeFormat('de-DE', {
@@ -58,6 +59,8 @@ export function Tagesdetail({ zustand, auswahl, heute, onSchliessen }: Props) {
 
   const datum = fromKey(auswahl.tag)
   const vergangen = auswahl.tag < heute
+
+  useScrollSperre(true)
 
   useEffect(() => {
     schliessen.current?.focus()

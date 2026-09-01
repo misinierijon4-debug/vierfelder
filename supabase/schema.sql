@@ -339,9 +339,10 @@ create table if not exists faecher (
   user_id uuid not null references auth.users on delete cascade default auth.uid(),
   name text not null check (length(btrim(name)) between 1 and 24),
   kursart text not null default 'gk' check (kursart in ('lk','gk')),
-  -- waehlbar ist nur das muendliche pruefungsfach 4 oder 5; die drei lk sind
-  -- die schriftlichen pruefungen und brauchen keine nummer
-  pruefungsfach int check (pruefungsfach is null or (kursart = 'gk' and pruefungsfach in (4,5))),
+  -- es sind vier pruefungsfaecher: die drei lk schriftlich, dazu genau ein
+  -- muendlicher gk. nur dieser vierte traegt eine nummer, ein fuenftes gibt es
+  -- nicht — der eindeutige index unten laesst auch kein zweites zu
+  pruefungsfach int check (pruefungsfach is null or (kursart = 'gk' and pruefungsfach = 4)),
   sortierung int not null default 0,
   erstellt timestamptz not null default now(),
   unique (user_id, name)
@@ -395,6 +396,9 @@ create policy "noten loeschen" on noten for delete to authenticated
   using ((select auth.uid()) = user_id);
 
 create index if not exists faecher_nutzer_idx on faecher (user_id, sortierung, name);
+-- genau ein muendliches pruefungsfach je person
+create unique index if not exists faecher_ein_pruefungsfach_idx
+  on faecher (user_id) where pruefungsfach is not null;
 create index if not exists noten_fach_datum_idx on noten (fach_id, datum desc);
 create index if not exists noten_nutzer_datum_idx on noten (user_id, datum desc);
 alter table faecher replica identity full;
@@ -436,6 +440,12 @@ join (values
 ) as f(name, kursart, sortierung) on true
 where p.person = 'koray'
 on conflict (user_id, name) do nothing;
+
+-- das vierte, muendliche pruefungsfach steht fest: erijon mathe, koray englisch
+update faecher f set pruefungsfach = 4
+from profile p
+where p.id = f.user_id
+  and ((p.person = 'erijon' and f.name = 'mathe') or (p.person = 'koray' and f.name = 'englisch'));
 --
 -- nach dem anlegen der beiden konten (dashboard > authentication > add user,
 -- bei beiden "auto confirm user" anhaken) einmal ausführen:

@@ -1,5 +1,5 @@
 import type { Notenstand, UserId } from '../../lib/types'
-import { abiPrognose, ABI_FORMEL_GEPRUEFT, defizite, gesamtSchnitt, punkteZuNote } from '../../lib/noten'
+import { abiPrognose, defizite, gesamtSchnitt, punkteZuNote } from '../../lib/noten'
 import { Zahl } from '../Zahl'
 
 export function NotenKopf({ stand, me }: { stand: Notenstand; me: UserId }) {
@@ -37,10 +37,6 @@ export function NotenKopf({ stand, me }: { stand: Notenstand; me: UserId }) {
       {prognose && prognose.huerden.length > 0 && (
         <p className="mt-1 text-[11px]" style={{ color: 'var(--erijon)' }}>{prognose.huerden.join(' · ')}</p>
       )}
-      <p className="mt-3 text-[10px] leading-4 text-kreide-52">
-        {ABI_FORMEL_GEPRUEFT ? 'mss rheinland-pfalz · abitur 2027 geprüft.' : 'die mss-zahlen dieser prognose sind ungeprüft.'}
-        {' '}bis zur wahl des mündlichen prüfungsfachs rechnet die hochrechnung mit dem gk-schnitt.
-      </p>
     </section>
   )
 }
