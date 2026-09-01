@@ -108,7 +108,9 @@ optional, wird für die Rechnung aber nicht benötigt.
 1. In **Kurzbefehle** zu **Automation** wechseln.
 2. **Neue persönliche Automation** und **Tageszeit** wählen.
 3. Eine Uhrzeit am Morgen wählen, zu der die Schlafaufzeichnung sicher beendet
-   ist, und `Täglich` einstellen.
+   ist und das iPhone erfahrungsgemäß entsperrt in Benutzung ist, und `Täglich`
+   einstellen. Warum die zweite Bedingung zählt, steht unter *Wenn die
+   Automation nicht auslöst*.
 4. Den Kurzbefehl `schlaf senden` ausführen lassen.
 5. Auf aktuellen iOS-Versionen **Sofort ausführen** wählen. Falls stattdessen
    **Vor Ausführen bestätigen** erscheint, diese Abfrage ausschalten.
@@ -127,6 +129,74 @@ order by s.nacht desc;
 
 Ein zweiter Lauf für dieselbe Nacht aktualisiert dieselbe Zeile. Er legt keine
 zweite Nacht an.
+
+## Wenn die Automation nicht auslöst
+
+Der Kurzbefehl ist dabei meist in Ordnung. Nachgesehen am 01.09. zeigen die
+Importe dieses Muster (Ortszeit, Spalte `aktualisiert`):
+
+| Person | Nacht  | Import       |
+| ------ | ------ | ------------ |
+| erijon | 29.08. | 11:00:07     |
+| erijon | 30.08. | 11:00:06     |
+| erijon | 31.08. | 11:16        |
+| erijon | 01.09. | 13:15        |
+| koray  | 31.08. | 09:32        |
+
+Der Aufruf am 01.09. um 13:15 kam mit dem User-Agent
+`BackgroundShortcutRunner`, also aus dem Hintergrundlauf einer Automation und
+nicht aus einem Start von Hand. Die Automation ist damit nicht tot, sie kam nur
+zwei Stunden zu spät. Von Korays iPhone kam an diesem Tag überhaupt kein
+Aufruf.
+
+Daraus die beiden Fehlerbilder, die es praktisch nur gibt:
+
+**Der Lauf kommt verspätet.** iOS behandelt eine Tageszeit-Automation als
+Hintergrundarbeit und verschiebt sie, wenn das Gerät gesperrt liegt, der
+Stromsparmodus an ist oder der Akku niedrig steht. 11:00, dann 11:16, dann
+13:15 ist genau dieses Verhalten. Am Kurzbefehl gibt es dafür nichts zu
+reparieren; wichtig ist nur, dass der Lauf vor dem ersten Nickerchen des Tages
+kommt — siehe unten.
+
+**Es kommt gar kein Aufruf an.** Die Health-Datenbank ist mit dem Gerätecode
+verschlüsselt und lässt sich nicht lesen, solange das iPhone gesperrt ist.
+Läuft die Automation, während das Telefon gesperrt in der Tasche liegt, bricht
+schon `Health-Messungen suchen` ab und `Inhalte von URL abrufen` wird nie
+erreicht. Am Server ist das nicht von einer Automation zu unterscheiden, die
+nie gestartet ist: beide hinterlassen nichts. Deshalb die Uhrzeit so legen,
+dass das iPhone ohnehin entsperrt in der Hand ist.
+
+Zum Eingrenzen **Bei Ausführung benachrichtigen** für ein paar Tage
+einschalten. Ausgeschaltet bleibt ein Abbruch unsichtbar. Ob ein Lauf
+angekommen ist, sagt verlässlich nur die Datenbank:
+
+```sql
+select p.person, s.nacht,
+       to_char(s.aktualisiert at time zone 'Europe/Berlin', 'DD.MM. HH24:MI') as import
+from schlafnaechte s
+join profile p on p.id = s.user_id
+order by s.aktualisiert desc
+limit 10;
+```
+
+Wenn auf einem Gerät noch nie etwas angekommen ist, der Reihe nach prüfen:
+
+1. Die Automation ist angelegt **und** aktiviert, mit **Sofort ausführen**
+   statt **Vor Ausführen bestätigen**.
+2. Der Kurzbefehl läuft von Hand durch und die Antwort enthält `"ok": true`.
+   Tut er das nicht, liegt der Fehler im Kurzbefehl, nicht in der Automation.
+3. Kurzbefehle darf Health lesen (Einstellungen → Datenschutz & Sicherheit →
+   Health → Kurzbefehle). Die Abfrage wird beim ersten Lauf einmal bestätigt.
+4. Im Kurzbefehl steht das eigene Token, nicht das des anderen. Ein fremdes
+   Token schreibt die Nacht der falschen Person.
+5. Der Stromsparmodus ist aus.
+
+Ein zweiter Lauf als Netz ist erlaubt, weil derselbe Tag dieselbe Zeile
+überschreibt — aber nur am Vormittag. Der Server nimmt aus dem gesendeten
+Fenster die zuletzt endende Schlafepisode, und die Nacht ist das Datum ihres
+Endes. Ein Kurzbefehl, der nach einem Mittagsschlaf läuft, macht den
+Mittagsschlaf zur Nacht und überschreibt die echte. Zwei Automationen um 11:00
+und 12:30 sind sicher, eine am Abend ist es nicht.
 
 ## Alternative: direkter Aufruf der RPC-Funktion
 
