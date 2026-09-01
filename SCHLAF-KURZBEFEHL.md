@@ -143,13 +143,31 @@ einen Kurzbefehl ab, der in einer Schleife hängt.
 
 ## Der Nachtwert kommt aus der Datenbank
 
-Gerechnet wird der Nachtwert seit Score v2 in einem Trigger auf `schlafnaechte`,
-nicht im Kurzbefehl und nicht in der App: Dauer, Effizienz, Phasen,
-Regelmäßigkeit und Unterbrechungen, normiert auf die Komponenten, die die
-jeweilige Nacht wirklich hergibt. Eine Nacht ohne gemessene Bettzeit wird
-deshalb nach demselben Maßstab bewertet wie eine mit — nur aus weniger Belegen,
-und genau das steht in `score_konfidenz`. Weil der Trigger an der Tabelle hängt
-und nicht am Schreibweg, kann kein Aufrufer eine zweite Meinung speichern.
+Gerechnet wird der Nachtwert seit Score v3 in einem Trigger auf `schlafnaechte`,
+nicht im Kurzbefehl und nicht in der App. Vier Komponenten, normiert auf die,
+die die jeweilige Nacht wirklich hergibt:
+
+| Komponente | Gewicht | volle Punktzahl bei |
+|---|---|---|
+| Dauer | 45 | Schlafziel erreicht |
+| Effizienz | 20 | 95 % der Bettzeit geschlafen |
+| Phasen | 10 | Tief und REM zusammen ab 25 % |
+| Unterbrechungen | 10 | keine Wachphase ab 5 Minuten, unter 30 Minuten wach |
+
+Eine Nacht ohne gemessene Bettzeit wird nach demselben Maßstab bewertet wie eine
+mit — nur aus weniger Belegen, und genau das steht in `score_konfidenz`. Weil
+der Trigger an der Tabelle hängt und nicht am Schreibweg, kann kein Aufrufer
+eine zweite Meinung speichern.
+
+**Regelmäßigkeit zählt nicht mit.** Sie wird gemessen und steht in
+`median_abweichung_minuten` und in der Aufschlüsselung, aber mit Gewicht 0: eine
+einzelne Nacht kann nicht regelmäßig sein. Wer einmal anderthalb Stunden früher
+ins Bett geht, hat deswegen nicht schlechter geschlafen. Als Eigenschaft der
+Woche steht sie im Duell, als „konstanz“.
+
+**Wachphasen zählen ab fünf Minuten**, derselben Schwelle, die die App im
+Verlauf zeichnet. Health zerlegt eine ruhige Nacht in bis zu vierzig
+Einminutenstücke — das ist Rauschen, keine Unterbrechung.
 
 Die App liest den fertigen Wert aus `schlafnaechte_ansicht` mit. Die Ansicht
 zeigt Kennzahlen und Phasen, aber keine Rohsegmente.
