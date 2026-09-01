@@ -209,3 +209,22 @@ update public.schlafnaechte set schlaf_minuten = schlaf_minuten;
 -- Stand vom 01.09. gerechnet hat, bis niemand mehr danach fragt.
 comment on function public.setze_schlaf_score_v2() is
   'abgeloest durch setze_schlaf_score_v3 am 01.09.2026 (median ueber mitternacht, wachphasen ab 5 minuten, regelmaessigkeit ohne gewicht)';
+
+-- Angewendet am 01.09.2026 um 17:06:10 UTC. Die Datei traegt seither die
+-- Version, unter der sie in supabase_migrations.schema_migrations steht —
+-- sonst liefe sie beim naechsten `db push` ein zweites Mal.
+--
+-- Nachgemessen gegen die zehn vorhandenen Naechte, alle sechs Vorhersagen
+-- getroffen:
+--
+--   erijon 01.09.  69 -> 85     koray 01.09.  46 -> 56
+--   erijon 31.08.  47 -> 53     koray 31.08.  75 -> 80
+--   erijon 30.08.  83 -> 87     koray 27.08.  72 -> 78
+--   erijon 29.08.  55 -> 56
+--   erijon 28.08.  76 -> 76
+--   erijon 27.08.  75 -> 78
+--   erijon 26.08.  80 -> 86
+--
+-- Die Median-Abweichungen liegen jetzt zwischen 8 und 131 Minuten statt bei
+-- 676 — plausible Zahlen fuer Menschen, die zwischen 22:03 und 00:32 ins Bett
+-- gehen.
