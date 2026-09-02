@@ -6,6 +6,7 @@ import {
   tickKey,
 } from './types'
 import type {
+  Abrechnung,
   AreaId,
   Aufenthalt,
   Einheit,
@@ -23,10 +24,12 @@ import type {
 import {
   baueEinheit,
   fuegeHinzu,
+  mitEinheit,
   mitAufenthalt,
   mitGewicht,
   mitNacht,
   mitWert,
+  mitVon,
   ohneEinheit,
   ohneTag,
 } from './tracker'
@@ -63,6 +66,7 @@ export function useTracker(backend: Backend) {
   // keine optimistische rücknahme: der zustand ändert sich nur beim laden.
   const [aufenthalte, setAufenthalte] = useState<Aufenthalt[]>([])
   const [wetten, setWetten] = useState<Wetten>({})
+  const [abrechnungen, setAbrechnungen] = useState<Abrechnung[]>([])
   const [faecher, setFaecher] = useState<Fach[]>([])
   const [noten, setNoten] = useState<Note[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
@@ -92,6 +96,7 @@ export function useTracker(backend: Backend) {
   const gewichteRef = useRef<Gewichte>({})
   const meRef = useRef<UserId>('erijon')
   const wettenRef = useRef<Wetten>({})
+  const abrechnungenRef = useRef<Abrechnung[]>([])
   const faecherRef = useRef<Fach[]>([])
   const notenRef = useRef<Note[]>([])
 
@@ -138,6 +143,7 @@ export function useTracker(backend: Backend) {
         einheitenRef.current = anfang.einheiten
         gewichteRef.current = anfang.gewichte
         wettenRef.current = anfang.wetten
+        abrechnungenRef.current = anfang.abrechnungen
         faecherRef.current = anfang.noten.faecher
         notenRef.current = anfang.noten.noten
         setMe(anfang.me)
@@ -146,6 +152,7 @@ export function useTracker(backend: Backend) {
         setSchlaf(anfang.schlaf)
         setAufenthalte(anfang.aufenthalte)
         setWetten(anfang.wetten)
+        setAbrechnungen(anfang.abrechnungen)
         setFaecher(anfang.noten.faecher)
         setNoten(anfang.noten.noten)
         setAltbestand(anfang.altbestand)
@@ -170,6 +177,15 @@ export function useTracker(backend: Backend) {
         const next = { ...wettenRef.current, [e.woche]: e.text }
         wettenRef.current = next
         setWetten(next)
+        return
+      }
+
+      if (e.typ === 'abrechnung') {
+        const vorher = abrechnungenRef.current
+        const ohne = vorher.filter((a) => a.woche !== e.abrechnung.woche)
+        const next = [...ohne, e.abrechnung].sort((a, b) => (a.woche < b.woche ? -1 : 1))
+        abrechnungenRef.current = next
+        setAbrechnungen(next)
         return
       }
 
@@ -232,7 +248,7 @@ export function useTracker(backend: Backend) {
           ? fuegeHinzu(vorher, einheit)
           : e.art === 'weg'
             ? ohneEinheit(vorher, einheit.id)
-            : mitWert(vorher, einheit.id, einheit.wert)
+            : mitEinheit(vorher, einheit)
       if (next === vorher) return
       uebernimm(next)
 
@@ -260,10 +276,10 @@ export function useTracker(backend: Backend) {
 
   /** legt eine weitere durchführung an. gibt sie zurück, damit undo sie kennt */
   const einheitHinzu = useCallback(
-    (area: AreaId, tag: string): Einheit => {
+    (area: AreaId, tag: string, von: string | null = null): Einheit => {
       const u = meRef.current
       const vorher = einheitenRef.current
-      const einheit = baueEinheit(u, area, tag, null)
+      const einheit = baueEinheit(u, area, tag, null, new Date(), von)
 
       letzteAktion.current = { art: 'neu', area, tag, einheit }
       uebernimm(fuegeHinzu(vorher, einheit))
@@ -375,6 +391,61 @@ export function useTracker(backend: Backend) {
       })
     },
     [backend, einheitWeg, nacheinander, toggle, uebernimm]
+  )
+
+  /** setzt den wert einer einzelnen einheit — das detail bearbeitet jede zeile */
+  const wertSetzen = useCallback(
+    (id: string, wert: number) => {
+      const vorher = einheitenRef.current
+      const einheit = Object.values(vorher)
+        .flat()
+        .find((e) => e.id === id)
+      if (!einheit) return
+      const sauber = Math.max(0, Math.round(wert))
+      uebernimm(mitWert(vorher, id, sauber))
+      setFehler(null)
+      nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch(() => {
+        uebernimm(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, nacheinander, uebernimm]
+  )
+
+  /** setzt die durchführungszeit einer einzelnen einheit. null löscht sie */
+  const zeitSetzen = useCallback(
+    (id: string, von: string | null) => {
+      const vorher = einheitenRef.current
+      const einheit = Object.values(vorher)
+        .flat()
+        .find((e) => e.id === id)
+      if (!einheit) return
+      uebernimm(mitVon(vorher, id, von))
+      setFehler(null)
+      nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch(() => {
+        uebernimm(vorher)
+        setFehler('nicht gespeichert. tippe nochmal.')
+      })
+    },
+    [backend, nacheinander, uebernimm]
+  )
+
+  /** archiviert die sonntagsabrechnung einer woche, ersetzt eine vorhandene */
+  const abrechnungHinzu = useCallback(
+    (a: Abrechnung) => {
+      const vorher = abrechnungenRef.current
+      const ohne = vorher.filter((x) => x.woche !== a.woche)
+      const next = [...ohne, a].sort((x, y) => (x.woche < y.woche ? -1 : 1))
+      abrechnungenRef.current = next
+      setAbrechnungen(next)
+      setFehler(null)
+      backend.schreibeAbrechnung(a).catch(() => {
+        abrechnungenRef.current = vorher
+        setAbrechnungen(vorher)
+        setFehler('abrechnung nicht gespeichert. versuch es nochmal.')
+      })
+    },
+    [backend]
   )
 
   /**
@@ -590,6 +661,7 @@ export function useTracker(backend: Backend) {
     zustand,
     schlaf,
     wetten,
+    abrechnungen,
     notenstand,
     ladezustand,
     fehler,
@@ -599,8 +671,11 @@ export function useTracker(backend: Backend) {
     einheitHinzu,
     rueckgaengig,
     wertAendern,
+    wertSetzen,
+    zeitSetzen,
     setzeGewicht,
     setzeWette,
+    abrechnungHinzu,
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,
