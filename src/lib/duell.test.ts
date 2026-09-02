@@ -9,8 +9,6 @@ import {
   duellTickerEintraege,
   entscheideDuell,
   saisonHistorie,
-  wochenVolumen,
-  wochenZahlen,
 } from './duell'
 import type { Aufenthalt, Zustand } from './types'
 import { tickKey } from './types'
@@ -196,42 +194,6 @@ describe('duell.ts logik & berechnungen', () => {
     const hist = saisonHistorie(z, montag, 3, 'erijon')
     expect(hist.siegeIch).toBe(1)
     expect(hist.aktuelleSerie).toEqual({ halter: 'keiner', anzahl: 0 })
-  })
-
-  it('wochenVolumen summiert die tageswerte über die woche', () => {
-    const z = leererZustand()
-    z.einheiten[tickKey('erijon', 'gym', '2026-08-24')] = [
-      { id: 'g1', user: 'erijon', area: 'gym', tag: '2026-08-24', erfasst: '2026-08-24T08:00:00Z', wert: 60 },
-      { id: 'g2', user: 'erijon', area: 'gym', tag: '2026-08-24', erfasst: '2026-08-24T18:00:00Z', wert: 45 },
-    ]
-    z.einheiten[tickKey('erijon', 'gym', '2026-08-25')] = [
-      { id: 'g3', user: 'erijon', area: 'gym', tag: '2026-08-25', erfasst: '2026-08-25T08:00:00Z', wert: 30 },
-    ]
-    expect(wochenVolumen(z, woche, 'erijon', 'gym')).toBe(135)
-    expect(wochenVolumen(z, woche, 'erijon', 'gewicht')).toBe(0)
-  })
-
-  it('wochenZahlen rechnet volumen je person und gewichtstage separat', () => {
-    const z = leererZustand()
-    z.einheiten[tickKey('erijon', 'lesen', '2026-08-24')] = [
-      { id: 'l1', user: 'erijon', area: 'lesen', tag: '2026-08-24', erfasst: '2026-08-24T09:00:00Z', wert: 40 },
-    ]
-    z.einheiten[tickKey('koray', 'lernen', '2026-08-25')] = [
-      { id: 'k1', user: 'koray', area: 'lernen', tag: '2026-08-25', erfasst: '2026-08-25T09:00:00Z', wert: 90 },
-    ]
-    z.gewichte['erijon|2026-08-24'] = 82.5
-    z.gewichte['erijon|2026-08-25'] = 82.1
-    z.gewichte['koray|2026-08-24'] = 88.0
-
-    const zahlen = wochenZahlen(z, woche, 'erijon', 'koray')
-    expect(zahlen).toHaveLength(5)
-    const lesen = zahlen.find((x) => x.id === 'lesen')!
-    const gewicht = zahlen.find((x) => x.id === 'gewicht')!
-    expect(lesen.ich).toBe(40)
-    expect(lesen.er).toBeNull()
-    expect(gewicht.ich).toBe(2)
-    expect(gewicht.er).toBe(1)
-    expect(gewicht.label).toBe('gewicht')
   })
 
   it('abrechnungFuerWoche entscheidet über die punkte und übernimmt die wette', () => {

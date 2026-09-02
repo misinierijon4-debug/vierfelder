@@ -1,8 +1,8 @@
-import { AREAS, FELDER, gewichtKey, other } from './types'
+import { AREAS, FELDER, other } from './types'
 import type { Abrechnung, FeldId, TickQuelle, UserId, Zustand } from './types'
 import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
-import { erledigteFelder, hatTageswert, quelle, tagesWert, wocheBereich, wocheGesamt } from './tracker'
+import { erledigteFelder, quelle, wocheBereich, wocheGesamt } from './tracker'
 
 export type DruckStatus =
   | 'offen'
@@ -140,41 +140,6 @@ export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
     gesamt,
     quote,
   }
-}
-
-/** summe der werte einer woche, in der einheit des bereichs */
-export function wochenVolumen(z: Zustand, woche: string[], u: UserId, f: FeldId): number {
-  return woche.reduce((summe, tag) => summe + tagesWert(z, u, f, tag), 0)
-}
-
-/**
- * die woche in zahlen je bereich und person. beim gewicht zählt nicht das
- * volumen, sondern die tage mit eintrag.
- */
-export function wochenZahlen(
-  z: Zustand,
-  woche: string[],
-  ich: UserId,
-  er: UserId
-): Array<{ id: FeldId; label: string; ich: number | null; er: number | null }> {
-  return FELDER.map(({ id, label }) => {
-    if (id === 'gewicht') {
-      return {
-        id,
-        label,
-        ich: woche.filter((tag) => z.gewichte[gewichtKey(ich, tag)] !== undefined).length,
-        er: woche.filter((tag) => z.gewichte[gewichtKey(er, tag)] !== undefined).length,
-      }
-    }
-    const ichErfasst = woche.some((tag) => hatTageswert(z, ich, id, tag))
-    const erErfasst = woche.some((tag) => hatTageswert(z, er, id, tag))
-    return {
-      id,
-      label,
-      ich: ichErfasst ? wochenVolumen(z, woche, ich, id) : null,
-      er: erErfasst ? wochenVolumen(z, woche, er, id) : null,
-    }
-  })
 }
 
 /**
