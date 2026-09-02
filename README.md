@@ -24,6 +24,13 @@ steht auch dort der Haken von allein — beim Lesen ab 10, weil ein Kapitel kür
 Trainingseinheit. Damit gilt die Unterscheidung zwischen gemessen und
 getippt in allen vier Bereichen. Anleitung in [FOKUS-KURZBEFEHL.md](FOKUS-KURZBEFEHL.md).
 
+Die App darf aufs Handy melden. Ein Schalter unten meldet das Gerät an, ein Knopf
+daneben schickt eine Probe durch die ganze Kette — verschlüsselt im Browser des
+Empfängers, unterwegs nur Bytes. Gebaut ist bisher der Weg, nicht die
+Erinnerungen: auf dem iPhone geht das nur, wenn die App auf dem Home-Bildschirm
+liegt. Einrichtung in [BENACHRICHTIGUNGEN.md](BENACHRICHTIGUNGEN.md), die
+gesammelten Nachrichten in [IDEEN.md](IDEEN.md).
+
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
 Der Tab `noten` hält das laufende Halbjahr in Notenpunkten von 0 bis 15 fest.

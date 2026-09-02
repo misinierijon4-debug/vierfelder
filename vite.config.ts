@@ -35,6 +35,15 @@ export default defineConfig({
       includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png'],
       workbox: {
         /**
+         * Der erzeugte Service Worker kann von sich aus kein Push. Statt auf
+         * `injectManifest` umzustellen und damit das Vorabspeichern selbst zu
+         * uebernehmen, laedt er eine zweite Datei dazu: `public/push-sw.js`
+         * bringt die beiden Ereignisbehandler mit, alles andere bleibt, wie
+         * das Plugin es baut. Der Pfad ist relativ zum Worker, gilt also unter
+         * `/` genauso wie unter `/reponame/`.
+         */
+        importScripts: ['push-sw.js'],
+        /**
          * Die Schriften gehoeren in den Cache, aber nicht in den Precache:
          * `@fontsource` liefert je Familie mehrere Schnitte (latin, latin-ext,
          * vietnamesisch), von denen der Browser ueber `unicode-range` nur die
