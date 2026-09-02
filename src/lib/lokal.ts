@@ -7,10 +7,11 @@ import type {
   NoteEreignis,
   Wetten,
 } from './backend'
-import { toKey, weekDays } from './dates'
+import { addDays, toKey, weekDays } from './dates'
 import { gewichtKey, neueEinheitId, tickKey, wertKey } from './types'
 import { notenGewicht } from './noten'
 import type {
+  Abrechnung,
   Aufenthalt,
   AreaId,
   Einheit,
@@ -21,6 +22,7 @@ import type {
   Phase,
   PhasenArt,
   Schlafnacht,
+  ScoreKomponenten,
   Ticks,
   UserId,
   Werte,
@@ -40,6 +42,7 @@ const GEWICHT_KEY = 'vierfelder.gewicht.v1'
 /** eine zeile pro durchführung, flach über beide personen */
 const EINHEITEN_KEY = 'vierfelder.einheiten.v1'
 const WETTEN_KEY = 'vierfelder.wetten.v1'
+const ABRECHNUNG_KEY = 'vierfelder.abrechnung.v1'
 const FAECHER_KEY = 'vierfelder.faecher.v2'
 const NOTEN_KEY = 'vierfelder.noten.v2'
 /** damit die übernahme des altbestands genau einmal läuft */
@@ -250,6 +253,22 @@ function erzeugeBeispielSchlaf(): Schlafnacht[] {
       const wach = summe('wach')
       const aufwachzeit = iso(abend, stunde, minute, verzoegerung + spanne)
 
+      const komponenten: ScoreKomponenten = {
+        dauer: {
+          wert: Math.min(100, Math.round(((spanne - wach) / 540) * 100)),
+          gewicht: 45,
+          punkte: Math.round((Math.min(100, ((spanne - wach) / 540) * 100) * 45) / 100),
+        },
+        effizienz: {
+          wert: Math.round(((spanne - wach) / (verzoegerung + spanne + 8)) * 100),
+          gewicht: 20,
+          punkte: null,
+        },
+        phasen: { wert: 82, gewicht: 10, punkte: 8 },
+        unterbrechungen: { wert: 68, gewicht: 10, punkte: 7 },
+        regelmaessigkeit: { wert: 74, gewicht: 0, punkte: null },
+      }
+
       naechte.push({
         user,
         // die datenbank benennt die nacht nach dem morgen
@@ -271,6 +290,7 @@ function erzeugeBeispielSchlaf(): Schlafnacht[] {
         // faellt dann auf die kurve in `qualitaet` zurueck.
         nachtwert: null,
         scoreKonfidenz: null,
+        scoreKomponenten: komponenten,
       })
     }
   })
@@ -328,6 +348,44 @@ function erzeugeBeispielAufenthalte(): Aufenthalt[] {
   return aufenthalte
 }
 
+/** zwei archivierte wochen, damit die bilanz im prototyp archiviert wirkt */
+function erzeugeBeispielAbrechnungen(): Abrechnung[] {
+  const montag = (wochenZurueck: number) =>
+    weekDays(addDays(new Date(), -7 * wochenZurueck))[0]!
+  return [
+    {
+      woche: montag(1),
+      sieger: 'erijon',
+      grund: 'punkte',
+      differenz: 4,
+      belegErijon: 18,
+      belegKoray: 14,
+      wette: 'verlierer kocht abendessen',
+      abgeschlossen: new Date(Date.now() - 6 * 86400000).toISOString(),
+    },
+    {
+      woche: montag(2),
+      sieger: 'koray',
+      grund: 'beleg',
+      differenz: 0,
+      belegErijon: 12,
+      belegKoray: 13,
+      wette: 'der verlierer traegt die einkaeufe',
+      abgeschlossen: new Date(Date.now() - 13 * 86400000).toISOString(),
+    },
+  ]
+}
+
+function alleAbrechnungen(): Abrechnung[] {
+  if (localStorage.getItem(ABRECHNUNG_KEY) === null) {
+    const beispiele = erzeugeBeispielAbrechnungen()
+    localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify(beispiele))
+    return beispiele
+  }
+  const roh = lade<Abrechnung[]>(ABRECHNUNG_KEY, [])
+  return Array.isArray(roh) ? roh : []
+}
+
 let kanal: BroadcastChannel | null | undefined
 function holeKanal(): BroadcastChannel | null {
   if (kanal === undefined) {
@@ -374,7 +432,9 @@ export function lokalesBackend(): Backend {
         schlaf,
         aufenthalte: erzeugeBeispielAufenthalte(),
         wetten: lade<Wetten>(WETTEN_KEY, {}),
+        abrechnungen: alleAbrechnungen(),
         noten: { faecher: alleFaecher(), noten: alleNoten() },
+        einheitVonVerfuegbar: true,
         altbestand: false,
       }
     },
@@ -392,6 +452,12 @@ export function lokalesBackend(): Backend {
       const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, wert } : x))
       sichere(alle)
       sende('wert', { ...e, wert })
+    },
+
+    async schreibeEinheitVon(e: Einheit, von: string | null) {
+      const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, von } : x))
+      sichere(alle)
+      sende('wert', { ...e, von })
     },
 
     async loescheEinheit(e: Einheit) {
@@ -420,6 +486,13 @@ export function lokalesBackend(): Backend {
       wetten[woche] = text
       localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
       holeKanal()?.postMessage({ von: absender, typ: 'wette', woche, text } satisfies Nachricht)
+    },
+
+    async schreibeAbrechnung(a: Abrechnung) {
+      const alle = alleAbrechnungen()
+      if (alle.some((x) => x.woche === a.woche)) return
+      localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, a]))
+      holeKanal()?.postMessage({ von: absender, typ: 'abrechnung', abrechnung: a } satisfies Nachricht)
     },
 
     async setzePruefungsfach(id: string, nummer: number | null) {
@@ -458,6 +531,7 @@ export function lokalesBackend(): Backend {
         const n = e.data
         if (!n || n.von === absender) return
         if (n.typ === 'wette') cb({ typ: 'wette', woche: n.woche, text: n.text })
+        else if (n.typ === 'abrechnung') cb({ typ: 'abrechnung', abrechnung: n.abrechnung })
         else if (n.typ === 'einheit') cb({ typ: 'einheit', art: n.art, einheit: n.einheit })
         else if (n.typ === 'fach') cb({ typ: 'fach', art: n.art, fach: n.fach })
         else if (n.typ === 'note') cb({ typ: 'note', art: n.art, note: n.note })

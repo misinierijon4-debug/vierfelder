@@ -1,11 +1,13 @@
 import type { Fach, Notenstand } from '../../lib/types'
-import { fachSchnitt, gesamtSchnitt, vergleich } from '../../lib/noten'
+import { fachSchnitt, gesamtSchnitt, kursGewichteterSchnitt, vergleich } from '../../lib/noten'
 
 const wert = (n: number | null) => n === null ? '–' : n.toFixed(1).replace('.', ',')
 const schnitt = (stand: Notenstand, fach: Fach) => wert(fachSchnitt(stand.noten, fach).gesamt)
 
 export function NotenVergleich({ stand }: { stand: Notenstand }) {
   const { zeilen, ohnePaar } = vergleich(stand.faecher)
+  const eGew = kursGewichteterSchnitt(stand.faecher, stand.noten, 'erijon')
+  const kGew = kursGewichteterSchnitt(stand.faecher, stand.noten, 'koray')
   return (
     <section aria-labelledby="vergleich-titel" className="mt-7 border-t border-linie pt-4">
       <h2 id="vergleich-titel" className="display text-[18px] font-semibold">vergleich</h2>
@@ -16,6 +18,9 @@ export function NotenVergleich({ stand }: { stand: Notenstand }) {
         <span />
         <span className="tnum text-right text-[13px] text-kreide">{wert(gesamtSchnitt(stand.faecher, stand.noten, 'erijon'))}</span>
         <span className="tnum text-right text-[13px] text-kreide">{wert(gesamtSchnitt(stand.faecher, stand.noten, 'koray'))}</span>
+        <span className="text-[10px] text-kreide-52">kurs-gewichtet</span>
+        <span className="tnum text-right text-[13px]" style={eGew !== null && (kGew === null || eGew > kGew) ? { color: 'var(--erijon)' } : undefined}>{wert(eGew)}</span>
+        <span className="tnum text-right text-[13px]" style={kGew !== null && (eGew === null || kGew > eGew) ? { color: 'var(--koray)' } : undefined}>{wert(kGew)}</span>
       </div>
       <ul>
         {zeilen.map(({ erijon, koray }) => (

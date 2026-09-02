@@ -101,7 +101,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
                   woche
                 </span>
                 <span className="tnum text-[12px] font-bold text-kreide">
-                  {match.wocheDiff > 0 ? `+${match.wocheDiff}` : match.wocheDiff < 0 ? `-${Math.abs(match.wocheDiff)}` : '='}
+                  {match.wocheDiff > 0 ? `+${match.wocheDiff}` : match.wocheDiff < 0 ? `−${Math.abs(match.wocheDiff)}` : '='}
                 </span>
               </div>
 
@@ -216,7 +216,7 @@ function Bilanz({
           {diff > 0
             ? `+${diff}`
             : diff < 0
-              ? `-${Math.abs(diff)}`
+              ? `−${Math.abs(diff)}`
               : entscheidung.grund === 'beleg'
                 ? `beleg ${belegIch}:${belegEr}`
                 : 'remis'}

@@ -13,8 +13,8 @@ type Props = {
   woche: string[]
   titel?: string
   gewaehlterTag: string
-  /** dein persönliches schlafziel in minuten, aus dem kurzbefehl */
-  zielMinuten: number
+  /** persoenliches schlafziel je person; ein fehlendes ziel bleibt unsichtbar */
+  ziele?: Partial<Record<UserId, number>>
   /** in welche richtung die zuletzt gewechselte woche hereinkommt: −1 zurück, 1 vor */
   richtung: number
   /** vorwaerts ist am rand der zeitleiste zu ende: die laufende woche ist die letzte */
@@ -41,7 +41,7 @@ export function SchlafWochenVergleich({
   woche,
   titel = 'diese woche',
   gewaehlterTag,
-  zielMinuten,
+  ziele,
   richtung,
   kannVor,
   onTagWaehlen,
@@ -65,7 +65,12 @@ export function SchlafWochenVergleich({
     }
   })
 
-  const maxMinuten = Math.max(10 * 60, Math.ceil((zielMinuten + 60) / 60) * 60)
+  const zielVon = (user: UserId): number | null => ziele?.[user] ?? null
+  const zielWerte = USERS.map((user) => zielVon(user.id)).filter((wert): wert is number => wert !== null)
+  const maxMinuten = Math.max(
+    10 * 60,
+    Math.ceil(((zielWerte.length > 0 ? Math.max(...zielWerte) : 0) + 60) / 60) * 60
+  )
 
   const inhalt: ReactNode = (
     <>
@@ -119,11 +124,21 @@ export function SchlafWochenVergleich({
               </span>
 
               <div className="relative mx-auto my-2.5 flex h-16 w-full items-end justify-center gap-1">
-                <span
-                  className="pointer-events-none absolute inset-x-0 border-t border-dashed border-linie-hell/50"
-                  style={{ bottom: `${(zielMinuten / maxMinuten) * 100}%` }}
-                  aria-hidden="true"
-                />
+                {/* das ziel liegt fuer jede person auf ihrer eigenen hoehe */}
+                {USERS.map((user) => {
+                  const ziel = zielVon(user.id)
+                  return ziel === null ? null : (
+                    <span
+                      key={user.id}
+                      className="pointer-events-none absolute inset-x-0 border-t border-dashed"
+                      style={{
+                        bottom: `${(ziel / maxMinuten) * 100}%`,
+                        borderColor: user.farbe,
+                      }}
+                      aria-hidden="true"
+                    />
+                  )
+                })}
                 <div className="flex h-full w-2 flex-col justify-end overflow-hidden bg-grund">
                   {erijonMin > 0 && (
                     <motion.span
@@ -191,8 +206,21 @@ export function SchlafWochenVergleich({
           {titel}
         </h2>
         <div className="flex shrink-0 items-center gap-2 text-[10px] text-kreide-52">
-          <span className="block w-4 border-t border-dashed border-linie-hell" aria-hidden="true" />
-          <span>{formatDauer(zielMinuten)} ziel</span>
+          {zielWerte.length > 0 && (
+            <>
+              <span className="block w-4 border-t border-dashed border-linie-hell" aria-hidden="true" />
+              <span>ziel</span>
+              <span className="tnum">
+                {USERS.filter((user) => zielVon(user.id) !== null).map((user, index) => (
+                  <span key={user.id}>
+                    {index > 0 && <span className="text-kreide-52"> · </span>}
+                    <span style={{ color: user.farbe }}>{user.name[0]}</span>{' '}
+                    <span className="text-kreide">{formatDauer(zielVon(user.id)!)}</span>
+                  </span>
+                ))}
+              </span>
+            </>
+          )}
           {/* kleines symbol, volle trefferflaeche: die kopfzeile bleibt so hoch, wie sie war */}
           <button
             type="button"

@@ -1,8 +1,8 @@
-import { AREAS, FELDER, other } from './types'
-import type { FeldId, TickQuelle, UserId, Zustand } from './types'
+import { AREAS, FELDER, gewichtKey, other } from './types'
+import type { Abrechnung, FeldId, TickQuelle, UserId, Zustand } from './types'
 import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
-import { erledigteFelder, quelle, wocheBereich, wocheGesamt } from './tracker'
+import { erledigteFelder, hatTageswert, quelle, tagesWert, wocheBereich, wocheGesamt } from './tracker'
 
 export type DruckStatus =
   | 'offen'
@@ -139,6 +139,68 @@ export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
     getippt: getipptAnzahl,
     gesamt,
     quote,
+  }
+}
+
+/** summe der werte einer woche, in der einheit des bereichs */
+export function wochenVolumen(z: Zustand, woche: string[], u: UserId, f: FeldId): number {
+  return woche.reduce((summe, tag) => summe + tagesWert(z, u, f, tag), 0)
+}
+
+/**
+ * die woche in zahlen je bereich und person. beim gewicht zählt nicht das
+ * volumen, sondern die tage mit eintrag.
+ */
+export function wochenZahlen(
+  z: Zustand,
+  woche: string[],
+  ich: UserId,
+  er: UserId
+): Array<{ id: FeldId; label: string; ich: number | null; er: number | null }> {
+  return FELDER.map(({ id, label }) => {
+    if (id === 'gewicht') {
+      return {
+        id,
+        label,
+        ich: woche.filter((tag) => z.gewichte[gewichtKey(ich, tag)] !== undefined).length,
+        er: woche.filter((tag) => z.gewichte[gewichtKey(er, tag)] !== undefined).length,
+      }
+    }
+    const ichErfasst = woche.some((tag) => hatTageswert(z, ich, id, tag))
+    const erErfasst = woche.some((tag) => hatTageswert(z, er, id, tag))
+    return {
+      id,
+      label,
+      ich: ichErfasst ? wochenVolumen(z, woche, ich, id) : null,
+      er: erErfasst ? wochenVolumen(z, woche, er, id) : null,
+    }
+  })
+}
+
+/**
+ * archiviert den sonntagsstand: dieselbe regel wie finale und historie —
+ * punkte, bei gleichstand der beleg.
+ */
+export function abrechnungFuerWoche(
+  z: Zustand,
+  woche: string[],
+  wetteText: string | null
+): Abrechnung {
+  const punkteErijon = wocheGesamt(z, 'erijon', woche)
+  const punkteKoray = wocheGesamt(z, 'koray', woche)
+  const belegErijon = belegQuote(z, 'erijon', woche).gemessen
+  const belegKoray = belegQuote(z, 'koray', woche).gemessen
+  const entscheidung = entscheideDuell(punkteErijon, punkteKoray, belegErijon, belegKoray)
+  const wette = wetteText && wetteText.trim() ? wetteText.trim().slice(0, 160) : null
+  return {
+    woche: woche[0]!,
+    sieger: entscheidung.sieger === 'ich' ? 'erijon' : entscheidung.sieger === 'er' ? 'koray' : 'unentschieden',
+    grund: entscheidung.grund,
+    differenz: punkteErijon - punkteKoray,
+    belegErijon,
+    belegKoray,
+    wette,
+    abgeschlossen: new Date().toISOString(),
   }
 }
 

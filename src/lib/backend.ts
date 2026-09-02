@@ -1,4 +1,5 @@
 import type {
+  Abrechnung,
   Aufenthalt,
   Einheit,
   Einheiten,
@@ -19,6 +20,7 @@ export type EinheitEreignis = {
 }
 
 export type WetteEreignis = { typ: 'wette'; woche: string; text: string }
+export type AbrechnungEreignis = { typ: 'abrechnung'; abrechnung: Abrechnung }
 export type FachEreignis = { typ: 'fach'; art: 'neu' | 'weg' | 'wert'; fach: Fach }
 export type NoteEreignis = { typ: 'note'; art: 'neu' | 'weg' | 'wert'; note: Note }
 
@@ -43,6 +45,7 @@ export type AufenthaltEreignis = { typ: 'aufenthalt'; aufenthalt: Aufenthalt }
 export type BackendEreignis =
   | EinheitEreignis
   | WetteEreignis
+  | AbrechnungEreignis
   | SchlafEreignis
   | GewichtEreignis
   | AufenthaltEreignis
@@ -58,7 +61,11 @@ export type Anfangszustand = {
   /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
   aufenthalte: Aufenthalt[]
   wetten: Wetten
+  /** archivierte sonntagsabrechnungen, älteste zuerst */
+  abrechnungen: Abrechnung[]
   noten: Notenstand
+  /** die optionale durchfuehrungszeit kann schon gespeichert werden */
+  einheitVonVerfuegbar: boolean
   /**
    * die tabelle `einheiten` fehlt noch, gelesen wurde aus `eintraege` und
    * `werte`. dann gibt es genau eine einheit pro tag und die oberfläche bietet
@@ -79,6 +86,8 @@ export interface Backend {
   schreibeEinheit(e: Einheit): Promise<void>
   /** ändert die minuten oder seiten einer einheit */
   schreibeEinheitWert(e: Einheit, wert: number | null): Promise<void>
+  /** ändert die erfasste durchführungszeit einer einheit. null löscht sie */
+  schreibeEinheitVon(e: Einheit, von: string | null): Promise<void>
   /** nimmt eine einzelne durchführung zurück */
   loescheEinheit(e: Einheit): Promise<void>
   /** nimmt den ganzen tag zurück, mit allen einheiten */
@@ -87,6 +96,8 @@ export interface Backend {
   schreibeGewicht(tag: string, kg: number): Promise<void>
   /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
   schreibeWette(woche: string, text: string): Promise<void>
+  /** archiviert die sonntagsabrechnung einer woche */
+  schreibeAbrechnung(a: Abrechnung): Promise<void>
   /** einzige veränderliche fachangabe: mündliches prüfungsfach 4 oder 5 */
   setzePruefungsfach(fachId: string, nummer: number | null): Promise<void>
   schreibeNote(note: Note): Promise<void>

@@ -6,6 +6,7 @@ import { addDays, fromKey, weekDays } from '../../lib/dates'
 import { istSelbeWoche, wochenZeitraum } from '../../lib/kalender'
 import { SchlafWochenVergleich } from './SchlafWochenVergleich'
 import { SchlafNachtDetail } from './SchlafNachtDetail'
+import { SchlafNachtVergleich } from './SchlafNachtVergleich'
 import { SchlafRhythmus } from './SchlafRhythmus'
 import { SchlafKalender } from './SchlafKalender'
 
@@ -69,11 +70,15 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
     [gewaehlterTag, tagInWoche, woche]
   )
 
-  // das ziel kommt aus deinem kurzbefehl, nicht aus einer festen 8-stunden-annahme
-  const zielMinuten =
-    naechte.filter((n) => n.user === ansichtUser).at(-1)?.zielMinuten ??
-    naechte.at(-1)?.zielMinuten ??
-    480
+  // das ziel kommt je person aus deren letzter nacht, nicht aus einer festen
+  // 8-stunden-annahme
+  const ziele = useMemo(() => {
+    const gefunden: Partial<Record<UserId, number>> = {}
+    for (const nacht of naechte) {
+      if (nacht.zielMinuten > 0) gefunden[nacht.user] = nacht.zielMinuten
+    }
+    return gefunden
+  }, [naechte])
 
   const waehleKalenderTag = (tag: string) => {
     setRichtung(tag < gewaehlterTag ? -1 : 1)
@@ -98,7 +103,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
         woche={sichtbareWoche}
         titel={wochenTitel}
         gewaehlterTag={gewaehlterTag}
-        zielMinuten={zielMinuten}
+        ziele={ziele}
         richtung={richtung}
         kannVor={kannVor}
         onTagWaehlen={setGewaehlterTag}
@@ -116,6 +121,8 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
           onVerlaufBrauchen={onVerlaufBrauchen}
         />
       </div>
+
+      <SchlafNachtVergleich naechte={naechte} gewaehlterTag={gewaehlterTag} onVerlaufBrauchen={onVerlaufBrauchen} />
 
       <SchlafRhythmus
         naechte={naechte}

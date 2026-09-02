@@ -164,6 +164,8 @@ export type NachtPhasenAnalyse = {
   effizienz: number | null
   /** nachtwert v2 aus der datenbank; ohne datenbank die kurve aus `qualitaet` */
   qualitaet: number
+  /** nur der serverwert; null bleibt null und wird nicht aus der dauer geraten */
+  nachtwert: number | null
   /** belegdichte des nachtwerts, 1 bis 100. null, wenn er geschaetzt ist */
   qualitaetKonfidenz: number | null
   hatPhasenDaten: boolean
@@ -280,6 +282,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
         : null,
     // der gerechnete wert hat vorrang: er sieht mehr als die dauer
     qualitaet: nacht.nachtwert ?? qualitaet(schlafMinuten),
+    nachtwert: nacht.nachtwert,
     qualitaetKonfidenz: nacht.nachtwert === null ? null : nacht.scoreKonfidenz,
     hatPhasenDaten,
     verlaufGeladen: nacht.phasen !== null,
@@ -358,6 +361,69 @@ export function median(werte: number[]): number {
   const s = [...werte].sort((a, b) => a - b)
   const mitte = Math.floor(s.length / 2)
   return s.length % 2 ? s[mitte]! : (s[mitte - 1]! + s[mitte]!) / 2
+}
+
+/**
+ * Abstand einer Nacht von der eigenen Gewohnheit, gemessen an der
+ * Einschlafzeit. Der Median kommt aus den bis zu 13 vorherigen eigenen
+ * Naechten mit Schlafzeit — dieselbe Rechnung wie der Server-Trigger
+ * setze_schlaf_score_v3, nur ohne den Umweg ueber die Historie-Spalten.
+ * Eine erste Nacht hat noch keine Gewohnheit und bleibt ohne Abstand.
+ */
+export type MedianAbweichung = {
+  /** |einschlafNachtminute − median|, ueber die 24-stunden-grenze gekuerzt */
+  abweichung: number
+  /** wie viele eigene vornaechte den median getragen haben */
+  basis: number
+}
+
+const MEDIAN_HISTORIE = 13
+
+export function medianAbweichung(
+  nacht: Schlafnacht,
+  naechte: Schlafnacht[]
+): MedianAbweichung | null {
+  const vorher = naechte
+    .filter((n) => n.user === nacht.user && n.nacht < nacht.nacht && n.schlafMinuten > 0)
+    .sort((a, b) => (a.nacht < b.nacht ? 1 : a.nacht > b.nacht ? -1 : 0))
+    .slice(0, MEDIAN_HISTORIE)
+  if (vorher.length === 0) return null
+
+  const referenz = median(vorher.map((n) => nachtMinute(n.einschlafzeit)))
+  let abweichung = Math.abs(nachtMinute(nacht.einschlafzeit) - referenz)
+  // ueber die 24-stunden-grenze ist der kuerzere weg der richtige — wie im server-trigger
+  if (abweichung > 720) abweichung = 1440 - abweichung
+  return { abweichung, basis: vorher.length }
+}
+
+/** die komponenten des nachtwerts, in fester reihenfolge statt in json-ordnung */
+const SCORE_REIHENFOLGE = [
+  { id: 'dauer', label: 'dauer' },
+  { id: 'effizienz', label: 'effizienz' },
+  { id: 'phasen', label: 'phasen' },
+  { id: 'unterbrechungen', label: 'unterbrechungen' },
+  { id: 'regelmaessigkeit', label: 'regelmäßigkeit' },
+] as const
+
+export function scoreKomponentenZeilen(
+  nacht: Schlafnacht
+): Array<{ id: string; label: string; wert: number | null; punkte: number | null }> {
+  const komponenten = nacht.scoreKomponenten
+  if (!komponenten) return []
+
+  const zeilen: Array<{ id: string; label: string; wert: number | null; punkte: number | null }> = []
+  for (const def of SCORE_REIHENFOLGE) {
+    const komponente = komponenten[def.id]
+    if (komponente) {
+      zeilen.push({
+        id: def.id,
+        label: def.label,
+        wert: komponente.wert,
+        punkte: komponente.punkte,
+      })
+    }
+  }
+  return zeilen
 }
 
 /**

@@ -5,6 +5,7 @@ import type { Schlafnacht, UserId } from '../../lib/types'
 import { addDays, fromKey, langesDatum } from '../../lib/dates'
 import { STEMPEL } from '../../lib/motion'
 import { abendDatum, analysiereSchlafnacht, formatDauer } from '../../lib/schlafPhasen'
+import { medianAbweichung, scoreKomponentenZeilen } from '../../lib/schlafPhasen'
 import { PhasenZeitstrahl } from './PhasenZeitstrahl'
 import { Ring } from './Ring'
 
@@ -32,6 +33,10 @@ export function SchlafNachtDetail({
     (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
   )
   const analyse = aktuelleNacht ? analysiereSchlafnacht(aktuelleNacht) : null
+  const scoreZeilen = aktuelleNacht ? scoreKomponentenZeilen(aktuelleNacht) : []
+  // wie weit diese nacht von der eigenen gewohnheit entfernt ist; ohne eine
+  // einzige vornacht gibt es keine gewohnheit und damit keinen abstand
+  const medianInfo = aktuelleNacht ? medianAbweichung(aktuelleNacht, naechte) : null
 
   // aeltere naechte kommen ohne verlauf. sichtbar wird er erst, wenn jemand
   // die nacht aufschlaegt — also wird er auch erst dann geholt.
@@ -162,6 +167,12 @@ export function SchlafNachtDetail({
                           : `nach ${formatDauer(analyse.einschlafdauerMinuten)} im bett`}
                       </span>
                     )}
+                    {medianInfo !== null && (
+                      <span className="tnum mt-0.5 block text-[10px] text-kreide-52">
+                        {Math.round(medianInfo.abweichung)} min vom median ({medianInfo.basis}{' '}
+                        {medianInfo.basis === 1 ? 'nacht' : 'nächte'})
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div className="min-w-0 px-2.5 py-2.5">
@@ -184,6 +195,22 @@ export function SchlafNachtDetail({
                   </dd>
                 </div>
               </dl>
+
+              {scoreZeilen.length > 0 && (
+                <div className="grid grid-cols-5 divide-x divide-linie border-t border-linie">
+                  {scoreZeilen.map((zeile) => (
+                    <div key={zeile.id} className="min-w-0 px-1.5 py-2.5">
+                      <p className="truncate text-[9px] text-kreide-52">{zeile.label}</p>
+                      <p className="tnum mt-1 truncate text-[13px] font-semibold text-kreide">
+                        {zeile.wert === null ? '—' : String(Math.round(zeile.wert))}
+                      </p>
+                      <p className="mt-0.5 truncate text-[8px] text-kreide-52">
+                        {zeile.punkte === null ? '(keine punkte)' : `+${zeile.punkte} pt`}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <PhasenZeitstrahl analyse={analyse} />

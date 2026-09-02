@@ -66,6 +66,8 @@ export type Tageseinheit = {
    * ein fokus misst zeit und kann keine seiten zählen.
    */
   einheit: 'min' | 'seiten'
+  /** die durchführungszeit selbst, soweit sie erfasst wurde */
+  von?: string | null
   /** zeitpunkt der eintragung (getippt) oder des beginns (gemessen) */
   erfasst: string | null
   herkunft: TickQuelle
@@ -81,6 +83,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
     id: e.id,
     wert: e.wert,
     einheit: area(f).unit,
+    von: e.von ?? null,
     erfasst: e.erfasst,
     herkunft: 'getippt' as const,
   }))
@@ -90,6 +93,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
       id: `messung|${a.ankunft}|${a.ort}`,
       wert: Math.round(dauerMinuten(a)!),
       einheit: 'min',
+      von: null,
       erfasst: a.ankunft,
       herkunft: 'gemessen',
       ort: a.ort,
@@ -99,10 +103,12 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
   // ohne zeitpunkt nach vorn: das sind die übernommenen altbestände, und die
   // liegen vor allem, was seither mit uhrzeit dazugekommen ist.
   return liste.sort((x, y) => {
-    if (x.erfasst === y.erfasst) return 0
-    if (x.erfasst === null) return -1
-    if (y.erfasst === null) return 1
-    return x.erfasst < y.erfasst ? -1 : 1
+    const xt = x.von ?? x.erfasst
+    const yt = y.von ?? y.erfasst
+    if (xt === yt) return 0
+    if (xt === null) return -1
+    if (yt === null) return 1
+    return xt < yt ? -1 : 1
   })
 }
 
@@ -215,7 +221,8 @@ export function baueEinheit(
   a: AreaId,
   tag: string,
   wert: number | null,
-  jetzt: Date = new Date()
+  jetzt: Date = new Date(),
+  von?: string | null
 ): Einheit {
   return {
     id: neueEinheitId(),
@@ -224,6 +231,7 @@ export function baueEinheit(
     tag,
     wert: saeubere(wert),
     erfasst: jetzt.toISOString(),
+    von: von ?? null,
   }
 }
 
@@ -307,6 +315,37 @@ export function mitWert(einheiten: Einheiten, id: string, wert: number | null): 
       if (e.id !== id) return e
       getroffen = true
       return { ...e, wert: saeubere(wert) }
+    })
+  }
+  return getroffen ? next : einheiten
+}
+
+/**
+ * uebernimmt die veraenderlichen felder einer einheit (wert und von) anhand
+ * der id — fuer den realtime-weg und den lokalen kanal, wo ein update als
+ * ganze einheit ankommt.
+ */
+export function mitEinheit(einheiten: Einheiten, e: Einheit): Einheiten {
+  const next: Einheiten = {}
+  let getroffen = false
+  for (const [key, liste] of Object.entries(einheiten)) {
+    next[key] = liste.map((x) => {
+      if (x.id !== e.id) return x
+      getroffen = true
+      return { ...x, wert: e.wert, von: e.von === undefined ? x.von : e.von }
+    })
+  }
+  return getroffen ? next : einheiten
+}
+
+export function mitVon(einheiten: Einheiten, id: string, von: string | null): Einheiten {
+  const next: Einheiten = {}
+  let getroffen = false
+  for (const [key, liste] of Object.entries(einheiten)) {
+    next[key] = liste.map((x) => {
+      if (x.id !== id) return x
+      getroffen = true
+      return { ...x, von }
     })
   }
   return getroffen ? next : einheiten

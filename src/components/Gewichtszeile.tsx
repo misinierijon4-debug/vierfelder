@@ -131,8 +131,8 @@ export function Gewichtszeile({
           <Marke gesetzt={kg !== null} halb={false} farbe={farbe} />
         </div>
 
-        {/* zweite zeile, feste höhe wie in der bereichszeile: nichts darf rutschen */}
-        <div className="flex h-6 items-center justify-between pr-2">
+        {/* zweite zeile, feste touchhoehe wie in der bereichszeile */}
+        <div className="flex min-h-11 items-center justify-between pr-2">
           <Wechsel schluessel={entwurf === null ? 'schritte' : 'fertig'}>
             {entwurf === null ? (
               <div className="flex items-center gap-1.5">
@@ -157,7 +157,7 @@ export function Gewichtszeile({
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => feld.current?.blur()}
-                className="text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
+                className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
               >
                 fertig
               </button>

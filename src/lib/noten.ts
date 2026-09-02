@@ -1,5 +1,7 @@
-import type { Fach, Note, UserId } from './types'
+import type { Fach, Note, UserId, Zustand } from './types'
 import { GEWICHT_STANDARD, neueNotenId } from './types'
+import { addDays, fromKey, toKey } from './dates'
+import { tagesWert } from './tracker'
 
 /**
  * Offizielle MSS-Regeln fuer den Abiturjahrgang 2027. Die Zahlen sind gegen
@@ -80,6 +82,47 @@ export function gesamtSchnitt(faecher: Fach[], noten: Note[], user: UserId): num
     .map((fach) => fachSchnitt(noten, fach).gesamt)
     .filter((wert): wert is number => wert !== null)
   return werte.length === 0 ? null : werte.reduce((summe, wert) => summe + wert, 0) / werte.length
+}
+
+/** echter lokaler kalendertag, nicht leer und nicht in der zukunft */
+export function istNotenDatum(datum: string, heute = toKey(new Date())): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(datum) && toKey(fromKey(datum)) === datum && datum <= heute
+}
+
+/** beobachtungswert, keine mss-formel: lk zaehlt doppelt so schwer wie gk. */
+export function kursGewichteterSchnitt(faecher: Fach[], noten: Note[], user: UserId): number | null {
+  const gewichtet = faecher
+    .filter((fach) => fach.user === user)
+    .map((fach) => ({ fach, schnitt: fachSchnitt(noten, fach).gesamt }))
+    .filter((x): x is { fach: Fach; schnitt: number } => x.schnitt !== null)
+  if (gewichtet.length === 0) return null
+  const faktor = (kursart: Fach['kursart']) => (kursart === 'lk' ? 2 : 1)
+  const summe = gewichtet.reduce((s, x) => s + x.schnitt * faktor(x.fach.kursart), 0)
+  const nenner = gewichtet.reduce((s, x) => s + faktor(x.fach.kursart), 0)
+  return summe / nenner
+}
+
+/**
+ * beobachtung: wie viel in den letzten `fensterTage` tagen vor der note gelernt
+ * wurde — eine summe, keine aussage ueber ursache und wirkung.
+ */
+export function lernMinutenVorNoten(
+  zustand: Zustand,
+  noten: Note[],
+  user: UserId,
+  fensterTage = 14
+): Array<{ note: Note; lernMinuten: number }> {
+  return noten
+    .filter((note) => note.user === user)
+    .map((note) => {
+      const start = toKey(addDays(fromKey(note.datum), -(fensterTage - 1)))
+      let lernMinuten = 0
+      for (let tag = fromKey(start); toKey(tag) <= note.datum; tag = addDays(tag, 1)) {
+        lernMinuten += tagesWert(zustand, user, 'lernen', toKey(tag))
+      }
+      return { note, lernMinuten }
+    })
+    .sort((a, b) => a.note.datum.localeCompare(b.note.datum))
 }
 
 /**
@@ -242,6 +285,20 @@ export function brauchtFuerZiel(
 export function brauchtInKlausur(noten: Note[], fach: Fach, ziel: number): number | null {
   const aktuell = fachSchnitt(noten, fach).gesamt
   if (aktuell !== null && aktuell >= ziel) return null
+  for (let punkte = 0; punkte <= 15; punkte++) {
+    const probe: Note = {
+      id: neueNotenId(), user: fach.user, fachId: fach.id, art: 'klausur',
+      punkte, gewicht: GEWICHT_STANDARD, datum: '9999-12-31', titel: '',
+    }
+    const schnitt = fachSchnitt([...noten, probe], fach).gesamt
+    if (schnitt !== null && schnitt >= ziel) return punkte
+  }
+  return null
+}
+
+/** kleinste klausur-punktzahl, die den fachschnitt haelt. */
+export function brauchtFuerSchnitt(noten: Note[], fach: Fach): number | null {
+  const ziel = fachSchnitt(noten, fach).gesamt ?? 5
   for (let punkte = 0; punkte <= 15; punkte++) {
     const probe: Note = {
       id: neueNotenId(), user: fach.user, fachId: fach.id, art: 'klausur',

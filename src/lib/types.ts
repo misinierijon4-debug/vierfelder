@@ -135,10 +135,25 @@ export type Einheit = {
   wert: number | null
   /** zeitpunkt der eintragung als iso-string, soweit vorhanden */
   erfasst: string | null
+  /**
+   * zeitpunkt der durchfuehrung selbst, soweit erfasst. erfasst bleibt die
+   * eintragungszeit — eine nachgetragene oder geplante einheit mit uhrzeit
+   * traegt ihre zeit hier. fehlt der wert, zeigt die anzeige erfasst.
+   */
+  von?: string | null
 }
 
 /** `${user}|${area}|${yyyy-mm-dd}` -> die einheiten des tages, älteste zuerst */
 export type Einheiten = Record<TickKey, Einheit[]>
+
+/** eine komponente des nachtwerts, so wie der server sie rechnet */
+export type ScoreKomponente = {
+  wert: number
+  gewicht: number
+  punkte: number | null
+}
+
+export type ScoreKomponenten = Record<string, ScoreKomponente>
 
 /** `${user}|${yyyy-mm-dd}` -> kilogramm. beide sehen beide, wie bei den ticks */
 export type Gewichte = Record<string, number>
@@ -217,6 +232,27 @@ export type Schlafnacht = {
    * aus weniger belegen.
    */
   scoreKonfidenz: number | null
+  /**
+   * die komponenten des nachtwerts — dauer, effizienz, phasen,
+   * unterbrechungen, regelmaessigkeit — mit wert, gewicht und punkten.
+   * null im prototyp ohne datenbank.
+   */
+  scoreKomponenten?: ScoreKomponenten | null
+}
+
+/** eine archivierte wochenabrechnung des sonntagsfinals */
+export type Abrechnung = {
+  /** lokaler montag der woche, als key */
+  woche: string
+  sieger: UserId | 'unentschieden'
+  grund: 'punkte' | 'beleg' | 'unentschieden'
+  /** punkte erijon minus punkte koray, unabhaengig vom angemeldeten konto */
+  differenz: number
+  belegErijon: number
+  belegKoray: number
+  wette: string | null
+  /** iso-zeitpunkt des abschlusses */
+  abgeschlossen: string
 }
 
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {

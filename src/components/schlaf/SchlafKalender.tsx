@@ -172,6 +172,17 @@ export function SchlafKalender({
                           >
                             <span className="absolute inset-1 rounded-full bg-grund" />
                           </span>
+                          {/* die dauer der nacht als mini-balken unter dem ring */}
+                          {nacht && (
+                            <span
+                              aria-hidden="true"
+                              className="mt-1 block h-0.5 rounded-full"
+                              style={{
+                                width: `${Math.min(100, (nacht.schlafMinuten / 600) * 100)}%`,
+                                backgroundColor: person.farbe,
+                              }}
+                            />
+                          )}
                           <span
                             aria-hidden="true"
                             className={`mt-1 size-1 rounded-full ${istHeute ? 'bg-kreide' : 'bg-transparent'}`}

@@ -26,9 +26,11 @@ export function Schritt({
         e.stopPropagation()
         onClick()
       }}
-      className="flex h-6 w-8 items-center justify-center rounded-[2px] border border-linie text-kreide-60 disabled:opacity-35"
+      className="flex h-11 w-11 items-center justify-center rounded-[2px] text-kreide-60 disabled:opacity-35"
     >
-      {children}
+      <span className="flex h-6 w-8 items-center justify-center rounded-[2px] border border-linie">
+        {children}
+      </span>
     </motion.button>
   )
 }

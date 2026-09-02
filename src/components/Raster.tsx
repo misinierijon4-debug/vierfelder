@@ -1,8 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { FELDER, USERS } from '../lib/types'
+import { FELDER, USERS, area as areaDef } from '../lib/types'
 import type { Ereignis, FeldId, UserId, Zustand } from '../lib/types'
 import { TAGKUERZEL } from '../lib/dates'
-import { anzahlEinheiten, istGesetzt, quelle, wocheBereich } from '../lib/tracker'
+import { anzahlEinheiten, istGesetzt, quelle, tagesWert, wocheBereich } from '../lib/tracker'
 import { EASE, STEMPEL, TAKT } from '../lib/motion'
 
 /* rastergeometrie an einer stelle, damit das heute-band exakt unter der spalte liegt */
@@ -194,6 +194,10 @@ function Zeile({
     <>
       {woche.map((tag, i) => {
         const anzahl = anzahlEinheiten(zustand, user, area, tag)
+        const minuten =
+          area !== 'gewicht' && areaDef(area).unit === 'min'
+            ? tagesWert(zustand, user, area, tag)
+            : undefined
         return (
           <Zelle
             key={tag}
@@ -202,6 +206,7 @@ function Zeile({
             // lernen und lesen belegen, gilt das in allen vier bereichen.
             halb={quelle(zustand, user, area, tag) === 'getippt'}
             anzahl={anzahl}
+            minuten={minuten}
             farbe={farbe}
             leer={leer}
             zukunft={tag > heute}
@@ -234,6 +239,7 @@ function Zelle({
   gefuellt,
   halb,
   anzahl,
+  minuten,
   farbe,
   leer,
   zukunft,
@@ -248,6 +254,8 @@ function Zelle({
   halb: boolean
   /** wie viele einheiten an diesem tag. ab zwei steht die zahl in der zelle */
   anzahl: number
+  /** summe der minuten des tages, nur in minuten-bereichen bei mehreren einheiten */
+  minuten?: number
   farbe: string
   leer: string
   zukunft: boolean
@@ -302,6 +310,18 @@ function Zelle({
           style={{ color: halb ? 'var(--kreide)' : 'var(--grund)' }}
         >
           {anzahl}
+        </span>
+      )}
+
+      {/* bei mehreren einheiten in einem minuten-bereich steht oben links die
+          tages-summe, unten rechts bleibt der zähler */}
+      {anzahl > 1 && minuten !== undefined && minuten > 0 && (
+        <span
+          aria-hidden
+          className="tnum pointer-events-none absolute top-[1px] left-[2px] text-[8px] leading-none font-semibold"
+          style={{ color: halb ? 'var(--kreide)' : 'var(--grund)' }}
+        >
+          {minuten}
         </span>
       )}
 
