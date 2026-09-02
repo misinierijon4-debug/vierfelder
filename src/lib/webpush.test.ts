@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_NUTZLAST,
   b64urlZuBytes,
   bytesZuB64url,
+  sende,
   vapidAutorisierung,
   verschluessele,
 } from '../../supabase/functions/_shared/webpush'
@@ -146,5 +147,76 @@ describe('vapid', () => {
     await expect(
       vapidAutorisierung('https://example.com/x', { ...schluessel, oeffentlich: 'AAAA' })
     ).rejects.toThrow('p-256-punkt')
+  })
+})
+
+describe('senden', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const abo = {
+    endpoint: 'https://web.push.apple.com/eins',
+    p256dh: HANDY_P256DH,
+    auth: HANDY_AUTH,
+  }
+  const schluessel = {
+    oeffentlich:
+      'BPBikYfCtufw6fHehwcew3_mc_8Su8IZdON2Ne39ZxiFCNwTXhDCw53RLu4IFlYLP1J7gNMsEtqpnLcWnZsAISg',
+    privat: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    kontakt: 'mailto:test@example.com',
+  }
+
+  /** der signierschritt braucht ein echtes paar, sonst wirft schon der import */
+  async function echterSchluessel() {
+    const paar = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+      'sign',
+    ])) as CryptoKeyPair
+    const jwk = await crypto.subtle.exportKey('jwk', paar.privateKey)
+    const roh = new Uint8Array(await crypto.subtle.exportKey('raw', paar.publicKey))
+    return { ...schluessel, oeffentlich: bytesZuB64url(roh), privat: jwk.d as string }
+  }
+
+  it('meldet einen angenommenen push ohne fehler', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 201 })))
+    expect(await sende(abo, 'hallo', await echterSchluessel())).toEqual({
+      status: 201,
+      weg: false,
+      fehler: null,
+    })
+  })
+
+  it('erkennt ein abo, das der dienst nicht mehr kennt', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 410 })))
+    expect(await sende(abo, 'hallo', await echterSchluessel())).toEqual({
+      status: 410,
+      weg: true,
+      fehler: null,
+    })
+  })
+
+  /**
+   * der grund fuer die frist: ohne sie haengt der aufruf, bis die function
+   * abgeraeumt wird — und dann antwortet das gateway mit einer html-seite,
+   * an der jeder zerbricht, der json erwartet.
+   */
+  it('gibt auf, statt zu haengen', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, optionen: { signal?: AbortSignal }) => {
+        await new Promise((_, ab) => {
+          optionen.signal?.addEventListener('abort', () => ab(optionen.signal!.reason))
+        })
+        return new Response(null)
+      })
+    )
+    const ergebnis = await sende(abo, 'hallo', await echterSchluessel(), 60, 20)
+    expect(ergebnis.status).toBe(0)
+    expect(ergebnis.weg).toBe(false)
+    expect(ergebnis.fehler).toBe('push-dienst antwortet nicht in 0.02 s')
+  })
+
+  it('reicht die antwort des dienstes durch, wenn er ablehnt', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('BadSubscription', { status: 400 })))
+    const ergebnis = await sende(abo, 'hallo', await echterSchluessel())
+    expect(ergebnis).toEqual({ status: 400, weg: false, fehler: 'BadSubscription' })
   })
 })

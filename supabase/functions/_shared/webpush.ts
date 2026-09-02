@@ -202,6 +202,16 @@ async function vapidUnterschreiber(schluessel: VapidSchluessel): Promise<CryptoK
   )
 }
 
+/**
+ * Wie lange auf den Push-Dienst gewartet wird.
+ *
+ * Bewusst deutlich kuerzer als die Laufzeitgrenze der Function: laeuft die ab,
+ * antwortet nicht mehr die Function, sondern das Gateway — mit einer
+ * HTML-Fehlerseite, an der jeder Aufrufer zerbricht, der json erwartet. Innerhalb
+ * der Frist bleibt die Antwort unsere eigene und sagt, was los war.
+ */
+const FRIST_MS = 15_000
+
 /** zwoelf stunden. RFC 8292 laesst hoechstens 24 zu. */
 const VAPID_DAUER_S = 12 * 60 * 60
 
@@ -245,20 +255,37 @@ export async function sende(
   abo: Abo,
   nachricht: string,
   schluessel: VapidSchluessel,
-  ttlSekunden = 12 * 60 * 60
+  ttlSekunden = 12 * 60 * 60,
+  fristMs = FRIST_MS
 ): Promise<Sendeergebnis> {
   const koerper = await verschluessele(nachricht, abo)
-  const antwort = await fetch(abo.endpoint, {
-    method: 'POST',
-    headers: {
-      authorization: await vapidAutorisierung(abo.endpoint, schluessel),
-      'content-encoding': 'aes128gcm',
-      'content-type': 'application/octet-stream',
-      ttl: String(ttlSekunden),
-      urgency: 'normal',
-    },
-    body: koerper as BodyInit,
-  })
+  let antwort: Response
+  try {
+    antwort = await fetch(abo.endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: await vapidAutorisierung(abo.endpoint, schluessel),
+        'content-encoding': 'aes128gcm',
+        'content-type': 'application/octet-stream',
+        ttl: String(ttlSekunden),
+        urgency: 'normal',
+      },
+      body: koerper as BodyInit,
+      signal: AbortSignal.timeout(fristMs),
+    })
+  } catch (fehler) {
+    // ohne frist haengt der aufruf, bis die function abgeraeumt wird — und
+    // dann antwortet nicht mehr diese function, sondern das gateway mit einer
+    // fehlerseite. eine seite in html ist das letzte, was ein aufrufer
+    // gebrauchen kann, der auf json wartet.
+    const abgelaufen = fehler instanceof Error && fehler.name === 'TimeoutError'
+    const text = fehler instanceof Error ? fehler.message : String(fehler)
+    return {
+      status: 0,
+      weg: false,
+      fehler: abgelaufen ? `push-dienst antwortet nicht in ${fristMs / 1000} s` : text,
+    }
+  }
 
   const weg = antwort.status === 404 || antwort.status === 410
   if (antwort.ok || weg) return { status: antwort.status, weg, fehler: null }

@@ -95,13 +95,25 @@ Deno.serve(async (request) => {
     tag: 'probe',
   })
 
+  // die function hat lange gar nichts geschrieben. eine probe, die im stillen
+  // scheitert, ist genau das problem, gegen das sie gebaut ist: von aussen sieht
+  // ein fehler beim senden aus wie ein fehler bei der erlaubnis. jede zeile hier
+  // steht in den logs des projekts und beantwortet die frage "wie weit kam sie".
+  console.log(`probe fuer ${konto.user.id}: ${abos.length} gerät(e)`)
+
   const ergebnisse = await Promise.all(
     abos.map(async (abo) => {
+      const dienst = new URL(abo.endpoint).host
       try {
         const ergebnis = await sende(abo, nachricht, schluessel)
+        console.log(
+          `${abo.geraet ?? 'gerät'} über ${dienst}: status ${ergebnis.status}` +
+            `${ergebnis.weg ? ' (abo weg)' : ''}${ergebnis.fehler ? ` — ${ergebnis.fehler}` : ''}`
+        )
         return { endpoint: abo.endpoint, geraet: abo.geraet, ...ergebnis }
       } catch (fehler) {
         const text = fehler instanceof Error ? fehler.message : String(fehler)
+        console.error(`${abo.geraet ?? 'gerät'} über ${dienst}: ${text}`)
         return { endpoint: abo.endpoint, geraet: abo.geraet, status: 0, weg: false, fehler: text }
       }
     })
@@ -113,6 +125,7 @@ Deno.serve(async (request) => {
   if (weg.length > 0) await db.from('push_abos').delete().in('endpoint', weg)
 
   const gesendet = ergebnisse.filter((e) => !e.weg && e.fehler === null).length
+  console.log(`probe fertig: ${gesendet} gesendet, ${weg.length} entfernt`)
   return antwort(gesendet > 0 ? 200 : 502, {
     gesendet,
     entfernt: weg.length,

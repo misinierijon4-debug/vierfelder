@@ -65,3 +65,18 @@ export function langesDatum(d: Date): string {
 }
 
 export const TAGKUERZEL = ['mo', 'di', 'mi', 'do', 'fr', 'sa', 'so']
+
+/**
+ * Die Bauzeit klein und lesbar: `02.09. 09:22`.
+ *
+ * Jahr und Sekunden fehlen mit Absicht. Die Frage, die diese Zeile beantwortet,
+ * lautet "ist das die Fassung von eben oder die von gestern" — dafuer reichen
+ * Tag und Minute, und laenger darf die Zeile in der Fusszeile nicht werden.
+ */
+export function bauKurz(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const zwei = (n: number) => String(n).padStart(2, '0')
+  const tag = `${zwei(d.getDate())}.${zwei(d.getMonth() + 1)}.`
+  return `${tag} ${zwei(d.getHours())}:${zwei(d.getMinutes())}`
+}

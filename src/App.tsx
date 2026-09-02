@@ -4,7 +4,7 @@ import { CalendarBlank } from '@phosphor-icons/react'
 import { AREAS, other, user as userDef } from './lib/types'
 import type { AppTab, AreaId, UserId } from './lib/types'
 import type { Backend } from './lib/backend'
-import { fromKey, istBilanzzeit, toKey, weekDays } from './lib/dates'
+import { bauKurz, fromKey, istBilanzzeit, toKey, weekDays } from './lib/dates'
 import { istSelbeWoche, wochenZeitraum } from './lib/kalender'
 import { useTracker } from './lib/store'
 import { lokalWechseln, lokalesBackend, lokalesMe } from './lib/lokal'
@@ -410,6 +410,7 @@ function Fusszeile({
         >
           abmelden
         </button>
+        <Bauzeit />
       </footer>
     )
   }
@@ -427,6 +428,24 @@ function Fusszeile({
       >
         zu {er.name} wechseln
       </button>
+      <Bauzeit />
     </footer>
+  )
+}
+
+/**
+ * wann diese fassung gebaut wurde. beantwortet die eine frage, die man einer
+ * app auf einem fremden telefon sonst nicht stellen kann: laeuft dort das,
+ * worueber wir gerade reden? ein homescreen-pwa haelt seinen service worker
+ * hartnaeckig, und ohne diese zeile sieht eine alte fassung genauso aus wie
+ * ein fehler in der neuen.
+ */
+function Bauzeit() {
+  const stand = bauKurz(__BAUZEIT__)
+  if (!stand) return null
+  return (
+    <span className="ml-auto text-kreide-38" title="stand dieser fassung">
+      {stand}
+    </span>
   )
 }
