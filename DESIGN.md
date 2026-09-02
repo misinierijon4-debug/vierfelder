@@ -768,3 +768,26 @@ Abitur 2027 wird nicht dekorativ versteckt: zwei der drei Leistungsfächer
 werden doppelt gewertet, Block I wird mit `40/44` normiert, und Block II hängt
 von vier oder fünf Prüfungsfächern ab. Formale Hürden erscheinen als Text; die
 Zahl bleibt in Kreide.
+
+## 26. Nachtrag: die warteschlange gegen datenverlust (02.09.2026)
+
+**Das problem.** Bisher verwarf ein fehlschlagender schreibvorgang (funkloch
+im gym-keller, bahn, netzabbruch) die optimistische aenderung sofort:
+die zelle sprang zurueck und die zeile meldete „nicht gespeichert. tippe
+nochmal.". Bei einer app, die man abends im funkloch bedient, ist das
+datenverlust — und es widersprach dem versprechen aus abschnitt 11 („keine
+verbindung. der eintrag geht raus, sobald du wieder online bist.").
+
+**Die warteschlange (`vierfelder.warteschlange`).** Bei offline-zustand oder
+netzwerkfehlern bleibt der optimistische stand im interface sichtbar, die
+handlung wandert persistent in eine warteschlange im `localStorage` und die
+oberflaeche zeigt genau den satz aus abschnitt 11. Sobald das geraet wieder
+online ist oder die naechste aktion laeuft, arbeitet der client die schlange
+idempotent der reihe nach ab. Sind alle eintraege durch, verschwindet die
+meldung still.
+
+**Was verworfen wurde.** Kein schweres sync-protokoll, kein service-worker-
+hintergrunddienst und keine neuen abhaengigkeiten. Die ids fuer einheiten und
+noten entstehen ohnehin deterministisch im client (`neueEinheitId`), sodass
+wiederholte schreibversuche im primary key landen statt doppelte zeilen zu
+erzeugen.
