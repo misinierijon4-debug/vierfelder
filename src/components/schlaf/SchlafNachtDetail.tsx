@@ -169,7 +169,7 @@ export function SchlafNachtDetail({
                     )}
                     {medianInfo !== null && (
                       <span className="tnum mt-0.5 block text-[10px] text-kreide-52">
-                        ±{Math.round(medianInfo.abweichung)} min vom median ({medianInfo.basis}{' '}
+                        {Math.round(medianInfo.abweichung)} min vom median ({medianInfo.basis}{' '}
                         {medianInfo.basis === 1 ? 'nacht' : 'nächte'})
                       </span>
                     )}

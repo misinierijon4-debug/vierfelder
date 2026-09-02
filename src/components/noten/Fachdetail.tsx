@@ -4,7 +4,7 @@ import { Trash, X } from '@phosphor-icons/react'
 import type { Fach, Note, Notenart } from '../../lib/types'
 import { user } from '../../lib/types'
 import { EASE } from '../../lib/motion'
-import { fachSchnitt, klausurAnteil, punkteKurz } from '../../lib/noten'
+import { fachSchnitt, istNotenDatum, klausurAnteil, punkteKurz } from '../../lib/noten'
 import { useScrollSperre } from '../../lib/scrollsperre'
 
 type Props = {
@@ -29,6 +29,7 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
   const [art, setArt] = useState<Notenart>('klausur')
   const [titel, setTitel] = useState('')
   const [datum, setDatum] = useState(heute)
+  const datumGueltig = istNotenDatum(datum, heute)
   const liste = noten.filter((note) => note.fachId === fach.id).sort((a, b) => b.datum.localeCompare(a.datum))
   const schnitt = fachSchnitt(noten, fach)
   const anteil = klausurAnteil(fach.kursart)
@@ -112,7 +113,7 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <div className="flex items-center justify-between gap-3">
             <h3 id="neue-note" className="display text-[18px] font-semibold">note eintragen</h3>
             <label htmlFor="note-datum" className="sr-only">datum der note</label>
-            <input id="note-datum" type="date" value={datum} onChange={(e) => setDatum(e.currentTarget.value)} className="tnum min-h-11 shrink-0 rounded-[2px] border border-linie bg-flaeche px-3 text-[12px] outline-none" />
+            <input id="note-datum" type="date" value={datum} max={heute} aria-invalid={!datumGueltig} onChange={(e) => setDatum(e.currentTarget.value)} className="tnum min-h-11 shrink-0 rounded-[2px] border border-linie bg-flaeche px-3 text-[12px] outline-none" />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="notenart">
             {(['klausur', 'epo', 'hue'] as Notenart[]).map((wert) => {
@@ -128,7 +129,7 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <p className="mt-2 text-[10px] text-kreide-52">{hinweis[art]}</p>
           <input value={titel} maxLength={40} onChange={(e) => setTitel(e.currentTarget.value.toLocaleLowerCase('de-DE'))} placeholder="titel optional" aria-label="titel der note" className="mt-2 min-h-11 w-full rounded-[2px] border border-linie bg-flaeche px-3 text-[12px] outline-none placeholder:text-kreide-52" />
           <div className="mt-2 grid grid-cols-4 gap-1" aria-label="notenpunkte">
-            {Array.from({ length: 16 }, (_, i) => 15 - i).map((punkte) => <button key={punkte} type="button" onClick={() => { onNote(punkte, art, titel, datum); setTitel('') }} aria-label={`${punkte} ${punkte === 1 ? 'punkt' : 'punkte'}, ${punkteKurz(punkte)}`} className="flex min-h-11 min-w-0 flex-col items-center justify-center rounded-[2px] border border-linie bg-flaeche active:scale-[0.98]"><span className="tnum text-[14px] font-semibold">{punkte}</span><span className="text-[8px] text-kreide-52">{punkteKurz(punkte)}</span></button>)}
+            {Array.from({ length: 16 }, (_, i) => 15 - i).map((punkte) => <button key={punkte} type="button" disabled={!datumGueltig} onClick={() => { onNote(punkte, art, titel, datum); setTitel('') }} aria-label={`${punkte} ${punkte === 1 ? 'punkt' : 'punkte'}, ${punkteKurz(punkte)}`} className="flex min-h-11 min-w-0 flex-col items-center justify-center rounded-[2px] border border-linie bg-flaeche disabled:opacity-35 active:scale-[0.98]"><span className="tnum text-[14px] font-semibold">{punkte}</span><span className="text-[8px] text-kreide-52">{punkteKurz(punkte)}</span></button>)}
           </div>
           <p className="mt-2 text-[10px] text-kreide-52">tippen trägt sofort ein. kein speichern nötig.</p>
         </section>

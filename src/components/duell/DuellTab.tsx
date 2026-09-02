@@ -4,7 +4,7 @@ import { FELDER, user as userDef, other } from '../../lib/types'
 import type { Abrechnung, Schlafnacht, UserId, Zustand } from '../../lib/types'
 import { historieWochen, saisonHistorie, wochenZahlen } from '../../lib/duell'
 import type { DuellMatch } from '../../lib/duell'
-import { fromKey, isoWeek } from '../../lib/dates'
+import { fromKey, isoWeek, istBilanzzeit } from '../../lib/dates'
 import { gemeinsameNaechte } from '../../lib/schlafPhasen'
 import { streak } from '../../lib/tracker'
 import { RivalitaetsTicker } from './RivalitaetsTicker'
@@ -24,7 +24,7 @@ type Props = {
   /** die archivierte sonntagsabrechnung dieser woche, wenn vorhanden */
   abrechnung?: Abrechnung | null
   /** schließt die woche ab. fehlt der callback, tut der knopf nichts */
-  onAbschlussAbbrechnung?: () => void
+  onAbschluss?: () => void
 }
 
 export function DuellTab({
@@ -38,7 +38,7 @@ export function DuellTab({
   onZumTracker,
   naechte,
   abrechnung,
-  onAbschlussAbbrechnung,
+  onAbschluss,
 }: Props) {
   const ich = userDef(me)
   const er = other(me)
@@ -58,7 +58,9 @@ export function DuellTab({
   )
   const gemeinsam = naechte ? gemeinsameNaechte(naechte, woche) : null
   const hatZahlen =
-    zahlen.some((z) => z.ich > 0 || z.er > 0) ||
+    zahlen.some((z) => z.id === 'gewicht'
+      ? (z.ich ?? 0) > 0 || (z.er ?? 0) > 0
+      : z.ich !== null || z.er !== null) ||
     streaks.some((s) => s.ich > 0 || s.er > 0) ||
     (gemeinsam ?? 0) > 0
   const abrechnungKw = abrechnung ? isoWeek(fromKey(abrechnung.woche)) : null
@@ -72,6 +74,7 @@ export function DuellTab({
   )
   const [wetteEdit, setWetteEdit] = useState(false)
   const [wetteTemp, setWetteTemp] = useState(wette)
+  const abschlussMoeglich = istBilanzzeit(heute)
 
   useEffect(() => {
     if (!wetteEdit) setWetteTemp(wette)
@@ -218,9 +221,9 @@ export function DuellTab({
                   <div key={z.id} className="flex items-baseline justify-between gap-2 py-0.5">
                     <dt className="text-[11px] text-kreide-60">{z.label}</dt>
                     <dd className="tnum text-[12px] font-bold">
-                      <span style={{ color: ich.farbe }}>{z.ich}</span>
+                      <span style={{ color: ich.farbe }}>{z.ich ?? '—'}</span>
                       <span className="px-1 text-kreide-52">:</span>
-                      <span style={{ color: er.farbe }}>{z.er}</span>
+                      <span style={{ color: er.farbe }}>{z.er ?? '—'}</span>
                     </dd>
                   </div>
                 ))}
@@ -281,8 +284,9 @@ export function DuellTab({
             </span>
             <button
               type="button"
-              onClick={onAbschlussAbbrechnung}
-              className="min-h-11 rounded-[2px] border border-linie-hell bg-flaeche px-4 text-[13px] font-bold text-kreide transition-colors hover:bg-linie"
+              disabled={!abschlussMoeglich || !onAbschluss}
+              onClick={onAbschluss}
+              className="min-h-11 rounded-[2px] border border-linie-hell bg-flaeche px-4 text-[13px] font-bold text-kreide transition-colors hover:bg-linie disabled:cursor-default disabled:opacity-35"
             >
               woche abschließen
             </button>

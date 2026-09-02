@@ -1,13 +1,11 @@
 import { AREAS, USERS } from '../lib/types'
 import type { AreaId, UserId, Zustand } from '../lib/types'
-import { tagesWert } from '../lib/tracker'
+import { hatTageswert, tagesWert } from '../lib/tracker'
 
 type Props = {
   zustand: Zustand
   /** die sieben tage der woche */
   woche: string[]
-  /** eigene person — die tabelle zeigt beide, die reihenfolge bleibt USERS */
-  me: UserId
 }
 
 /**
@@ -16,16 +14,21 @@ type Props = {
  * nicht addieren lassen.
  */
 export function Volumenzeile({ zustand, woche }: Props) {
-  const summeBereich = (u: UserId, a: AreaId): number =>
-    woche.reduce((s, tag) => s + tagesWert(zustand, u, a, tag), 0)
+  const summeBereich = (u: UserId, a: AreaId): number | null =>
+    woche.some((tag) => hatTageswert(zustand, u, a, tag))
+      ? woche.reduce((s, tag) => s + tagesWert(zustand, u, a, tag), 0)
+      : null
 
-  const summeMin = (u: UserId): number =>
-    AREAS.filter((a) => a.unit === 'min').reduce((s, a) => s + summeBereich(u, a.id), 0)
+  const summeEinheit = (u: UserId, einheit: 'min' | 'seiten'): number | null => {
+    const werte = AREAS.filter((a) => a.unit === einheit).map((a) => summeBereich(u, a.id))
+    const erfasst = werte.filter((wert): wert is number => wert !== null)
+    return erfasst.length > 0 ? erfasst.reduce((summe, wert) => summe + wert, 0) : null
+  }
 
-  const summeSeiten = (u: UserId): number =>
-    AREAS.filter((a) => a.unit === 'seiten').reduce((s, a) => s + summeBereich(u, a.id), 0)
+  const summeMin = (u: UserId) => summeEinheit(u, 'min')
+  const summeSeiten = (u: UserId) => summeEinheit(u, 'seiten')
 
-  const leer = USERS.every((u) => summeMin(u.id) === 0 && summeSeiten(u.id) === 0)
+  const leer = USERS.every((u) => summeMin(u.id) === null && summeSeiten(u.id) === null)
 
   if (leer) {
     return (
@@ -56,7 +59,7 @@ export function Volumenzeile({ zustand, woche }: Props) {
                 className="tnum text-right text-[13px] font-semibold"
                 style={{ color: u.farbe }}
               >
-                {summeBereich(u.id, a.id)}
+                {summeBereich(u.id, a.id) ?? '—'}
               </span>
             ))}
           </div>
@@ -70,7 +73,7 @@ export function Volumenzeile({ zustand, woche }: Props) {
               className="tnum text-right text-[13px] font-semibold"
               style={{ color: u.farbe }}
             >
-              {summeMin(u.id)}
+              {summeMin(u.id) ?? '—'}
             </span>
           ))}
         </div>
@@ -83,7 +86,7 @@ export function Volumenzeile({ zustand, woche }: Props) {
               className="tnum text-right text-[13px] font-semibold"
               style={{ color: u.farbe }}
             >
-              {summeSeiten(u.id)}
+              {summeSeiten(u.id) ?? '—'}
             </span>
           ))}
         </div>

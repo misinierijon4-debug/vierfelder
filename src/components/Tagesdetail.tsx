@@ -33,6 +33,8 @@ type Props = {
   onSchliessen: () => void
   /** heute und eigene person: die getippten einheiten sind hier änderbar */
   editierbar?: boolean
+  /** die `von`-spalte ist im aktiven backend schon vorhanden */
+  zeitEditierbar?: boolean
   /** eigene person — nur ihre einheiten lassen sich ändern */
   eigene?: boolean
   onWertSetzen?: (id: string, wert: number) => void
@@ -58,6 +60,7 @@ export function Tagesdetail({
   heute,
   onSchliessen,
   editierbar = false,
+  zeitEditierbar = false,
   eigene = false,
   onWertSetzen,
   onZeitSetzen,
@@ -257,29 +260,35 @@ export function Tagesdetail({
                           >
                             <Plus size={11} weight="bold" />
                           </Schritt>
-                          <input
-                            type="time"
-                            aria-label={`${label}, uhrzeit der einheit`}
-                            value={zeitWert(e.von ?? e.erfasst)}
-                            onChange={(ev) => {
-                              const eingabe = ev.target.value
-                              if (!eingabe) {
-                                onZeitSetzen?.(e.id, null)
-                                return
-                              }
-                              const [hh, mm] = eingabe.split(':')
-                              onZeitSetzen?.(
-                                e.id,
-                                new Date(`${auswahl.tag}T${hh}:${mm}`).toISOString()
-                              )
-                            }}
-                            className="min-h-11 w-28 rounded-[2px] bg-transparent text-center tnum text-[12px] text-kreide"
-                          />
+                          {zeitEditierbar ? (
+                            <input
+                              type="time"
+                              aria-label={`${label}, uhrzeit der einheit`}
+                              value={zeitWert(e.von ?? null)}
+                              onChange={(ev) => {
+                                const eingabe = ev.target.value
+                                if (!eingabe) {
+                                  onZeitSetzen?.(e.id, null)
+                                  return
+                                }
+                                const [hh, mm] = eingabe.split(':')
+                                onZeitSetzen?.(
+                                  e.id,
+                                  new Date(`${auswahl.tag}T${hh}:${mm}`).toISOString()
+                                )
+                              }}
+                              className="min-h-11 w-28 rounded-[2px] bg-transparent text-center tnum text-[12px] text-kreide"
+                            />
+                          ) : (
+                            <span className="flex min-h-11 w-28 items-center justify-center text-[10px] text-kreide-52">
+                              zeit noch nicht verfügbar
+                            </span>
+                          )}
                           <button
                             type="button"
                             aria-label="einheit löschen"
                             onClick={() => onLoeschen?.(e.id)}
-                            className="flex size-8 shrink-0 items-center justify-center rounded-[2px] border border-linie text-kreide-60"
+                            className="flex size-11 shrink-0 items-center justify-center rounded-[2px] border border-linie text-kreide-60"
                           >
                             <Trash size={13} weight="bold" />
                           </button>

@@ -73,7 +73,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
   // das ziel kommt je person aus deren letzter nacht, nicht aus einer festen
   // 8-stunden-annahme
   const ziele = useMemo(() => {
-    const gefunden: Record<UserId, number> = { erijon: 480, koray: 480 }
+    const gefunden: Partial<Record<UserId, number>> = {}
     for (const nacht of naechte) {
       if (nacht.zielMinuten > 0) gefunden[nacht.user] = nacht.zielMinuten
     }
@@ -122,7 +122,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
         />
       </div>
 
-      <SchlafNachtVergleich naechte={naechte} gewaehlterTag={gewaehlterTag} />
+      <SchlafNachtVergleich naechte={naechte} gewaehlterTag={gewaehlterTag} onVerlaufBrauchen={onVerlaufBrauchen} />
 
       <SchlafRhythmus
         naechte={naechte}

@@ -78,6 +78,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     fehler,
     ereignis,
     altbestand,
+    einheitVonVerfuegbar,
     toggle,
     einheitHinzu,
     einheitWeg,
@@ -152,8 +153,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
   /** die sonntagsabrechnung dieser woche aus den tracker-daten bauen und archivieren */
   const schliesseWocheAb = () => {
+    if (!istBilanzzeit(heute)) return
     const wocheKey = woche[0] ?? heuteKey
-    const abr = abrechnungFuerWoche(zustand, woche, me, er.id, wetten[wocheKey] ?? null)
+    const abr = abrechnungFuerWoche(zustand, woche, wetten[wocheKey] ?? null)
     abrechnungHinzu(abr)
   }
 
@@ -309,7 +311,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                   onZelle={(user, area, tag) => setDetail({ user, area, tag })}
                 />
 
-                <Volumenzeile zustand={zustand} woche={sichtbareWoche} me={me} />
+                <Volumenzeile zustand={zustand} woche={sichtbareWoche} />
               </div>
 
               {/* gewicht ist eine messung statt eines ticks und steht deshalb
@@ -346,7 +348,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 onZumTracker={() => setAktiverTab('tracker')}
                 naechte={schlaf}
                 abrechnung={abrechnungDerWoche}
-                onAbschlussAbbrechnung={schliesseWocheAb}
+                onAbschluss={schliesseWocheAb}
               />
             </motion.div>
           ) : aktiverTab === 'schlaf' ? (
@@ -405,6 +407,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             auswahl={detail}
             heute={heuteKey}
             editierbar={detail.tag === heuteKey && !altbestand}
+            zeitEditierbar={einheitVonVerfuegbar}
             eigene={detail.user === me}
             onWertSetzen={wertSetzen}
             onZeitSetzen={zeitSetzen}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import type { NachtPhasenAnalyse } from '../../lib/schlafPhasen'
@@ -16,6 +16,7 @@ import { nachtkurve } from '../../lib/nachtkurve'
 type Props = {
   naechte: Schlafnacht[]
   gewaehlterTag: string
+  onVerlaufBrauchen: (user: UserId, nacht: string) => void
 }
 
 /** die kurve hat dieselben masse wie im nachtdetail, nur zweifarbig uebereinander */
@@ -32,6 +33,7 @@ type Zeile = {
   label: string
   wert: (a: NachtPhasenAnalyse) => number | null
   text: (a: NachtPhasenAnalyse) => string
+  delta: 'min' | 'pp' | 'punkte'
   /**
    * 'hoch' heisst: mehr gewinnt, 'tief': weniger. null heisst: die zeile hat
    * keine wertende richtung — wer frueher aufwacht, hat nicht besser geschlafen
@@ -49,22 +51,25 @@ const ZEILEN: Zeile[] = [
     text: (a) => formatDauer(a.schlafMinuten),
     richtung: 'hoch',
     mindest: 5,
+    delta: 'min',
   },
   {
     id: 'eingeschlafen',
     label: 'eingeschlafen',
     wert: (a) => a.einschlafMinute,
     text: (a) => a.einschlafUhrzeit,
-    richtung: 'tief',
+    richtung: null,
     mindest: 5,
+    delta: 'min',
   },
   {
     id: 'aufgewacht',
     label: 'aufgewacht',
-    wert: (a) => a.aufwachMinute,
+    wert: (a) => (a.hatZeitfensterDaten ? a.aufwachMinute : null),
     text: (a) => (a.hatZeitfensterDaten ? a.aufwachUhrzeit : '—'),
     richtung: null,
     mindest: 5,
+    delta: 'min',
   },
   {
     id: 'effizienz',
@@ -73,14 +78,16 @@ const ZEILEN: Zeile[] = [
     text: (a) => (a.effizienz === null ? '—' : `${a.effizienz}%`),
     richtung: 'hoch',
     mindest: 2,
+    delta: 'pp',
   },
   {
     id: 'nachtwert',
     label: 'nachtwert',
-    wert: (a) => a.qualitaet,
-    text: (a) => String(a.qualitaet),
+    wert: (a) => a.nachtwert,
+    text: (a) => (a.nachtwert === null ? '—' : String(a.nachtwert)),
     richtung: 'hoch',
     mindest: 2,
+    delta: 'punkte',
   },
 ]
 
@@ -90,7 +97,14 @@ const ZEILEN: Zeile[] = [
  * gemeinsamen Achse. Ohne beide naechte gibt es keinen vergleich — die
  * sektion bleibt dann ganz weg.
  */
-export function SchlafNachtVergleich({ naechte, gewaehlterTag }: Props) {
+function deltaText(a: number | null, b: number | null, einheit: Zeile['delta']): string {
+  if (a === null || b === null) return '—'
+  const wert = Math.round(a - b)
+  const zahl = wert > 0 ? `+${wert}` : wert < 0 ? `−${Math.abs(wert)}` : '0'
+  return `${zahl} ${einheit}`
+}
+
+export function SchlafNachtVergleich({ naechte, gewaehlterTag, onVerlaufBrauchen }: Props) {
   const nachtJeUser = useMemo(() => {
     const treffer: Partial<Record<UserId, Schlafnacht>> = {}
     for (const nacht of naechte) {
@@ -103,9 +117,8 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag }: Props) {
 
   const erijonNacht = nachtJeUser.erijon
   const korayNacht = nachtJeUser.koray
-  if (!erijonNacht || !korayNacht) return null
-
   const bild = useMemo(() => {
+    if (!erijonNacht || !korayNacht) return null
     const analysen = [analysiereSchlafnacht(erijonNacht), analysiereSchlafnacht(korayNacht)]
     // eine kurve darf nicht behaupten, was noch nicht geladen ist — der flache
     // block waere keine wartemeldung, wie im nachtdetail
@@ -137,6 +150,14 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag }: Props) {
     }
   }, [erijonNacht, korayNacht])
 
+  useEffect(() => {
+    for (const nacht of [erijonNacht, korayNacht]) {
+      if (nacht?.phasen === null) onVerlaufBrauchen(nacht.user, nacht.nacht)
+    }
+  }, [erijonNacht, korayNacht, onVerlaufBrauchen])
+
+  if (!bild) return null
+
   return (
     <section aria-labelledby="beide-naechte-titel" className="mt-5">
       <h2
@@ -147,13 +168,14 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag }: Props) {
       </h2>
 
       <div className="mt-3 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
-        <div className="grid grid-cols-[1fr_72px_72px] items-baseline gap-x-2 border-b border-linie px-3 py-2.5">
+        <div className="grid grid-cols-[1fr_62px_62px_62px] items-baseline gap-x-2 border-b border-linie px-3 py-2.5">
           <span className="text-[10px] text-kreide-52">am selben abend</span>
           {USERS.map((user) => (
             <span key={user.id} className="text-right text-[11px] font-medium" style={{ color: user.farbe }}>
               {user.name}
             </span>
           ))}
+          <span className="text-right text-[10px] text-kreide-52">e−k</span>
         </div>
 
         <dl className="divide-y divide-linie">
@@ -173,7 +195,7 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag }: Props) {
             return (
               <div
                 key={zeile.id}
-                className="grid grid-cols-[1fr_72px_72px] items-baseline gap-x-2 px-3 py-2.5"
+                className="grid grid-cols-[1fr_62px_62px_62px] items-baseline gap-x-2 px-3 py-2.5"
               >
                 <dt className="truncate text-[11px] text-kreide-52">{zeile.label}</dt>
                 {USERS.map((user, index) => (
@@ -185,6 +207,9 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag }: Props) {
                     {zeile.text(bild.analysen[index]!)}
                   </dd>
                 ))}
+                <dd className="tnum text-right text-[11px] text-kreide-52">
+                  {deltaText(wa, wb, zeile.delta)}
+                </dd>
               </div>
             )
           })}

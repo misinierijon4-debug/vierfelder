@@ -180,8 +180,8 @@ export function Bereichszeile({
           <Marke gesetzt={gesetzt} halb={quelle === 'getippt'} farbe={farbe} />
         </div>
 
-        {/* zweite zeile: immer 24px hoch, egal was drinsteht */}
-        <div className="flex h-6 items-center justify-between">
+        {/* zweite zeile: feste touchhoehe, egal was drinsteht */}
+        <div className="flex min-h-11 items-center justify-between">
           <Wechsel schluessel={links}>
             {!wertAusMessung && gesetzt ? (
               <div className="flex items-center gap-1.5">
@@ -264,7 +264,7 @@ export function Bereichszeile({
                       e.stopPropagation()
                       onNeueEinheit()
                     }}
-                    className="text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
                   >
                     + einheit
                   </button>
@@ -305,7 +305,7 @@ export function Bereichszeile({
                       e.stopPropagation()
                       onNeueEinheit()
                     }}
-                    className="text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
                   >
                     + einheit
                   </button>
@@ -318,7 +318,7 @@ export function Bereichszeile({
                   e.stopPropagation()
                   onUndo()
                 }}
-                className="text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
+                className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
               >
                 rückgängig
               </button>
