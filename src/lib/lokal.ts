@@ -358,8 +358,8 @@ function erzeugeBeispielAbrechnungen(): Abrechnung[] {
       sieger: 'erijon',
       grund: 'punkte',
       differenz: 4,
-      belegIch: 18,
-      belegEr: 14,
+      belegErijon: 18,
+      belegKoray: 14,
       wette: 'verlierer kocht abendessen',
       abgeschlossen: new Date(Date.now() - 6 * 86400000).toISOString(),
     },
@@ -368,8 +368,8 @@ function erzeugeBeispielAbrechnungen(): Abrechnung[] {
       sieger: 'koray',
       grund: 'beleg',
       differenz: 0,
-      belegIch: 12,
-      belegEr: 13,
+      belegErijon: 12,
+      belegKoray: 13,
       wette: 'der verlierer traegt die einkaeufe',
       abgeschlossen: new Date(Date.now() - 13 * 86400000).toISOString(),
     },
@@ -378,8 +378,9 @@ function erzeugeBeispielAbrechnungen(): Abrechnung[] {
 
 function alleAbrechnungen(): Abrechnung[] {
   if (localStorage.getItem(ABRECHNUNG_KEY) === null) {
-    localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify(erzeugeBeispielAbrechnungen()))
-    return erzeugeBeispielAbrechnungen()
+    const beispiele = erzeugeBeispielAbrechnungen()
+    localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify(beispiele))
+    return beispiele
   }
   const roh = lade<Abrechnung[]>(ABRECHNUNG_KEY, [])
   return Array.isArray(roh) ? roh : []
@@ -433,6 +434,7 @@ export function lokalesBackend(): Backend {
         wetten: lade<Wetten>(WETTEN_KEY, {}),
         abrechnungen: alleAbrechnungen(),
         noten: { faecher: alleFaecher(), noten: alleNoten() },
+        einheitVonVerfuegbar: true,
         altbestand: false,
       }
     },
@@ -487,7 +489,8 @@ export function lokalesBackend(): Backend {
     },
 
     async schreibeAbrechnung(a: Abrechnung) {
-      const alle = alleAbrechnungen().filter((x) => x.woche !== a.woche)
+      const alle = alleAbrechnungen()
+      if (alle.some((x) => x.woche === a.woche)) return
       localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, a]))
       holeKanal()?.postMessage({ von: absender, typ: 'abrechnung', abrechnung: a } satisfies Nachricht)
     },

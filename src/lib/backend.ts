@@ -64,6 +64,8 @@ export type Anfangszustand = {
   /** archivierte sonntagsabrechnungen, älteste zuerst */
   abrechnungen: Abrechnung[]
   noten: Notenstand
+  /** die optionale durchfuehrungszeit kann schon gespeichert werden */
+  einheitVonVerfuegbar: boolean
   /**
    * die tabelle `einheiten` fehlt noch, gelesen wurde aus `eintraege` und
    * `werte`. dann gibt es genau eine einheit pro tag und die oberfläche bietet

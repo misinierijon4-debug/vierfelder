@@ -246,9 +246,10 @@ export type Abrechnung = {
   woche: string
   sieger: UserId | 'unentschieden'
   grund: 'punkte' | 'beleg' | 'unentschieden'
+  /** punkte erijon minus punkte koray, unabhaengig vom angemeldeten konto */
   differenz: number
-  belegIch: number
-  belegEr: number
+  belegErijon: number
+  belegKoray: number
   wette: string | null
   /** iso-zeitpunkt des abschlusses */
   abgeschlossen: string

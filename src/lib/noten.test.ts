@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Einheit, Fach, Note } from './types'
-import { abiPrognose, brauchtFuerSchnitt, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, klausurAnteil, kursGewichteterSchnitt, lernMinutenVorNoten, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
+import { tickKey } from './types'
+import type { Aufenthalt, Einheit, Fach, Note, Zustand } from './types'
+import { abiPrognose, brauchtFuerSchnitt, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, istNotenDatum, klausurAnteil, kursGewichteterSchnitt, lernMinutenVorNoten, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
 
 const fach = (id: string, kursart: 'lk' | 'gk' = 'gk'): Fach => ({
   id, user: 'erijon', name: id, kursart, pruefungsfach: null, sortierung: 0,
@@ -11,8 +12,22 @@ const note = (fachId: string, punkte: number, art: 'klausur' | 'epo' | 'hue' = '
 const einheit = (user: 'erijon' | 'koray', area: Einheit['area'], tag: string, wert: number | null): Einheit => ({
   id: `${user}-${area}-${tag}-${wert}`, user, area, tag, wert, erfasst: null,
 })
+const zustand = (einheiten: Einheit[], aufenthalte: Aufenthalt[] = []): Zustand => {
+  const gruppiert: Zustand['einheiten'] = {}
+  for (const e of einheiten) {
+    const key = tickKey(e.user, e.area, e.tag)
+    gruppiert[key] = [...(gruppiert[key] ?? []), e]
+  }
+  return { einheiten: gruppiert, gewichte: {}, aufenthalte }
+}
 
 describe('punkte und kurze noten', () => {
+  it('akzeptiert nur echte daten bis heute', () => {
+    expect(istNotenDatum('2026-09-02', '2026-09-02')).toBe(true)
+    expect(istNotenDatum('2026-09-03', '2026-09-02')).toBe(false)
+    expect(istNotenDatum('2026-09-31', '2026-10-01')).toBe(false)
+    expect(istNotenDatum('', '2026-09-02')).toBe(false)
+  })
   it.each([[15, 1], [14, 1], [11, 2], [8, 3], [5, 4], [2, 5], [0, 6]])(
     '%i punkte ergeben den anker %i',
     (punkte, erwartet) => expect(punkteZuNote(punkte)).toBeCloseTo(erwartet)
@@ -71,7 +86,7 @@ describe('lernminuten vor noten', () => {
       einheit('erijon', 'lernen', '2026-08-27', 60),
       einheit('erijon', 'lernen', '2026-09-10', 30),
     ]
-    expect(lernMinutenVorNoten(einheiten, noten, 'erijon')).toEqual([{ note: noten[0]!, lernMinuten: 50 }])
+    expect(lernMinutenVorNoten(zustand(einheiten), noten, 'erijon')).toEqual([{ note: noten[0]!, lernMinuten: 50 }])
   })
   it('schliesst andere bereiche, fremde einheiten und null-werte aus', () => {
     const noten = [note('m', 10, 'hue', notenGewicht('hue'), '2026-09-05')]
@@ -81,7 +96,17 @@ describe('lernminuten vor noten', () => {
       einheit('koray', 'lernen', '2026-09-03', 120),
       einheit('erijon', 'lernen', '2026-09-04', null),
     ]
-    expect(lernMinutenVorNoten(einheiten, noten, 'erijon')).toEqual([{ note: noten[0]!, lernMinuten: 0 }])
+    expect(lernMinutenVorNoten(zustand(einheiten), noten, 'erijon')).toEqual([{ note: noten[0]!, lernMinuten: 0 }])
+  })
+  it('zaehlt gemessene lernzeit aus fokus-sitzungen mit', () => {
+    const noten = [note('m', 10, 'hue', notenGewicht('hue'), '2026-09-05')]
+    const aufenthalte: Aufenthalt[] = [{
+      user: 'erijon', bereich: 'lernen', ort: 'fokus lernen',
+      ankunft: '2026-09-04T16:00:00+02:00', abgang: '2026-09-04T16:45:00+02:00',
+    }]
+    expect(lernMinutenVorNoten(zustand([], aufenthalte), noten, 'erijon')).toEqual([
+      { note: noten[0]!, lernMinuten: 45 },
+    ])
   })
   it('rechnet nur eigene noten und sortiert nach datum', () => {
     const aelter = note('m', 10, 'hue', notenGewicht('hue'), '2026-09-01')
@@ -91,7 +116,7 @@ describe('lernminuten vor noten', () => {
       einheit('erijon', 'lernen', '2026-09-01', 15),
       einheit('erijon', 'lernen', '2026-09-08', 25),
     ]
-    const ergebnis = lernMinutenVorNoten(einheiten, [neuer, fremd, aelter], 'erijon')
+    const ergebnis = lernMinutenVorNoten(zustand(einheiten), [neuer, fremd, aelter], 'erijon')
     expect(ergebnis.map((e) => [e.note.id, e.lernMinuten])).toEqual([[aelter.id, 15], [neuer.id, 40]])
   })
 })
@@ -170,12 +195,12 @@ describe('ziel und trend', () => {
     expect(brauchtFuerSchnitt([], fach('m', 'lk'))).toBe(5)
     expect(brauchtFuerSchnitt([], fach('m', 'gk'))).toBe(5)
   })
-  it('liefert null bei bestehender note, weil der schnitt sich selbst als ziel ist', () => {
-    expect(brauchtFuerSchnitt([note('m', 8)], fach('m', 'gk'))).toBeNull()
-    expect(brauchtFuerSchnitt([note('m', 4)], fach('m', 'gk'))).toBeNull()
+  it('findet die kleinste klausur, die den bestehenden schnitt haelt', () => {
+    expect(brauchtFuerSchnitt([note('m', 8)], fach('m', 'gk'))).toBe(8)
+    expect(brauchtFuerSchnitt([note('m', 4)], fach('m', 'gk'))).toBe(4)
   })
-  it('liefert null, wenn der schnitt schon erreicht ist', () => {
-    expect(brauchtFuerSchnitt([note('m', 12)], fach('m'))).toBeNull()
+  it('beruecksichtigt den muendlichen topf beim halten des gesamtschnitts', () => {
+    expect(brauchtFuerSchnitt([note('m', 12), note('m', 6, 'hue')], fach('m'))).toBe(12)
   })
 })
 

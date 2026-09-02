@@ -50,7 +50,7 @@ type EinheitZeile = {
   tag: string
   wert: number | null
   erfasst: string | null
-  von: string | null
+  von?: string | null
 }
 /** zeile aus `schlafnaechte_ansicht`. numeric kommt je nach spalte als text */
 type SchlafZeile = {
@@ -79,6 +79,11 @@ function zahl(wert: number | string | null | undefined): number {
   return wert === null || wert === undefined ? 0 : Number(wert)
 }
 
+/** vor der migration meldet postgres oder postgrest die fehlende spalte */
+export function istFehlendeVonSpalte(code?: string): boolean {
+  return code === '42703' || code === 'PGRST204'
+}
+
 /** numeric kommt aus postgrest als string, genau wie schlaf_minuten */
 type GewichtZeile = { user_id: string; tag: string; kg: number | string }
 type AufenthaltZeile = {
@@ -94,8 +99,8 @@ type AbrechnungZeile = {
   sieger: Abrechnung['sieger']
   grund: Abrechnung['grund']
   differenz: number
-  beleg_ich: number
-  beleg_er: number
+  beleg_erijon: number
+  beleg_koray: number
   wette: string | null
   abgeschlossen: string
 }
@@ -171,6 +176,7 @@ export function supabaseBackend(eigeneId: string): Backend {
    * und der deploy nicht in derselben minute passieren.
    */
   let altbestand = false
+  let einheitVonVerfuegbar = false
   let wettenVerfuegbar = false
   let abrechnungVerfuegbar = false
   let notenVerfuegbar = false
@@ -291,8 +297,8 @@ export function supabaseBackend(eigeneId: string): Backend {
     sieger: a.sieger,
     grund: a.grund,
     differenz: Number(a.differenz),
-    belegIch: Number(a.beleg_ich),
-    belegEr: Number(a.beleg_er),
+    belegErijon: Number(a.beleg_erijon),
+    belegKoray: Number(a.beleg_koray),
     wette: a.wette,
     abgeschlossen: a.abgeschlossen,
   })
@@ -303,7 +309,7 @@ export function supabaseBackend(eigeneId: string): Backend {
     async laden(): Promise<Anfangszustand> {
       const [
         profile,
-        einheitZeilen,
+        einheitAnfrage,
         schlafZeilen,
         phasenZeilen,
         gewichtZeilen,
@@ -336,7 +342,7 @@ export function supabaseBackend(eigeneId: string): Backend {
           db.from('duell_wetten').select('woche, text'),
           db
             .from('wochenabrechnung')
-            .select('woche, sieger, grund, differenz, beleg_ich, beleg_er, wette, abgeschlossen')
+            .select('woche, sieger, grund, differenz, beleg_erijon, beleg_koray, wette, abgeschlossen')
             .order('woche', { ascending: true }),
           db
             .from('faecher')
@@ -352,6 +358,17 @@ export function supabaseBackend(eigeneId: string): Backend {
       // Während Schema und Frontend getrennt veröffentlicht werden, darf eine
       // neue Ansicht oder Tabelle den bestehenden Tracker nicht lahmlegen.
       const fehltNoch = (code?: string) => code === '42P01' || code === 'PGRST205'
+      // `von` wird getrennt ausgerollt. PGRST204 ist laut Data-API der Fehler
+      // fuer eine angefragte, aber noch nicht vorhandene Spalte.
+      let einheitZeilen = einheitAnfrage
+      if (einheitAnfrage.error && istFehlendeVonSpalte(einheitAnfrage.error.code)) {
+        einheitVonVerfuegbar = false
+        einheitZeilen = await db
+          .from('einheiten')
+          .select('id, user_id, bereich, tag, wert, erfasst')
+      } else {
+        einheitVonVerfuegbar = !einheitAnfrage.error
+      }
       if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
       if (phasenZeilen.error && !fehltNoch(phasenZeilen.error.code)) throw phasenZeilen.error
@@ -475,6 +492,7 @@ export function supabaseBackend(eigeneId: string): Backend {
         wetten,
         abrechnungen,
         noten: { faecher, noten },
+        einheitVonVerfuegbar,
         altbestand,
       }
     },
@@ -494,23 +512,24 @@ export function supabaseBackend(eigeneId: string): Backend {
 
       // ignoreDuplicates: dieselbe id zweimal zu senden — nach einem timeout,
       // aus einer wiederholung — legt keine zweite einheit an.
+      const zeile = {
+        id: e.id,
+        user_id: eigeneId,
+        bereich: e.area,
+        tag: e.tag,
+        wert: e.wert,
+        erfasst: e.erfasst,
+        ...(einheitVonVerfuegbar ? { von: e.von ?? null } : {}),
+      }
       const { error } = await db.from('einheiten').upsert(
-        {
-          id: e.id,
-          user_id: eigeneId,
-          bereich: e.area,
-          tag: e.tag,
-          wert: e.wert,
-          erfasst: e.erfasst,
-          von: e.von ?? null,
-        },
+        zeile,
         { onConflict: 'id', ignoreDuplicates: true }
       )
       if (error) throw error
     },
 
     async schreibeEinheitVon(e, von) {
-      if (altbestand) throw new Error('der altbestand kann keine durchführungszeit führen')
+      if (!einheitVonVerfuegbar) throw new Error('durchführungszeit fehlt noch')
       const { error } = await db
         .from('einheiten')
         .update({ von })
@@ -601,12 +620,11 @@ export function supabaseBackend(eigeneId: string): Backend {
           sieger: a.sieger,
           grund: a.grund,
           differenz: a.differenz,
-          beleg_ich: a.belegIch,
-          beleg_er: a.belegEr,
+          beleg_erijon: a.belegErijon,
+          beleg_koray: a.belegKoray,
           wette: a.wette,
-          abgeschlossen: a.abgeschlossen,
         },
-        { onConflict: 'woche' }
+        { onConflict: 'woche', ignoreDuplicates: true }
       )
       if (error) throw error
     },

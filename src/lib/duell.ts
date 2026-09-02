@@ -2,7 +2,7 @@ import { AREAS, FELDER, gewichtKey, other } from './types'
 import type { Abrechnung, FeldId, TickQuelle, UserId, Zustand } from './types'
 import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
-import { erledigteFelder, quelle, tagesWert, wocheBereich, wocheGesamt } from './tracker'
+import { erledigteFelder, hatTageswert, quelle, tagesWert, wocheBereich, wocheGesamt } from './tracker'
 
 export type DruckStatus =
   | 'offen'
@@ -156,7 +156,7 @@ export function wochenZahlen(
   woche: string[],
   ich: UserId,
   er: UserId
-): Array<{ id: FeldId; label: string; ich: number; er: number }> {
+): Array<{ id: FeldId; label: string; ich: number | null; er: number | null }> {
   return FELDER.map(({ id, label }) => {
     if (id === 'gewicht') {
       return {
@@ -166,7 +166,14 @@ export function wochenZahlen(
         er: woche.filter((tag) => z.gewichte[gewichtKey(er, tag)] !== undefined).length,
       }
     }
-    return { id, label, ich: wochenVolumen(z, woche, ich, id), er: wochenVolumen(z, woche, er, id) }
+    const ichErfasst = woche.some((tag) => hatTageswert(z, ich, id, tag))
+    const erErfasst = woche.some((tag) => hatTageswert(z, er, id, tag))
+    return {
+      id,
+      label,
+      ich: ichErfasst ? wochenVolumen(z, woche, ich, id) : null,
+      er: erErfasst ? wochenVolumen(z, woche, er, id) : null,
+    }
   })
 }
 
@@ -177,23 +184,21 @@ export function wochenZahlen(
 export function abrechnungFuerWoche(
   z: Zustand,
   woche: string[],
-  ich: UserId,
-  er: UserId,
   wetteText: string | null
 ): Abrechnung {
-  const punkteIch = wocheGesamt(z, ich, woche)
-  const punkteEr = wocheGesamt(z, er, woche)
-  const belegIch = belegQuote(z, ich, woche).gemessen
-  const belegEr = belegQuote(z, er, woche).gemessen
-  const entscheidung = entscheideDuell(punkteIch, punkteEr, belegIch, belegEr)
+  const punkteErijon = wocheGesamt(z, 'erijon', woche)
+  const punkteKoray = wocheGesamt(z, 'koray', woche)
+  const belegErijon = belegQuote(z, 'erijon', woche).gemessen
+  const belegKoray = belegQuote(z, 'koray', woche).gemessen
+  const entscheidung = entscheideDuell(punkteErijon, punkteKoray, belegErijon, belegKoray)
   const wette = wetteText && wetteText.trim() ? wetteText.trim().slice(0, 160) : null
   return {
     woche: woche[0]!,
-    sieger: entscheidung.sieger === 'ich' ? ich : entscheidung.sieger === 'er' ? er : 'unentschieden',
+    sieger: entscheidung.sieger === 'ich' ? 'erijon' : entscheidung.sieger === 'er' ? 'koray' : 'unentschieden',
     grund: entscheidung.grund,
-    differenz: punkteIch - punkteEr,
-    belegIch,
-    belegEr,
+    differenz: punkteErijon - punkteKoray,
+    belegErijon,
+    belegKoray,
     wette,
     abgeschlossen: new Date().toISOString(),
   }

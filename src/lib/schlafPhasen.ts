@@ -164,6 +164,8 @@ export type NachtPhasenAnalyse = {
   effizienz: number | null
   /** nachtwert v2 aus der datenbank; ohne datenbank die kurve aus `qualitaet` */
   qualitaet: number
+  /** nur der serverwert; null bleibt null und wird nicht aus der dauer geraten */
+  nachtwert: number | null
   /** belegdichte des nachtwerts, 1 bis 100. null, wenn er geschaetzt ist */
   qualitaetKonfidenz: number | null
   hatPhasenDaten: boolean
@@ -280,6 +282,7 @@ export function analysiereSchlafnacht(nacht: Schlafnacht): NachtPhasenAnalyse {
         : null,
     // der gerechnete wert hat vorrang: er sieht mehr als die dauer
     qualitaet: nacht.nachtwert ?? qualitaet(schlafMinuten),
+    nachtwert: nacht.nachtwert,
     qualitaetKonfidenz: nacht.nachtwert === null ? null : nacht.scoreKonfidenz,
     hatPhasenDaten,
     verlaufGeladen: nacht.phasen !== null,

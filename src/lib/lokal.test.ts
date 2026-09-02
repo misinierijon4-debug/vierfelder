@@ -41,7 +41,7 @@ describe('altbestand aus dem alten format', () => {
       JSON.stringify({ erijon: { 'gym|2026-08-26': 93 }, koray: { 'boxen|2026-08-26': 40 } })
     )
 
-    const { einheiten } = await lokalesBackend().laden()
+    const { einheiten, einheitVonVerfuegbar } = await lokalesBackend().laden()
 
     const gym = einheiten[tickKey('erijon', 'gym', '2026-08-26')]!
     expect(gym).toHaveLength(1)
@@ -50,6 +50,7 @@ describe('altbestand aus dem alten format', () => {
     expect(einheiten[tickKey('erijon', 'lesen', '2026-08-25')]![0]!.wert).toBeNull()
     // der haken des anderen geht nicht verloren
     expect(einheiten[tickKey('koray', 'boxen', '2026-08-26')]![0]!.wert).toBe(40)
+    expect(einheitVonVerfuegbar).toBe(true)
   })
 
   it('läuft nur einmal und legt beim zweiten laden nichts doppelt an', async () => {
@@ -84,5 +85,18 @@ describe('altbestand aus dem alten format', () => {
     expect(liste).toHaveLength(2)
     expect(liste.map((e) => e.wert)).toEqual([65, 28])
     expect(liste[0]!.id).toBe(alt.id)
+  })
+
+  it('behaelt die erste wochenabrechnung unveraendert', async () => {
+    const backend = lokalesBackend()
+    const basis = {
+      woche: '2020-01-06', sieger: 'erijon' as const, grund: 'punkte' as const,
+      differenz: 2, belegErijon: 3, belegKoray: 1, wette: null, abgeschlossen: '2026-08-30T18:00:00Z',
+    }
+    await backend.schreibeAbrechnung(basis)
+    await backend.schreibeAbrechnung({ ...basis, sieger: 'koray', differenz: -2 })
+
+    const { abrechnungen } = await backend.laden()
+    expect(abrechnungen.find((a) => a.woche === basis.woche)).toMatchObject({ sieger: 'erijon', differenz: 2 })
   })
 })

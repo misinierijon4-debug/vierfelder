@@ -1,6 +1,7 @@
-import type { Einheit, Fach, Note, UserId } from './types'
+import type { Fach, Note, UserId, Zustand } from './types'
 import { GEWICHT_STANDARD, neueNotenId } from './types'
 import { addDays, fromKey, toKey } from './dates'
+import { tagesWert } from './tracker'
 
 /**
  * Offizielle MSS-Regeln fuer den Abiturjahrgang 2027. Die Zahlen sind gegen
@@ -83,6 +84,11 @@ export function gesamtSchnitt(faecher: Fach[], noten: Note[], user: UserId): num
   return werte.length === 0 ? null : werte.reduce((summe, wert) => summe + wert, 0) / werte.length
 }
 
+/** echter lokaler kalendertag, nicht leer und nicht in der zukunft */
+export function istNotenDatum(datum: string, heute = toKey(new Date())): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(datum) && toKey(fromKey(datum)) === datum && datum <= heute
+}
+
 /** beobachtungswert, keine mss-formel: lk zaehlt doppelt so schwer wie gk. */
 export function kursGewichteterSchnitt(faecher: Fach[], noten: Note[], user: UserId): number | null {
   const gewichtet = faecher
@@ -101,7 +107,7 @@ export function kursGewichteterSchnitt(faecher: Fach[], noten: Note[], user: Use
  * wurde — eine summe, keine aussage ueber ursache und wirkung.
  */
 export function lernMinutenVorNoten(
-  einheiten: Einheit[],
+  zustand: Zustand,
   noten: Note[],
   user: UserId,
   fensterTage = 14
@@ -110,9 +116,10 @@ export function lernMinutenVorNoten(
     .filter((note) => note.user === user)
     .map((note) => {
       const start = toKey(addDays(fromKey(note.datum), -(fensterTage - 1)))
-      const lernMinuten = einheiten
-        .filter((einheit) => einheit.user === user && einheit.area === 'lernen' && einheit.tag >= start && einheit.tag <= note.datum)
-        .reduce((summe, einheit) => summe + (einheit.wert ?? 0), 0)
+      let lernMinuten = 0
+      for (let tag = fromKey(start); toKey(tag) <= note.datum; tag = addDays(tag, 1)) {
+        lernMinuten += tagesWert(zustand, user, 'lernen', toKey(tag))
+      }
       return { note, lernMinuten }
     })
     .sort((a, b) => a.note.datum.localeCompare(b.note.datum))
@@ -292,5 +299,13 @@ export function brauchtInKlausur(noten: Note[], fach: Fach, ziel: number): numbe
 /** kleinste klausur-punktzahl, die den fachschnitt haelt. */
 export function brauchtFuerSchnitt(noten: Note[], fach: Fach): number | null {
   const ziel = fachSchnitt(noten, fach).gesamt ?? 5
-  return brauchtInKlausur(noten, fach, ziel)
+  for (let punkte = 0; punkte <= 15; punkte++) {
+    const probe: Note = {
+      id: neueNotenId(), user: fach.user, fachId: fach.id, art: 'klausur',
+      punkte, gewicht: GEWICHT_STANDARD, datum: '9999-12-31', titel: '',
+    }
+    const schnitt = fachSchnitt([...noten, probe], fach).gesamt
+    if (schnitt !== null && schnitt >= ziel) return punkte
+  }
+  return null
 }

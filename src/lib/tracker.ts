@@ -332,7 +332,7 @@ export function mitEinheit(einheiten: Einheiten, e: Einheit): Einheiten {
     next[key] = liste.map((x) => {
       if (x.id !== e.id) return x
       getroffen = true
-      return { ...x, wert: e.wert, von: e.von ?? x.von }
+      return { ...x, wert: e.wert, von: e.von === undefined ? x.von : e.von }
     })
   }
   return getroffen ? next : einheiten

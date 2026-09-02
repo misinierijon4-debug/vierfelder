@@ -12,6 +12,7 @@ import {
   hatTageswert,
   istGesetzt,
   letzteEinheit,
+  mitEinheit as ersetzeEinheit,
   mitAufenthalt,
   mitGewicht,
   mitNacht,
@@ -202,6 +203,13 @@ describe('einheiten', () => {
     const z = setzeEinheitWert(zweite.z, zweite.e.id, 30)
     expect(tagesWert(z, 'erijon', 'lernen', '2026-08-26')).toBe(75)
     expect(letzteEinheit(z, 'erijon', 'lernen', '2026-08-26')!.wert).toBe(30)
+  })
+
+  it('kann eine gesetzte durchfuehrungszeit wieder loeschen', () => {
+    const { z, e } = mitEinheit(leer, 'lernen', '2026-08-26', 45)
+    const mitZeit = { ...z, einheiten: ersetzeEinheit(z.einheiten, { ...e, von: '2026-08-26T18:00:00+02:00' }) }
+    const ohneZeit = { ...z, einheiten: ersetzeEinheit(mitZeit.einheiten, { ...e, von: null }) }
+    expect(einheitenAn(ohneZeit, 'erijon', 'lernen', '2026-08-26')[0]!.von).toBeNull()
   })
 
   it('kennt keine negativen werte', () => {

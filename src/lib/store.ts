@@ -33,7 +33,7 @@ import {
   ohneEinheit,
   ohneTag,
 } from './tracker'
-import { notenGewicht } from './noten'
+import { istNotenDatum, notenGewicht } from './noten'
 
 let ereignisId = 0
 
@@ -74,6 +74,7 @@ export function useTracker(backend: Backend) {
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
   /** ohne die tabelle `einheiten` bleibt es bei einer einheit pro tag */
   const [altbestand, setAltbestand] = useState(false)
+  const [einheitVonVerfuegbar, setEinheitVonVerfuegbar] = useState(false)
 
   /**
    * was „rückgängig" zurücknimmt. beim abhaken merkt sich das die einheiten
@@ -155,6 +156,7 @@ export function useTracker(backend: Backend) {
         setAbrechnungen(anfang.abrechnungen)
         setFaecher(anfang.noten.faecher)
         setNoten(anfang.noten.noten)
+        setEinheitVonVerfuegbar(anfang.einheitVonVerfuegbar)
         setAltbestand(anfang.altbestand)
         setLadezustand('bereit')
         setFehler(null)
@@ -306,6 +308,7 @@ export function useTracker(backend: Backend) {
   /** nimmt eine einzelne durchführung zurück */
   const einheitWeg = useCallback(
     (einheit: Einheit) => {
+      if (einheit.user !== meRef.current) return
       const vorher = einheitenRef.current
       const next = ohneEinheit(vorher, einheit.id)
       uebernimm(next)
@@ -430,7 +433,7 @@ export function useTracker(backend: Backend) {
     [backend, nacheinander, uebernimm]
   )
 
-  /** archiviert die sonntagsabrechnung einer woche, ersetzt eine vorhandene */
+  /** archiviert die sonntagsabrechnung einer woche; die datenbank behaelt die erste */
   const abrechnungHinzu = useCallback(
     (a: Abrechnung) => {
       const vorher = abrechnungenRef.current
@@ -603,7 +606,7 @@ export function useTracker(backend: Backend) {
   const noteHinzu = useCallback(
     (fachId: string, punkte: number, art: Notenart, datum: string, titel = ''): Note | null => {
       const fach = faecherRef.current.find((x) => x.id === fachId)
-      if (!fach || fach.user !== meRef.current) return null
+      if (!fach || fach.user !== meRef.current || !istNotenDatum(datum)) return null
       const note: Note = {
         id: neueNotenId(),
         user: meRef.current,
@@ -667,6 +670,7 @@ export function useTracker(backend: Backend) {
     fehler,
     ereignis,
     altbestand,
+    einheitVonVerfuegbar,
     toggle,
     einheitHinzu,
     einheitWeg,

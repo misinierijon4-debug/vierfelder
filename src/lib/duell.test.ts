@@ -228,7 +228,7 @@ describe('duell.ts logik & berechnungen', () => {
     const lesen = zahlen.find((x) => x.id === 'lesen')!
     const gewicht = zahlen.find((x) => x.id === 'gewicht')!
     expect(lesen.ich).toBe(40)
-    expect(lesen.er).toBe(0)
+    expect(lesen.er).toBeNull()
     expect(gewicht.ich).toBe(2)
     expect(gewicht.er).toBe(1)
     expect(gewicht.label).toBe('gewicht')
@@ -239,13 +239,13 @@ describe('duell.ts logik & berechnungen', () => {
     z.einheiten[tickKey('erijon', 'gym', '2026-08-24')] = [
       { id: 'e1', user: 'erijon', area: 'gym', tag: '2026-08-24', erfasst: '2026-08-24T10:00:00Z', wert: 60 },
     ]
-    const a = abrechnungFuerWoche(z, woche, 'erijon', 'koray', '  verlierer kocht  ')
+    const a = abrechnungFuerWoche(z, woche, '  verlierer kocht  ')
     expect(a.woche).toBe('2026-08-24')
     expect(a.sieger).toBe('erijon')
     expect(a.grund).toBe('punkte')
     expect(a.differenz).toBe(1)
-    expect(a.belegIch).toBe(0)
-    expect(a.belegEr).toBe(0)
+    expect(a.belegErijon).toBe(0)
+    expect(a.belegKoray).toBe(0)
     expect(a.wette).toBe('verlierer kocht')
     expect(a.abgeschlossen.length).toBeGreaterThan(0)
   })
@@ -262,31 +262,41 @@ describe('duell.ts logik & berechnungen', () => {
       ankunft: '2026-08-24T10:00:00Z',
       abgang: '2026-08-24T11:00:00Z',
     })
-    const a = abrechnungFuerWoche(z, woche, 'erijon', 'koray', null)
+    const a = abrechnungFuerWoche(z, woche, null)
     expect(a.sieger).toBe('koray')
     expect(a.grund).toBe('beleg')
     expect(a.differenz).toBe(0)
-    expect(a.belegIch).toBe(0)
-    expect(a.belegEr).toBe(1)
+    expect(a.belegErijon).toBe(0)
+    expect(a.belegKoray).toBe(1)
     expect(a.wette).toBeNull()
+  })
+
+  it('speichert die differenz immer als erijon minus koray', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('koray', 'gym', '2026-08-24')] = [
+      { id: 'k1', user: 'koray', area: 'gym', tag: '2026-08-24', erfasst: null, wert: 30 },
+    ]
+    const a = abrechnungFuerWoche(z, woche, null)
+    expect(a.sieger).toBe('koray')
+    expect(a.differenz).toBe(-1)
   })
 
   it('abrechnungFuerWoche endet remis bei punkt- und beleggleichstand', () => {
     const z = leererZustand()
     z.gewichte['erijon|2026-08-24'] = 82.0
     z.gewichte['koray|2026-08-24'] = 88.0
-    const a = abrechnungFuerWoche(z, woche, 'erijon', 'koray', '')
+    const a = abrechnungFuerWoche(z, woche, '')
     expect(a.sieger).toBe('unentschieden')
     expect(a.grund).toBe('unentschieden')
     expect(a.differenz).toBe(0)
-    expect(a.belegIch).toBe(1)
-    expect(a.belegEr).toBe(1)
+    expect(a.belegErijon).toBe(1)
+    expect(a.belegKoray).toBe(1)
     expect(a.wette).toBeNull()
   })
 
   it('abrechnungFuerWoche kürzt und trimmt eine lange wette', () => {
     const lang = 'x'.repeat(200)
-    const a = abrechnungFuerWoche(leererZustand(), woche, 'erijon', 'koray', '  ' + lang + '  ')
+    const a = abrechnungFuerWoche(leererZustand(), woche, '  ' + lang + '  ')
     expect(a.wette).toBe(lang.slice(0, 160))
   })
 })
