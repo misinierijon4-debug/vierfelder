@@ -173,26 +173,65 @@ export async function pushAbmelden(): Promise<PushZustand> {
   return 'aus'
 }
 
-/** einmal durch die ganze kette: server, verschluesselung, push-dienst, worker */
-export async function pushProbe(): Promise<Probeergebnis> {
-  if (!supabase) throw new Error('kein konto')
-  const { data, error } = await supabase.functions.invoke<Probeergebnis & { error?: string }>(
-    'push-test',
-    { method: 'POST' }
-  )
-  if (error) {
-    // die function antwortet bei fehlern mit json; die meldung darin ist
-    // brauchbarer als "non-2xx status code".
-    const context = (error as { context?: Response }).context
-    const text = await context?.clone().text()
-    let grund = ''
-    try {
-      grund = text ? (JSON.parse(text).error ?? '') : ''
-    } catch {
-      grund = ''
-    }
-    throw new Error(grund || error.message)
+/** eine zeile aus einer fremden antwort, kurz genug fuer die kleine schrift */
+function kurz(text: string, zeichen = 120): string {
+  const eine = text.replace(/\s+/g, ' ').trim()
+  return eine.length > zeichen ? `${eine.slice(0, zeichen)}…` : eine
+}
+
+/**
+ * Aus der rohen Antwort wird entweder ein Ergebnis oder ein Satz, der sagt,
+ * was wirklich kam.
+ *
+ * Der Umweg ueber den Text statt ueber `response.json()` ist der Punkt: kommt
+ * etwas anderes als JSON zurueck — eine Fehlerseite eines Zwischenstueckes,
+ * eine leere Antwort —, dann lautete die Meldung bisher "Unexpected token '<'".
+ * Das nennt die Sprache, in der der Fehler geschrieben ist, und nicht den
+ * Fehler. Jetzt stehen Status und Anfang der Antwort da.
+ */
+export function deuteProbe(status: number, text: string): Probeergebnis {
+  let inhalt: { gesendet?: number; entfernt?: number; error?: string }
+  try {
+    inhalt = JSON.parse(text)
+  } catch {
+    const rumpf = text.trim() === '' ? 'leere antwort' : kurz(text)
+    throw new Error(`server antwortet ${status}, aber kein json: ${rumpf}`)
   }
-  if (!data) throw new Error('keine antwort vom server')
-  return { gesendet: data.gesendet ?? 0, entfernt: data.entfernt ?? 0 }
+  if (status < 200 || status >= 300) {
+    throw new Error(inhalt.error ?? `server antwortet ${status}`)
+  }
+  return { gesendet: inhalt.gesendet ?? 0, entfernt: inhalt.entfernt ?? 0 }
+}
+
+/**
+ * Einmal durch die ganze Kette: server, verschluesselung, push-dienst, worker.
+ *
+ * Bewusst ein blankes `fetch` statt `functions.invoke`: der Aufruf liest die
+ * Antwort selbst und entscheidet selbst, was ein Fehler ist. `invoke` parst
+ * dazwischen JSON und wirft dabei eine Meldung, die von der eigentlichen
+ * Antwort nichts mehr uebrig laesst — bei einer Funktion, deren einziger Zweck
+ * die Fehlersuche ist, ist das die falsche Schicht.
+ */
+export async function pushProbe(): Promise<Probeergebnis> {
+  const url = import.meta.env.VITE_SUPABASE_URL
+  const schluessel = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  if (!supabase || !url || !schluessel) throw new Error('kein konto')
+
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('die anmeldung ist abgelaufen. melde dich neu an.')
+
+  const antwort = await fetch(`${url.replace(/\/+$/, '')}/functions/v1/push-test`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      apikey: schluessel,
+      'content-type': 'application/json',
+    },
+    // die function liest den koerper nicht. er steht hier, weil ein POST ohne
+    // koerper unterwegs schon an einem zwischenstueck haengen geblieben ist.
+    body: '{}',
+  })
+
+  return deuteProbe(antwort.status, await antwort.text())
 }
