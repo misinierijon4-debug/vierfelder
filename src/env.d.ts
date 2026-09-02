@@ -14,3 +14,14 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/**
+ * Zeitpunkt des Baus, von `vite.config.ts` eingesetzt.
+ *
+ * Steht klein in der Fusszeile. Der Grund ist eine verlorene Stunde: eine
+ * Fehlermeldung aus der App liess sich nicht deuten, weil niemand sagen
+ * konnte, ob das Telefon ueberhaupt die neue Fassung ausfuehrt — ein
+ * Homescreen-PWA haelt seinen Service Worker hartnaeckig. Mit der Bauzeit im
+ * Bild ist das eine Frage von einem Blick.
+ */
+declare const __BAUZEIT__: string

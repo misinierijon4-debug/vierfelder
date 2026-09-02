@@ -12,6 +12,10 @@ const base = process.env.VITE_BASE || '/'
 
 export default defineConfig({
   base,
+  // die bauzeit steht in der fusszeile. sie beantwortet die eine frage, die
+  // man einer app auf einem fremden telefon sonst nicht stellen kann: laeuft
+  // dort die fassung, ueber die wir gerade reden?
+  define: { __BAUZEIT__: JSON.stringify(new Date().toISOString()) },
   test: {
     /**
      * Die Schlafanalyse rechnet in lokaler Zeit. Eine Nacht ueber die

@@ -98,6 +98,17 @@ aufruft, und dafür muss sie wissen, wer das ist.
 | „kein gerät erreicht“ | Abo steht in der Datenbank, der Push-Dienst kennt es nicht mehr: aus und wieder ein |
 | „ohne anmeldung aufgerufen“ | die App hat kein Token mitgeschickt: einmal ab- und wieder anmelden |
 | „vapid-schlüssel fehlen“ | die drei Secrets der Function sind nicht gesetzt |
+| „server antwortet N, aber kein json: …“ | etwas zwischen App und Function hat mit einer Fehlerseite geantwortet — der Anfang steht dahinter |
+| „push-dienst antwortet nicht in 15 s“ | Apple oder Google hat den Push nicht angenommen; die Function bricht ab, statt bis zur Laufzeitgrenze zu hängen |
+
+**Läuft auf dem Telefon überhaupt die neue Fassung?** Unten rechts in der
+Fusszeile steht die Bauzeit. Steht dort eine alte Uhrzeit, hält der Service
+Worker die alte App fest: App vom Home-Bildschirm löschen, in Safari neu laden,
+wieder hinzufügen.
+
+**Wie weit kam die Probe?** Seit Version 4 schreibt die Function jeden Schritt
+in die Logs des Projekts (*Edge Functions → push-test → Logs*): wie viele Geräte
+gefunden wurden, welcher Status je Gerät kam, und was am Ende gesendet wurde.
 
 Bis Version 3 der Function stand hier „nicht angemeldet", obwohl man angemeldet
 war. Der Grund steht als Kommentar in `push-test/index.ts`: `getUser()` ohne
