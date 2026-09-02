@@ -96,6 +96,13 @@ aufruft, und dafür muss sie wissen, wer das ist.
 | „dieser browser kann keine benachrichtigungen“ | zu alt, oder Push abgeschaltet |
 | „abgelehnt“ | Erlaubnis verweigert — nur in den Geräte-Einstellungen zurückzunehmen |
 | „kein gerät erreicht“ | Abo steht in der Datenbank, der Push-Dienst kennt es nicht mehr: aus und wieder ein |
+| „ohne anmeldung aufgerufen“ | die App hat kein Token mitgeschickt: einmal ab- und wieder anmelden |
+| „vapid-schlüssel fehlen“ | die drei Secrets der Function sind nicht gesetzt |
+
+Bis Version 3 der Function stand hier „nicht angemeldet", obwohl man angemeldet
+war. Der Grund steht als Kommentar in `push-test/index.ts`: `getUser()` ohne
+Argument sucht eine gespeicherte Sitzung, die es in einer Function nie gibt.
+Das Token muss ausdrücklich mitgegeben werden.
 
 Kommt die Probe trotz grüner Rückmeldung nicht an, liegt es am Service Worker.
 Auf dem iPhone hilft: App vom Home-Bildschirm löschen, Safari neu laden, wieder
