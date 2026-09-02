@@ -57,29 +57,12 @@ Deno.serve(async (request) => {
   if (!autorisierung.toLowerCase().startsWith('bearer ')) {
     return antwort(401, { error: 'ohne anmeldung aufgerufen' })
   }
-  const token = autorisierung.slice('bearer '.length).trim()
-
   // der client traegt das token des anmeldenden. jede abfrage darunter sieht
   // genau das, was die policies diesem konto erlauben.
   const db = createClient(url, anon, {
     global: { headers: { authorization: autorisierung } },
     auth: { autoRefreshToken: false, persistSession: false },
   })
-
-  /**
-   * Das Token muss hier ausdruecklich mitgegeben werden.
-   *
-   * `getUser()` ohne Argument sucht eine gespeicherte Sitzung — die gibt es in
-   * einer Function nie, `persistSession` steht auf false und angemeldet hat
-   * sich hier niemand. Der Kopf aus `global.headers` gilt fuer die Abfragen an
-   * die Datenbank, nicht fuer diesen Aufruf. Ohne das Argument antwortet die
-   * Probe darum mit "nicht angemeldet", waehrend das Token daneben voellig in
-   * Ordnung ist.
-   */
-  const { data: konto, error: kontoFehler } = await db.auth.getUser(token)
-  if (kontoFehler || !konto?.user) {
-    return antwort(401, { error: kontoFehler?.message ?? 'das token gehört zu keinem konto' })
-  }
 
   const { data, error } = await db.from('push_abos').select('endpoint, p256dh, auth, geraet')
   if (error) return antwort(500, { error: error.message })
@@ -99,7 +82,7 @@ Deno.serve(async (request) => {
   // scheitert, ist genau das problem, gegen das sie gebaut ist: von aussen sieht
   // ein fehler beim senden aus wie ein fehler bei der erlaubnis. jede zeile hier
   // steht in den logs des projekts und beantwortet die frage "wie weit kam sie".
-  console.log(`probe fuer ${konto.user.id}: ${abos.length} gerät(e)`)
+  console.log(`probe: ${abos.length} gerät(e) für das angemeldete konto`)
 
   const ergebnisse = await Promise.all(
     abos.map(async (abo) => {

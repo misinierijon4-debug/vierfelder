@@ -76,8 +76,11 @@ Der private Schlüssel geht **nur** in die Secrets der Function. Nicht in den
 Build, nicht ins Repository.
 
 Anders als `fokus` und `schlaf-import` läuft `push-test` **mit** JWT-Prüfung
-(also ohne `--no-verify-jwt`): sie sendet nur an die Geräte dessen, der sie
-aufruft, und dafür muss sie wissen, wer das ist.
+(also ohne `--no-verify-jwt`). Das Gateway prüft das Login-Token, und die
+Zeilenrechte von `push_abos` sorgen danach dafür, dass die Function nur die
+Geräte des aufrufenden Kontos sieht. Eine zweite Anfrage an den Auth-Dienst ist
+absichtlich nicht nötig: sie wäre nur ein weiterer Ausfallpunkt, ohne die
+Autorisierung zu verstärken.
 
 ### 4. Auf jedem Handy einschalten
 
@@ -110,10 +113,11 @@ wieder hinzufügen.
 in die Logs des Projekts (*Edge Functions → push-test → Logs*): wie viele Geräte
 gefunden wurden, welcher Status je Gerät kam, und was am Ende gesendet wurde.
 
-Bis Version 3 der Function stand hier „nicht angemeldet", obwohl man angemeldet
-war. Der Grund steht als Kommentar in `push-test/index.ts`: `getUser()` ohne
-Argument sucht eine gespeicherte Sitzung, die es in einer Function nie gibt.
-Das Token muss ausdrücklich mitgegeben werden.
+Bis Version 4 prüfte die Function das bereits vom Gateway geprüfte Token noch
+einmal über `getUser()`. Antwortete dieser zusätzliche Auth-Aufruf mit einer
+HTML-Fehlerseite, erschien unten in der App nur „Unexpected token '<'“. Seit
+Version 5 entfällt dieser doppelte Aufruf; JWT-Prüfung und Zeilenrechte bleiben
+unverändert aktiv.
 
 Kommt die Probe trotz grüner Rückmeldung nicht an, liegt es am Service Worker.
 Auf dem iPhone hilft: App vom Home-Bildschirm löschen, Safari neu laden, wieder
