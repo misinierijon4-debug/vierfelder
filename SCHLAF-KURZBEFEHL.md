@@ -228,3 +228,53 @@ In `Inhalte von URL abrufen`:
 Ein erfolgreicher Test liefert unter anderem `"ok": true`. Die getestete
 Automation läuft täglich um 11:00 Uhr mit `Sofort ausführen`; die
 Ausführungsbenachrichtigung ist ausgeschaltet.
+
+## Wenn keine Daten ankommen
+
+Am 02.09.2026 meldete das iPhone „Kurzbefehl ausgeführt“, in Supabase kam
+nichts an. Im Gateway-Protokoll stand für diesen Morgen **kein einziger**
+Aufruf von `record_sleep_night` — auch kein abgelehnter. Ein Aufruf, der die
+Grenzen aus dem vorigen Abschnitt reißt, stünde dort mit 422, 413 oder 429.
+Steht gar nichts da, hat das iPhone nie gesendet und der Fehler liegt im
+Kurzbefehl, nicht in der Datenbank.
+
+Erste Frage deshalb immer: **ist der Aufruf angekommen?**
+
+```sql
+select timestamp, event_message
+from edge_logs
+where event_message like '%record_sleep_night%'
+order by timestamp desc
+limit 10;
+```
+
+(Im Supabase-Studio unter *Logs → Edge Logs*.)
+
+- **Zeile vorhanden, Status 4xx** → die Nutzlast stimmt nicht. Der Statuscode
+  sagt, welche Grenze oder welches Feld.
+- **Keine Zeile** → der Kurzbefehl ist auf dem iPhone abgebrochen, bevor er
+  `Inhalte von URL abrufen` erreicht hat.
+
+Der häufigste Grund für den zweiten Fall ist die Health-Abfrage. In einer
+Hintergrundautomation liefert `Health-Messungen suchen` nichts, wenn das
+iPhone gesperrt ist: Health-Daten sind bei gesperrtem Gerät verschlüsselt.
+Ohne Segmente ist `Wiederholungsergebnisse` leer, der Aufbau des Haupttexts
+scheitert und der Kurzbefehl endet — mit der Benachrichtigung, dass er
+gelaufen ist, aber ohne Netzaufruf.
+
+Was hilft:
+
+1. Den Kurzbefehl bei entsperrtem iPhone von Hand laufen lassen. Kommt die
+   Zeile dann an, ist die Sperre die Ursache.
+2. In der Automation direkt nach `Health-Messungen suchen` eine Aktion
+   **Wenn** `Anzahl von Health-Messungen` `ist` `0` einbauen und dort eine
+   Benachrichtigung zeigen. Dann steht auf dem Handy, dass keine Segmente
+   gefunden wurden, statt dass der Kurzbefehl still endet.
+3. Die Automationszeit auf eine Uhrzeit legen, zu der das iPhone erfahrungs-
+   gemäß entsperrt in Benutzung ist.
+
+Unabhängig davon meldet sich die App: seit dem 02.09.2026 schickt die Edge
+Function `schlaf-erinnerung` eine Push-Nachricht „schlaf von heute nacht
+fehlt.“, wenn zur persönlichen Uhrzeit (Standard 11:30, eine halbe Stunde
+nach der Automation) keine Zeile für die vergangene Nacht in `schlafnaechte`
+steht. Ein stiller Ausfall bleibt so nicht bis zum Abend unbemerkt.
