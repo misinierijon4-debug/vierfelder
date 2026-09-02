@@ -55,8 +55,9 @@ Deno.serve(async (request) => {
 
   const autorisierung = request.headers.get('authorization') ?? ''
   if (!autorisierung.toLowerCase().startsWith('bearer ')) {
-    return antwort(401, { error: 'nicht angemeldet' })
+    return antwort(401, { error: 'ohne anmeldung aufgerufen' })
   }
+  const token = autorisierung.slice('bearer '.length).trim()
 
   // der client traegt das token des anmeldenden. jede abfrage darunter sieht
   // genau das, was die policies diesem konto erlauben.
@@ -65,8 +66,20 @@ Deno.serve(async (request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const { data: konto, error: kontoFehler } = await db.auth.getUser()
-  if (kontoFehler || !konto?.user) return antwort(401, { error: 'nicht angemeldet' })
+  /**
+   * Das Token muss hier ausdruecklich mitgegeben werden.
+   *
+   * `getUser()` ohne Argument sucht eine gespeicherte Sitzung — die gibt es in
+   * einer Function nie, `persistSession` steht auf false und angemeldet hat
+   * sich hier niemand. Der Kopf aus `global.headers` gilt fuer die Abfragen an
+   * die Datenbank, nicht fuer diesen Aufruf. Ohne das Argument antwortet die
+   * Probe darum mit "nicht angemeldet", waehrend das Token daneben voellig in
+   * Ordnung ist.
+   */
+  const { data: konto, error: kontoFehler } = await db.auth.getUser(token)
+  if (kontoFehler || !konto?.user) {
+    return antwort(401, { error: kontoFehler?.message ?? 'das token gehört zu keinem konto' })
+  }
 
   const { data, error } = await db.from('push_abos').select('endpoint, p256dh, auth, geraet')
   if (error) return antwort(500, { error: error.message })
