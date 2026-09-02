@@ -37,7 +37,6 @@ import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
-import { Volumenzeile } from './components/Volumenzeile'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
 import { abrechnungFuerWoche, berechneDuell } from './lib/duell'
 
@@ -311,8 +310,6 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                   gewaehlterTag={gewaehlterTag}
                   onZelle={(user, area, tag) => setDetail({ user, area, tag })}
                 />
-
-                <Volumenzeile zustand={zustand} woche={sichtbareWoche} />
               </div>
 
               {/* gewicht ist eine messung statt eines ticks und steht deshalb
@@ -347,7 +344,6 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 wette={wetten[woche[0] ?? heuteKey] ?? ''}
                 onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
                 onZumTracker={() => setAktiverTab('tracker')}
-                naechte={schlaf}
                 abrechnung={abrechnungDerWoche}
                 onAbschluss={schliesseWocheAb}
               />

@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CaretRight, PencilSimple, ShieldCheck, Trophy } from '@phosphor-icons/react'
-import { FELDER, user as userDef, other } from '../../lib/types'
-import type { Abrechnung, Schlafnacht, UserId, Zustand } from '../../lib/types'
-import { historieWochen, saisonHistorie, wochenZahlen } from '../../lib/duell'
+import { user as userDef, other } from '../../lib/types'
+import type { Abrechnung, UserId, Zustand } from '../../lib/types'
+import { historieWochen, saisonHistorie } from '../../lib/duell'
 import type { DuellMatch } from '../../lib/duell'
 import { fromKey, isoWeek, istBilanzzeit } from '../../lib/dates'
-import { gemeinsameNaechte } from '../../lib/schlafPhasen'
-import { streak } from '../../lib/tracker'
 import { RivalitaetsTicker } from './RivalitaetsTicker'
 
 type Props = {
@@ -19,8 +17,6 @@ type Props = {
   wette: string
   onWette: (text: string) => void
   onZumTracker: () => void
-  /** die schlafnaechte der woche, soweit der schlaf-tab sie schon geladen hat */
-  naechte?: Schlafnacht[]
   /** die archivierte sonntagsabrechnung dieser woche, wenn vorhanden */
   abrechnung?: Abrechnung | null
   /** schließt die woche ab. fehlt der callback, tut der knopf nichts */
@@ -36,33 +32,11 @@ export function DuellTab({
   wette,
   onWette,
   onZumTracker,
-  naechte,
   abrechnung,
   onAbschluss,
 }: Props) {
   const ich = userDef(me)
   const er = other(me)
-  const zahlen = useMemo(
-    () => wochenZahlen(zustand, woche, me, er.id),
-    [zustand, woche, me, er.id]
-  )
-  const streaks = useMemo(
-    () =>
-      FELDER.map((f) => ({
-        id: f.id,
-        label: f.label,
-        ich: streak(zustand, me, f.id, heute),
-        er: streak(zustand, er.id, f.id, heute),
-      })),
-    [zustand, heute, me, er.id]
-  )
-  const gemeinsam = naechte ? gemeinsameNaechte(naechte, woche) : null
-  const hatZahlen =
-    zahlen.some((z) => z.id === 'gewicht'
-      ? (z.ich ?? 0) > 0 || (z.er ?? 0) > 0
-      : z.ich !== null || z.er !== null) ||
-    streaks.some((s) => s.ich > 0 || s.er > 0) ||
-    (gemeinsam ?? 0) > 0
   const abrechnungKw = abrechnung ? isoWeek(fromKey(abrechnung.woche)) : null
   const abrechnungName =
     abrechnung?.sieger === me ? ich.name : abrechnung?.sieger === er.id ? er.name : 'unentschieden'
@@ -206,54 +180,6 @@ export function DuellTab({
           <span className="text-[11px] text-kreide-52">verifiziert oder getippt</span>
         </div>
         <RivalitaetsTicker zustand={zustand} woche={woche} me={me} limit={5} />
-      </section>
-
-      <section aria-labelledby="zahlen-titel" className="mt-5 border-t border-linie pt-3">
-        <h2 id="zahlen-titel" className="text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
-          die woche in zahlen
-        </h2>
-        {hatZahlen ? (
-          <div className="mt-3 grid grid-cols-2 divide-x divide-linie border-y border-linie bg-flaeche/35">
-            <div className="px-3 py-3">
-              <div className="text-[11px] text-kreide-52">volumen</div>
-              <dl className="mt-1">
-                {zahlen.map((z) => (
-                  <div key={z.id} className="flex items-baseline justify-between gap-2 py-0.5">
-                    <dt className="text-[11px] text-kreide-60">{z.label}</dt>
-                    <dd className="tnum text-[12px] font-bold">
-                      <span style={{ color: ich.farbe }}>{z.ich ?? '—'}</span>
-                      <span className="px-1 text-kreide-52">:</span>
-                      <span style={{ color: er.farbe }}>{z.er ?? '—'}</span>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-            <div className="px-3 py-3">
-              <div className="text-[11px] text-kreide-52">streaks</div>
-              <dl className="mt-1">
-                {streaks.map((s) => (
-                  <div key={s.id} className="flex items-baseline justify-between gap-2 py-0.5">
-                    <dt className="text-[11px] text-kreide-60">{s.label}</dt>
-                    <dd className="tnum text-[12px] font-bold">
-                      <span style={{ color: ich.farbe }}>{s.ich} tage</span>
-                      <span className="px-1 text-kreide-52">·</span>
-                      <span style={{ color: er.farbe }}>{s.er} tage</span>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-              {gemeinsam !== null && (
-                <p className="mt-2 border-t border-linie pt-2 text-[11px] text-kreide-60">
-                  gemeinsame nächte diese woche:{' '}
-                  <span className="tnum font-bold text-kreide">{gemeinsam}</span>
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="py-3 text-[12px] text-kreide-52">noch nichts</p>
-        )}
       </section>
 
       <section aria-labelledby="bilanz-titel" className="mt-5 border-t border-linie pt-3">
