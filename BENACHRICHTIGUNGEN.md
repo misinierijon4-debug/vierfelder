@@ -163,14 +163,22 @@ Node. `src/lib/webpush.test.ts` friert dabei jedes Byte der Ableitung mit einem
 festen Vektor ein, der gegen `http_ece` gegengeprüft wurde — dieselbe
 Bibliothek, die `web-push` innen benutzt.
 
-## Was als nächstes kommt
+## Die erste echte Erinnerung
 
-Der Weg steht, die Erinnerungen fehlen. Dafür braucht es:
+„heute noch nicht gewogen.“ ist der schmale erste Schnitt durch die ganze
+Kette:
 
-1. eine Function, die für einen Tag ausrechnet, was fehlt (Ticks, Gewicht,
-   Schlafimport) — dieselben Regeln wie im Raster, also aus `src/lib/tracker.ts`
-   nach SQL oder in `_shared`;
-2. `pg_cron`, das sie abends ruft;
-3. je Person eine Uhrzeit, damit nicht beide um dieselbe Minute gestört werden.
+1. `gewicht-erinnerung` rechnet in deutscher Ortszeit nach, ob die persönliche
+   Uhrzeit erreicht und für den heutigen Tag noch keine Messung vorhanden ist;
+2. `pg_cron` ruft sie alle fünf Minuten. Eine ausgefallene Minute wird damit
+   nachgeholt, nach 22 Uhr bleibt es trotzdem still;
+3. `erinnerungs_einstellungen` hält je Person die Uhrzeit, anfangs 20:00;
+4. `erinnerungs_versand` erlaubt je Person, Art und Tag genau eine Nachricht.
 
-Die Sammlung möglicher Nachrichten steht in [IDEEN.md](IDEEN.md).
+Die Function reserviert die Tagesnachricht vor dem Senden. Parallele oder
+wiederholte Cron-Aufrufe laufen dadurch am selben Primärschlüssel ins Leere.
+Hat die Person heute schon gewogen, wird gar nicht erst reserviert. Die
+Uhrzeit lässt sich in der Fußzeile neben dem Push-Schalter ändern.
+
+Weitere Nachrichten bleiben bewusst in [IDEEN.md](IDEEN.md), bis diese eine
+eine Woche lang zuverlässig und ohne zu nerven gelaufen ist.

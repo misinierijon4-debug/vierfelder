@@ -10,6 +10,10 @@ import {
   pushZustand,
 } from '../lib/push'
 import type { PushZustand } from '../lib/push'
+import {
+  ladeGewichtErinnerungszeit,
+  setzeGewichtErinnerungszeit,
+} from '../lib/erinnerung'
 
 /**
  * Der Schalter fuer Benachrichtigungen.
@@ -26,12 +30,21 @@ export function Benachrichtigungen() {
   const [zustand, setZustand] = useState<PushZustand | null>(null)
   const [laeuft, setLaeuft] = useState(false)
   const [meldung, setMeldung] = useState<string | null>(null)
+  const [zeit, setZeit] = useState<string | null>(null)
+  const [zeitLaeuft, setZeitLaeuft] = useState(false)
 
   useEffect(() => {
     let aktiv = true
-    pushZustand().then((z) => {
-      if (aktiv) setZustand(z)
-    })
+    Promise.all([pushZustand(), ladeGewichtErinnerungszeit()])
+      .then(([z, erinnerungszeit]) => {
+        if (!aktiv) return
+        setZustand(z)
+        setZeit(erinnerungszeit)
+      })
+      .catch((fehler) => {
+        if (!aktiv) return
+        setMeldung(fehler instanceof Error ? fehler.message : 'einstellung konnte nicht geladen werden.')
+      })
     return () => {
       aktiv = false
     }
@@ -62,6 +75,22 @@ export function Benachrichtigungen() {
     }
   }
 
+  async function aendereZeit(neu: string) {
+    const vorher = zeit
+    setZeit(neu)
+    setZeitLaeuft(true)
+    setMeldung(null)
+    try {
+      await setzeGewichtErinnerungszeit(neu)
+      setMeldung(`gewichtserinnerung ist auf ${neu} gestellt.`)
+    } catch (fehler) {
+      setZeit(vorher)
+      setMeldung(fehler instanceof Error ? fehler.message : 'uhrzeit konnte nicht gespeichert werden.')
+    } finally {
+      setZeitLaeuft(false)
+    }
+  }
+
   // im prototyp gibt es kein konto, an das ein gerät hängen könnte
   if (zustand === null || zustand === 'ohne-konto') return null
 
@@ -70,7 +99,14 @@ export function Benachrichtigungen() {
       aria-label="benachrichtigungen"
       className="mt-6 border-t border-linie pt-3 text-[11px] text-kreide-52"
     >
-      <Inhalt zustand={zustand} laeuft={laeuft} onAus={fuehreAus} />
+      <Inhalt
+        zustand={zustand}
+        laeuft={laeuft}
+        zeit={zeit}
+        zeitLaeuft={zeitLaeuft}
+        onZeit={aendereZeit}
+        onAus={fuehreAus}
+      />
 
       <AnimatePresence initial={false}>
         {meldung && (
@@ -94,10 +130,13 @@ export function Benachrichtigungen() {
 type InhaltProps = {
   zustand: PushZustand
   laeuft: boolean
+  zeit: string | null
+  zeitLaeuft: boolean
+  onZeit: (zeit: string) => void
   onAus: (was: () => Promise<string | null>) => void
 }
 
-function Inhalt({ zustand, laeuft, onAus }: InhaltProps) {
+function Inhalt({ zustand, laeuft, zeit, zeitLaeuft, onZeit, onAus }: InhaltProps) {
   if (zustand === 'ohne-schluessel') {
     return <p>benachrichtigungen sind auf dem server noch nicht eingerichtet.</p>
   }
@@ -149,41 +188,59 @@ function Inhalt({ zustand, laeuft, onAus }: InhaltProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3">
-      <span className="flex items-center gap-2 text-kreide-60">
-        <BellRinging size={14} weight="bold" aria-hidden="true" />
-        benachrichtigungen an
-      </span>
-      <button
-        type="button"
-        disabled={laeuft}
-        onClick={() =>
-          onAus(async () => {
-            const ergebnis = await pushProbe()
-            return ergebnis.gesendet > 0
-              ? 'probe ist unterwegs. sie kommt auch, wenn die app zu ist.'
-              : 'kein gerät erreicht. schalte einmal aus und wieder ein.'
-          })
-        }
-        className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
-      >
-        probe senden
-      </button>
-      <button
-        type="button"
-        disabled={laeuft}
-        aria-label="benachrichtigungen ausschalten"
-        onClick={() =>
-          onAus(async () => {
-            await pushAbmelden()
-            return null
-          })
-        }
-        className="flex min-h-11 items-center gap-1 px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
-      >
-        <BellSlash size={14} weight="bold" aria-hidden="true" />
-        aus
-      </button>
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-x-3">
+        <span className="flex items-center gap-2 text-kreide-60">
+          <BellRinging size={14} weight="bold" aria-hidden="true" />
+          benachrichtigungen an
+        </span>
+        <button
+          type="button"
+          disabled={laeuft}
+          onClick={() =>
+            onAus(async () => {
+              const ergebnis = await pushProbe()
+              return ergebnis.gesendet > 0
+                ? 'probe ist unterwegs. sie kommt auch, wenn die app zu ist.'
+                : 'kein gerät erreicht. schalte einmal aus und wieder ein.'
+            })
+          }
+          className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
+        >
+          probe senden
+        </button>
+        <button
+          type="button"
+          disabled={laeuft}
+          aria-label="benachrichtigungen ausschalten"
+          onClick={() =>
+            onAus(async () => {
+              await pushAbmelden()
+              return null
+            })
+          }
+          className="flex min-h-11 items-center gap-1 px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
+        >
+          <BellSlash size={14} weight="bold" aria-hidden="true" />
+          aus
+        </button>
+      </div>
+      {zeit && (
+        <label className="flex min-h-11 items-center gap-2 text-kreide-60">
+          <span>„heute noch nicht gewogen“ um</span>
+          <input
+            type="time"
+            min="06:00"
+            max="21:59"
+            step="300"
+            value={zeit}
+            disabled={zeitLaeuft}
+            onChange={(ereignis) => onZeit(ereignis.target.value)}
+            aria-label="uhrzeit der gewichtserinnerung"
+            className="rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[12px] font-semibold text-kreide disabled:opacity-50"
+          />
+        </label>
+      )}
     </div>
   )
 }

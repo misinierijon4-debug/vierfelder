@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.fokus]
 verify_jwt = false
+
+[functions.gewicht-erinnerung]
+verify_jwt = true

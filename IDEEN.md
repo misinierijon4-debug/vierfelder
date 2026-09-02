@@ -21,7 +21,8 @@ schaut zu einer festen Uhrzeit nach, was fehlt, und schickt einen Satz.
 
 **Erinnerungen — abends, wenn etwas offen ist**
 
-* 20:00 — „heute noch nicht gewogen. mach das jetzt.“
+* ✓ 20:00 — „heute noch nicht gewogen.“ — als erste echte Erinnerung gebaut;
+  die Uhrzeit ist pro Person einstellbar.
 * 20:00 — „heute noch nicht gelesen?“
 * 20:30 — „2 von 5 heute. was geht noch?“
 * 08:00 — „waage. zehn sekunden.“ (wiegen gehoert in den morgen, nicht in den abend)
