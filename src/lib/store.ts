@@ -85,18 +85,32 @@ export function useTracker(backend: Backend) {
   const [altbestand, setAltbestand] = useState(false)
   const [einheitVonVerfuegbar, setEinheitVonVerfuegbar] = useState(false)
 
+  /**
+   * die schlange gehoert der angemeldeten person, deshalb laeuft sie erst nach
+   * dem laden: vorher steht in `me` noch der vorgabewert. neben `online` hoert
+   * sie auf das zurueckholen der app — kommt das telefon wieder in den empfang,
+   * meldet der browser kein `online`, weil er sich nie als offline gesehen hat.
+   */
   useEffect(() => {
+    if (ladezustand !== 'bereit') return
     const abarbeiten = async () => {
-      const res = await arbeiteWarteschlangeAb(backend)
+      const res = await arbeiteWarteschlangeAb(backend, me)
       if (res.erfolg && res.abgearbeitet > 0) {
         setFehler((alt) => (alt === FEHLER_KEINE_VERBINDUNG ? null : alt))
       }
     }
     void abarbeiten()
     if (typeof window === 'undefined') return
+    const beiSichtbar = () => {
+      if (document.visibilityState === 'visible') void abarbeiten()
+    }
     window.addEventListener('online', abarbeiten)
-    return () => window.removeEventListener('online', abarbeiten)
-  }, [backend])
+    document.addEventListener('visibilitychange', beiSichtbar)
+    return () => {
+      window.removeEventListener('online', abarbeiten)
+      document.removeEventListener('visibilitychange', beiSichtbar)
+    }
+  }, [backend, ladezustand, me])
 
   /**
    * was „rückgängig" zurücknimmt. beim abhaken merkt sich das die einheiten
@@ -319,7 +333,7 @@ export function useTracker(backend: Backend) {
 
       nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeEinheit', einheit })
+          einreihen({ typ: 'schreibeEinheit', einheit }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -351,7 +365,7 @@ export function useTracker(backend: Backend) {
 
       nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'loescheEinheit', einheit })
+          einreihen({ typ: 'loescheEinheit', einheit }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -384,7 +398,7 @@ export function useTracker(backend: Backend) {
         () => backend.loescheTag(vorhandene)
       ).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'loescheTag', einheiten: vorhandene })
+          einreihen({ typ: 'loescheTag', einheiten: vorhandene }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -428,7 +442,7 @@ export function useTracker(backend: Backend) {
       ).catch((e) => {
         if (istNetzwerkFehler(e)) {
           for (const e of aktion.einheiten) {
-            einreihen({ typ: 'schreibeEinheit', einheit: e })
+            einreihen({ typ: 'schreibeEinheit', einheit: e }, meRef.current)
           }
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
@@ -453,7 +467,7 @@ export function useTracker(backend: Backend) {
       setFehler(null)
       nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeEinheitWert', einheit, wert: sauber })
+          einreihen({ typ: 'schreibeEinheitWert', einheit, wert: sauber }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -476,7 +490,7 @@ export function useTracker(backend: Backend) {
       setFehler(null)
       nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeEinheitVon', einheit, von })
+          einreihen({ typ: 'schreibeEinheitVon', einheit, von }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -498,7 +512,7 @@ export function useTracker(backend: Backend) {
       setFehler(null)
       backend.schreibeAbrechnung(a).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeAbrechnung', abrechnung: a })
+          einreihen({ typ: 'schreibeAbrechnung', abrechnung: a }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -535,7 +549,7 @@ export function useTracker(backend: Backend) {
 
         nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch((e) => {
           if (istNetzwerkFehler(e)) {
-            einreihen({ typ: 'schreibeEinheitWert', einheit: neue, wert: erster })
+            einreihen({ typ: 'schreibeEinheitWert', einheit: neue, wert: erster }, meRef.current)
             setFehler(FEHLER_KEINE_VERBINDUNG)
             return
           }
@@ -551,7 +565,7 @@ export function useTracker(backend: Backend) {
 
       nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeEinheitWert', einheit: letzte, wert: sauber })
+          einreihen({ typ: 'schreibeEinheitWert', einheit: letzte, wert: sauber }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -580,7 +594,7 @@ export function useTracker(backend: Backend) {
 
       backend.schreibeGewicht(tag, sauber).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeGewicht', tag, kg: sauber })
+          einreihen({ typ: 'schreibeGewicht', tag, kg: sauber }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -631,7 +645,7 @@ export function useTracker(backend: Backend) {
       setFehler(null)
       backend.schreibeWette(woche, sauber).catch((e) => {
         if (istNetzwerkFehler(e)) {
-          einreihen({ typ: 'schreibeWette', woche, text: sauber })
+          einreihen({ typ: 'schreibeWette', woche, text: sauber }, meRef.current)
           setFehler(FEHLER_KEINE_VERBINDUNG)
           return
         }
@@ -696,20 +710,20 @@ export function useTracker(backend: Backend) {
       }
       const vorher = notenRef.current
       const next = [...vorher, note]
-        notenRef.current = next
-        setNoten(next)
-        setFehler(null)
-        nacheinander([note.id], () => backend.schreibeNote(note)).catch((e) => {
-          if (istNetzwerkFehler(e)) {
-            einreihen({ typ: 'schreibeNote', note })
-            setFehler(FEHLER_KEINE_VERBINDUNG)
-            return
-          }
-          notenRef.current = vorher
-          setNoten(vorher)
-          setFehler(FEHLER_NICHT_GESPEICHERT)
-        })
-        return note
+      notenRef.current = next
+      setNoten(next)
+      setFehler(null)
+      nacheinander([note.id], () => backend.schreibeNote(note)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeNote', note }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
+        notenRef.current = vorher
+        setNoten(vorher)
+        setFehler(FEHLER_NICHT_GESPEICHERT)
+      })
+      return note
     },
     [backend, nacheinander]
   )
@@ -720,20 +734,20 @@ export function useTracker(backend: Backend) {
       if (!note || note.user !== meRef.current) return
       const vorher = notenRef.current
       const next = vorher.filter((x) => x.id !== id)
-        notenRef.current = next
-        setNoten(next)
-        setFehler(null)
-        nacheinander([id], () => backend.loescheNote(id)).catch((e) => {
-          if (istNetzwerkFehler(e)) {
-            einreihen({ typ: 'loescheNote', id })
-            setFehler(FEHLER_KEINE_VERBINDUNG)
-            return
-          }
-          notenRef.current = vorher
-          setNoten(vorher)
-          setFehler(FEHLER_NICHT_GESPEICHERT)
-        })
-      },
+      notenRef.current = next
+      setNoten(next)
+      setFehler(null)
+      nacheinander([id], () => backend.loescheNote(id)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'loescheNote', id }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
+        notenRef.current = vorher
+        setNoten(vorher)
+        setFehler(FEHLER_NICHT_GESPEICHERT)
+      })
+    },
     [backend, nacheinander]
   )
 

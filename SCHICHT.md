@@ -69,3 +69,30 @@ Fundstellen, an denen die App oder Dokumentation ein Verhalten verspricht, das d
 - **Was offen bleibt:** Die Offline-Warteschlange deckt alle schreibenden Nutzerhandlungen ab. Kuenftige Schichten koennen gezielt serverseitige Push-Trigger fuer Duell-Ereignisse (IDEEN.md) schaerfen.
 
 **Ehrliches Fazit:** Ja, ich wuerde die App heute Abend genau so benutzen — sie haelt jetzt ihr Kernversprechen der Datensicherheit und verliert selbst bei schlechter Verbindung keinen einzigen Eintrag.
+
+## 6. Nachpruefung der schicht (02.09.2026)
+
+Die schicht wurde gegengelesen. Tests (297) und build waren gruen, wie
+berichtet — die warteschlange hatte aber drei fehler, die genau den
+datenverlust zurueckbrachten, gegen den sie gebaut ist. Belegt durch sechs
+tests, die gegen die alte fassung fehlschlagen (einer davon laeuft dort in den
+timeout, weil sich zwei durchlaeufe gegenseitig blockieren).
+
+1. **Verlorener tap waehrend der abarbeitung.** `arbeiteWarteschlangeAb` las die
+   schlange einmal und schrieb nach jedem eintrag seine veraltete kopie zurueck.
+   Ein `einreihen` in diesem fenster war weg. Behoben mit einer id je eintrag,
+   frischem lesen vor jedem schritt und punktgenauem entfernen.
+2. **Zwei gleichzeitige durchlaeufe.** Start beim laden und `online`-ereignis
+   schickten dieselben eintraege doppelt los. Behoben mit einer sperre im modul.
+3. **Eintrag der falschen person.** `schreibeGewicht` und `schreibeWette` haben
+   keinen benutzer im aufruf. Jeder eintrag traegt jetzt die person; fremde
+   eintraege bleiben liegen.
+
+Dazu: der durchlauf startet erst nach dem laden (vorher stand in `me` noch der
+vorgabewert), er hoert zusaetzlich auf `visibilitychange` — das ist der fall am
+telefon, bei dem kein `online` kommt —, und die aussage in `DESIGN.md`
+abschnitt 26 ueber die „naechste aktion" ist auf das korrigiert, was der code
+tut. Die einrueckung in `notiere` und `noteLoeschen` war verrutscht.
+
+Stand danach: 303 tests in 18 dateien gruen, `npm run build` fehlerfrei.
+Begruendung in `DESIGN.md` nachtrag 27.

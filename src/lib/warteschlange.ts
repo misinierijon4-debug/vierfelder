@@ -1,9 +1,11 @@
 import type { Backend } from './backend'
-import type { Abrechnung, Einheit, Note } from './types'
+import { neueEinheitId } from './types'
+import type { Abrechnung, Einheit, Note, UserId } from './types'
 
 export const WARTESCHLANGE_KEY = 'vierfelder.warteschlange'
 
-export type WarteschlangenEintrag =
+/** was geschrieben werden sollte, als die verbindung weg war */
+export type Auftrag =
   | { typ: 'schreibeEinheit'; einheit: Einheit }
   | { typ: 'schreibeEinheitWert'; einheit: Einheit; wert: number | null }
   | { typ: 'schreibeEinheitVon'; einheit: Einheit; von: string | null }
@@ -14,6 +16,15 @@ export type WarteschlangenEintrag =
   | { typ: 'schreibeAbrechnung'; abrechnung: Abrechnung }
   | { typ: 'schreibeNote'; note: Note }
   | { typ: 'loescheNote'; id: string }
+
+/**
+ * jeder eintrag traegt eine eigene id und die person, die ihn ausgeloest hat.
+ * die id, damit ein abgearbeiteter eintrag punktgenau aus der frisch gelesenen
+ * schlange verschwindet statt eine veraltete liste zurueckzuschreiben; die
+ * person, weil `schreibeGewicht` und `schreibeWette` ohne benutzer auskommen
+ * und sonst auf dem konto landen wuerden, das gerade angemeldet ist.
+ */
+export type WarteschlangenEintrag = Auftrag & { id: string; user: UserId }
 
 /** prueft, ob ein fehler aus offline-zustand oder abgebrochenem netzwerk resultiert */
 export function istNetzwerkFehler(e: unknown): boolean {
@@ -44,7 +55,13 @@ export function ladeWarteschlange(): WarteschlangenEintrag[] {
     const raw = localStorage.getItem(WARTESCHLANGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    // eintraege ohne id oder person stammen aus einer aelteren fassung und
+    // liessen sich weder zuordnen noch gezielt entfernen
+    return parsed.filter(
+      (e): e is WarteschlangenEintrag =>
+        !!e && typeof e.id === 'string' && typeof e.user === 'string'
+    )
   } catch {
     return []
   }
@@ -62,10 +79,15 @@ export function speichereWarteschlange(liste: WarteschlangenEintrag[]): void {
   }
 }
 
-export function einreihen(eintrag: WarteschlangenEintrag): void {
-  const schlange = ladeWarteschlange()
-  schlange.push(eintrag)
-  speichereWarteschlange(schlange)
+export function einreihen(auftrag: Auftrag, user: UserId): WarteschlangenEintrag {
+  const eintrag = { ...auftrag, id: neueEinheitId(), user } as WarteschlangenEintrag
+  speichereWarteschlange([...ladeWarteschlange(), eintrag])
+  return eintrag
+}
+
+/** nimmt genau einen eintrag aus der gerade gespeicherten schlange */
+function entferne(id: string): void {
+  speichereWarteschlange(ladeWarteschlange().filter((e) => e.id !== id))
 }
 
 export function leereWarteschlange(): void {
@@ -111,29 +133,46 @@ export async function fuehreEintragAus(backend: Backend, eintrag: Warteschlangen
   }
 }
 
-export async function arbeiteWarteschlangeAb(
-  backend: Backend
-): Promise<{ erfolg: boolean; abgearbeitet: number; verbleibend: number }> {
-  const schlange = ladeWarteschlange()
-  if (schlange.length === 0) return { erfolg: true, abgearbeitet: 0, verbleibend: 0 }
+/**
+ * nur ein durchlauf gleichzeitig. der start beim laden und das `online`-ereignis
+ * treffen sonst zusammen und schicken denselben eintrag zweimal los.
+ */
+let laeuft = false
 
-  let abgearbeitet = 0
-  while (schlange.length > 0) {
-    const naechster = schlange[0]!
-    try {
-      await fuehreEintragAus(backend, naechster)
-      schlange.shift()
-      abgearbeitet++
-      speichereWarteschlange(schlange)
-    } catch (e) {
-      if (istNetzwerkFehler(e)) {
-        // verbindung weiterhin unterbrochen; halte die restliche schlange
-        return { erfolg: false, abgearbeitet, verbleibend: schlange.length }
-      }
-      // fachlicher fehler (z.b. zeile existiert nicht mehr) -> verwerfe diesen eintrag
-      schlange.shift()
-      speichereWarteschlange(schlange)
-    }
+/**
+ * arbeitet die eintraege der angemeldeten person ab, aelteste zuerst. die
+ * schlange wird vor jedem eintrag frisch gelesen: waehrend ein schreibvorgang
+ * unterwegs ist, kann ein neuer tap dazukommen, und der darf nicht unter einer
+ * zurueckgeschriebenen alten liste verschwinden.
+ */
+export async function arbeiteWarteschlangeAb(
+  backend: Backend,
+  user: UserId
+): Promise<{ erfolg: boolean; abgearbeitet: number; verbleibend: number }> {
+  if (laeuft) {
+    return { erfolg: true, abgearbeitet: 0, verbleibend: ladeWarteschlange().length }
   }
-  return { erfolg: true, abgearbeitet, verbleibend: 0 }
+  laeuft = true
+  let abgearbeitet = 0
+  try {
+    for (;;) {
+      const schlange = ladeWarteschlange()
+      const naechster = schlange.find((e) => e.user === user)
+      if (!naechster) return { erfolg: true, abgearbeitet, verbleibend: schlange.length }
+      try {
+        await fuehreEintragAus(backend, naechster)
+        abgearbeitet++
+      } catch (e) {
+        if (istNetzwerkFehler(e)) {
+          // verbindung weiterhin unterbrochen; die restliche schlange bleibt
+          return { erfolg: false, abgearbeitet, verbleibend: ladeWarteschlange().length }
+        }
+        // fachlicher fehler (z.b. zeile existiert nicht mehr): dieser eintrag
+        // geht nie durch und wuerde sonst alle folgenden blockieren
+      }
+      entferne(naechster.id)
+    }
+  } finally {
+    laeuft = false
+  }
 }
