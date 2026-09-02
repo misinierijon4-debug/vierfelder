@@ -27,7 +27,24 @@ export type Probeergebnis = {
   entfernt: number
 }
 
-const vapidSchluessel = import.meta.env.VITE_VAPID_PUBLIC_KEY ?? ''
+/**
+ * Der oeffentliche VAPID-Schluessel des Projekts.
+ *
+ * Er steht hier im Klartext, und das ist kein Versehen: er liegt ohnehin in
+ * jedem ausgelieferten Buendel und in jedem Abo, das ein Handy anlegt.
+ * Geheim ist allein sein privater Gegenpart, und der bleibt Secret der Edge
+ * Function. Was er hier gewinnt, ist die eine Sache, die er woanders kostet:
+ * ein Build ohne gesetzte Variable liefert sonst eine App aus, in der die
+ * Benachrichtigungen wortlos fehlen.
+ *
+ * Ein neues Paar macht alle bestehenden Abos ungueltig — wer ihn tauscht,
+ * tauscht ihn auch in den Secrets der Function, und jedes Geraet muss die
+ * Benachrichtigungen neu einschalten.
+ */
+const VAPID_STANDARD = 'BPBikYfCtufw6fHehwcew3_mc_8Su8IZdON2Ne39ZxiFCNwTXhDCw53RLu4IFlYLP1J7gNMsEtqpnLcWnZsAISg'
+
+/** eine gesetzte umgebungsvariable geht vor, etwa fuer ein zweites projekt */
+const vapidSchluessel = import.meta.env.VITE_VAPID_PUBLIC_KEY || VAPID_STANDARD
 
 /** die api-teile, die es im safari-tab und in alten browsern nicht gibt */
 export function pushImBrowser(): boolean {

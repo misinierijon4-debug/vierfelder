@@ -40,20 +40,16 @@ Das Paar wird **einmal** erzeugt und danach nie wieder angefasst: der
 Paar macht alle bestehenden Abos ungültig, und jeder müsste die
 Benachrichtigungen von Hand neu einschalten.
 
-### 2. Den öffentlichen Schlüssel in den Build
+### 2. Den öffentlichen Schlüssel in den Code
 
-Auf GitHub unter *Settings → Secrets and variables → Actions → Variables* eine
-Variable anlegen:
+Er steht als `VAPID_STANDARD` in `src/lib/push.ts` und wird dort ausgetauscht.
+Im Klartext, und das ist Absicht: der öffentliche Schlüssel liegt ohnehin in
+jedem ausgelieferten Bündel und in jedem Abo, das ein Handy anlegt. Geheim ist
+allein sein privater Gegenpart.
 
-```
-VITE_VAPID_PUBLIC_KEY = <der öffentliche schlüssel>
-```
-
-Eine Variable, kein Secret: der Schlüssel liegt ohnehin in jedem
-ausgelieferten Bündel, und ein Secret verbietet GitHub im `vars`-Kontext.
-
-Lokal steht derselbe Wert in `.env.local` (siehe `.env.example`). Fehlt er,
-baut die App weiter — der Schalter sagt dann, dass nichts eingerichtet ist.
+Der Gewinn ist, dass ein Build ohne gesetzte Variable keine App ausliefert, in
+der die Benachrichtigungen wortlos fehlen. Wer trotzdem eine Variable will —
+etwa für ein zweites Projekt —, setzt `VITE_VAPID_PUBLIC_KEY`; die geht vor.
 
 ### 3. Tabelle und Function nach Supabase
 
@@ -66,6 +62,11 @@ npx supabase secrets set `
   VAPID_KONTAKT=mailto:<eure adresse>
 npx supabase functions deploy push-test
 ```
+
+Tabelle und Function stehen im Projekt `ogxwazageufvalkocywh` bereits. Offen
+sind nur die drei Secrets — ohne sie antwortet die Function mit
+„vapid-schlüssel fehlen". Sie lassen sich auch im Dashboard setzen, unter
+*Edge Functions → Secrets*.
 
 `VAPID_KONTAKT` ist die Adresse, an die sich ein Push-Dienst wendet, wenn etwas
 mit den Nachrichten nicht stimmt. `mailto:` oder `https:`, sonst weisen manche
@@ -90,7 +91,7 @@ aufruft, und dafür muss sie wissen, wer das ist.
 | Was der Schalter sagt | Was los ist |
 |---|---|
 | nichts (der Bereich fehlt ganz) | Prototyp-Modus ohne Konto |
-| „auf dem server noch nicht eingerichtet“ | `VITE_VAPID_PUBLIC_KEY` fehlt im Build |
+| „auf dem server noch nicht eingerichtet“ | kein öffentlicher Schlüssel im Build |
 | „muss auf dem home-bildschirm liegen“ | Safari-Tab statt installierter App |
 | „dieser browser kann keine benachrichtigungen“ | zu alt, oder Push abgeschaltet |
 | „abgelehnt“ | Erlaubnis verweigert — nur in den Geräte-Einstellungen zurückzunehmen |
