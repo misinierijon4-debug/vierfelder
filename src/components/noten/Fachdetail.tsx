@@ -13,7 +13,7 @@ type Props = {
   heute: string
   onSchliessen: () => void
   onPruefungsfach: (fachId: string, nummer: number | null) => void
-  onNote: (punkte: number, art: Notenart, titel: string) => void
+  onNote: (punkte: number, art: Notenart, titel: string, datum: string) => void
   onNoteLoeschen: (id: string) => void
 }
 
@@ -28,10 +28,13 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
   const schliessen = useRef<HTMLButtonElement>(null)
   const [art, setArt] = useState<Notenart>('klausur')
   const [titel, setTitel] = useState('')
+  const [datum, setDatum] = useState(heute)
   const liste = noten.filter((note) => note.fachId === fach.id).sort((a, b) => b.datum.localeCompare(a.datum))
   const schnitt = fachSchnitt(noten, fach)
   const anteil = klausurAnteil(fach.kursart)
   const istPruefung = fach.pruefungsfach !== null
+  const klausuren = liste.filter((note) => note.art === 'klausur')
+  const muendlich = liste.filter((note) => note.art === 'epo' || note.art === 'hue')
   // die farbe der person markiert, was gerade ausgewählt ist
   const farbe = user(fach.user).farbe
   const hinweis: Record<Notenart, string> = {
@@ -39,6 +42,14 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
     epo: `eine epo zählt doppelt im mündlichen teil, also in den ${100 - anteil}%.`,
     hue: `eine hü zählt einfach im mündlichen teil, also in den ${100 - anteil}%.`,
   }
+
+  const zeile = (note: Note) => (
+    <li key={note.id} className="flex min-h-12 items-center gap-2 border-b border-linie">
+      <span className="tnum w-7 text-[18px] font-semibold">{note.punkte}</span>
+      <span className="min-w-0 flex-1 truncate text-[11px] text-kreide-60">{notenartLabel[note.art]} · {note.datum}{note.titel ? ` · ${note.titel}` : ''}</span>
+      <button type="button" onClick={() => onNoteLoeschen(note.id)} aria-label={`${note.punkte} ${note.punkte === 1 ? 'punkt' : 'punkte'} löschen`} className="flex size-11 shrink-0 items-center justify-center text-kreide-52"><Trash size={14} /></button>
+    </li>
+  )
 
   useScrollSperre(true)
 
@@ -62,9 +73,21 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-kreide-52">fach</p>
             <h2 id="fachdetail-titel" className="display mt-1 truncate text-[22px] font-semibold lowercase leading-none">{fach.name}</h2>
-            <p className="mt-1.5 text-[11px] text-kreide-52">
-              {schnitt.gesamt === null ? 'noch keine note' : `${schnitt.gesamt.toFixed(1).replace('.', ',')} punkte · ${liste.length} noten`}
-            </p>
+            <div className="mt-1.5 flex items-center justify-between gap-3">
+              <p className="min-w-0 text-[11px] text-kreide-52">
+                {schnitt.gesamt === null ? 'noch keine note' : `${schnitt.gesamt.toFixed(1).replace('.', ',')} punkte · ${liste.length} noten`}
+              </p>
+              {(schnitt.klausur !== null || schnitt.muendlich !== null) && (
+                <div className="flex shrink-0 items-center gap-4">
+                  {schnitt.klausur !== null && (
+                    <span className="text-[10px] text-kreide-52">klausur-schnitt<span className="tnum ml-1.5 text-[13px] text-kreide">{schnitt.klausur.toFixed(1).replace('.', ',')}</span></span>
+                  )}
+                  {schnitt.muendlich !== null && (
+                    <span className="text-[10px] text-kreide-52">mündlich-schnitt<span className="tnum ml-1.5 text-[13px] text-kreide">{schnitt.muendlich.toFixed(1).replace('.', ',')}</span></span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <button ref={schliessen} type="button" onClick={onSchliessen} aria-label="fach schließen" className="flex size-11 shrink-0 items-center justify-center rounded-[2px] border border-linie text-kreide-60"><X size={14} weight="bold" /></button>
         </div>
@@ -88,7 +111,8 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
         <section aria-labelledby="neue-note" className="mt-6 border-t border-linie pt-4">
           <div className="flex items-center justify-between gap-3">
             <h3 id="neue-note" className="display text-[18px] font-semibold">note eintragen</h3>
-            <span className="tnum text-[10px] text-kreide-52">{heute}</span>
+            <label htmlFor="note-datum" className="sr-only">datum der note</label>
+            <input id="note-datum" type="date" value={datum} onChange={(e) => setDatum(e.currentTarget.value)} className="tnum min-h-11 shrink-0 rounded-[2px] border border-linie bg-flaeche px-3 text-[12px] outline-none" />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="notenart">
             {(['klausur', 'epo', 'hue'] as Notenart[]).map((wert) => {
@@ -104,14 +128,19 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <p className="mt-2 text-[10px] text-kreide-52">{hinweis[art]}</p>
           <input value={titel} maxLength={40} onChange={(e) => setTitel(e.currentTarget.value.toLocaleLowerCase('de-DE'))} placeholder="titel optional" aria-label="titel der note" className="mt-2 min-h-11 w-full rounded-[2px] border border-linie bg-flaeche px-3 text-[12px] outline-none placeholder:text-kreide-52" />
           <div className="mt-2 grid grid-cols-4 gap-1" aria-label="notenpunkte">
-            {Array.from({ length: 16 }, (_, i) => 15 - i).map((punkte) => <button key={punkte} type="button" onClick={() => { onNote(punkte, art, titel); setTitel('') }} aria-label={`${punkte} ${punkte === 1 ? 'punkt' : 'punkte'}, ${punkteKurz(punkte)}`} className="flex min-h-11 min-w-0 flex-col items-center justify-center rounded-[2px] border border-linie bg-flaeche active:scale-[0.98]"><span className="tnum text-[14px] font-semibold">{punkte}</span><span className="text-[8px] text-kreide-52">{punkteKurz(punkte)}</span></button>)}
+            {Array.from({ length: 16 }, (_, i) => 15 - i).map((punkte) => <button key={punkte} type="button" onClick={() => { onNote(punkte, art, titel, datum); setTitel('') }} aria-label={`${punkte} ${punkte === 1 ? 'punkt' : 'punkte'}, ${punkteKurz(punkte)}`} className="flex min-h-11 min-w-0 flex-col items-center justify-center rounded-[2px] border border-linie bg-flaeche active:scale-[0.98]"><span className="tnum text-[14px] font-semibold">{punkte}</span><span className="text-[8px] text-kreide-52">{punkteKurz(punkte)}</span></button>)}
           </div>
           <p className="mt-2 text-[10px] text-kreide-52">tippen trägt sofort ein. kein speichern nötig.</p>
         </section>
 
         <section aria-labelledby="notenliste" className="mt-6 border-t border-linie pt-4">
           <h3 id="notenliste" className="display text-[18px] font-semibold">eingetragen</h3>
-          {liste.length === 0 ? <p className="mt-3 text-[12px] text-kreide-52">noch keine note</p> : <ul className="mt-2">{liste.map((note) => <li key={note.id} className="flex min-h-12 items-center gap-2 border-b border-linie"><span className="tnum w-7 text-[18px] font-semibold">{note.punkte}</span><span className="min-w-0 flex-1 truncate text-[11px] text-kreide-60">{notenartLabel[note.art]} · {note.datum}{note.titel ? ` · ${note.titel}` : ''}</span><button type="button" onClick={() => onNoteLoeschen(note.id)} aria-label={`${note.punkte} ${note.punkte === 1 ? 'punkt' : 'punkte'} löschen`} className="flex size-11 shrink-0 items-center justify-center text-kreide-52"><Trash size={14} /></button></li>)}</ul>}
+          <div className="mt-3">
+            <h4 className="text-[10px] text-kreide-52">klausuren</h4>
+            {klausuren.length === 0 ? <p className="mt-2 pb-1 text-[12px] text-kreide-52">noch keine</p> : <ul className="mt-1">{klausuren.map(zeile)}</ul>}
+            <h4 className="mt-4 text-[10px] text-kreide-52">mündlich (epo + hü)</h4>
+            {muendlich.length === 0 ? <p className="mt-2 pb-1 text-[12px] text-kreide-52">noch keine</p> : <ul className="mt-1">{muendlich.map(zeile)}</ul>}
+          </div>
         </section>
       </motion.section>
     </motion.div>

@@ -36,8 +36,9 @@ import { NotenTab } from './components/noten/NotenTab'
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
+import { Volumenzeile } from './components/Volumenzeile'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
-import { berechneDuell } from './lib/duell'
+import { abrechnungFuerWoche, berechneDuell } from './lib/duell'
 
 const UNDO_MS = 5000
 
@@ -71,6 +72,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     zustand,
     schlaf,
     wetten,
+    abrechnungen,
     notenstand,
     ladezustand,
     fehler,
@@ -78,10 +80,14 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     altbestand,
     toggle,
     einheitHinzu,
+    einheitWeg,
     rueckgaengig,
     wertAendern,
+    wertSetzen,
+    zeitSetzen,
     setzeGewicht,
     setzeWette,
+    abrechnungHinzu,
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,
@@ -110,6 +116,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   )
   const ich = userDef(me)
   const er = other(me)
+  const abrechnungDerWoche = abrechnungen.find((a) => a.woche === (woche[0] ?? heuteKey)) ?? null
 
   // datumswechsel und das sonntagsfinale um 18 uhr, ohne die app neu zu öffnen.
   // ein neues date-objekt kommt nur, wenn sich tag oder bilanzzeit ändern —
@@ -141,6 +148,20 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   const zurueck = (area: AreaId) => {
     rueckgaengig(area, heuteKey)
     setUndoFuer(null)
+  }
+
+  /** die sonntagsabrechnung dieser woche aus den tracker-daten bauen und archivieren */
+  const schliesseWocheAb = () => {
+    const wocheKey = woche[0] ?? heuteKey
+    const abr = abrechnungFuerWoche(zustand, woche, me, er.id, wetten[wocheKey] ?? null)
+    abrechnungHinzu(abr)
+  }
+
+  const loescheEinheitById = (id: string) => {
+    const e = Object.values(zustand.einheiten)
+      .flat()
+      .find((x) => x.id === id)
+    if (e) einheitWeg(e)
   }
 
   const sichtbarLeer = wocheGesamt(zustand, me, sichtbareWoche) === 0
@@ -230,6 +251,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       anzahl={anzahlEinheiten(zustand, me, area.id, heuteKey)}
                       mehrfachMoeglich={!altbestand}
                       quelle={quelle(zustand, me, area.id, heuteKey)}
+                      einheitVon={letzte?.von ?? null}
                       // bei zwei sitzungen an einem tag steht dort die summe,
                       // nicht die längere von beiden
                       messungMinuten={messungsMinuten(zustand, me, area.id, heuteKey)}
@@ -286,6 +308,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                   gewaehlterTag={gewaehlterTag}
                   onZelle={(user, area, tag) => setDetail({ user, area, tag })}
                 />
+
+                <Volumenzeile zustand={zustand} woche={sichtbareWoche} me={me} />
               </div>
 
               {/* gewicht ist eine messung statt eines ticks und steht deshalb
@@ -320,6 +344,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 wette={wetten[woche[0] ?? heuteKey] ?? ''}
                 onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
                 onZumTracker={() => setAktiverTab('tracker')}
+                naechte={schlaf}
+                abrechnung={abrechnungDerWoche}
+                onAbschlussAbbrechnung={schliesseWocheAb}
               />
             </motion.div>
           ) : aktiverTab === 'schlaf' ? (
@@ -377,6 +404,11 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             zustand={zustand}
             auswahl={detail}
             heute={heuteKey}
+            editierbar={detail.tag === heuteKey && !altbestand}
+            eigene={detail.user === me}
+            onWertSetzen={wertSetzen}
+            onZeitSetzen={zeitSetzen}
+            onLoeschen={loescheEinheitById}
             onSchliessen={() => setDetail(null)}
           />
         )}

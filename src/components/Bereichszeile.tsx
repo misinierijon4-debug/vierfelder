@@ -7,6 +7,18 @@ import { Marke } from './Marke'
 import { Schritt } from './Schritt'
 import { Zahl } from './Zahl'
 
+const UHRZEIT = new Intl.DateTimeFormat('de-DE', {
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+/** die durchführungszeit der jüngsten einheit, als hh:mm oder leer */
+function uhrzeitVon(von: string | null | undefined): string {
+  if (!von) return ''
+  const d = new Date(von)
+  return Number.isFinite(d.getTime()) ? UHRZEIT.format(d) : ''
+}
+
 type Props = {
   area: AreaDef
   index: number
@@ -20,6 +32,8 @@ type Props = {
   hatWert: boolean
   /** wert der jüngsten einheit — auf sie wirken die schritte */
   einheitWert: number
+  /** durchführungszeit der jüngsten getippten einheit, wenn erfasst */
+  einheitVon?: string | null
   /** wie oft die aktivität heute stattgefunden hat */
   anzahl: number
   /** solange die tabelle `einheiten` fehlt, bleibt es bei einer pro tag */
@@ -51,6 +65,7 @@ export function Bereichszeile({
   wert,
   hatWert,
   einheitWert,
+  einheitVon,
   anzahl,
   mehrfachMoeglich,
   quelle,
@@ -170,6 +185,13 @@ export function Bereichszeile({
           <Wechsel schluessel={links}>
             {!wertAusMessung && gesetzt ? (
               <div className="flex items-center gap-1.5">
+                {/* die uhrzeit der jüngsten einheit steht fest neben den
+                    schritten. der slot bleibt 24px breit, ob sie da ist oder
+                    nicht, damit nichts unter dem daumen wegrutscht. */}
+                <span className="tnum w-6 text-[10px] leading-none text-kreide-52">
+                  {uhrzeitVon(einheitVon)}
+                </span>
+
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} verringern`}
                   disabled={einheitWert <= 0}
@@ -234,7 +256,7 @@ export function Bereichszeile({
 
                 {/* eine zweite runde ersetzt die erste nicht, sie kommt dazu.
                     die schritte darüber gelten dann für die neueste einheit. */}
-                {mehrfachMoeglich && (
+                {mehrfachMoeglich && !gemessen && (
                   <button
                     type="button"
                     aria-label={`weitere einheit ${area.label} eintragen`}
@@ -260,15 +282,34 @@ export function Bereichszeile({
               /* beim lesen steht links weiter der seitenzähler zwischen den
                  schritten und hier die gemessene zeit: die seiten sind der wert
                  des bereichs, die minuten der beleg. keine ersetzt die andere. */
-              <span className="flex items-baseline gap-1.5">
-                <Zahl
-                  value={messungMinuten ?? 0}
-                  className="text-[14px] font-semibold"
-                  style={{ color: 'var(--kreide-60)' }}
-                />
-                <span className="text-[12px] text-kreide-52">
-                  min · gemessen{anzahl > 1 ? ` · ${anzahl}×` : ''}
+              <span className="flex items-center gap-3">
+                <span className="flex items-baseline gap-1.5">
+                  <Zahl
+                    value={messungMinuten ?? 0}
+                    className="text-[14px] font-semibold"
+                    style={{ color: 'var(--kreide-60)' }}
+                  />
+                  <span className="text-[12px] text-kreide-52">
+                    min · gemessen{anzahl > 1 ? ` · ${anzahl}×` : ''}
+                  </span>
                 </span>
+
+                {/* eine gemessene sitzung sperrt die schritte, aber nicht den
+                    nachtrag: eine zweite, manuell notierte einheit am selben
+                    tag ist erlaubt und steht hier neben der messung. */}
+                {mehrfachMoeglich && (
+                  <button
+                    type="button"
+                    aria-label={`weitere einheit ${area.label} eintragen`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onNeueEinheit()
+                    }}
+                    className="text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                  >
+                    + einheit
+                  </button>
+                )}
               </span>
             ) : zeigeUndo ? (
               <button

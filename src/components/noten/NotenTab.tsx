@@ -27,7 +27,7 @@ export function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoes
         {faecher.length === 0 ? <p className="mt-3 text-[12px] text-kreide-52">keine fächer geladen</p> : <ul className="mt-2 border-t border-linie">{faecher.map((fach) => <Fachzeile key={fach.id} fach={fach} noten={stand.noten} onOeffnen={() => setOffen(fach.id)} />)}</ul>}
       </section>
       <NotenVergleich stand={stand} />
-      <AnimatePresence>{detail && <Fachdetail key={detail.id} fach={detail} noten={stand.noten} heute={heute} onSchliessen={() => setOffen(null)} onPruefungsfach={onPruefungsfach} onNote={(punkte, art, titel) => { onNote(detail.id, punkte, art, heute, titel) }} onNoteLoeschen={onNoteLoeschen} />}</AnimatePresence>
+      <AnimatePresence>{detail && <Fachdetail key={detail.id} fach={detail} noten={stand.noten} heute={heute} onSchliessen={() => setOffen(null)} onPruefungsfach={onPruefungsfach} onNote={(punkte, art, titel, datum) => { onNote(detail.id, punkte, art, datum, titel) }} onNoteLoeschen={onNoteLoeschen} />}</AnimatePresence>
     </div>
   )
 }

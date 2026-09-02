@@ -669,6 +669,7 @@ export function useTracker(backend: Backend) {
     altbestand,
     toggle,
     einheitHinzu,
+    einheitWeg,
     rueckgaengig,
     wertAendern,
     wertSetzen,

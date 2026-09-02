@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type { Fach, Note } from './types'
-import { abiPrognose, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, klausurAnteil, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
+import type { Einheit, Fach, Note } from './types'
+import { abiPrognose, brauchtFuerSchnitt, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, klausurAnteil, kursGewichteterSchnitt, lernMinutenVorNoten, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
 
 const fach = (id: string, kursart: 'lk' | 'gk' = 'gk'): Fach => ({
   id, user: 'erijon', name: id, kursart, pruefungsfach: null, sortierung: 0,
 })
 const note = (fachId: string, punkte: number, art: 'klausur' | 'epo' | 'hue' = 'klausur', gewicht = notenGewicht(art), datum = '2026-09-01'): Note => ({
   id: `${fachId}-${art}-${punkte}-${datum}-${gewicht}`, user: 'erijon', fachId, art, punkte, gewicht, datum, titel: '',
+})
+const einheit = (user: 'erijon' | 'koray', area: Einheit['area'], tag: string, wert: number | null): Einheit => ({
+  id: `${user}-${area}-${tag}-${wert}`, user, area, tag, wert, erfasst: null,
 })
 
 describe('punkte und kurze noten', () => {
@@ -41,6 +44,55 @@ describe('fachschnitt', () => {
   })
   it('zaehlt einen leeren topf nicht als null', () => {
     expect(fachSchnitt([note('m', 13)], fach('m')).gesamt).toBe(13)
+  })
+})
+
+describe('gewichtete schnitte', () => {
+  it('gewichtet lk doppelt gegen gk', () => {
+    const faecher = [fach('lk', 'lk'), fach('g1'), fach('g2')]
+    const noten = [note('lk', 12), note('g1', 8), note('g2', 4)]
+    expect(kursGewichteterSchnitt(faecher, noten, 'erijon')).toBeCloseTo(9)
+  })
+  it('laesst faecher ohne note aus dem nenner', () => {
+    const faecher = [fach('a', 'lk'), fach('b')]
+    expect(kursGewichteterSchnitt(faecher, [note('a', 15)], 'erijon')).toBe(15)
+  })
+  it('liefert null ohne faecher oder ohne noten', () => {
+    expect(kursGewichteterSchnitt([], [], 'erijon')).toBeNull()
+    expect(kursGewichteterSchnitt([fach('a')], [], 'erijon')).toBeNull()
+  })
+})
+
+describe('lernminuten vor noten', () => {
+  it('summiert lernen nur im fenster und schliesst die grenze ein', () => {
+    const noten = [note('m', 10, 'hue', notenGewicht('hue'), '2026-09-10')]
+    const einheiten = [
+      einheit('erijon', 'lernen', '2026-08-28', 20),
+      einheit('erijon', 'lernen', '2026-08-27', 60),
+      einheit('erijon', 'lernen', '2026-09-10', 30),
+    ]
+    expect(lernMinutenVorNoten(einheiten, noten, 'erijon')).toEqual([{ note: noten[0]!, lernMinuten: 50 }])
+  })
+  it('schliesst andere bereiche, fremde einheiten und null-werte aus', () => {
+    const noten = [note('m', 10, 'hue', notenGewicht('hue'), '2026-09-05')]
+    const einheiten = [
+      einheit('erijon', 'gym', '2026-09-01', 90),
+      einheit('erijon', 'lesen', '2026-09-02', 40),
+      einheit('koray', 'lernen', '2026-09-03', 120),
+      einheit('erijon', 'lernen', '2026-09-04', null),
+    ]
+    expect(lernMinutenVorNoten(einheiten, noten, 'erijon')).toEqual([{ note: noten[0]!, lernMinuten: 0 }])
+  })
+  it('rechnet nur eigene noten und sortiert nach datum', () => {
+    const aelter = note('m', 10, 'hue', notenGewicht('hue'), '2026-09-01')
+    const neuer = note('m', 8, 'hue', notenGewicht('hue'), '2026-09-08')
+    const fremd: Note = { ...note('m', 4, 'hue', notenGewicht('hue'), '2026-09-03'), user: 'koray' }
+    const einheiten = [
+      einheit('erijon', 'lernen', '2026-09-01', 15),
+      einheit('erijon', 'lernen', '2026-09-08', 25),
+    ]
+    const ergebnis = lernMinutenVorNoten(einheiten, [neuer, fremd, aelter], 'erijon')
+    expect(ergebnis.map((e) => [e.note.id, e.lernMinuten])).toEqual([[aelter.id, 15], [neuer.id, 40]])
   })
 })
 
@@ -113,6 +165,17 @@ describe('ziel und trend', () => {
     const noten = [note('m', 12, 'klausur', 10, '2026-09-03'), note('m', 8, 'klausur', 10, '2026-09-01'), note('m', 10, 'klausur', 10, '2026-09-02')]
     expect(trend(noten, 'm', 2)).toEqual([10, 12])
     expect(trend(noten, 'm', 6)).toEqual([8, 10, 12])
+  })
+  it('ohne bestehende note ist die 5 die untergrenze', () => {
+    expect(brauchtFuerSchnitt([], fach('m', 'lk'))).toBe(5)
+    expect(brauchtFuerSchnitt([], fach('m', 'gk'))).toBe(5)
+  })
+  it('liefert null bei bestehender note, weil der schnitt sich selbst als ziel ist', () => {
+    expect(brauchtFuerSchnitt([note('m', 8)], fach('m', 'gk'))).toBeNull()
+    expect(brauchtFuerSchnitt([note('m', 4)], fach('m', 'gk'))).toBeNull()
+  })
+  it('liefert null, wenn der schnitt schon erreicht ist', () => {
+    expect(brauchtFuerSchnitt([note('m', 12)], fach('m'))).toBeNull()
   })
 })
 

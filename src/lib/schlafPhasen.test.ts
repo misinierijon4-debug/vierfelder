@@ -8,11 +8,13 @@ import {
   formatDauer,
   formatStunden,
   gemeinsameNaechte,
+  medianAbweichung,
   nachtMinute,
   nachtUhrzeit,
   qualitaet,
   PHASEN_SCHWELLE,
   registrierteSchlafNutzer,
+  scoreKomponentenZeilen,
   stundenmarken,
   verlauf,
   wochenwerte,
@@ -690,6 +692,103 @@ describe('duell der woche: fairness bei ungleicher datenlage', () => {
     const zeilen = duell(w, wochenwerte('koray', []))
     expect(zeilen.some((z) => z.id === 'nachtwert')).toBe(false)
     expect(zeilen.some((z) => z.id === 'schnitt')).toBe(true)
+  })
+})
+
+describe('median abweichung', () => {
+  it('misst den abstand zur eigenen gewohnheit aus den vornaechten', () => {
+    const frueher = [
+      nacht({ nacht: '2026-08-24', einschlafzeit: iso('2026-08-23', '23:00'), schlafMinuten: 420 }),
+      nacht({ nacht: '2026-08-25', einschlafzeit: iso('2026-08-24', '23:20'), schlafMinuten: 480 }),
+    ]
+    const aktuelle = nacht({ nacht: '2026-08-26', einschlafzeit: iso('2026-08-25', '23:45') })
+    // median aus 23:00 und 23:20 ist 23:10; 23:45 liegt 35 minuten daneben
+    expect(medianAbweichung(aktuelle, [...frueher, aktuelle])).toEqual({ abweichung: 35, basis: 2 })
+  })
+
+  it('kann ohne eine einzige vornacht nichts ausrichten', () => {
+    expect(medianAbweichung(nacht(), [])).toBeNull()
+    // andere personen sind keine gewohnheit
+    expect(
+      medianAbweichung(nacht(), [nacht({ user: 'koray', nacht: '2026-08-24', schlafMinuten: 400 })])
+    ).toBeNull()
+    // eine nacht ohne schlafzeit ist keine vornacht
+    expect(
+      medianAbweichung(nacht({ nacht: '2026-08-26' }), [nacht({ nacht: '2026-08-25', schlafMinuten: 0 })])
+    ).toBeNull()
+  })
+
+  it('nimmt nur die echten vornaechte, nicht die spaeteren', () => {
+    const frueher = nacht({ nacht: '2026-08-24', einschlafzeit: iso('2026-08-23', '23:00') })
+    const spaeter = nacht({ nacht: '2026-08-27', einschlafzeit: iso('2026-08-26', '23:00') })
+    const aktuelle = nacht({ nacht: '2026-08-26', einschlafzeit: iso('2026-08-25', '23:45') })
+    const info = medianAbweichung(aktuelle, [spaeter, aktuelle, frueher])
+    expect(info).not.toBeNull()
+    expect(info!.abweichung).toBe(45)
+    expect(info!.basis).toBe(1)
+  })
+
+  it('nimmt den kuerzeren weg ueber die 24-stunden-grenze, wie der server', () => {
+    // 14:59 liegt auf der nachtachse fast 23 stunden vor 23:30
+    const frueher = nacht({ nacht: '2026-08-24', einschlafzeit: iso('2026-08-23', '14:59'), schlafMinuten: 400 })
+    const aktuelle = nacht({ nacht: '2026-08-26', einschlafzeit: iso('2026-08-25', '23:30') })
+    const info = medianAbweichung(aktuelle, [frueher, aktuelle])
+    expect(info!.abweichung).toBe(511)
+  })
+
+  it('begrenzt die historie auf 13 naechte', () => {
+    const vorher = Array.from({ length: 20 }, (_, i) =>
+      nacht({
+        nacht: `2026-08-${String(i + 1).padStart(2, '0')}`,
+        einschlafzeit: iso('2026-08-01', '23:00'),
+      })
+    )
+    const aktuelle = nacht({ nacht: '2026-09-01', einschlafzeit: iso('2026-08-31', '23:30') })
+    const info = medianAbweichung(aktuelle, [...vorher, aktuelle])
+    expect(info!.basis).toBe(13)
+    expect(info!.abweichung).toBe(30)
+  })
+})
+
+describe('score-komponenten', () => {
+  it('liest die komponenten in fester reihenfolge', () => {
+    const zeilen = scoreKomponentenZeilen(
+      nacht({
+        scoreKomponenten: {
+          unterbrechungen: { wert: 68, gewicht: 10, punkte: 7 },
+          dauer: { wert: 91, gewicht: 45, punkte: 41 },
+          phasen: { wert: 82, gewicht: 10, punkte: 8 },
+          effizienz: { wert: 87, gewicht: 20, punkte: null },
+          regelmaessigkeit: { wert: 74, gewicht: 0, punkte: null },
+        },
+      })
+    )
+    expect(zeilen.map((z) => z.id)).toEqual([
+      'dauer', 'effizienz', 'phasen', 'unterbrechungen', 'regelmaessigkeit',
+    ])
+    expect(zeilen.map((z) => z.label)).toEqual([
+      'dauer', 'effizienz', 'phasen', 'unterbrechungen', 'regelmäßigkeit',
+    ])
+    expect(zeilen[0]).toEqual({ id: 'dauer', label: 'dauer', wert: 91, punkte: 41 })
+    expect(zeilen[1]!.punkte).toBeNull()
+  })
+
+  it('ueberspringt fehlende komponenten, statt luecken zu bauen', () => {
+    const zeilen = scoreKomponentenZeilen(
+      nacht({
+        scoreKomponenten: {
+          phasen: { wert: 82, gewicht: 10, punkte: 8 },
+          dauer: { wert: 91, gewicht: 45, punkte: 41 },
+        },
+      })
+    )
+    expect(zeilen.map((z) => z.id)).toEqual(['dauer', 'phasen'])
+  })
+
+  it('liefert ohne komponenten eine leere liste', () => {
+    expect(scoreKomponentenZeilen(nacht())).toEqual([])
+    expect(scoreKomponentenZeilen(nacht({ scoreKomponenten: null }))).toEqual([])
+    expect(scoreKomponentenZeilen(nacht({ scoreKomponenten: {} }))).toEqual([])
   })
 })
 

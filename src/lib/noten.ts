@@ -1,5 +1,6 @@
-import type { Fach, Note, UserId } from './types'
+import type { Einheit, Fach, Note, UserId } from './types'
 import { GEWICHT_STANDARD, neueNotenId } from './types'
+import { addDays, fromKey, toKey } from './dates'
 
 /**
  * Offizielle MSS-Regeln fuer den Abiturjahrgang 2027. Die Zahlen sind gegen
@@ -80,6 +81,41 @@ export function gesamtSchnitt(faecher: Fach[], noten: Note[], user: UserId): num
     .map((fach) => fachSchnitt(noten, fach).gesamt)
     .filter((wert): wert is number => wert !== null)
   return werte.length === 0 ? null : werte.reduce((summe, wert) => summe + wert, 0) / werte.length
+}
+
+/** beobachtungswert, keine mss-formel: lk zaehlt doppelt so schwer wie gk. */
+export function kursGewichteterSchnitt(faecher: Fach[], noten: Note[], user: UserId): number | null {
+  const gewichtet = faecher
+    .filter((fach) => fach.user === user)
+    .map((fach) => ({ fach, schnitt: fachSchnitt(noten, fach).gesamt }))
+    .filter((x): x is { fach: Fach; schnitt: number } => x.schnitt !== null)
+  if (gewichtet.length === 0) return null
+  const faktor = (kursart: Fach['kursart']) => (kursart === 'lk' ? 2 : 1)
+  const summe = gewichtet.reduce((s, x) => s + x.schnitt * faktor(x.fach.kursart), 0)
+  const nenner = gewichtet.reduce((s, x) => s + faktor(x.fach.kursart), 0)
+  return summe / nenner
+}
+
+/**
+ * beobachtung: wie viel in den letzten `fensterTage` tagen vor der note gelernt
+ * wurde — eine summe, keine aussage ueber ursache und wirkung.
+ */
+export function lernMinutenVorNoten(
+  einheiten: Einheit[],
+  noten: Note[],
+  user: UserId,
+  fensterTage = 14
+): Array<{ note: Note; lernMinuten: number }> {
+  return noten
+    .filter((note) => note.user === user)
+    .map((note) => {
+      const start = toKey(addDays(fromKey(note.datum), -(fensterTage - 1)))
+      const lernMinuten = einheiten
+        .filter((einheit) => einheit.user === user && einheit.area === 'lernen' && einheit.tag >= start && einheit.tag <= note.datum)
+        .reduce((summe, einheit) => summe + (einheit.wert ?? 0), 0)
+      return { note, lernMinuten }
+    })
+    .sort((a, b) => a.note.datum.localeCompare(b.note.datum))
 }
 
 /**
@@ -251,4 +287,10 @@ export function brauchtInKlausur(noten: Note[], fach: Fach, ziel: number): numbe
     if (schnitt !== null && schnitt >= ziel) return punkte
   }
   return null
+}
+
+/** kleinste klausur-punktzahl, die den fachschnitt haelt. */
+export function brauchtFuerSchnitt(noten: Note[], fach: Fach): number | null {
+  const ziel = fachSchnitt(noten, fach).gesamt ?? 5
+  return brauchtInKlausur(noten, fach, ziel)
 }
