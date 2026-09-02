@@ -34,6 +34,11 @@ import {
   ohneTag,
 } from './tracker'
 import { istNotenDatum, notenGewicht } from './noten'
+import {
+  arbeiteWarteschlangeAb,
+  einreihen,
+  istNetzwerkFehler,
+} from './warteschlange'
 
 let ereignisId = 0
 
@@ -45,10 +50,14 @@ function fehlertext(e: unknown): string {
   if (istProfilfehler(e)) return (e as Error).message
   const code = (e as { code?: string } | null)?.code
   if (code === 'PGRST301' || code === '401') {
-    return 'anmeldung abgelaufen. lade die seite neu.'
+    return 'anmeldung abgelaufen. melde dich neu an.'
   }
   return 'daten konnten nicht geladen werden. prüfe die verbindung und lade neu.'
 }
+
+const FEHLER_NICHT_GESPEICHERT = 'nicht gespeichert. tippe nochmal.'
+const FEHLER_KEINE_VERBINDUNG =
+  'keine verbindung. der eintrag geht raus, sobald du wieder online bist.'
 
 type Ladezustand = 'laden' | 'bereit' | 'fehler'
 
@@ -75,6 +84,33 @@ export function useTracker(backend: Backend) {
   /** ohne die tabelle `einheiten` bleibt es bei einer einheit pro tag */
   const [altbestand, setAltbestand] = useState(false)
   const [einheitVonVerfuegbar, setEinheitVonVerfuegbar] = useState(false)
+
+  /**
+   * die schlange gehoert der angemeldeten person, deshalb laeuft sie erst nach
+   * dem laden: vorher steht in `me` noch der vorgabewert. neben `online` hoert
+   * sie auf das zurueckholen der app — kommt das telefon wieder in den empfang,
+   * meldet der browser kein `online`, weil er sich nie als offline gesehen hat.
+   */
+  useEffect(() => {
+    if (ladezustand !== 'bereit') return
+    const abarbeiten = async () => {
+      const res = await arbeiteWarteschlangeAb(backend, me)
+      if (res.erfolg && res.abgearbeitet > 0) {
+        setFehler((alt) => (alt === FEHLER_KEINE_VERBINDUNG ? null : alt))
+      }
+    }
+    void abarbeiten()
+    if (typeof window === 'undefined') return
+    const beiSichtbar = () => {
+      if (document.visibilityState === 'visible') void abarbeiten()
+    }
+    window.addEventListener('online', abarbeiten)
+    document.addEventListener('visibilitychange', beiSichtbar)
+    return () => {
+      window.removeEventListener('online', abarbeiten)
+      document.removeEventListener('visibilitychange', beiSichtbar)
+    }
+  }, [backend, ladezustand, me])
 
   /**
    * was „rückgängig" zurücknimmt. beim abhaken merkt sich das die einheiten
@@ -295,9 +331,14 @@ export function useTracker(backend: Backend) {
       })
       setFehler(null)
 
-      nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch(() => {
+      nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeEinheit', einheit }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
 
       return einheit
@@ -322,9 +363,14 @@ export function useTracker(backend: Backend) {
       })
       setFehler(null)
 
-      nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch(() => {
+      nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'loescheEinheit', einheit }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, nacheinander, uebernimm]
@@ -350,9 +396,14 @@ export function useTracker(backend: Backend) {
       nacheinander(
         vorhandene.map((e) => e.id),
         () => backend.loescheTag(vorhandene)
-      ).catch(() => {
+      ).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'loescheTag', einheiten: vorhandene }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, einheitHinzu, nacheinander, uebernimm]
@@ -388,9 +439,16 @@ export function useTracker(backend: Backend) {
 
       Promise.all(
         aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
-      ).catch(() => {
+      ).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          for (const e of aktion.einheiten) {
+            einreihen({ typ: 'schreibeEinheit', einheit: e }, meRef.current)
+          }
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, einheitWeg, nacheinander, toggle, uebernimm]
@@ -407,9 +465,14 @@ export function useTracker(backend: Backend) {
       const sauber = Math.max(0, Math.round(wert))
       uebernimm(mitWert(vorher, id, sauber))
       setFehler(null)
-      nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch(() => {
+      nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeEinheitWert', einheit, wert: sauber }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, nacheinander, uebernimm]
@@ -425,9 +488,14 @@ export function useTracker(backend: Backend) {
       if (!einheit) return
       uebernimm(mitVon(vorher, id, von))
       setFehler(null)
-      nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch(() => {
+      nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeEinheitVon', einheit, von }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, nacheinander, uebernimm]
@@ -442,10 +510,15 @@ export function useTracker(backend: Backend) {
       abrechnungenRef.current = next
       setAbrechnungen(next)
       setFehler(null)
-      backend.schreibeAbrechnung(a).catch(() => {
+      backend.schreibeAbrechnung(a).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeAbrechnung', abrechnung: a }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         abrechnungenRef.current = vorher
         setAbrechnungen(vorher)
-        setFehler('abrechnung nicht gespeichert. versuch es nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend]
@@ -474,11 +547,14 @@ export function useTracker(backend: Backend) {
         const erster = Math.max(0, Math.round(delta))
         uebernimm(mitWert(nachAnlegen, neue.id, erster))
 
-        // dieselbe id in der schlange: das anlegen ist durch, bevor der wert
-        // auf eine zeile geht, die es sonst noch nicht gäbe.
-        nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
+        nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch((e) => {
+          if (istNetzwerkFehler(e)) {
+            einreihen({ typ: 'schreibeEinheitWert', einheit: neue, wert: erster }, meRef.current)
+            setFehler(FEHLER_KEINE_VERBINDUNG)
+            return
+          }
           uebernimm(nachAnlegen)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          setFehler(FEHLER_NICHT_GESPEICHERT)
         })
         return
       }
@@ -487,9 +563,14 @@ export function useTracker(backend: Backend) {
       uebernimm(mitWert(vorher, letzte.id, sauber))
       setFehler(null)
 
-      nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch(() => {
+      nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeEinheitWert', einheit: letzte, wert: sauber }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, einheitHinzu, nacheinander, uebernimm]
@@ -511,10 +592,15 @@ export function useTracker(backend: Backend) {
       gewichteRef.current = next
       setGewichte(next)
 
-      backend.schreibeGewicht(tag, sauber).catch(() => {
+      backend.schreibeGewicht(tag, sauber).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeGewicht', tag, kg: sauber }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         gewichteRef.current = vorher
         setGewichte(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend]
@@ -557,10 +643,15 @@ export function useTracker(backend: Backend) {
       wettenRef.current = next
       setWetten(next)
       setFehler(null)
-      backend.schreibeWette(woche, sauber).catch(() => {
+      backend.schreibeWette(woche, sauber).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeWette', woche, text: sauber }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         wettenRef.current = vorher
         setWetten(vorher)
-        setFehler('wetteinsatz nicht gespeichert. versuch es nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend]
@@ -622,10 +713,15 @@ export function useTracker(backend: Backend) {
       notenRef.current = next
       setNoten(next)
       setFehler(null)
-      nacheinander([note.id], () => backend.schreibeNote(note)).catch(() => {
+      nacheinander([note.id], () => backend.schreibeNote(note)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'schreibeNote', note }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         notenRef.current = vorher
         setNoten(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
       return note
     },
@@ -641,10 +737,15 @@ export function useTracker(backend: Backend) {
       notenRef.current = next
       setNoten(next)
       setFehler(null)
-      nacheinander([id], () => backend.loescheNote(id)).catch(() => {
+      nacheinander([id], () => backend.loescheNote(id)).catch((e) => {
+        if (istNetzwerkFehler(e)) {
+          einreihen({ typ: 'loescheNote', id }, meRef.current)
+          setFehler(FEHLER_KEINE_VERBINDUNG)
+          return
+        }
         notenRef.current = vorher
         setNoten(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
+        setFehler(FEHLER_NICHT_GESPEICHERT)
       })
     },
     [backend, nacheinander]

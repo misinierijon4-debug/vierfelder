@@ -768,3 +768,61 @@ Abitur 2027 wird nicht dekorativ versteckt: zwei der drei Leistungsfächer
 werden doppelt gewertet, Block I wird mit `40/44` normiert, und Block II hängt
 von vier oder fünf Prüfungsfächern ab. Formale Hürden erscheinen als Text; die
 Zahl bleibt in Kreide.
+
+## 26. Nachtrag: die warteschlange gegen datenverlust (02.09.2026)
+
+**Das problem.** Bisher verwarf ein fehlschlagender schreibvorgang (funkloch
+im gym-keller, bahn, netzabbruch) die optimistische aenderung sofort:
+die zelle sprang zurueck und die zeile meldete „nicht gespeichert. tippe
+nochmal.". Bei einer app, die man abends im funkloch bedient, ist das
+datenverlust — und es widersprach dem versprechen aus abschnitt 11 („keine
+verbindung. der eintrag geht raus, sobald du wieder online bist.").
+
+**Die warteschlange (`vierfelder.warteschlange`).** Bei offline-zustand oder
+netzwerkfehlern bleibt der optimistische stand im interface sichtbar, die
+handlung wandert persistent in eine warteschlange im `localStorage` und die
+oberflaeche zeigt genau den satz aus abschnitt 11. Sobald das geraet wieder
+online ist oder die app wieder nach vorn kommt, arbeitet der client die schlange
+der reihe nach ab (siehe abschnitt 27). Sind alle eintraege durch, verschwindet die
+meldung still.
+
+**Was verworfen wurde.** Kein schweres sync-protokoll, kein service-worker-
+hintergrunddienst und keine neuen abhaengigkeiten. Die ids fuer einheiten und
+noten entstehen ohnehin deterministisch im client (`neueEinheitId`), sodass
+wiederholte schreibversuche im primary key landen statt doppelte zeilen zu
+erzeugen.
+
+## 27. Nachtrag: die warteschlange haelt jetzt, was sie verspricht (02.09.2026)
+
+Die warteschlange aus abschnitt 26 hatte drei loecher. Alle drei fuehrten
+zurueck zu genau dem, wogegen sie gebaut ist, deshalb stehen sie hier.
+
+**Ein tap waehrend der abarbeitung ging verloren.** Der durchlauf las die
+schlange einmal und schrieb nach jedem eintrag seine eigene, inzwischen
+veraltete liste zurueck. Wer waehrend eines laufenden schreibvorgangs
+weitertippte, dessen neuer eintrag verschwand unter dieser liste — lautlos, mit
+gesetztem haken im raster. Jetzt traegt jeder eintrag eine eigene id, die
+schlange wird vor jedem eintrag frisch gelesen, und ein erledigter eintrag wird
+punktgenau herausgenommen statt eine ganze liste ueberschrieben.
+
+**Zwei durchlaeufe liefen gleichzeitig.** Der start beim laden und das
+`online`-ereignis treffen sich, wenn die app im funkloch geoeffnet wird und das
+netz zurueckkommt. Beide schickten dieselben eintraege los. Eine sperre im modul
+laesst nur einen durchlauf zu; der zweite kehrt sofort zurueck.
+
+**Das gewicht des einen konnte beim anderen landen.** `schreibeGewicht` und
+`schreibeWette` kennen keinen benutzer, sie schreiben fuer das konto, das
+gerade angemeldet ist. Ein eintrag, der im funkloch entstand und erst nach
+einem personenwechsel rausging, waere auf der falschen person gelandet. Jeder
+eintrag traegt jetzt die person, und ein durchlauf ruehrt nur die eigenen an —
+die des anderen bleiben liegen, bis er wieder angemeldet ist.
+
+**Dazu ein ehrlicherer ausloeser.** Abschnitt 26 versprach, die schlange laufe
+auch, wenn „die naechste aktion laeuft"; im code stand das nicht. Statt es
+nachzubauen hoert die schlange jetzt zusaetzlich auf `visibilitychange`. Das ist
+der wirkliche fall am telefon: wer aus dem keller hochkommt, bekommt kein
+`online`-ereignis, weil der browser sich nie als offline gesehen hat — er holt
+die app wieder nach vorn.
+
+Und der durchlauf startet erst, wenn geladen ist. Vorher lief er beim
+allerersten render, als in `me` noch der vorgabewert stand.
