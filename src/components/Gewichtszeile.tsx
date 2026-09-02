@@ -5,6 +5,7 @@ import { Minus, Plus } from '@phosphor-icons/react'
 import { EASE } from '../lib/motion'
 import { formatKg, parseKg } from '../lib/gewicht'
 import type { Rohwert } from '../lib/gewicht'
+import type { TickQuelle } from '../lib/types'
 import { Marke } from './Marke'
 import { Schritt } from './Schritt'
 
@@ -20,12 +21,15 @@ type Props = {
   farbe: string
   farbeEr: string
   streak: number
+  /** woher die heutige zahl kommt: die waage über health, oder der daumen */
+  quelle: TickQuelle | null
   onSetze: (kg: number) => void
 }
 
 /**
- * eintragen statt abhaken. die marke ist hier absichtlich nicht antippbar: der
- * tick entsteht allein aus einer messung, sonst holte man sich punkte ohne waage.
+ * eintragen statt abhaken. die marke ist hier absichtlich nicht antippbar: sie
+ * folgt der zahl. ob die zahl aus der waage kam oder aus dem daumen, zeigt die
+ * marke — voll oder blass, wie in den vier bereichen.
  */
 export function Gewichtszeile({
   kg,
@@ -35,6 +39,7 @@ export function Gewichtszeile({
   farbe,
   farbeEr,
   streak,
+  quelle,
   onSetze,
 }: Props) {
   const [entwurf, setEntwurf] = useState<string | null>(null)
@@ -127,8 +132,8 @@ export function Gewichtszeile({
             </div>
           )}
 
-          {/* das gewicht ist immer eine messung, deshalb nie halb */}
-          <Marke gesetzt={kg !== null} halb={false} farbe={farbe} />
+          {/* voll heißt: die waage hat geschrieben. blass heißt: eingetippt */}
+          <Marke gesetzt={kg !== null} halb={quelle === 'getippt'} farbe={farbe} />
         </div>
 
         {/* zweite zeile, feste touchhoehe wie in der bereichszeile */}

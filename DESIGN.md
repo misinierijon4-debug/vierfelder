@@ -405,8 +405,8 @@ wirksamere schranke.
 **Nur dort, wo es etwas zu unterscheiden gibt.** Bei lernen und lesen kann kein
 gerät wissen, ob es stattgefunden hat. Eine halbe zelle wäre dort kein urteil
 über den eintrag, sondern eine dauerhafte trübung ohne aussage — also bleiben
-diese beiden zeilen voll. Die unterscheidung gilt für gym, boxen und das
-gewicht, das per definition gemessen ist.
+diese beiden zeilen voll. Die unterscheidung gilt für gym, boxen und — seit dem
+02.09.2026, siehe nachtrag 26 — auch für das gewicht.
 
 **Die gemessene zeile ist nicht antippbar.** Wie die gewichtsmarke. Es gäbe
 sonst einen zustand, in dem ein tap nichts tut, weil der tick schon aus dem
@@ -768,3 +768,35 @@ Abitur 2027 wird nicht dekorativ versteckt: zwei der drei Leistungsfächer
 werden doppelt gewertet, Block I wird mit `40/44` normiert, und Block II hängt
 von vier oder fünf Prüfungsfächern ab. Formale Hürden erscheinen als Text; die
 Zahl bleibt in Kreide.
+
+
+## 26. Nachtrag: das gewicht war nie gemessen (02.09.2026)
+
+**Der haken hat gelogen.** Jede gewichtszahl galt als messung, mit der
+begründung „eine zahl auf der waage ist keine behauptung". Getippt wurde sie
+trotzdem: in der app, mit dem daumen, ohne dass irgendetwas sie geprüft hätte.
+Im aktivitätsfeed stand daneben `verifiziert`, und in der belegquote zählte sie
+wie ein standort am trainingsort. Ein beleg, den man sich selbst ausstellt, ist
+kein beleg, sondern eine dekoration.
+
+**Dieselbe regel wie überall.** Gemessen ist, was die automation schreibt. Die
+waage synchronisiert nach apple health, eine health-automation ruft
+`record_gewicht` mit dem persönlichen import-token auf — derselbe weg wie beim
+standort und beim fokus. Was die app schreibt, ist getippt, und zwar nicht auf
+treu und glauben: ein trigger setzt die spalte bei jeder schreibung aus der app
+auf `getippt`, egal was der aufrufer mitschickt. Wer eine gemessene zahl später
+überschreibt, macht daraus wieder eine getippte. Die anzeige folgt der letzten
+schreibung.
+
+**Der beleg zählt das gewicht nicht mehr mit.** Standort und fokus laufen auf
+beiden telefonen; eine waage, die nach health schreibt, hat nur einer von
+beiden. Ein tiebreaker, der daran hängt, misst den einkauf und nicht die woche.
+Die belegquote zählt deshalb die vier bereiche und sonst nichts. Sichtbar bleibt
+die unterscheidung trotzdem: die gewichtsmarke ist voll, wenn die waage
+geschrieben hat, und blass, wenn jemand getippt hat — dieselbe bildsprache wie
+im raster.
+
+**Warum nicht einfach den haken weglassen.** Weil die frage nach dem beleg
+richtig ist und nicht verschwindet, wenn man sie nicht anzeigt. Der ehrliche
+weg ist der, bei dem beide dasselbe sehen: eine zahl, ihre herkunft, und keine
+punkte für die herkunft.

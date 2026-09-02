@@ -322,6 +322,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 farbe={ich.farbe}
                 farbeEr={er.farbe}
                 streak={streak(zustand, me, 'gewicht', heute)}
+                quelle={quelle(zustand, me, 'gewicht', heuteKey)}
                 onSetze={(kg) => setzeGewicht(heuteKey, kg)}
               />
 

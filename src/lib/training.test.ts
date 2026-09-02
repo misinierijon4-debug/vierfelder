@@ -171,8 +171,17 @@ describe('tick aus der messung', () => {
     expect(quelle(z, 'erijon', 'lernen', '2026-08-26')).toBe('gemessen')
   })
 
-  it('nennt das gewicht gemessen', () => {
+  it('nennt eine eingetippte gewichtszahl getippt', () => {
     const z: Zustand = { ...leer, gewichte: { 'erijon|2026-08-26': 81.4 } }
+    expect(quelle(z, 'erijon', 'gewicht', '2026-08-26')).toBe('getippt')
+  })
+
+  it('nennt das gewicht nur gemessen, wenn die waage es geschrieben hat', () => {
+    const z: Zustand = {
+      ...leer,
+      gewichte: { 'erijon|2026-08-26': 81.4 },
+      gewichtQuellen: { 'erijon|2026-08-26': 'gemessen' },
+    }
     expect(quelle(z, 'erijon', 'gewicht', '2026-08-26')).toBe('gemessen')
   })
 })
