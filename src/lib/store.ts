@@ -14,10 +14,12 @@ import type {
   Ereignis,
   Fach,
   Gewichte,
+  GewichtQuellen,
   Note,
   Notenart,
   Notenstand,
   Schlafnacht,
+  TickQuelle,
   UserId,
   Zustand,
 } from './types'
@@ -61,6 +63,7 @@ export function useTracker(backend: Backend) {
   const [me, setMe] = useState<UserId>('erijon')
   const [einheiten, setEinheiten] = useState<Einheiten>({})
   const [gewichte, setGewichte] = useState<Gewichte>({})
+  const [gewichtQuellen, setGewichtQuellen] = useState<GewichtQuellen>({})
   const [schlaf, setSchlaf] = useState<Schlafnacht[]>([])
   // messungen schreibt nur die datenbank, deshalb gibt es hier kein ref und
   // keine optimistische rücknahme: der zustand ändert sich nur beim laden.
@@ -95,6 +98,26 @@ export function useTracker(backend: Backend) {
 
   const einheitenRef = useRef<Einheiten>({})
   const gewichteRef = useRef<Gewichte>({})
+  const gewichtQuellenRef = useRef<GewichtQuellen>({})
+
+  /**
+   * hält fest, wie eine zahl entstanden ist. `null` heißt: der eintrag ist weg.
+   * eine getippte zahl braucht keinen eintrag — sie ist der normalfall, und ein
+   * leerer schlüssel darf nie als messung gelesen werden.
+   */
+  const merkeGewichtQuelle = useCallback(
+    (u: UserId, tag: string, q: TickQuelle | null) => {
+      const key = gewichtKey(u, tag)
+      const vorher = gewichtQuellenRef.current
+      if (q === 'gemessen' ? vorher[key] === 'gemessen' : vorher[key] === undefined) return
+      const next = { ...vorher }
+      if (q === 'gemessen') next[key] = 'gemessen'
+      else delete next[key]
+      gewichtQuellenRef.current = next
+      setGewichtQuellen(next)
+    },
+    []
+  )
   const meRef = useRef<UserId>('erijon')
   const wettenRef = useRef<Wetten>({})
   const abrechnungenRef = useRef<Abrechnung[]>([])
@@ -143,6 +166,7 @@ export function useTracker(backend: Backend) {
         meRef.current = anfang.me
         einheitenRef.current = anfang.einheiten
         gewichteRef.current = anfang.gewichte
+        gewichtQuellenRef.current = anfang.gewichtQuellen
         wettenRef.current = anfang.wetten
         abrechnungenRef.current = anfang.abrechnungen
         faecherRef.current = anfang.noten.faecher
@@ -150,6 +174,7 @@ export function useTracker(backend: Backend) {
         setMe(anfang.me)
         setEinheiten(anfang.einheiten)
         setGewichte(anfang.gewichte)
+        setGewichtQuellen(anfang.gewichtQuellen)
         setSchlaf(anfang.schlaf)
         setAufenthalte(anfang.aufenthalte)
         setWetten(anfang.wetten)
@@ -226,6 +251,7 @@ export function useTracker(backend: Backend) {
       // darf es nicht überholen — deshalb geht es über dieselbe ref wie der
       // optimistische weg und nicht an ihr vorbei
       if (e.typ === 'gewicht') {
+        merkeGewichtQuelle(e.user, e.tag, e.kg === null ? null : e.quelle ?? 'getippt')
         const vorher = gewichteRef.current
         const next = mitGewicht(vorher, e.user, e.tag, e.kg)
         if (next === vorher) return
@@ -510,6 +536,9 @@ export function useTracker(backend: Backend) {
 
       gewichteRef.current = next
       setGewichte(next)
+      // die app schreibt nur getippte zahlen. eine messung kommt über die
+      // automation zurück und setzt die quelle dann selbst.
+      merkeGewichtQuelle(u, tag, sauber <= 0 ? null : 'getippt')
 
       backend.schreibeGewicht(tag, sauber).catch(() => {
         gewichteRef.current = vorher
@@ -653,8 +682,8 @@ export function useTracker(backend: Backend) {
   // eine stabile identität: sonst wäre jeder render ein neuer zustand und
   // jedes useMemo darauf wertlos.
   const zustand = useMemo<Zustand>(
-    () => ({ einheiten, gewichte, aufenthalte }),
-    [einheiten, gewichte, aufenthalte]
+    () => ({ einheiten, gewichte, gewichtQuellen, aufenthalte }),
+    [einheiten, gewichte, gewichtQuellen, aufenthalte]
   )
 
   const notenstand = useMemo<Notenstand>(() => ({ faecher, noten }), [faecher, noten])

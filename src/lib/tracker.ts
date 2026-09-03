@@ -43,7 +43,10 @@ export function istGesetzt(z: Zustand, u: UserId, f: FeldId, tag: string): boole
  */
 export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TickQuelle | null {
   if (!istGesetzt(z, u, f, tag)) return null
-  if (f === 'gewicht') return 'gemessen'
+  // beim gewicht kommt die messung aus der waage über apple health und die
+  // token-automation. wer die zahl in der app eintippt, hat getippt — eine
+  // waage im bad macht aus einem daumen keine messung.
+  if (f === 'gewicht') return z.gewichtQuellen?.[gewichtKey(u, tag)] ?? 'getippt'
   return gemessen(z.aufenthalte, u, f, tag) ? 'gemessen' : 'getippt'
 }
 

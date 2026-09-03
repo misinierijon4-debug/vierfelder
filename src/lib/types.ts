@@ -159,6 +159,13 @@ export type ScoreKomponenten = Record<string, ScoreKomponente>
 export type Gewichte = Record<string, number>
 
 /**
+ * `${user}|${yyyy-mm-dd}` -> wie die zahl in die datenbank kam. fehlt der
+ * schlüssel, war es der daumen: eine getippte zahl ist der normalfall, und ein
+ * fehlender eintrag darf niemals als messung durchgehen.
+ */
+export type GewichtQuellen = Record<string, TickQuelle>
+
+/**
  * eine gemessene sitzung, so wie das iphone sie gemeldet hat: eine
  * standort-automation am trainingsort oder eine fokus-automation beim ein- und
  * ausschalten. `abgang` fehlt, solange sie läuft — eine offene sitzung zählt
@@ -177,6 +184,8 @@ export type Aufenthalt = {
 export type Zustand = {
   einheiten: Einheiten
   gewichte: Gewichte
+  /** fehlt der eintrag, gilt die zahl als getippt */
+  gewichtQuellen?: GewichtQuellen
   aufenthalte: Aufenthalt[]
 }
 

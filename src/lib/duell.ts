@@ -119,12 +119,18 @@ export function entscheideDuell(
   return { sieger: 'unentschieden', grund: 'unentschieden' }
 }
 
+/**
+ * der beleg zählt nur die vier bereiche, nicht das gewicht. für gym, boxen,
+ * lernen und lesen hat jeder dieselbe messquelle im telefon — eine waage, die
+ * nach apple health schreibt, hat nicht jeder. ein tiebreak, der an der
+ * ausrüstung hängt, misst den einkauf und nicht die woche.
+ */
 export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
   let gemessenAnzahl = 0
   let getipptAnzahl = 0
 
   for (const tag of woche) {
-    for (const f of FELDER) {
+    for (const f of AREAS) {
       const q = quelle(z, u, f.id, tag)
       if (q === 'gemessen') gemessenAnzahl++
       else if (q === 'getippt') getipptAnzahl++
@@ -449,7 +455,7 @@ export function duellTickerEintraege(
         zeitstempel: null,
         tag,
         relativeZeit: formatiereRelativeZeit(null, tag, referenzZeit),
-        quelle: 'gemessen',
+        quelle: z.gewichtQuellen?.[key] ?? 'getippt',
         zusatz: kg.toFixed(1) + ' kg',
       })
     }

@@ -429,6 +429,9 @@ export function lokalesBackend(): Backend {
         me,
         einheiten,
         gewichte: lade<Gewichte>(GEWICHT_KEY, {}),
+        // im demomodus gibt es keine waage und keine automation: hier wird
+        // getippt, und genau das steht dann auch dran.
+        gewichtQuellen: {},
         schlaf,
         aufenthalte: erzeugeBeispielAufenthalte(),
         wetten: lade<Wetten>(WETTEN_KEY, {}),

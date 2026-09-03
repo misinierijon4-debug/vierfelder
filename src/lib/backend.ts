@@ -5,10 +5,12 @@ import type {
   Einheiten,
   Fach,
   Gewichte,
+  GewichtQuellen,
   Note,
   Notenstand,
   Phase,
   Schlafnacht,
+  TickQuelle,
   UserId,
 } from './types'
 
@@ -37,6 +39,8 @@ export type GewichtEreignis = {
   user: UserId
   tag: string
   kg: number | null
+  /** wie die zahl geschrieben wurde. ohne angabe gilt sie als getippt */
+  quelle?: TickQuelle
 }
 
 /** eine gemessene ankunft oder ein abgang, so wie die automation sie schreibt */
@@ -57,6 +61,8 @@ export type Anfangszustand = {
   me: UserId
   einheiten: Einheiten
   gewichte: Gewichte
+  /** je gewicht: getippt oder von der waage gemessen. fehlt = getippt */
+  gewichtQuellen: GewichtQuellen
   schlaf: Schlafnacht[]
   /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
   aufenthalte: Aufenthalt[]

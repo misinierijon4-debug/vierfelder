@@ -11,7 +11,9 @@ ein Kalenderfeld öffnet die Tagesansicht mit den einzelnen Einheiten und der Ge
 vergangene Tage nur zum Nachschlagen, geändert wird immer oben in der Bereichszeile.
 
 Dazu das tägliche Gewicht: eingetragen zählt wie ein Tick (Wochenstand also bis 35), und ein
-Diagramm zeigt die Entwicklung beider als Veränderung in Kilogramm.
+Diagramm zeigt die Entwicklung beider als Veränderung in Kilogramm. Auch hier gilt gemessen
+gegen getippt: eine Waage, die nach Apple Health schreibt, kann die Zahl selbst schicken —
+alles andere ist getippt. Anleitung in [GEWICHT-KURZBEFEHL.md](GEWICHT-KURZBEFEHL.md).
 
 Gym und Boxen haken sich selbst ab: eine Standort-Automation auf dem iPhone meldet Ankunft und
 Abgang am Trainingsort, ab 20 Minuten setzt sich der Tick. Das Raster zeigt, wie ein Haken

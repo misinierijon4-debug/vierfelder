@@ -174,6 +174,25 @@ describe('duell.ts logik & berechnungen', () => {
     expect(belegQuote(leererZustand(), 'erijon', woche).quote).toBeNull()
   })
 
+  it('lässt das gewicht aus der belegquote heraus, egal woher die zahl kommt', () => {
+    const z = leererZustand()
+    z.gewichte['erijon|2026-08-24'] = 82.0
+    z.gewichtQuellen = { 'erijon|2026-08-24': 'gemessen' }
+    const beleg = belegQuote(z, 'erijon', woche)
+    expect(beleg.gesamt).toBe(0)
+    expect(beleg.quote).toBeNull()
+  })
+
+  it('nennt eine getippte gewichtszahl im ticker getippt', () => {
+    const z = leererZustand()
+    z.gewichte['erijon|2026-08-24'] = 82.0
+    z.gewichte['koray|2026-08-24'] = 88.0
+    z.gewichtQuellen = { 'koray|2026-08-24': 'gemessen' }
+    const ticker = duellTickerEintraege(z, woche, new Date('2026-08-24T20:00:00Z'), 6)
+    expect(ticker.find((e) => e.userId === 'erijon')!.quelle).toBe('getippt')
+    expect(ticker.find((e) => e.userId === 'koray')!.quelle).toBe('gemessen')
+  })
+
   it('saisonHistorie berechnet serien und wochen-bilanzen mit tiebreaker', () => {
     const z = leererZustand()
     z.einheiten[tickKey('erijon', 'gym', '2026-08-17')] = [
@@ -251,8 +270,9 @@ describe('duell.ts logik & berechnungen', () => {
     expect(a.sieger).toBe('unentschieden')
     expect(a.grund).toBe('unentschieden')
     expect(a.differenz).toBe(0)
-    expect(a.belegErijon).toBe(1)
-    expect(a.belegKoray).toBe(1)
+    // das gewicht zählt für den beleg nicht mit: die waage hat nicht jeder
+    expect(a.belegErijon).toBe(0)
+    expect(a.belegKoray).toBe(0)
     expect(a.wette).toBeNull()
   })
 

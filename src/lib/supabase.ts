@@ -12,6 +12,7 @@ import type {
   Einheiten,
   Fach,
   Gewichte,
+  GewichtQuellen,
   Kursart,
   MessbarerBereich,
   Phase,
@@ -85,7 +86,13 @@ export function istFehlendeVonSpalte(code?: string): boolean {
 }
 
 /** numeric kommt aus postgrest als string, genau wie schlaf_minuten */
-type GewichtZeile = { user_id: string; tag: string; kg: number | string }
+type GewichtZeile = {
+  user_id: string
+  tag: string
+  kg: number | string
+  /** fehlt, solange die spalte noch nicht ausgerollt ist */
+  quelle?: string | null
+}
 type AufenthaltZeile = {
   user_id: string
   bereich: MessbarerBereich
@@ -334,7 +341,10 @@ export function supabaseBackend(eigeneId: string): Backend {
             .from('schlafnaechte_ansicht')
             .select('user_id, nacht, phasen')
             .gte('nacht', toKey(addDays(new Date(), -PHASEN_FENSTER_TAGE))),
-          db.from('gewicht').select('user_id, tag, kg').order('tag', { ascending: true }),
+          db
+            .from('gewicht')
+            .select('user_id, tag, kg, quelle')
+            .order('tag', { ascending: true }),
           db
             .from('aufenthalte')
             .select('user_id, bereich, ort, ankunft, abgang')
@@ -369,10 +379,25 @@ export function supabaseBackend(eigeneId: string): Backend {
       } else {
         einheitVonVerfuegbar = !einheitAnfrage.error
       }
+      // `quelle` wird getrennt ausgerollt: ohne die spalte bleibt jede zahl
+      // getippt, statt dass die ganze abfrage scheitert.
+      let gewichtMitQuelle: {
+        data: GewichtZeile[] | null
+        error: { code?: string } | null
+      } = gewichtZeilen
+      if (gewichtZeilen.error && istFehlendeVonSpalte(gewichtZeilen.error.code)) {
+        gewichtMitQuelle = await db
+          .from('gewicht')
+          .select('user_id, tag, kg')
+          .order('tag', { ascending: true })
+      }
+
       if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
       if (phasenZeilen.error && !fehltNoch(phasenZeilen.error.code)) throw phasenZeilen.error
-      if (gewichtZeilen.error && !fehltNoch(gewichtZeilen.error.code)) throw gewichtZeilen.error
+      if (gewichtMitQuelle.error && !fehltNoch(gewichtMitQuelle.error.code)) {
+        throw gewichtMitQuelle.error
+      }
       if (aufenthaltZeilen.error && !fehltNoch(aufenthaltZeilen.error.code)) {
         throw aufenthaltZeilen.error
       }
@@ -450,12 +475,14 @@ export function supabaseBackend(eigeneId: string): Backend {
       }
 
       const gewichte: Gewichte = {}
-      for (const z of (gewichtZeilen.data ?? []) as GewichtZeile[]) {
+      const gewichtQuellen: GewichtQuellen = {}
+      for (const z of (gewichtMitQuelle.data ?? []) as GewichtZeile[]) {
         const person = personen.get(z.user_id)
         if (!person) continue
         // Number(): numeric käme sonst als string und die summe im gleitenden
         // schnitt würde stillschweigend aneinandergehängt statt addiert.
         gewichte[gewichtKey(person, z.tag)] = Number(z.kg)
+        if (z.quelle === 'gemessen') gewichtQuellen[gewichtKey(person, z.tag)] = 'gemessen'
       }
 
       const aufenthalte: Aufenthalt[] = []
@@ -487,6 +514,7 @@ export function supabaseBackend(eigeneId: string): Backend {
         me,
         einheiten,
         gewichte,
+        gewichtQuellen,
         schlaf,
         aufenthalte,
         wetten,
@@ -713,6 +741,7 @@ export function supabaseBackend(eigeneId: string): Backend {
               cb({
                 typ: 'gewicht', user: person, tag: zeile.tag,
                 kg: p.eventType === 'DELETE' ? null : Number(zeile.kg),
+                quelle: zeile.quelle === 'gemessen' ? 'gemessen' : 'getippt',
               })
             }
           )
