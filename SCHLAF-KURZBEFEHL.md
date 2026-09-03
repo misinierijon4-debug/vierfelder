@@ -228,3 +228,113 @@ In `Inhalte von URL abrufen`:
 Ein erfolgreicher Test liefert unter anderem `"ok": true`. Die getestete
 Automation läuft täglich um 11:00 Uhr mit `Sofort ausführen`; die
 Ausführungsbenachrichtigung ist ausgeschaltet.
+
+## Wenn keine Daten ankommen
+
+### Was am 02.09.2026 wirklich passiert ist
+
+Das iPhone meldete „Kurzbefehl ausgeführt", in Supabase kam nichts an. Der
+erste Verdacht — die Health-Abfrage liefert bei gesperrtem Gerät nichts —
+war falsch. Das Protokoll sagt etwas anderes und etwas Deutlicheres.
+
+Jede Anfrage an das Projekt steht in `edge_logs`, mit der Kennung des
+Absenders. Ein Kurzbefehl meldet sich dort als `BackgroundShortcutRunner`.
+Am 02.09. zwischen 02:00 und 16:00 Ortszeit waren es **426 Anfragen, davon
+keine einzige aus einem Kurzbefehl** — nur Browser, der Cron und die
+Verwaltungs-API.
+
+Der letzte automatische Lauf war am **31.08. um 11:00:18** Ortszeit. Seitdem
+hat die Automation kein einziges Mal gesendet:
+
+| Tag | 11:00 Ortszeit |
+|---|---|
+| 29.08. | ✅ 11:00:07 |
+| 30.08. | ✅ 11:00:06 |
+| 31.08. | ✅ 11:00:18 |
+| 01.09. | ❌ nichts (die zwei Läufe an dem Tag kamen von Hand, 13:15 und 14:19) |
+| 02.09. | ❌ nichts |
+
+Das ist kein gelegentlicher Ausfall. Eine Automation, die an Health-Daten
+scheitert, würde manchmal senden und manchmal nicht. Diese sendet seit zwei
+Tagen gar nicht. Auch nicht, wenn das iPhone entsperrt und online ist — am
+02.09. lief die App um 11:21 und 11:29 auf demselben Gerät.
+
+Der Kurzbefehl kommt also nicht bis zum Netzaufruf, oder die Automation
+startet ihn erst gar nicht. Welches von beidem, sagt kein Protokoll auf
+dieser Seite — der Kurzbefehl spricht bisher erst ganz am Ende.
+
+### Den Kurzbefehl früher sprechen lassen
+
+Dafür gibt es seit dem 02.09.2026 die Tabelle `kurzbefehl_laeufe` und die
+Funktion `record_kurzbefehl_lauf`. Sie nimmt eine Meldung entgegen, sonst
+nichts: welcher Kurzbefehl, welcher Schritt, wie viele Segmente. Die
+Identität kommt aus demselben Token wie der Schlafimport.
+
+Zwei Aktionen im Kurzbefehl `schlaf senden`, beide **Inhalte von URL
+abrufen**, URL
+`https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_kurzbefehl_lauf`,
+Methode `POST`, Header `Content-Type: application/json` und `apikey`: der
+Publishable Key.
+
+**Ganz oben, als allererste Aktion**, noch vor `Datum`:
+
+- `p_token`: Text, das persönliche Import-Token
+- `p_kurzbefehl`: Text, `schlaf senden`
+- `p_schritt`: Text, `start`
+
+**Direkt nach `Health-Messungen suchen`**, vor der Wiederholung:
+
+- `p_token`: Text, das persönliche Import-Token
+- `p_kurzbefehl`: Text, `schlaf senden`
+- `p_schritt`: Text, `gefunden`
+- `p_anzahl`: Text, `Anzahl von Health-Messungen`
+
+`p_anzahl` darf als Text kommen; die Funktion rechnet es um.
+
+### Ablesen
+
+```sql
+select p.person, l.kurzbefehl, l.schritt, l.anzahl, l.gemeldet
+from kurzbefehl_laeufe l
+join profile p on p.id = l.user_id
+order by l.gemeldet desc
+limit 20;
+```
+
+Am nächsten Morgen um 11:00 steht dort die Antwort:
+
+| Was steht da | Was es heißt |
+|---|---|
+| gar nichts | Die Automation hat den Kurzbefehl nie gestartet. Der Fehler liegt in der Automation, nicht im Kurzbefehl. |
+| nur `start` | Die Health-Abfrage bricht ab oder hängt. |
+| `gefunden` mit `anzahl` 0 | Health liefert keine Segmente. |
+| `gefunden` mit `anzahl` > 0 | Der Aufbau des Aufrufs oder das Netz scheitert. |
+
+Zeigt die Tabelle gar nichts, ist die Automation selbst zu prüfen: ist sie
+noch eingeschaltet, steht sie auf `Sofort ausführen`, und zeigt sie unter
+`Bei Ausführung benachrichtigen` das, was du erwartest. Ein
+Stromsparmodus schiebt Tageszeit-Automationen ebenfalls auf.
+
+### Und wenn doch etwas ankommt
+
+Steht in `edge_logs` eine Zeile mit Status 4xx, hat die Nutzlast ein Problem
+und der Statuscode sagt welches — 422, 413 oder 429 sind die Grenzen aus dem
+Abschnitt oben.
+
+```sql
+select timestamp, event_message
+from edge_logs
+where event_message like '%record_sleep_night%'
+order by timestamp desc
+limit 10;
+```
+
+(Im Supabase-Studio unter *Logs → Edge Logs*.)
+
+### Die App meldet sich von selbst
+
+Unabhängig davon schickt die Edge Function `schlaf-erinnerung` seit dem
+02.09.2026 eine Push-Nachricht „schlaf von heute nacht fehlt.", wenn zur
+persönlichen Uhrzeit (Standard 11:30, eine halbe Stunde nach der Automation)
+keine Zeile für die vergangene Nacht in `schlafnaechte` steht. Ein stiller
+Ausfall bleibt so nicht bis zum Abend unbemerkt.
