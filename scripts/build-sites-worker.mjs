@@ -11,6 +11,7 @@ const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.woff2': 'font/woff2',
@@ -62,10 +63,22 @@ export default {
     if (!datei) return new Response('Not found', { status: 404 })
 
     const istHtml = datei.type.startsWith('text/html')
+    const istUpdateDatei = ['/sw.js', '/push-sw.js', '/manifest.webmanifest'].includes(pfad)
+    const dateiname = pfad.split('/').pop() ?? ''
+    const punkt = dateiname.lastIndexOf('.')
+    const strich = dateiname.lastIndexOf('-', punkt)
+    const hash = dateiname.slice(strich + 1, punkt)
+    const istGehasht =
+      pfad.startsWith('/assets/') && strich >= 0 && /^[A-Za-z0-9_-]{8,}$/.test(hash)
+    const cache = istHtml || istUpdateDatei
+      ? 'no-store'
+      : istGehasht
+        ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=86400'
     return new Response(request.method === 'HEAD' ? null : dekodiere(datei.body), {
       headers: {
         'content-type': datei.type,
-        'cache-control': istHtml ? 'no-store' : 'public, max-age=3600',
+        'cache-control': cache,
         'x-content-type-options': 'nosniff',
       },
     })

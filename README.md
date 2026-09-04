@@ -80,20 +80,30 @@ wegwerfen — beides wäre Aufwand ohne Gegenwert.
 ## Starten
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
 Läuft auf `http://localhost:5199`.
 
 ```bash
-npm test      # logik, 213 tests
-npm run build # typecheck + produktionsbuild + pwa
+npm run typecheck   # TypeScript ohne Build
+npm test            # Fachlogik; aktuelle Zahl steht im jeweiligen Lauf
+npm run build:web   # Typecheck + Web/PWA
+npm run build:pages # Produktionskonfiguration + Web/PWA + Artefaktprüfung
+npm run build:sites # Web/PWA + separater Sites-Worker
+npm run check       # lokaler Gesamtcheck ohne Deployment
 ```
 
 ## Supabase
 
-Projekt `vierfelder` (der technische Name blieb bei der Umbenennung stehen, siehe unten), Region eu-central-1, Ref `ogxwazageufvalkocywh`. Schema, RLS und Realtime sind eingespielt: `supabase/schema.sql` legt den Grundstand an, `supabase/migrations/` alles danach.
+Projekt `vierfelder` (der technische Name blieb bei der Umbenennung stehen, siehe unten), Region eu-central-1, Ref `ogxwazageufvalkocywh`.
+
+**Wichtig:** `supabase/schema.sql` ist derzeit ein historischer Grundstands-Snapshot,
+nicht die alleinige Schemaautorität. Die produktive Migrationshistorie und die lokalen
+Dateinamen weichen nachweislich voneinander ab. Bis zur dokumentierten Reconciliation in
+[docs/verbesserungsbericht.md](docs/verbesserungsbericht.md) darf deshalb weder ein normaler
+`db push` noch eine produktive Migration aus diesem Checkout ausgeführt werden.
 
 Der Schlaf liegt seit dem 01.09.2026 in zwei Schichten: `schlafnaechte` hält die Rohsegmente und ist für niemanden außer der Importfunktion lesbar, `schlaf_updates` hält die Kennzahlen samt fertig gerechnetem Nachtwert. Die App liest ausschließlich `schlafnaechte_ansicht` darüber — Kennzahlen und Phasen, keine Rohdaten. Der Nachtwert entsteht in einem Trigger, damit Edge Function und Kurzbefehl nicht zwei verschiedene Zahlen für dieselbe Nacht speichern können; Grenzen und Rechnung stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
 
@@ -106,10 +116,10 @@ Migration gehört vor den Deploy** — fehlt die Tabelle noch, läuft die App im
 weiter (eine Einheit pro Tag, kein `+ einheit`), statt leer auszusehen.
 
 Die Tabelle `gewicht` liegt wie `eintraege` offen für beide Konten — der Vergleich ist der
-Zweck. Es gibt dort bewusst kein Realtime und keine zweite Zeile in `eintraege`: der Wochentick
+Zweck. Änderungen werden über Realtime verteilt. Es gibt keine zweite Zeile in `eintraege`: der Wochentick
 fürs Wiegen wird aus dem Gewichtseintrag abgeleitet, damit es keinen Tick ohne Messung gibt.
 
-`faecher` und `noten` kommen aus `supabase/migrations/20260901180000_noten.sql`.
+`faecher` und `noten` kommen aus `supabase/migrations/20260901181045_noten.sql`.
 Beide Konten dürfen beide Stände lesen; anlegen, ändern und löschen darf jedes
 nur beim eigenen Profil. Die UUID entsteht im Client, und Realtime hält den
 Notentab auf dem zweiten Gerät aktuell.
@@ -159,12 +169,12 @@ Ohne Zeile in `profile` meldet die App: „kein profil für dieses konto".
 
 Live: <https://misinierijon4-debug.github.io/vierfelder/>
 
-Jeder Push auf `main` baut und veröffentlicht neu (`.github/workflows/pages.yml`, Tests laufen
-vorher). `vite.config.ts` liest `VITE_BASE`; die drei Repository-Variablen sind gesetzt:
-`VITE_BASE=/vierfelder/`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
-
-- Repo heißt `<name>.github.io` → `VITE_BASE=/`
-- Repo heißt anders → `VITE_BASE=/<reponame>/`
+Jeder Push auf `main` baut und veröffentlicht neu (`.github/workflows/pages.yml`). Pull Requests
+und Arbeitsbranches laufen vorher unabhängig durch `.github/workflows/ci.yml`. Der Pages-Workflow
+setzt den unveränderlichen PWA-Unterpfad `VITE_BASE=/vierfelder/` selbst und verlangt die
+Repository-Variablen `VITE_SUPABASE_URL` und `VITE_SUPABASE_PUBLISHABLE_KEY`. Fehlende Werte,
+eine andere Key-Klasse oder ein `sb_secret_` in einer `VITE_*`-Variable brechen den Build ab,
+statt still den Prototypmodus auszuliefern.
 
 Auf dem kostenlosen Plan muss das Repository öffentlich sein. Die Seite ist damit für jeden
 erreichbar, der die URL kennt — die Daten nicht, die liegen hinter Anmeldung und RLS.
@@ -189,4 +199,7 @@ src/components/        kopf, bereichszeile, marke, schritt, raster, tagesdetail,
                        gewichtsdiagramm, zahl, anmeldung
 ```
 
-Welches Backend läuft, entscheidet allein, ob `VITE_SUPABASE_URL` gesetzt ist.
+Das Supabase-Backend läuft nur, wenn `VITE_SUPABASE_URL` und
+`VITE_SUPABASE_PUBLISHABLE_KEY` gesetzt sind. Ohne beide Werte startet die lokale App im
+ausdrücklich gekennzeichneten Prototypmodus; ein Pages-Produktionsbuild lässt diesen Fallback
+nicht zu.

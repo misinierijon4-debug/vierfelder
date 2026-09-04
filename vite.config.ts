@@ -5,17 +5,36 @@ import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { sites } from '@openai/sites-vite-plugin'
+import { execFileSync } from 'node:child_process'
 
 // bei github pages liegt die app unter /reponame/, bei einer <name>.github.io-seite unter /.
 // gesetzt wird das nur im deploy-workflow, lokal bleibt es '/'.
 const base = process.env.VITE_BASE || '/'
 
+/**
+ * Der sichtbare Stand bleibt fuer denselben Commit reproduzierbar. Eine echte
+ * Uhrzeit bei jedem Build veraenderte bislang den Hauptchunk, obwohl der Code
+ * identisch war, und loeste damit unnoetige PWA-Updates aus.
+ */
+function standDerFassung(): string {
+  if (process.env.SOURCE_DATE_EPOCH) {
+    return new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000).toISOString()
+  }
+  try {
+    return execFileSync('git', ['show', '-s', '--format=%cI', 'HEAD'], {
+      encoding: 'utf8',
+    }).trim()
+  } catch {
+    return '1970-01-01T00:00:00.000Z'
+  }
+}
+
 export default defineConfig({
   base,
-  // die bauzeit steht in der fusszeile. sie beantwortet die eine frage, die
+  // der commit-stand steht in der fusszeile. er beantwortet die eine frage, die
   // man einer app auf einem fremden telefon sonst nicht stellen kann: laeuft
   // dort die fassung, ueber die wir gerade reden?
-  define: { __BAUZEIT__: JSON.stringify(new Date().toISOString()) },
+  define: { __BAUZEIT__: JSON.stringify(standDerFassung()) },
   test: {
     /**
      * Die Schlafanalyse rechnet in lokaler Zeit. Eine Nacht ueber die
