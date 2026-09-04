@@ -102,8 +102,8 @@ export interface Backend {
   schreibeGewicht(tag: string, kg: number): Promise<void>
   /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
   schreibeWette(woche: string, text: string): Promise<void>
-  /** archiviert die sonntagsabrechnung einer woche */
-  schreibeAbrechnung(a: Abrechnung): Promise<void>
+  /** archiviert die sonntagsabrechnung und gibt die kanonisch gespeicherte Zeile zurück */
+  schreibeAbrechnung(a: Abrechnung): Promise<Abrechnung>
   /** einzige veränderliche fachangabe: mündliches prüfungsfach 4 oder 5 */
   setzePruefungsfach(fachId: string, nummer: number | null): Promise<void>
   schreibeNote(note: Note): Promise<void>

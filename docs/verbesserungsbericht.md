@@ -47,7 +47,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | `noten.ts`: weniger als 300 Punkte werden als 4,0 ausgegeben | nicht bestanden wirkt wie bestandene Abiturnote | Grenztests 299/300 und Blockhürden | behoben |
 | P0 | Schlafprojektion berechnet Nachbarsegmente nicht mehr gemeinsam | Bettzeit, Effizienz und Score können trotz Rohdaten fehlen | DB-Test N-1/N/N+1 | blockiert durch Migrationsdrift |
 | P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | blockiert durch Migrationsdrift |
-| P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | offen |
+| P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | behoben |
 | P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | blockiert durch Migrationsdrift |
 | P0 | offene Registrierung + unprofilierte Push-Schreibrechte + beliebiges HTTPS-Ziel | erreichbare serverseitige Request-Forgery | RLS- und Endpoint-Negativtests | offen |
 | P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
@@ -162,6 +162,43 @@ Advisors und eine ausdrückliche Freigabe erforderlich.
   Komponententests. Der erneute vollständige Lauf `npm run check` endet mit
   Exit 0, 20 Testdateien und 314 Tests; TypeScript, Webbuild und Artefaktprüfung
   bestehen. JavaScript: 749.706 Byte roh beziehungsweise 215.115 Byte gzip.
+
+### Welle 2: kanonische Duellhistorie
+
+- Archivierte Wochen sind jetzt die unveränderliche Wahrheit für Sieger,
+  Tiebreak, Abstand und Beleg. Nachträglich veränderte Tracker-Rohdaten können
+  sie nicht mehr umschreiben; Archiv und Rohdaten derselben Woche zählen nur
+  einmal.
+- Weil das bestehende Archiv nur den Abstand und nicht beide absoluten
+  Punktestände speichert, erfindet die UI kein historisches `x:y`. Sie zeigt
+  `archiviert` mit dem gespeicherten Abstand beziehungsweise dem gespeicherten
+  Beleg-Tiebreak. Noch nicht archivierte Altwochen sind ausdrücklich als
+  `nachberechnet` gekennzeichnet.
+- Legacy-Wochen werden mit `wocheGesamt` aus denselben fünf Feldern wie
+  Live-Stand und Abschluss berechnet; Gewicht-only-Wochen verschwinden nicht
+  mehr. Gewicht bleibt wie bisher aus der Belegquote ausgeschlossen.
+- Ein am laufenden Sonntag archiviertes Finale zählt sofort in Bilanz und
+  Serie. Archiv-only-Zustände bestimmen die Historienreichweite; die
+  Kalenderwochenrechnung ist gegen Sommer-/Winterzeit stabil.
+- Der Backendvertrag gibt nach dem First-Write-wins-Insert die tatsächlich
+  gespeicherte Abrechnung zurück. Supabase liest sie nach einem Konflikt erneut.
+  Ein Clientkandidat erscheint bis dahin sichtbar als `wird gespeichert`, aber
+  noch nicht als Archiv. Fehler sind inline retrybar. Ein Realtime-Archiv der
+  eigenen oder einer anderen Woche bleibt bei verlorener HTTP-Antwort erhalten.
+  Bereits geladene und gleichzeitig gesendete Wochen werden nicht erneut
+  geschrieben.
+- Der erste unabhängige Diff-Review fand noch einen zu frühen optimistischen
+  Archivstatus und zwei Rollback-Rennen. Nach der Korrektur bestehen TypeScript
+  und 47 gezielte Tests in fünf Dateien, einschließlich sichtbarer
+  Pending-/Fehlerzustände, Supabase-Insert-plus-SELECT und Nullzeilenfehlern.
+  Vollständiger Paketlauf `npm run check`: Exit 0, 21 Testdateien und 330
+  Tests; TypeScript, Produktions-Webbuild und Artefaktprüfung bestehen.
+  JavaScript: 752.421 Byte roh beziehungsweise 215.933 Byte gzip.
+- Visuelle Kontrolle bei 320 × 568 CSS-Pixeln: zwei echte Beispielarchive
+  erscheinen ohne horizontalen Überlauf als `+4` beziehungsweise
+  `beleg 12:13`, jeweils sichtbar `archiviert`. Die Herkunftsschrift wurde nach
+  dem Review von 9 auf 10 CSS-Pixel angehoben. Keine Browserkonsolenfehler und
+  kein physisches iPhone geprüft.
 
 ## Offene Prüfungen
 

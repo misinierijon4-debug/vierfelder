@@ -111,6 +111,49 @@ type AbrechnungZeile = {
   wette: string | null
   abgeschlossen: string
 }
+
+const zeileZuAbrechnung = (a: AbrechnungZeile): Abrechnung => ({
+  woche: a.woche,
+  sieger: a.sieger,
+  grund: a.grund,
+  differenz: Number(a.differenz),
+  belegErijon: Number(a.beleg_erijon),
+  belegKoray: Number(a.beleg_koray),
+  wette: a.wette,
+  abgeschlossen: a.abgeschlossen,
+})
+
+/**
+ * Ein Konflikt ist bei `ignoreDuplicates` kein Fehler. Erst die anschließend
+ * gelesene Zeile bestätigt, welcher Client tatsächlich zuerst geschrieben hat.
+ */
+export async function schreibeUndBestaetigeAbrechnung(
+  db: NonNullable<typeof supabase>,
+  a: Abrechnung
+): Promise<Abrechnung> {
+  const { error } = await db.from('wochenabrechnung').upsert(
+    {
+      woche: a.woche,
+      sieger: a.sieger,
+      grund: a.grund,
+      differenz: a.differenz,
+      beleg_erijon: a.belegErijon,
+      beleg_koray: a.belegKoray,
+      wette: a.wette,
+    },
+    { onConflict: 'woche', ignoreDuplicates: true }
+  )
+  if (error) throw error
+
+  const bestaetigt = await db
+    .from('wochenabrechnung')
+    .select('woche,sieger,grund,differenz,beleg_erijon,beleg_koray,wette,abgeschlossen')
+    .eq('woche', a.woche)
+    .single()
+  if (bestaetigt.error) throw bestaetigt.error
+  if (!bestaetigt.data) throw new Error('wochenabrechnung wurde nicht bestaetigt')
+  return zeileZuAbrechnung(bestaetigt.data as AbrechnungZeile)
+}
 type FachZeile = {
   id: string
   user_id: string
@@ -298,17 +341,6 @@ export function supabaseBackend(eigeneId: string): Backend {
       titel: n.titel,
     }
   }
-
-  const zeileZuAbrechnung = (a: AbrechnungZeile): Abrechnung => ({
-    woche: a.woche,
-    sieger: a.sieger,
-    grund: a.grund,
-    differenz: Number(a.differenz),
-    belegErijon: Number(a.beleg_erijon),
-    belegKoray: Number(a.beleg_koray),
-    wette: a.wette,
-    abgeschlossen: a.abgeschlossen,
-  })
 
   return {
     art: 'supabase',
@@ -642,19 +674,7 @@ export function supabaseBackend(eigeneId: string): Backend {
 
     async schreibeAbrechnung(a) {
       if (!abrechnungVerfuegbar) throw new Error('wochenabrechnung fehlt noch')
-      const { error } = await db.from('wochenabrechnung').upsert(
-        {
-          woche: a.woche,
-          sieger: a.sieger,
-          grund: a.grund,
-          differenz: a.differenz,
-          beleg_erijon: a.belegErijon,
-          beleg_koray: a.belegKoray,
-          wette: a.wette,
-        },
-        { onConflict: 'woche', ignoreDuplicates: true }
-      )
-      if (error) throw error
+      return schreibeUndBestaetigeAbrechnung(db, a)
     },
 
     async setzePruefungsfach(fachId, nummer) {

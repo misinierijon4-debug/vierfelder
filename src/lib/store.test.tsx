@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Anfangszustand, Backend } from './backend'
+import type { Anfangszustand, Backend, BackendEreignis } from './backend'
 import { useTracker } from './store'
 
 afterEach(cleanup)
@@ -42,7 +42,7 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     loescheTag: vi.fn(async () => {}),
     schreibeGewicht: vi.fn(async () => {}),
     schreibeWette: vi.fn(async () => {}),
-    schreibeAbrechnung: vi.fn(async () => {}),
+    schreibeAbrechnung: vi.fn(async (a) => a),
     setzePruefungsfach: vi.fn(async () => {}),
     schreibeNote: vi.fn(async () => {}),
     loescheNote: vi.fn(async () => {}),
@@ -57,8 +57,8 @@ const ABRECHNUNG = {
   sieger: 'erijon' as const,
   grund: 'punkte' as const,
   differenz: 2,
-  belegErijon: 80,
-  belegKoray: 60,
+  belegErijon: 8,
+  belegKoray: 6,
   wette: null,
   abgeschlossen: '2026-09-06T16:00:00.000Z',
 }
@@ -186,5 +186,113 @@ describe('useTracker Schreibbereitschaft', () => {
     altesSetzeGewicht('2026-09-04', 81.2)
 
     expect(backend.schreibeGewicht).not.toHaveBeenCalled()
+  })
+
+  it('uebernimmt nach einem Abschluss die kanonisch bestaetigte Serverzeile', async () => {
+    const kanonisch = { ...ABRECHNUNG, sieger: 'koray' as const, differenz: -1 }
+    const backend = backendMit(async () => ANFANG, {
+      schreibeAbrechnung: vi.fn(async () => kanonisch),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.abrechnungHinzu(ABRECHNUNG)
+      result.current.abrechnungHinzu(ABRECHNUNG)
+    })
+    expect(result.current.abrechnungen).toEqual([])
+    expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBe('speichern')
+    expect(backend.schreibeAbrechnung).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(result.current.abrechnungen[0]).toEqual(kanonisch))
+    expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBeUndefined()
+  })
+
+  it('rollt ein waehrend des Schreibens empfangenes kanonisches Archiv nicht zurueck', async () => {
+    const antwort = offen<typeof ABRECHNUNG>()
+    const kanonisch = { ...ABRECHNUNG, sieger: 'koray' as const, differenz: -1 }
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(async () => ANFANG, {
+      schreibeAbrechnung: vi.fn(() => antwort.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.abrechnungHinzu(ABRECHNUNG))
+    act(() => melde({ typ: 'abrechnung', abrechnung: kanonisch }))
+    await act(async () => {
+      antwort.reject(new Error('antwort verloren'))
+      await Promise.resolve()
+    })
+
+    expect(result.current.abrechnungen).toEqual([kanonisch])
+    expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBeUndefined()
+    expect(result.current.fehler).toBeNull()
+  })
+
+  it('behaelt ein fremdes Realtime-Archiv, wenn der eigene Abschluss fehlschlaegt', async () => {
+    const antwort = offen<typeof ABRECHNUNG>()
+    const andereWoche = { ...ABRECHNUNG, woche: '2026-08-24' }
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(async () => ANFANG, {
+      schreibeAbrechnung: vi.fn(() => antwort.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.abrechnungHinzu(ABRECHNUNG))
+    act(() => melde({ typ: 'abrechnung', abrechnung: andereWoche }))
+    await act(async () => {
+      antwort.reject(new Error('server nicht erreichbar'))
+      await Promise.resolve()
+    })
+
+    expect(result.current.abrechnungen).toEqual([andereWoche])
+    expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBe('fehler')
+  })
+
+  it('hebt einen Abschlussfehler auf, wenn spaeter das passende Realtime-Archiv kommt', async () => {
+    const antwort = offen<typeof ABRECHNUNG>()
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(async () => ANFANG, {
+      schreibeAbrechnung: vi.fn(() => antwort.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.abrechnungHinzu(ABRECHNUNG))
+    await act(async () => {
+      antwort.reject(new Error('antwort verloren'))
+      await Promise.resolve()
+    })
+    expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBe('fehler')
+
+    act(() => melde({ typ: 'abrechnung', abrechnung: ABRECHNUNG }))
+
+    expect(result.current.abrechnungen).toEqual([ABRECHNUNG])
+    expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBeUndefined()
+  })
+
+  it('schreibt eine bereits geladene Wochenabrechnung kein zweites Mal', async () => {
+    const anfang = { ...ANFANG, abrechnungen: [ABRECHNUNG] }
+    const backend = backendMit(async () => anfang)
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.abrechnungHinzu({ ...ABRECHNUNG, sieger: 'koray', differenz: -2 }))
+
+    expect(backend.schreibeAbrechnung).not.toHaveBeenCalled()
+    expect(result.current.abrechnungen).toEqual([ABRECHNUNG])
   })
 })

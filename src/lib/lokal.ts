@@ -493,9 +493,11 @@ export function lokalesBackend(): Backend {
 
     async schreibeAbrechnung(a: Abrechnung) {
       const alle = alleAbrechnungen()
-      if (alle.some((x) => x.woche === a.woche)) return
+      const vorhanden = alle.find((x) => x.woche === a.woche)
+      if (vorhanden) return vorhanden
       localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, a]))
       holeKanal()?.postMessage({ von: absender, typ: 'abrechnung', abrechnung: a } satisfies Nachricht)
+      return a
     },
 
     async setzePruefungsfach(id: string, nummer: number | null) {

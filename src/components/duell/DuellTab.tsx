@@ -19,6 +19,9 @@ type Props = {
   onZumTracker: () => void
   /** die archivierte sonntagsabrechnung dieser woche, wenn vorhanden */
   abrechnung?: Abrechnung | null
+  /** alle Archive; abgeschlossene Wochen dürfen nie aus Rohdaten neu entstehen */
+  abrechnungen: Abrechnung[]
+  abschlussStatus: 'idle' | 'speichern' | 'fehler' | 'gespeichert'
   /** schließt die woche ab. fehlt der callback, tut der knopf nichts */
   onAbschluss?: () => void
 }
@@ -33,6 +36,8 @@ export function DuellTab({
   onWette,
   onZumTracker,
   abrechnung,
+  abrechnungen,
+  abschlussStatus,
   onAbschluss,
 }: Props) {
   const ich = userDef(me)
@@ -43,8 +48,14 @@ export function DuellTab({
   const abrechnungFarbe =
     abrechnung?.sieger === me ? ich.farbe : abrechnung?.sieger === er.id ? er.farbe : 'var(--kreide-52)'
   const historie = useMemo(
-    () => saisonHistorie(zustand, heute, historieWochen(zustand, heute), me),
-    [zustand, heute, me]
+    () => saisonHistorie(
+      zustand,
+      heute,
+      historieWochen(zustand, heute, abrechnungen),
+      me,
+      abrechnungen
+    ),
+    [zustand, heute, me, abrechnungen]
   )
   const [wetteEdit, setWetteEdit] = useState(false)
   const [wetteTemp, setWetteTemp] = useState(wette)
@@ -205,16 +216,28 @@ export function DuellTab({
           </div>
         ) : (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-kreide-52">
-              sonntag 18 uhr finale
+            <span
+              role="status"
+              aria-live="polite"
+              className="text-[10px] uppercase tracking-[0.12em] text-kreide-52"
+            >
+              {abschlussStatus === 'speichern'
+                ? 'abschluss wird gespeichert'
+                : abschlussStatus === 'fehler'
+                  ? 'abschluss nicht gespeichert'
+                  : 'sonntag 18 uhr finale'}
             </span>
             <button
               type="button"
-              disabled={!abschlussMoeglich || !onAbschluss}
+              disabled={!abschlussMoeglich || !onAbschluss || abschlussStatus === 'speichern'}
               onClick={onAbschluss}
               className="min-h-11 rounded-[2px] border border-linie-hell bg-flaeche px-4 text-[13px] font-bold text-kreide transition-colors hover:bg-linie disabled:cursor-default disabled:opacity-35"
             >
-              woche abschließen
+              {abschlussStatus === 'speichern'
+                ? 'wird gespeichert …'
+                : abschlussStatus === 'fehler'
+                  ? 'erneut versuchen'
+                  : 'woche abschließen'}
             </button>
           </div>
         )}
@@ -229,11 +252,37 @@ export function DuellTab({
           <div className="divide-y divide-linie">
             {historie.letzteWochen.slice(0, 4).map((w) => (
               <div key={w.wocheKey} className="flex min-h-11 items-center justify-between text-[12px]">
-                <span className="tnum text-kreide-52">kw {w.kw}</span>
-                <span className="tnum font-bold">
-                  <span style={{ color: ich.farbe }}>{w.punkteIch}</span>
-                  <span className="px-1.5 text-kreide-52">:</span>
-                  <span style={{ color: er.farbe }}>{w.punkteEr}</span>
+                <span className="text-kreide-52">
+                  <span className="tnum block">kw {w.kw}</span>
+                  <span className="block text-[10px]">{w.herkunft}</span>
+                </span>
+                <span
+                  className="tnum font-bold"
+                  aria-label={w.herkunft === 'archiviert'
+                    ? w.grund === 'beleg'
+                      ? `archivierter beleg: ${w.belegIch} zu ${w.belegEr}`
+                      : `archivierter abstand aus deiner sicht: ${w.differenz}`
+                    : `${w.punkteIch} zu ${w.punkteEr}`}
+                >
+                  {w.punkteIch === null || w.punkteEr === null ? (
+                    w.grund === 'beleg' ? (
+                      <span className="text-[11px] text-kreide-60">
+                        beleg <b style={{ color: ich.farbe }}>{w.belegIch}</b>
+                        <span className="px-1 text-kreide-52">:</span>
+                        <b style={{ color: er.farbe }}>{w.belegEr}</b>
+                      </span>
+                    ) : (
+                      <span style={{ color: w.differenz > 0 ? ich.farbe : w.differenz < 0 ? er.farbe : 'var(--kreide-52)' }}>
+                        {w.differenz > 0 ? '+' : w.differenz === 0 ? '±' : ''}{w.differenz}
+                      </span>
+                    )
+                  ) : (
+                    <>
+                      <span style={{ color: ich.farbe }}>{w.punkteIch}</span>
+                      <span className="px-1.5 text-kreide-52">:</span>
+                      <span style={{ color: er.farbe }}>{w.punkteEr}</span>
+                    </>
+                  )}
                 </span>
                 <span className="min-w-[82px] text-right text-[11px] font-bold" style={{ color: w.sieger === 'ich' ? ich.farbe : w.sieger === 'er' ? er.farbe : 'var(--kreide-52)' }}>
                   {w.sieger === 'ich' ? `sieg ${ich.name}` : w.sieger === 'er' ? `sieg ${er.name}` : 'remis'}

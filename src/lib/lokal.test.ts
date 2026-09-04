@@ -93,10 +93,12 @@ describe('altbestand aus dem alten format', () => {
       woche: '2020-01-06', sieger: 'erijon' as const, grund: 'punkte' as const,
       differenz: 2, belegErijon: 3, belegKoray: 1, wette: null, abgeschlossen: '2026-08-30T18:00:00Z',
     }
-    await backend.schreibeAbrechnung(basis)
-    await backend.schreibeAbrechnung({ ...basis, sieger: 'koray', differenz: -2 })
+    const zuerst = await backend.schreibeAbrechnung(basis)
+    const bestaetigt = await backend.schreibeAbrechnung({ ...basis, sieger: 'koray', differenz: -2 })
 
     const { abrechnungen } = await backend.laden()
+    expect(zuerst).toEqual(basis)
+    expect(bestaetigt).toEqual(basis)
     expect(abrechnungen.find((a) => a.woche === basis.woche)).toMatchObject({ sieger: 'erijon', differenz: 2 })
   })
 })

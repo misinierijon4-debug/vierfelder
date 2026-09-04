@@ -80,6 +80,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     schlaf,
     wetten,
     abrechnungen,
+    abrechnungStatus,
     notenstand,
     ladezustand,
     fehler,
@@ -126,6 +127,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   const ich = userDef(me)
   const er = other(me)
   const abrechnungDerWoche = abrechnungen.find((a) => a.woche === (woche[0] ?? heuteKey)) ?? null
+  const abrechnungDerWocheStatus = abrechnungDerWoche
+    ? 'gespeichert' as const
+    : abrechnungStatus[woche[0] ?? heuteKey] ?? 'idle'
 
   // datumswechsel und das sonntagsfinale um 18 uhr, ohne die app neu zu öffnen.
   // ein neues date-objekt kommt nur, wenn sich tag oder bilanzzeit ändern —
@@ -161,7 +165,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
   /** die sonntagsabrechnung dieser woche aus den tracker-daten bauen und archivieren */
   const schliesseWocheAb = () => {
-    if (!bereit || !istBilanzzeit(heute)) return
+    if (!bereit || !istBilanzzeit(heute) || abrechnungDerWoche) return
     const wocheKey = woche[0] ?? heuteKey
     const abr = abrechnungFuerWoche(zustand, woche, wetten[wocheKey] ?? null)
     abrechnungHinzu(abr)
@@ -357,6 +361,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
                 onZumTracker={() => setAktiverTab('tracker')}
                 abrechnung={abrechnungDerWoche}
+                abrechnungen={abrechnungen}
+                abschlussStatus={abrechnungDerWocheStatus}
                 onAbschluss={bereit ? schliesseWocheAb : undefined}
               />
             </motion.div>

@@ -1,6 +1,6 @@
 import { AREAS, FELDER, other } from './types'
 import type { Abrechnung, FeldId, TickQuelle, UserId, Zustand } from './types'
-import { addDays, isoWeek, startOfWeek, toKey, weekDays } from './dates'
+import { addDays, fromKey, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
 import { erledigteFelder, quelle, wocheBereich, wocheGesamt } from './tracker'
 
@@ -79,12 +79,15 @@ export type WochenBilanz = {
   wocheKey: string
   montag: string
   sonntag: string
-  punkteIch: number
-  punkteEr: number
+  /** Archive speichern bislang nur den Abstand, nie erfundene absolute Staende. */
+  punkteIch: number | null
+  punkteEr: number | null
   belegIch: number
   belegEr: number
   sieger: 'ich' | 'er' | 'unentschieden'
+  grund: Abrechnung['grund']
   differenz: number
+  herkunft: 'archiviert' | 'nachberechnet'
 }
 
 export type DuellHistorie = {
@@ -483,8 +486,19 @@ function formatiereRelativeZeit(d: Date | null, tag: string, jetzt: Date): strin
   return 'vor ' + diffTage + 'd'
 }
 
-/** Anzahl Wochen bis zum ältesten vorhandenen Datensatz; keine künstliche 6-Wochen-Grenze. */
-export function historieWochen(z: Zustand, aktuelleWocheStart: Date): number {
+function gueltigerTag(tag: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(tag) && toKey(fromKey(tag)) === tag
+}
+
+/**
+ * Ganze Kalenderwochen bis zum ältesten Rohdatum oder Archiv. Die Rechnung
+ * läuft über UTC-Kalendertage, damit eine Zeitumstellung keine Woche verliert.
+ */
+export function historieWochen(
+  z: Zustand,
+  aktuelleWocheStart: Date,
+  abrechnungen: Abrechnung[] = []
+): number {
   const tage: string[] = []
   for (const listen of Object.values(z.einheiten)) for (const e of listen) tage.push(e.tag)
   for (const key of Object.keys(z.gewichte)) tage.push(key.split('|')[1] ?? '')
@@ -492,49 +506,106 @@ export function historieWochen(z: Zustand, aktuelleWocheStart: Date): number {
     const tag = tagVon(a)
     if (tag) tage.push(tag)
   }
-  const gueltig = tage.filter((tag) => /^\d{4}-\d{2}-\d{2}$/.test(tag)).sort()
+  for (const abrechnung of abrechnungen) tage.push(abrechnung.woche)
+
+  const aktuellerMontag = startOfWeek(aktuelleWocheStart)
+  const aktuellerMontagKey = toKey(aktuellerMontag)
+  const gueltig = tage
+    .filter((tag) => gueltigerTag(tag) && tag <= aktuellerMontagKey)
+    .map((tag) => toKey(startOfWeek(fromKey(tag))))
+    .sort()
   if (gueltig.length === 0) return 0
-  const diff = Math.floor((startOfWeek(aktuelleWocheStart).getTime() - new Date(gueltig[0] + 'T12:00:00').getTime()) / 604800000)
-  return Math.max(0, diff + 1)
+
+  const aeltester = fromKey(gueltig[0]!)
+  const utcAktuell = Date.UTC(
+    aktuellerMontag.getFullYear(),
+    aktuellerMontag.getMonth(),
+    aktuellerMontag.getDate()
+  )
+  const utcAlt = Date.UTC(aeltester.getFullYear(), aeltester.getMonth(), aeltester.getDate())
+  return Math.max(0, Math.round((utcAktuell - utcAlt) / (7 * 86_400_000)))
 }
 
 export function saisonHistorie(
   z: Zustand,
   aktuelleWocheStart: Date,
   wochenZurueck: number = 6,
-  me: UserId
+  me: UserId,
+  abrechnungen: Abrechnung[] = []
 ): DuellHistorie {
   const er = other(me)
   const aktuellerMontag = startOfWeek(aktuelleWocheStart)
+  const aktuellerMontagKey = toKey(aktuellerMontag)
   const letzteWochen: WochenBilanz[] = []
+
+  // Der erste persistierte Abschluss gewinnt bereits im lokalen und im
+  // produktiven Backend. Dieselbe Regel gilt bei unerwarteten Duplikaten hier.
+  const archive = new Map<string, Abrechnung>()
+  for (const abrechnung of abrechnungen) {
+    if (!archive.has(abrechnung.woche)) archive.set(abrechnung.woche, abrechnung)
+  }
+  const hatAktuellesArchiv = archive.has(aktuellerMontagKey)
 
   let siegeIch = 0
   let siegeEr = 0
   let unentschieden = 0
 
-  for (let i = 1; i <= wochenZurueck; i++) {
+  for (let i = hatAktuellesArchiv ? 0 : 1; i <= Math.max(0, wochenZurueck); i++) {
     const montag = addDays(aktuellerMontag, -7 * i)
     const wocheTage = weekDays(montag)
-    // jedes gewertete feld ist genau ein punkt, deshalb ist `gesamt` der
-    // wochenstand. eine zweite runde über dieselben 35 felder wäre dieselbe
-    // zahl noch einmal — und in der historie mal die anzahl der wochen.
+    const wocheKey = toKey(montag)
+    const archiv = archive.get(wocheKey)
+
+    if (archiv) {
+      const sieger = archiv.sieger === 'unentschieden'
+        ? 'unentschieden' as const
+        : archiv.sieger === me
+          ? 'ich' as const
+          : 'er' as const
+      const perspektivDifferenz = me === 'erijon' ? archiv.differenz : -archiv.differenz
+      const differenz = perspektivDifferenz === 0 ? 0 : perspektivDifferenz
+      if (sieger === 'ich') siegeIch++
+      else if (sieger === 'er') siegeEr++
+      else unentschieden++
+
+      letzteWochen.push({
+        kw: isoWeek(montag),
+        wocheKey,
+        montag: wocheTage[0],
+        sonntag: wocheTage[6],
+        punkteIch: null,
+        punkteEr: null,
+        belegIch: me === 'erijon' ? archiv.belegErijon : archiv.belegKoray,
+        belegEr: me === 'erijon' ? archiv.belegKoray : archiv.belegErijon,
+        sieger,
+        grund: archiv.grund,
+        differenz,
+        herkunft: 'archiviert',
+      })
+      continue
+    }
+
+    // Noch nicht archivierte Altwochen werden mit derselben Fünf-Felder-
+    // Punktebasis wie Live-Stand und Abschluss nachberechnet. Der Beleg bleibt
+    // ausschließlich der Tiebreak der vier automatisierbaren Bereiche.
     const belegIch = belegQuote(z, me, wocheTage)
     const belegEr = belegQuote(z, er.id, wocheTage)
-    const pIch = belegIch.gesamt
-    const pEr = belegEr.gesamt
+    const pIch = wocheGesamt(z, me, wocheTage)
+    const pEr = wocheGesamt(z, er.id, wocheTage)
     const bIch = belegIch.gemessen
     const bEr = belegEr.gemessen
 
     if (pIch === 0 && pEr === 0) continue
 
-    const sieger = entscheideDuell(pIch, pEr, bIch, bEr).sieger
+    const entscheidung = entscheideDuell(pIch, pEr, bIch, bEr)
+    const sieger = entscheidung.sieger
     if (sieger === 'ich') siegeIch++
     else if (sieger === 'er') siegeEr++
     else unentschieden++
 
     letzteWochen.push({
       kw: isoWeek(montag),
-      wocheKey: toKey(montag),
+      wocheKey,
       montag: wocheTage[0],
       sonntag: wocheTage[6],
       punkteIch: pIch,
@@ -542,18 +613,22 @@ export function saisonHistorie(
       belegIch: bIch,
       belegEr: bEr,
       sieger,
+      grund: entscheidung.grund,
       differenz: pIch - pEr,
+      herkunft: 'nachberechnet',
     })
   }
 
   let serieHalter: 'ich' | 'er' | 'keiner' = 'keiner'
   let serieAnzahl = 0
 
-  for (let i = 0; i < letzteWochen.length; i++) {
-    const w = letzteWochen[i]!
+  let erwarteteWoche = hatAktuellesArchiv
+    ? aktuellerMontagKey
+    : toKey(addDays(aktuellerMontag, -7))
+  for (const w of letzteWochen) {
     // Eine spielfreie Kalenderwoche unterbricht eine Serie. Übersprungene
     // 0:0-Wochen dürfen nicht zwei Siege künstlich aneinanderkleben.
-    if (w.montag !== toKey(addDays(aktuellerMontag, -7 * (i + 1)))) break
+    if (w.montag !== erwarteteWoche) break
     if (w.sieger === 'unentschieden') break
     if (serieHalter === 'keiner') {
       serieHalter = w.sieger
@@ -563,6 +638,7 @@ export function saisonHistorie(
     } else {
       break
     }
+    erwarteteWoche = toKey(addDays(fromKey(erwarteteWoche), -7))
   }
 
   return {

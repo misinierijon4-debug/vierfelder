@@ -8,9 +8,10 @@ import {
   duellStatusText,
   duellTickerEintraege,
   entscheideDuell,
+  historieWochen,
   saisonHistorie,
 } from './duell'
-import type { Aufenthalt, Zustand } from './types'
+import type { Abrechnung, Aufenthalt, Zustand } from './types'
 import { tickKey } from './types'
 import { weekDays } from './dates'
 
@@ -19,6 +20,20 @@ function leererZustand(): Zustand {
     einheiten: {},
     gewichte: {},
     aufenthalte: [],
+  }
+}
+
+function archiv(woche: string, rest: Partial<Abrechnung> = {}): Abrechnung {
+  return {
+    woche,
+    sieger: 'erijon',
+    grund: 'punkte',
+    differenz: 1,
+    belegErijon: 2,
+    belegKoray: 1,
+    wette: null,
+    abgeschlossen: `${woche}T18:00:00.000Z`,
+    ...rest,
   }
 }
 
@@ -213,6 +228,85 @@ describe('duell.ts logik & berechnungen', () => {
     const hist = saisonHistorie(z, montag, 3, 'erijon')
     expect(hist.siegeIch).toBe(1)
     expect(hist.aktuelleSerie).toEqual({ halter: 'keiner', anzahl: 0 })
+  })
+
+  it('zaehlt in einer nachberechneten Altwoche auch das Gewicht als Punkt', () => {
+    const z = leererZustand()
+    z.gewichte['erijon|2026-08-17'] = 82
+
+    const hist = saisonHistorie(z, montag, 1, 'erijon')
+
+    expect(hist.letzteWochen).toHaveLength(1)
+    expect(hist.letzteWochen[0]).toMatchObject({
+      punkteIch: 1,
+      punkteEr: 0,
+      differenz: 1,
+      sieger: 'ich',
+      herkunft: 'nachberechnet',
+    })
+  })
+
+  it('behandelt ein Archiv statt veraenderlicher Rohdaten als Wahrheit', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'gym', '2026-08-17')] = [
+      { id: 'spaet', user: 'erijon', area: 'gym', tag: '2026-08-17', erfasst: null, wert: 60 },
+    ]
+    const gespeichert = archiv('2026-08-17', {
+      sieger: 'koray', differenz: -2, belegErijon: 1, belegKoray: 3,
+    })
+
+    const hist = saisonHistorie(z, montag, 1, 'erijon', [gespeichert])
+
+    expect(hist.letzteWochen).toHaveLength(1)
+    expect(hist.letzteWochen[0]).toMatchObject({
+      punkteIch: null,
+      punkteEr: null,
+      differenz: -2,
+      belegIch: 1,
+      belegEr: 3,
+      sieger: 'er',
+      grund: 'punkte',
+      herkunft: 'archiviert',
+    })
+    expect(hist.siegeEr).toBe(1)
+  })
+
+  it('dreht Sieger, Abstand und Beleg eines Archivs fuer Korays Perspektive', () => {
+    const gespeichert = archiv('2026-08-17', {
+      sieger: 'koray', grund: 'beleg', differenz: 0, belegErijon: 4, belegKoray: 7,
+    })
+
+    const woche = saisonHistorie(leererZustand(), montag, 1, 'koray', [gespeichert]).letzteWochen[0]!
+
+    expect(woche).toMatchObject({
+      sieger: 'ich', differenz: 0, belegIch: 7, belegEr: 4, grund: 'beleg',
+    })
+  })
+
+  it('nimmt Archiv-only-Wochen in Reichweite und Bilanz auf', () => {
+    const gespeichert = archiv('2026-08-10')
+    const z = leererZustand()
+    const reichweite = historieWochen(z, montag, [gespeichert])
+    const hist = saisonHistorie(z, montag, reichweite, 'erijon', [gespeichert])
+
+    expect(reichweite).toBe(2)
+    expect(hist.letzteWochen.map((w) => w.wocheKey)).toEqual(['2026-08-10'])
+    expect(hist.siegeIch).toBe(1)
+  })
+
+  it('zaehlt ein am aktuellen Sonntag gespeichertes Archiv sofort samt Serie', () => {
+    const aktuell = archiv('2026-08-24')
+    const hist = saisonHistorie(leererZustand(), montag, 0, 'erijon', [aktuell])
+
+    expect(hist.letzteWochen).toHaveLength(1)
+    expect(hist.siegeIch).toBe(1)
+    expect(hist.aktuelleSerie).toEqual({ halter: 'ich', anzahl: 1 })
+  })
+
+  it('berechnet die Historienreichweite auch ueber die Zeitumstellung korrekt', () => {
+    const z = leererZustand()
+    z.gewichte['erijon|2026-10-19'] = 82
+    expect(historieWochen(z, new Date(2026, 9, 26, 12))).toBe(1)
   })
 
   it('abrechnungFuerWoche entscheidet über die punkte und übernimmt die wette', () => {

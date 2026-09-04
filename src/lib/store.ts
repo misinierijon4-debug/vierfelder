@@ -53,6 +53,7 @@ function fehlertext(e: unknown): string {
 }
 
 type Ladezustand = 'laden' | 'bereit' | 'fehler'
+export type AbrechnungSchreibstatus = 'speichern' | 'fehler'
 
 /**
  * hält den zustand, schreibt optimistisch und nimmt bei fehlern zurück.
@@ -70,6 +71,7 @@ export function useTracker(backend: Backend) {
   const [aufenthalte, setAufenthalte] = useState<Aufenthalt[]>([])
   const [wetten, setWetten] = useState<Wetten>({})
   const [abrechnungen, setAbrechnungen] = useState<Abrechnung[]>([])
+  const [abrechnungStatus, setAbrechnungStatus] = useState<Record<string, AbrechnungSchreibstatus>>({})
   const [faecher, setFaecher] = useState<Fach[]>([])
   const [noten, setNoten] = useState<Note[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
@@ -121,6 +123,7 @@ export function useTracker(backend: Backend) {
   const meRef = useRef<UserId>('erijon')
   const wettenRef = useRef<Wetten>({})
   const abrechnungenRef = useRef<Abrechnung[]>([])
+  const abrechnungStatusRef = useRef<Record<string, AbrechnungSchreibstatus>>({})
   const faecherRef = useRef<Fach[]>([])
   const notenRef = useRef<Note[]>([])
 
@@ -142,12 +145,28 @@ export function useTracker(backend: Backend) {
   const aktiveLadungRef = useRef<symbol | null>(null)
   const bereiteLadungRef = useRef<symbol | null>(null)
 
+  const merkeAbrechnungStatus = useCallback(
+    (woche: string, status: AbrechnungSchreibstatus | null) => {
+      const vorher = abrechnungStatusRef.current
+      if (status === null && vorher[woche] === undefined) return
+      if (status !== null && vorher[woche] === status) return
+      const next = { ...vorher }
+      if (status === null) delete next[woche]
+      else next[woche] = status
+      abrechnungStatusRef.current = next
+      setAbrechnungStatus(next)
+    },
+    []
+  )
+
   useLayoutEffect(() => {
     aktiveLadungRef.current = backendLauf
     bereiteLadungRef.current = null
     letzteAktion.current = null
     kette.current.clear()
     verlaeufeUnterwegs.current.clear()
+    abrechnungStatusRef.current = {}
+    setAbrechnungStatus({})
 
     return () => {
       if (aktiveLadungRef.current === backendLauf) aktiveLadungRef.current = null
@@ -249,6 +268,7 @@ export function useTracker(backend: Backend) {
         const next = [...ohne, e.abrechnung].sort((a, b) => (a.woche < b.woche ? -1 : 1))
         abrechnungenRef.current = next
         setAbrechnungen(next)
+        merkeAbrechnungStatus(e.abrechnung.woche, null)
         return
       }
 
@@ -337,7 +357,7 @@ export function useTracker(backend: Backend) {
       if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
       abmelden()
     }
-  }, [backend, backendLauf, istAktuell, uebernimm])
+  }, [backend, backendLauf, istAktuell, merkeAbrechnungStatus, uebernimm])
 
   /** legt eine weitere durchführung an. gibt sie zurück, damit undo sie kennt */
   const einheitHinzu = useCallback(
@@ -508,24 +528,37 @@ export function useTracker(backend: Backend) {
     [backend, darfSchreiben, nacheinander, uebernimm]
   )
 
-  /** archiviert die sonntagsabrechnung einer woche; die datenbank behaelt die erste */
+  /** archiviert erst nach kanonischer Backend-Bestaetigung; die erste Zeile gewinnt */
   const abrechnungHinzu = useCallback(
     (a: Abrechnung) => {
       if (!darfSchreiben()) return
-      const vorher = abrechnungenRef.current
-      const ohne = vorher.filter((x) => x.woche !== a.woche)
-      const next = [...ohne, a].sort((x, y) => (x.woche < y.woche ? -1 : 1))
-      abrechnungenRef.current = next
-      setAbrechnungen(next)
-      setFehler(null)
-      backend.schreibeAbrechnung(a).catch(() => {
-        if (!darfSchreiben()) return
-        abrechnungenRef.current = vorher
-        setAbrechnungen(vorher)
-        setFehler('abrechnung nicht gespeichert. versuch es nochmal.')
-      })
+      if (abrechnungenRef.current.some((x) => x.woche === a.woche)) return
+      if (abrechnungStatusRef.current[a.woche] === 'speichern') return
+      merkeAbrechnungStatus(a.woche, 'speichern')
+      backend.schreibeAbrechnung(a)
+        .then((kanonisch) => {
+          if (!darfSchreiben()) return
+          const aktuell = abrechnungenRef.current
+          const neue = [
+            ...aktuell.filter((x) => x.woche !== kanonisch.woche),
+            kanonisch,
+          ].sort((x, y) => (x.woche < y.woche ? -1 : 1))
+          abrechnungenRef.current = neue
+          setAbrechnungen(neue)
+          merkeAbrechnungStatus(a.woche, null)
+        })
+        .catch(() => {
+          if (!darfSchreiben()) return
+          // Kam die echte Zeile bereits per Realtime, ist die verlorene
+          // HTTP-Antwort kein fachlicher Fehler mehr.
+          if (abrechnungenRef.current.some((x) => x.woche === a.woche)) {
+            merkeAbrechnungStatus(a.woche, null)
+            return
+          }
+          merkeAbrechnungStatus(a.woche, 'fehler')
+        })
     },
-    [backend, darfSchreiben]
+    [backend, darfSchreiben, merkeAbrechnungStatus]
   )
 
   /**
@@ -768,6 +801,7 @@ export function useTracker(backend: Backend) {
     schlaf,
     wetten,
     abrechnungen,
+    abrechnungStatus,
     notenstand,
     ladezustand,
     fehler,
