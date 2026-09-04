@@ -4,5 +4,11 @@ verify_jwt = false
 [functions.fokus]
 verify_jwt = false
 
+[functions.push-test]
+verify_jwt = true
+
+[functions.schlaf-erinnerung]
+verify_jwt = true
+
 [functions.gewicht-erinnerung]
 verify_jwt = true

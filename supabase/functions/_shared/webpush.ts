@@ -1,3 +1,5 @@
+import { PUSH_ENDPOINT_FEHLER, pushDienst } from './pushEndpoint.ts'
+
 /**
  * Web Push ohne Bibliothek: Verschluesselung nach RFC 8291 (aes128gcm) und
  * Absenderausweis nach RFC 8292 (VAPID).
@@ -258,6 +260,16 @@ export async function sende(
   ttlSekunden = 12 * 60 * 60,
   fristMs = FRIST_MS
 ): Promise<Sendeergebnis> {
+  // Vor Verschluesselung und VAPID: Ein gespeicherter Endpunkt bleibt
+  // untrusted input. Nur Browser-Push-Dienste duerfen Netzwerkziele sein.
+  try {
+    pushDienst(abo.endpoint)
+  } catch {
+    // Anders als ein voruebergehender Netzfehler ist dieses Abo dauerhaft
+    // unbrauchbar. `weg` laesst beide Aufrufer exakt diese eine Zeile ueber
+    // ihren bestehenden Cleanup-Pfad entfernen.
+    return { status: 0, weg: true, fehler: PUSH_ENDPOINT_FEHLER }
+  }
   const koerper = await verschluessele(nachricht, abo)
   let antwort: Response
   try {
@@ -272,6 +284,7 @@ export async function sende(
       },
       body: koerper as BodyInit,
       signal: AbortSignal.timeout(fristMs),
+      redirect: 'error',
     })
   } catch (fehler) {
     // ohne frist haengt der aufruf, bis die function abgeraeumt wird — und
@@ -279,15 +292,23 @@ export async function sende(
     // fehlerseite. eine seite in html ist das letzte, was ein aufrufer
     // gebrauchen kann, der auf json wartet.
     const abgelaufen = fehler instanceof Error && fehler.name === 'TimeoutError'
-    const text = fehler instanceof Error ? fehler.message : String(fehler)
     return {
       status: 0,
       weg: false,
-      fehler: abgelaufen ? `push-dienst antwortet nicht in ${fristMs / 1000} s` : text,
+      fehler: abgelaufen
+        ? `push-dienst antwortet nicht in ${fristMs / 1000} s`
+        : 'push-dienst nicht erreichbar',
     }
   }
 
   const weg = antwort.status === 404 || antwort.status === 410
   if (antwort.ok || weg) return { status: antwort.status, weg, fehler: null }
-  return { status: antwort.status, weg: false, fehler: (await antwort.text()).slice(0, 300) }
+  // Providerantworten koennen die Abo-Adresse oder interne Diagnosedaten
+  // enthalten. Status bleibt fuer Betrieb und Tests erhalten, der fremde Body
+  // verlaesst die Function jedoch nie.
+  return {
+    status: antwort.status,
+    weg: false,
+    fehler: 'push-dienst hat die nachricht abgelehnt',
+  }
 }

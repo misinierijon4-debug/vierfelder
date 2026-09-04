@@ -1,4 +1,4 @@
-import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.112.4'
 import { sende } from './webpush.ts'
 import type { Abo, VapidSchluessel } from './webpush.ts'
 
@@ -13,7 +13,7 @@ import type { Abo, VapidSchluessel } from './webpush.ts'
  * ueberspringt die Person, bevor eine zweite Nachricht entstehen kann.
  */
 
-export type AboZeile = Abo & { endpoint: string; geraet: string | null }
+export type AboZeile = Abo & { endpoint: string }
 
 export type Nachricht = {
   titel: string
@@ -43,10 +43,10 @@ export async function versende(
   for (const userId of offen) {
     const { data: aboDaten, error: aboFehler } = await db
       .from('push_abos')
-      .select('endpoint, p256dh, auth, geraet')
+      .select('endpoint, p256dh, auth')
       .eq('user_id', userId)
     if (aboFehler) {
-      console.error(`${art}-erinnerung: abos konnten nicht gelesen werden: ${aboFehler.message}`)
+      console.error(`${art}-erinnerung: abos konnten nicht gelesen werden`)
       zahlen.fehler += 1
       continue
     }
@@ -63,7 +63,7 @@ export async function versende(
       continue
     }
     if (reservierung.error) {
-      console.error(`${art}-erinnerung: reservierung fehlgeschlagen: ${reservierung.error.message}`)
+      console.error(`${art}-erinnerung: reservierung fehlgeschlagen`)
       zahlen.fehler += 1
       continue
     }
@@ -72,18 +72,30 @@ export async function versende(
       abos.map(async (abo) => {
         try {
           return { endpoint: abo.endpoint, ...(await sende(abo, nutzlast, schluessel)) }
-        } catch (ursache) {
-          const text = ursache instanceof Error ? ursache.message : String(ursache)
-          return { endpoint: abo.endpoint, status: 0, weg: false, fehler: text }
+        } catch {
+          return {
+            endpoint: abo.endpoint,
+            status: 0,
+            weg: false,
+            fehler: 'push konnte nicht gesendet werden',
+          }
         }
       })
     )
 
     const weg = ergebnisse.filter((e) => e.weg).map((e) => e.endpoint)
     if (weg.length > 0) {
-      const loeschen = await db.from('push_abos').delete().in('endpoint', weg)
-      if (loeschen.error) console.error(`${art}-erinnerung: alte abos: ${loeschen.error.message}`)
-      else zahlen.entfernt += weg.length
+      const loeschen = await db
+        .from('push_abos')
+        .delete()
+        .in('endpoint', weg)
+        .select('endpoint')
+      const entfernt = loeschen.data?.length ?? 0
+      zahlen.entfernt += entfernt
+      if (loeschen.error || entfernt !== weg.length) {
+        console.error(`${art}-erinnerung: alte abos konnten nicht vollständig entfernt werden`)
+        zahlen.fehler += 1
+      }
     }
 
     const angenommen = ergebnisse.filter((e) => !e.weg && e.fehler === null).length
@@ -93,7 +105,7 @@ export async function versende(
         .update({ gesendet: new Date().toISOString() })
         .match({ user_id: userId, art, tag })
       if (markieren.error) {
-        console.error(`${art}-erinnerung: versandbuch: ${markieren.error.message}`)
+        console.error(`${art}-erinnerung: versandbuch konnte nicht markiert werden`)
         zahlen.fehler += 1
       }
       zahlen.gesendet += angenommen

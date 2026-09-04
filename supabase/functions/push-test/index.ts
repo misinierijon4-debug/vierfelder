@@ -1,4 +1,5 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
+import { pushDienst } from '../_shared/pushEndpoint.ts'
 import { sende } from '../_shared/webpush.ts'
 import type { Abo, VapidSchluessel } from '../_shared/webpush.ts'
 
@@ -34,7 +35,7 @@ function antwort(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS })
 }
 
-type AboZeile = Abo & { geraet: string | null }
+type AboZeile = Abo
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
@@ -64,8 +65,8 @@ Deno.serve(async (request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const { data, error } = await db.from('push_abos').select('endpoint, p256dh, auth, geraet')
-  if (error) return antwort(500, { error: error.message })
+  const { data, error } = await db.from('push_abos').select('endpoint, p256dh, auth')
+  if (error) return antwort(500, { error: 'push-abos konnten nicht gelesen werden' })
 
   const abos = (data ?? []) as AboZeile[]
   if (abos.length === 0) {
@@ -85,19 +86,32 @@ Deno.serve(async (request) => {
   console.log(`probe: ${abos.length} gerät(e) für das angemeldete konto`)
 
   const ergebnisse = await Promise.all(
-    abos.map(async (abo) => {
-      const dienst = new URL(abo.endpoint).host
+    abos.map(async (abo, index) => {
+      const nummer = index + 1
+      let dienst = 'unbekannt'
+      try {
+        dienst = pushDienst(abo.endpoint)
+      } catch {
+        // `sende` lehnt denselben Endpunkt sicher ab. Der neutrale Wert ist
+        // nur fuer die Diagnose ohne Preisgabe der Adresse gedacht.
+      }
       try {
         const ergebnis = await sende(abo, nachricht, schluessel)
         console.log(
-          `${abo.geraet ?? 'gerät'} über ${dienst}: status ${ergebnis.status}` +
+          `push-abo ${nummer} über ${dienst}: status ${ergebnis.status}` +
             `${ergebnis.weg ? ' (abo weg)' : ''}${ergebnis.fehler ? ` — ${ergebnis.fehler}` : ''}`
         )
-        return { endpoint: abo.endpoint, geraet: abo.geraet, ...ergebnis }
-      } catch (fehler) {
-        const text = fehler instanceof Error ? fehler.message : String(fehler)
-        console.error(`${abo.geraet ?? 'gerät'} über ${dienst}: ${text}`)
-        return { endpoint: abo.endpoint, geraet: abo.geraet, status: 0, weg: false, fehler: text }
+        return { endpoint: abo.endpoint, nummer, dienst, ...ergebnis }
+      } catch {
+        console.error(`push-abo ${nummer} über ${dienst}: versand abgelehnt`)
+        return {
+          endpoint: abo.endpoint,
+          nummer,
+          dienst,
+          status: 0,
+          weg: false,
+          fehler: 'push konnte nicht gesendet werden',
+        }
       }
     })
   )
@@ -105,15 +119,27 @@ Deno.serve(async (request) => {
   // karteileichen raeumen: ein abo, das der push-dienst nicht mehr kennt,
   // bleibt sonst ewig stehen und faerbt jeden spaeteren lauf rot.
   const weg = ergebnisse.filter((e) => e.weg).map((e) => e.endpoint)
-  if (weg.length > 0) await db.from('push_abos').delete().in('endpoint', weg)
+  let entfernt = 0
+  if (weg.length > 0) {
+    const loeschen = await db
+      .from('push_abos')
+      .delete()
+      .in('endpoint', weg)
+      .select('endpoint')
+    entfernt = loeschen.data?.length ?? 0
+    if (loeschen.error || entfernt !== weg.length) {
+      console.error('probe: alte push-abos konnten nicht vollständig entfernt werden')
+    }
+  }
 
   const gesendet = ergebnisse.filter((e) => !e.weg && e.fehler === null).length
-  console.log(`probe fertig: ${gesendet} gesendet, ${weg.length} entfernt`)
+  console.log(`probe fertig: ${gesendet} gesendet, ${entfernt} entfernt`)
   return antwort(gesendet > 0 ? 200 : 502, {
     gesendet,
-    entfernt: weg.length,
+    entfernt,
     geraete: ergebnisse.map((e) => ({
-      geraet: e.geraet,
+      nummer: e.nummer,
+      dienst: e.dienst,
       status: e.status,
       weg: e.weg,
       fehler: e.fehler,

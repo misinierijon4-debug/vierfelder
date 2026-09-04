@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import { istFaellig, lokaleMinute } from '../_shared/erinnerung.ts'
 import { versende } from '../_shared/versand.ts'
 import type { VapidSchluessel } from '../_shared/webpush.ts'
@@ -8,12 +8,11 @@ import type { VapidSchluessel } from '../_shared/webpush.ts'
  * Uhrzeit erreicht ist und fuer die vergangene Nacht keine Zeile in
  * `schlafnaechte` steht.
  *
- * Der Grund fuer diese Erinnerung ist ein beobachteter Ausfall: der
- * Kurzbefehl meldet auf dem iPhone „ausgefuehrt“, erreicht Supabase aber nie —
- * die Health-Abfrage in einer Hintergrundautomation liefert nichts und der
- * Kurzbefehl bricht vor dem Netzaufruf ab. Serverseitig ist das nicht zu
- * verhindern; sichtbar zu machen schon. Ein stiller Ausfall wird so
- * spaetestens zur eingestellten Uhrzeit zu einer Nachricht auf dem Handy.
+ * Der Grund fuer diese Erinnerung ist ein beobachteter stiller Ausfall: Der
+ * automatische Kurzbefehl erreichte Supabase an zwei Tagen gar nicht. Ob die
+ * Automation nicht startete, Health keine Segmente lieferte oder der
+ * Netzaufruf scheiterte, kann diese Function nicht feststellen. Sie behauptet
+ * deshalb keine Ursache, sondern macht nur den fehlenden Import sichtbar.
  *
  * Eine Nacht traegt das Datum des Morgens, an dem sie endet. Geprueft wird
  * deshalb `nacht = heute` nach deutscher Ortszeit.
@@ -62,7 +61,7 @@ Deno.serve(async (request) => {
     .select('user_id, schlaf_zeit')
     .eq('schlaf_aktiv', true)
 
-  if (error) return antwort(500, { error: error.message })
+  if (error) return antwort(500, { error: 'erinnerungen konnten nicht gelesen werden' })
 
   const faellige = ((data ?? []) as Einstellung[]).filter((e) =>
     istFaellig(ort.minute, e.schlaf_zeit)
@@ -77,7 +76,7 @@ Deno.serve(async (request) => {
     .select('user_id')
     .eq('nacht', ort.tag)
     .in('user_id', ids)
-  if (schlafFehler) return antwort(500, { error: schlafFehler.message })
+  if (schlafFehler) return antwort(500, { error: 'schlafstatus konnte nicht gelesen werden' })
 
   const erledigt = new Set((naechte ?? []).map((zeile) => zeile.user_id as string))
   const offen = faellige.filter((e) => !erledigt.has(e.user_id)).map((e) => e.user_id)

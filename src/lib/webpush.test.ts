@@ -214,9 +214,46 @@ describe('senden', () => {
     expect(ergebnis.fehler).toBe('push-dienst antwortet nicht in 0.02 s')
   })
 
-  it('reicht die antwort des dienstes durch, wenn er ablehnt', async () => {
+  it('gibt die fremde antwort des dienstes nicht weiter', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('BadSubscription', { status: 400 })))
     const ergebnis = await sende(abo, 'hallo', await echterSchluessel())
-    expect(ergebnis).toEqual({ status: 400, weg: false, fehler: 'BadSubscription' })
+    expect(ergebnis).toEqual({
+      status: 400,
+      weg: false,
+      fehler: 'push-dienst hat die nachricht abgelehnt',
+    })
+  })
+
+  it('verbietet redirects beim versand', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 201 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await sende(abo, 'hallo', await echterSchluessel())
+    expect(fetchMock).toHaveBeenCalledWith(
+      abo.endpoint,
+      expect.objectContaining({ redirect: 'error' })
+    )
+  })
+
+  it('markiert einen fremden endpunkt dauerhaft und ruft kein netzwerk auf', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await sende({ ...abo, endpoint: 'https://127.0.0.1/admin' }, 'hallo', schluessel)).toEqual(
+      {
+        status: 0,
+        weg: true,
+        fehler: 'push-endpoint gehört zu keinem unterstützten dienst',
+      }
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('verbirgt native netzwerkfehler', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.1'))))
+    const ergebnis = await sende(abo, 'hallo', await echterSchluessel())
+    expect(ergebnis).toEqual({
+      status: 0,
+      weg: false,
+      fehler: 'push-dienst nicht erreichbar',
+    })
   })
 })

@@ -1,4 +1,5 @@
 import { b64urlZuBytes, bytesZuB64url } from '../../supabase/functions/_shared/webpush'
+import { PUSH_ENDPOINT_FEHLER, pushDienst } from '../../supabase/functions/_shared/pushEndpoint'
 import { hatSupabase, supabase } from './supabase'
 
 /**
@@ -141,6 +142,15 @@ export async function pushAnmelden(): Promise<PushZustand> {
       userVisibleOnly: true,
       applicationServerKey: b64urlZuBytes(vapidSchluessel) as BufferSource,
     }))
+
+  try {
+    pushDienst(abo.endpoint)
+  } catch {
+    // Ein unbrauchbares Browser-Abo darf weder lokal aktiv bleiben noch in die
+    // Datenbank gelangen. Die Servergrenze prueft unabhaengig ein zweites Mal.
+    await abo.unsubscribe()
+    throw new Error(PUSH_ENDPOINT_FEHLER)
+  }
 
   const { error } = await db.from('push_abos').upsert(
     {

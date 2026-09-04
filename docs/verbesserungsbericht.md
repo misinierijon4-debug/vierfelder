@@ -49,7 +49,8 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | blockiert durch Migrationsdrift |
 | P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | behoben |
 | P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | blockiert durch Migrationsdrift |
-| P0 | offene Registrierung + unprofilierte Push-Schreibrechte + beliebiges HTTPS-Ziel | erreichbare serverseitige Request-Forgery | RLS- und Endpoint-Negativtests | offen |
+| P0 | Push-Versand akzeptiert jedes gespeicherte HTTPS-Ziel und folgt Redirects | serverseitige Request-Forgery und Datenabfluss in Logs/Antworten | Provider-Allowlist, Redirect-, IP- und Log-Negativtests | lokal behoben; Deploy offen |
+| P0 | offene Registrierung + unprofilierte Push-Schreibrechte | fremde Konten können Provider-Endpunkte speichern und die Probe missbrauchen | Mitglieder-, RLS- und Rate-Limit-Matrix | blockiert durch Migrationsdrift |
 | P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
 | P1 | gemessene und manuelle Einheiten werden als vollständig gemessen summiert | falsche Dauer und Belegquote | Mischquellen-/Überlappungstests | offen; Belegregel braucht Produktentscheidung |
 | P1 | Schlafphasenfehler werden verschluckt | Fehler erscheint endlos als Laden oder fälschlich als Health-Leerzustand | idle/loading/empty/error/retry | behoben |
@@ -68,20 +69,22 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 - `2b6be46`: nicht pauschal übernommen. Bedarfsweises Kalender-Rendering und
   gezieltes Code-Splitting sind Kandidaten; Produktions-Demobypass und sofortiges
   Komplett-Prefetch werden verworfen.
-- `c5d9858`/`08f3844`: nicht als Feature übernommen. Die Migrationen scheinen
-  jedoch produktiv angewandt und fehlen auf `main`; ihre unveränderte Historie
-  muss vor neuen Migrationen ins Repository zurückgeführt und anschließend per
-  neuer Migration gehärtet werden.
+- `c5d9858`/`08f3844`: selektiv als `b219144`/`04a7a89` übernommen, nachdem der
+  Live-Abgleich beide Migrationen, `schlaf-erinnerung` v1 und die refaktorierte
+  `gewicht-erinnerung` v2 bestätigt hat. Die Commits sind patch-id-identisch;
+  der neun Commits zurückliegende Featurebranch selbst wurde nicht gemergt.
 - Die übrigen Remote-Spitzen sind Vorfahren von `origin/main` oder fachlich
   veraltet; daraus ist kein Sammelmerge vorgesehen.
 
 ## Produktions- und Migrationsgrenzen
 
-Der lesende Live-Abgleich meldet eine abweichende produktive Migrationshistorie
-und live-only Tabellen/Funktionen. Deshalb werden derzeit keine Migration, kein
-Reset, keine Tokenrotation und keine produktive Änderung ausgeführt. Vor einem
-späteren Release sind History-Reconciliation, Staging, Backup, Restore-Probe,
-Advisors und eine ausdrückliche Freigabe erforderlich.
+Der lesende Live-Abgleich meldet 29 produktive und nach der gezielten
+Rückführung 28 lokale Migrationen; nur 15 Versionsnummern stimmen überein.
+`gewicht.quelle` und `record_gewicht` stehen lokal in einer Migration, existieren
+produktiv aber noch nicht. Deshalb werden derzeit keine Migration, kein Reset,
+keine Tokenrotation und keine produktive Änderung ausgeführt. Vor einem späteren
+Release sind History-Reconciliation, Staging, Backup, Restore-Probe, Advisors
+und eine ausdrückliche Freigabe erforderlich.
 
 ## Umgesetzte Pakete
 
@@ -243,6 +246,43 @@ Advisors und eine ausdrückliche Freigabe erforderlich.
   sichtbar, die zugänglichen Kalendernamen unterscheiden Schätzung und
   Nachtwert. Keine Browserkonsolenfehler. Ein physisches iPhone und ein echter
   Supabase-Abruffehler bleiben ungeprüft.
+
+### Welle 2: Push-Netzwerkgrenze und Live-Parität
+
+- Der Browser prüft jedes neue Abo vor dem Upsert; Apple-, Google-, Mozilla-
+  und Microsoft-Endpunkte sind eng auf die dokumentierten Hosts begrenzt.
+  HTTP, Benutzerinfo, Fragmente, fremde Ports, IP-Literale, localhost,
+  private/link-lokale Ziele, falsche Suffixe, Leerraum und überlange Adressen
+  werden abgewiesen. Ein dabei neu erzeugtes Browser-Abo wird zurückgenommen.
+- Derselbe Validator läuft unmittelbar vor Verschlüsselung und `fetch` in der
+  Edge Function. Er schützt damit auch manipulierten Altbestand und direkte
+  PostgREST-Schreibungen. Ungültige Endpunkte gelten als dauerhaft weg;
+  Gewicht-, Schlaf- und Probeversand entfernen nur die exakt betroffene Zeile.
+  Redirects sind verboten.
+- Löschungen werden über zurückgegebene Zeilen bestätigt. `error === null` bei
+  null betroffenen Zeilen wird nicht mehr als Bereinigung ausgegeben. Das
+  gemeinsame Versandmodul meldet Teilfehler und zählt nur bestätigte Deletes.
+- Provider-Antworttexte und native Netzwerkfehler werden nicht weitergereicht.
+  Logs und Probeantwort enthalten weder Abo-Adresse noch Gerätebezeichnung;
+  sie nennen nur laufende Nummer, Providerklasse und Status. Supabase-Imports
+  der drei betroffenen Functions sind exakt auf 2.112.4 gepinnt.
+- Die live vorhandenen, auf `origin/main` fehlenden Commits `c5d9858` und
+  `08f3844` wurden nach Abgleich als `b219144` und `04a7a89` übernommen. Damit
+  enthält das Repository wieder die produktive Schlaf-Erinnerung, den
+  gemeinsamen Versandweg und beide bereits angewandten Migrationen. Ein
+  sachlich widerlegter Kommentar zur vermeintlichen Health-Ursache wurde
+  neutralisiert.
+- Der sendeseitige SSRF-Pfad ist lokal geschlossen. Noch offen bleiben der
+  Datenbank-CHECK beim Speichern, das serverseitige Zwei-Personen-Limit,
+  Rate-Limits und die privilegierte Scheduler-Authentifizierung. Diese Punkte
+  benötigen eine Forward-Fix-Migration und werden wegen des History-Drifts
+  weder als behoben noch als produktiv bezeichnet.
+- Gezielter Lauf: 4 Dateien und 53 Push-/Versandtests, Exit 0. Deno 2.9.6
+  prüft `push-test`, `gewicht-erinnerung` und `schlaf-erinnerung`, Exit 0.
+  Der unabhängige Diff-Review fand die fehlende Delete-Bestätigung; nach ihrer
+  Korrektur endet `npm run check` mit Exit 0, 26 Dateien und 384 Tests.
+  TypeScript, Webbuild und Artefaktprüfung bestehen. JavaScript: 759.205 Byte
+  roh beziehungsweise 217.718 Byte gzip; gesamtes `dist`: 1.105.591 Byte.
 
 ## Offene Prüfungen
 

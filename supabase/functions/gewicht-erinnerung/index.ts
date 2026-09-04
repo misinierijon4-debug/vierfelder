@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import { istFaellig, lokaleMinute } from '../_shared/erinnerung.ts'
 import { versende } from '../_shared/versand.ts'
 import type { VapidSchluessel } from '../_shared/webpush.ts'
@@ -53,7 +53,7 @@ Deno.serve(async (request) => {
     .select('user_id, gewicht_zeit')
     .eq('gewicht_aktiv', true)
 
-  if (error) return antwort(500, { error: error.message })
+  if (error) return antwort(500, { error: 'erinnerungen konnten nicht gelesen werden' })
 
   const faellige = ((data ?? []) as Einstellung[]).filter((e) =>
     istFaellig(ort.minute, e.gewicht_zeit)
@@ -68,7 +68,7 @@ Deno.serve(async (request) => {
     .select('user_id')
     .eq('tag', ort.tag)
     .in('user_id', ids)
-  if (gewichtFehler) return antwort(500, { error: gewichtFehler.message })
+  if (gewichtFehler) return antwort(500, { error: 'gewichtstatus konnte nicht gelesen werden' })
 
   const erledigt = new Set((gewogen ?? []).map((zeile) => zeile.user_id as string))
   const offen = faellige.filter((e) => !erledigt.has(e.user_id)).map((e) => e.user_id)

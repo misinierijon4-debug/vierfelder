@@ -148,8 +148,11 @@ Die Teile im Repository:
 | Datei | Rolle |
 |---|---|
 | `supabase/migrations/20260902090000_push_abos.sql` | die Adressen der Geräte |
+| `supabase/functions/_shared/pushEndpoint.ts` | enge Provider-Allowlist gegen fremde Netzwerkziele |
 | `supabase/functions/_shared/webpush.ts` | Verschlüsselung und VAPID, ohne Bibliothek |
+| `supabase/functions/_shared/versand.ts` | gemeinsamer, idempotenter Versand für Erinnerungen |
 | `supabase/functions/push-test/index.ts` | die Probenachricht |
+| `supabase/functions/schlaf-erinnerung/index.ts` | meldet einen fehlenden Nachtimport |
 | `public/push-sw.js` | zeigt an, was ankommt |
 | `src/lib/push.ts` | an-, abmelden, Zustand |
 | `src/components/Benachrichtigungen.tsx` | der Schalter |
@@ -162,6 +165,23 @@ dieselbe ist. So läuft derselbe Code in der Function und in den Tests unter
 Node. `src/lib/webpush.test.ts` friert dabei jedes Byte der Ableitung mit einem
 festen Vektor ein, der gegen `http_ece` gegengeprüft wurde — dieselbe
 Bibliothek, die `web-push` innen benutzt.
+
+Ein gespeicherter Push-Endpunkt ist trotzdem fremde Eingabe. Browser und jede
+Function akzeptieren deshalb nur HTTPS-Endpunkte der bekannten Dienste Apple,
+Google, Mozilla und Microsoft, ohne Benutzerinfo, Fragment oder abweichenden
+Port. Redirects sind beim Versand verboten. Die Hostregeln folgen den
+Providerangaben für [Apple](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers),
+[Google](https://firebase.google.com/docs/reference/fcm/rest),
+[Mozilla](https://mozilla-services.github.io/autopush-rs/) und
+[Microsoft](https://learn.microsoft.com/en-us/windows/apps/develop/notifications/push-notifications/wns-overview).
+Provider-Antworttexte, Endpunkte und Gerätebezeichnungen erscheinen weder in
+Function-Antworten noch in Logs.
+
+Die bestehende produktive Tabellenprüfung erlaubt historisch noch jedes
+HTTPS-Ziel. Der Versandguard verhindert daraus einen Request, direkte fremde
+Inserts aber erst eine spätere Forward-Fix-Migration. Wegen der divergenten
+produktiven Migrationshistorie darf dieser Datenbankteil nicht ungeprüft live
+angewandt werden.
 
 ## Die erste echte Erinnerung
 

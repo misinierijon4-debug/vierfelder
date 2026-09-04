@@ -92,11 +92,14 @@ Laufen, Hof. Wer stattdessen ein Gym ohne Standort-Automation hat, ändert in
 den zwei URLs `b=boxen` auf `b=gym`. Ein Buchstabe, keine Migration.
 
 **Das Token steht in der URL.** Behandle die sechs Kurzbefehle wie ein
-Passwort: keine Screenshots, nicht weiterschicken. Wer die URL hat, kann
-Sitzungen für dich eintragen — mehr nicht, lesen oder löschen kann er nichts.
-In den Function-Logs von Supabase taucht die aufgerufene Adresse auf; das ist
-der Preis dafür, dass ein Kurzbefehl aus einer einzigen Zeile besteht. Wem das
-zu viel ist, nimmt die Variante ganz unten.
+Passwort: keine Screenshots, nicht weiterschicken. Das heutige Import-Token ist
+nicht auf Fokus begrenzt. Es legitimiert auch Schlafimport und
+Kurzbefehl-Diagnose, im vorbereiteten nächsten Datenbankstand zusätzlich den
+Gewichtsimport. Wer es kennt, kann in diesen Bereichen Daten für dich schreiben;
+lesen oder löschen kann er darüber nicht. Weil die URL in Function-Logs
+auftauchen kann, ist diese GET-Variante nur ein abwärtskompatibler Altweg. Die
+Umstellung auf getrennte, widerrufbare Zweck-Tokens im POST-Body ist als
+Sicherheitsmigration offen und benötigt anschließend neue iPhone-Kurzbefehle.
 
 Eine Zeitangabe wird nicht mitgeschickt: es gilt der Moment des Aufrufs, und
 das ist genau der Moment, in dem der Fokus umschaltet.
