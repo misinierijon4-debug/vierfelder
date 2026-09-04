@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus } from '@phosphor-icons/react'
 import type { AreaDef, TickQuelle } from '../lib/types'
@@ -45,6 +45,7 @@ type Props = {
   farbe: string
   farbeEr: string
   zeigeUndo: boolean
+  disabled?: boolean
   onTap: () => void
   onUndo: () => void
   onWert: (delta: number) => void
@@ -73,6 +74,7 @@ export function Bereichszeile({
   farbe,
   farbeEr,
   zeigeUndo,
+  disabled = false,
   onTap,
   onUndo,
   onWert,
@@ -95,13 +97,6 @@ export function Bereichszeile({
    */
   const wertAusMessung = gemessen && area.unit === 'min'
 
-  const aufTaste = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onTap()
-    }
-  }
-
   const links =
     !wertAusMessung && gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
   // der tageswert steht seit jeher rechts — und wurde dort fünf sekunden lang
@@ -109,6 +104,50 @@ export function Bereichszeile({
   // jetzt zwischen den schritten, die ihn ändern, und der platz rechts gehört
   // allein dem rückgängig und der messung.
   const rechts = gemessen ? 'messung' : zeigeUndo ? 'undo' : 'nichts'
+
+  const kopfInhalt = (
+    <>
+      <span
+        className="display min-w-0 flex-1 truncate text-[22px] font-semibold lowercase leading-none transition-colors duration-200"
+        style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
+      >
+        {area.label}
+      </span>
+
+      <span className="flex items-baseline gap-1.5">
+        {wocheIch > 0 ? (
+          <Zahl
+            value={wocheIch}
+            delay={TAKT.zahl}
+            className="text-[30px] font-bold"
+            style={{ color: 'var(--kreide)' }}
+          />
+        ) : (
+          <span className="tnum text-[30px] font-bold leading-none text-kreide-52">–</span>
+        )}
+
+        <span className="w-6 text-[13px] font-semibold leading-none">
+          <AnimatePresence mode="wait" initial={false}>
+            {abstand !== 0 && (
+              <motion.span
+                key={abstand}
+                initial={reduced ? false : { opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -3 }}
+                transition={{ duration: 0.16, ease: EASE }}
+                className="tnum inline-block"
+                style={{ color: abstand > 0 ? farbe : farbeEr }}
+              >
+                {abstand > 0 ? `+${abstand}` : `−${Math.abs(abstand)}`}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </span>
+      </span>
+
+      <Marke gesetzt={gesetzt} halb={quelle === 'getippt'} farbe={farbe} />
+    </>
+  )
 
   return (
     <motion.div
@@ -121,64 +160,31 @@ export function Bereichszeile({
       }}
       className="border-b border-linie"
     >
-      <motion.div
-        role={gemessen ? undefined : 'button'}
-        tabIndex={gemessen ? undefined : 0}
-        aria-pressed={gemessen ? undefined : gesetzt}
-        aria-label={
-          gemessen
-            ? `${area.label}, heute gemessen`
-            : `${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`
-        }
-        onClick={gemessen ? undefined : onTap}
-        onKeyDown={gemessen ? undefined : aufTaste}
-        whileTap={reduced || gemessen ? undefined : { scale: 0.995 }}
-        transition={{ duration: 0.09, ease: EASE }}
-        className={`flex flex-col justify-center gap-1.5 py-2 pl-1 select-none${
-          gemessen ? '' : ' cursor-pointer'
-        }`}
+      <div
+        aria-busy={disabled || undefined}
+        className="flex flex-col justify-center gap-1.5 py-2 pl-1 select-none"
       >
-        <div className="flex items-center gap-3">
+        {gemessen ? (
           <div
-            className="display min-w-0 flex-1 truncate text-[22px] font-semibold lowercase leading-none transition-colors duration-200"
-            style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
+            aria-label={`${area.label}, heute gemessen`}
+            className="flex w-full items-center gap-3"
           >
-            {area.label}
+            {kopfInhalt}
           </div>
-
-          <div className="flex items-baseline gap-1.5">
-            {wocheIch > 0 ? (
-              <Zahl
-                value={wocheIch}
-                delay={TAKT.zahl}
-                className="text-[30px] font-bold"
-                style={{ color: 'var(--kreide)' }}
-              />
-            ) : (
-              <span className="tnum text-[30px] font-bold leading-none text-kreide-52">–</span>
-            )}
-
-            <span className="w-6 text-[13px] font-semibold leading-none">
-              <AnimatePresence mode="wait" initial={false}>
-                {abstand !== 0 && (
-                  <motion.span
-                    key={abstand}
-                    initial={reduced ? false : { opacity: 0, y: 3 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -3 }}
-                    transition={{ duration: 0.16, ease: EASE }}
-                    className="tnum inline-block"
-                    style={{ color: abstand > 0 ? farbe : farbeEr }}
-                  >
-                    {abstand > 0 ? `+${abstand}` : `−${Math.abs(abstand)}`}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </span>
-          </div>
-
-          <Marke gesetzt={gesetzt} halb={quelle === 'getippt'} farbe={farbe} />
-        </div>
+        ) : (
+          <motion.button
+            type="button"
+            disabled={disabled}
+            aria-pressed={gesetzt}
+            aria-label={`${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`}
+            onClick={onTap}
+            whileTap={reduced || disabled ? undefined : { scale: 0.995 }}
+            transition={{ duration: 0.09, ease: EASE }}
+            className="flex w-full cursor-pointer items-center gap-3 text-left disabled:cursor-default"
+          >
+            {kopfInhalt}
+          </motion.button>
+        )}
 
         {/* zweite zeile: feste touchhoehe, egal was drinsteht */}
         <div className="flex min-h-11 items-center justify-between">
@@ -194,7 +200,7 @@ export function Bereichszeile({
 
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} verringern`}
-                  disabled={einheitWert <= 0}
+                  disabled={disabled || einheitWert <= 0}
                   onClick={() => onWert(-area.step)}
                 >
                   <Minus size={11} weight="bold" />
@@ -227,6 +233,7 @@ export function Bereichszeile({
 
                 <Schritt
                   label={`${area.label} um ${area.step} ${area.unit} erhöhen`}
+                  disabled={disabled}
                   onClick={() => onWert(area.step)}
                 >
                   <Plus size={11} weight="bold" />
@@ -259,12 +266,13 @@ export function Bereichszeile({
                 {mehrfachMoeglich && !gemessen && (
                   <button
                     type="button"
+                    disabled={disabled}
                     aria-label={`weitere einheit ${area.label} eintragen`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onNeueEinheit()
                     }}
-                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
                   >
                     + einheit
                   </button>
@@ -300,12 +308,13 @@ export function Bereichszeile({
                 {mehrfachMoeglich && (
                   <button
                     type="button"
+                    disabled={disabled}
                     aria-label={`weitere einheit ${area.label} eintragen`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onNeueEinheit()
                     }}
-                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4"
+                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
                   >
                     + einheit
                   </button>
@@ -314,18 +323,19 @@ export function Bereichszeile({
             ) : zeigeUndo ? (
               <button
                 type="button"
+                disabled={disabled}
                 onClick={(e) => {
                   e.stopPropagation()
                   onUndo()
                 }}
-                className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
+                className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
               >
                 rückgängig
               </button>
             ) : null}
           </Wechsel>
         </div>
-      </motion.div>
+      </div>
     </motion.div>
   )
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Backend, Wetten } from './backend'
 import {
   gewichtKey,
@@ -94,7 +94,7 @@ export function useTracker(backend: Backend) {
    * welche verlaeufe gerade unterwegs sind. ohne das loeste jeder render des
    * nachtdetails eine weitere abfrage derselben nacht aus.
    */
-  const verlaeufeUnterwegs = useRef(new Set<string>())
+  const verlaeufeUnterwegs = useRef(new Map<string, symbol>())
 
   const einheitenRef = useRef<Einheiten>({})
   const gewichteRef = useRef<Gewichte>({})
@@ -133,6 +133,38 @@ export function useTracker(backend: Backend) {
    */
   const kette = useRef(new Map<string, Promise<unknown>>())
 
+  /**
+   * Ein Backendwechsel ist zugleich ein Wechsel der Daten- und oft der
+   * Benutzeridentitaet. Der Lauf-Token verhindert, dass alte Eventhandler oder
+   * spaete Promise-Antworten in den neu geladenen Zustand schreiben.
+   */
+  const backendLauf = useMemo(() => Symbol('backend-lauf'), [backend])
+  const aktiveLadungRef = useRef<symbol | null>(null)
+  const bereiteLadungRef = useRef<symbol | null>(null)
+
+  useLayoutEffect(() => {
+    aktiveLadungRef.current = backendLauf
+    bereiteLadungRef.current = null
+    letzteAktion.current = null
+    kette.current.clear()
+    verlaeufeUnterwegs.current.clear()
+
+    return () => {
+      if (aktiveLadungRef.current === backendLauf) aktiveLadungRef.current = null
+      if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
+    }
+  }, [backendLauf])
+
+  const istAktuell = useCallback(
+    () => aktiveLadungRef.current === backendLauf,
+    [backendLauf]
+  )
+
+  const darfSchreiben = useCallback(
+    () => istAktuell() && bereiteLadungRef.current === backendLauf,
+    [backendLauf, istAktuell]
+  )
+
   const nacheinander = useCallback((ids: string[], schreibe: () => Promise<void>) => {
     const laufende = ids.map((id) => kette.current.get(id)).filter(Boolean)
     const lauf = Promise.allSettled(laufende).then(schreibe)
@@ -152,6 +184,7 @@ export function useTracker(backend: Backend) {
 
   useEffect(() => {
     let aktiv = true
+    bereiteLadungRef.current = null
     setLadezustand('laden')
 
     /**
@@ -162,7 +195,7 @@ export function useTracker(backend: Backend) {
     const versuche = async (rest: number): Promise<void> => {
       try {
         const anfang = await backend.laden()
-        if (!aktiv) return
+        if (!aktiv || !istAktuell()) return
         meRef.current = anfang.me
         einheitenRef.current = anfang.einheiten
         gewichteRef.current = anfang.gewichte
@@ -183,15 +216,17 @@ export function useTracker(backend: Backend) {
         setNoten(anfang.noten.noten)
         setEinheitVonVerfuegbar(anfang.einheitVonVerfuegbar)
         setAltbestand(anfang.altbestand)
+        bereiteLadungRef.current = backendLauf
         setLadezustand('bereit')
         setFehler(null)
       } catch (e: unknown) {
-        if (!aktiv) return
+        if (!aktiv || !istAktuell()) return
         if (rest > 0 && !istProfilfehler(e)) {
           await new Promise((r) => setTimeout(r, 700))
           if (!aktiv) return
           return versuche(rest - 1)
         }
+        bereiteLadungRef.current = null
         setLadezustand('fehler')
         setFehler(fehlertext(e))
       }
@@ -200,6 +235,7 @@ export function useTracker(backend: Backend) {
     void versuche(1)
 
     const abmelden = backend.abonniere((e) => {
+      if (!aktiv || !istAktuell()) return
       if (e.typ === 'wette') {
         const next = { ...wettenRef.current, [e.woche]: e.text }
         wettenRef.current = next
@@ -298,13 +334,15 @@ export function useTracker(backend: Backend) {
 
     return () => {
       aktiv = false
+      if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
       abmelden()
     }
-  }, [backend, uebernimm])
+  }, [backend, backendLauf, istAktuell, uebernimm])
 
   /** legt eine weitere durchführung an. gibt sie zurück, damit undo sie kennt */
   const einheitHinzu = useCallback(
-    (area: AreaId, tag: string, von: string | null = null): Einheit => {
+    (area: AreaId, tag: string, von: string | null = null): Einheit | null => {
+      if (!darfSchreiben()) return null
       const u = meRef.current
       const vorher = einheitenRef.current
       const einheit = baueEinheit(u, area, tag, null, new Date(), von)
@@ -322,18 +360,20 @@ export function useTracker(backend: Backend) {
       setFehler(null)
 
       nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
 
       return einheit
     },
-    [backend, nacheinander, uebernimm]
+    [backend, darfSchreiben, nacheinander, uebernimm]
   )
 
   /** nimmt eine einzelne durchführung zurück */
   const einheitWeg = useCallback(
     (einheit: Einheit) => {
+      if (!darfSchreiben()) return
       if (einheit.user !== meRef.current) return
       const vorher = einheitenRef.current
       const next = ohneEinheit(vorher, einheit.id)
@@ -349,16 +389,18 @@ export function useTracker(backend: Backend) {
       setFehler(null)
 
       nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, nacheinander, uebernimm]
+    [backend, darfSchreiben, nacheinander, uebernimm]
   )
 
   /** der an/aus-schalter: an legt die erste einheit an, aus räumt den tag */
   const toggle = useCallback(
     (area: AreaId, tag: string) => {
+      if (!darfSchreiben()) return
       const u = meRef.current
       const vorher = einheitenRef.current
       const vorhandene = vorher[tickKey(u, area, tag)] ?? []
@@ -377,11 +419,12 @@ export function useTracker(backend: Backend) {
         vorhandene.map((e) => e.id),
         () => backend.loescheTag(vorhandene)
       ).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, einheitHinzu, nacheinander, uebernimm]
+    [backend, darfSchreiben, einheitHinzu, nacheinander, uebernimm]
   )
 
   /**
@@ -391,6 +434,7 @@ export function useTracker(backend: Backend) {
    */
   const rueckgaengig = useCallback(
     (area: AreaId, tag: string) => {
+      if (!darfSchreiben()) return
       const aktion = letzteAktion.current
       if (!aktion || aktion.area !== area || aktion.tag !== tag) {
         // nichts gemerkt: dann ist der schalter die ehrlichste antwort
@@ -415,16 +459,18 @@ export function useTracker(backend: Backend) {
       Promise.all(
         aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
       ).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, einheitWeg, nacheinander, toggle, uebernimm]
+    [backend, darfSchreiben, einheitWeg, nacheinander, toggle, uebernimm]
   )
 
   /** setzt den wert einer einzelnen einheit — das detail bearbeitet jede zeile */
   const wertSetzen = useCallback(
     (id: string, wert: number) => {
+      if (!darfSchreiben()) return
       const vorher = einheitenRef.current
       const einheit = Object.values(vorher)
         .flat()
@@ -434,16 +480,18 @@ export function useTracker(backend: Backend) {
       uebernimm(mitWert(vorher, id, sauber))
       setFehler(null)
       nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, nacheinander, uebernimm]
+    [backend, darfSchreiben, nacheinander, uebernimm]
   )
 
   /** setzt die durchführungszeit einer einzelnen einheit. null löscht sie */
   const zeitSetzen = useCallback(
     (id: string, von: string | null) => {
+      if (!darfSchreiben()) return
       const vorher = einheitenRef.current
       const einheit = Object.values(vorher)
         .flat()
@@ -452,16 +500,18 @@ export function useTracker(backend: Backend) {
       uebernimm(mitVon(vorher, id, von))
       setFehler(null)
       nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, nacheinander, uebernimm]
+    [backend, darfSchreiben, nacheinander, uebernimm]
   )
 
   /** archiviert die sonntagsabrechnung einer woche; die datenbank behaelt die erste */
   const abrechnungHinzu = useCallback(
     (a: Abrechnung) => {
+      if (!darfSchreiben()) return
       const vorher = abrechnungenRef.current
       const ohne = vorher.filter((x) => x.woche !== a.woche)
       const next = [...ohne, a].sort((x, y) => (x.woche < y.woche ? -1 : 1))
@@ -469,12 +519,13 @@ export function useTracker(backend: Backend) {
       setAbrechnungen(next)
       setFehler(null)
       backend.schreibeAbrechnung(a).catch(() => {
+        if (!darfSchreiben()) return
         abrechnungenRef.current = vorher
         setAbrechnungen(vorher)
         setFehler('abrechnung nicht gespeichert. versuch es nochmal.')
       })
     },
-    [backend]
+    [backend, darfSchreiben]
   )
 
   /**
@@ -485,6 +536,7 @@ export function useTracker(backend: Backend) {
    */
   const wertAendern = useCallback(
     (area: AreaId, tag: string, delta: number) => {
+      if (!darfSchreiben()) return
       const u = meRef.current
       const vorher = einheitenRef.current
       const liste = vorher[tickKey(u, area, tag)] ?? []
@@ -496,6 +548,7 @@ export function useTracker(backend: Backend) {
         // erste schritt die einheit an, statt ins leere zu laufen.
         if (delta <= 0) return
         const neue = einheitHinzu(area, tag)
+        if (!neue) return
         const nachAnlegen = einheitenRef.current
         const erster = Math.max(0, Math.round(delta))
         uebernimm(mitWert(nachAnlegen, neue.id, erster))
@@ -503,6 +556,7 @@ export function useTracker(backend: Backend) {
         // dieselbe id in der schlange: das anlegen ist durch, bevor der wert
         // auf eine zeile geht, die es sonst noch nicht gäbe.
         nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
+          if (!darfSchreiben()) return
           uebernimm(nachAnlegen)
           setFehler('nicht gespeichert. tippe nochmal.')
         })
@@ -514,17 +568,20 @@ export function useTracker(backend: Backend) {
       setFehler(null)
 
       nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch(() => {
+        if (!darfSchreiben()) return
         uebernimm(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, einheitHinzu, nacheinander, uebernimm]
+    [backend, darfSchreiben, einheitHinzu, nacheinander, uebernimm]
   )
 
   const setzeGewicht = useCallback(
     (tag: string, kg: number) => {
+      if (!darfSchreiben()) return
       const u = meRef.current
       const vorher = gewichteRef.current
+      const vorherQuellen = gewichtQuellenRef.current
       // auf hundert gramm runden, und zwar hier: sonst kommt aus 81,4 + 0,1 der
       // wert 81.50000000000001, den die datenbank rundet und die anzeige beim
       // neuladen sichtbar ändert.
@@ -541,12 +598,15 @@ export function useTracker(backend: Backend) {
       merkeGewichtQuelle(u, tag, sauber <= 0 ? null : 'getippt')
 
       backend.schreibeGewicht(tag, sauber).catch(() => {
+        if (!darfSchreiben()) return
         gewichteRef.current = vorher
         setGewichte(vorher)
+        gewichtQuellenRef.current = vorherQuellen
+        setGewichtQuellen(vorherQuellen)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend]
+    [backend, darfSchreiben, merkeGewichtQuelle]
   )
 
   /**
@@ -558,13 +618,15 @@ export function useTracker(backend: Backend) {
    */
   const phasenNachladen = useCallback(
     (user: UserId, nacht: string) => {
+      if (!darfSchreiben()) return
       const key = `${user}|${nacht}`
-      if (verlaeufeUnterwegs.current.has(key)) return
-      verlaeufeUnterwegs.current.add(key)
+      if (verlaeufeUnterwegs.current.get(key) === backendLauf) return
+      verlaeufeUnterwegs.current.set(key, backendLauf)
 
       void backend
         .ladePhasen(user, nacht)
         .then((phasen) => {
+          if (!darfSchreiben() || verlaeufeUnterwegs.current.get(key) !== backendLauf) return
           setSchlaf((vorher) => {
             const vorhanden = vorher.find((n) => n.user === user && n.nacht === nacht)
             if (!vorhanden || vorhanden.phasen !== null) return vorher
@@ -572,13 +634,18 @@ export function useTracker(backend: Backend) {
           })
         })
         .catch(() => {})
-        .finally(() => verlaeufeUnterwegs.current.delete(key))
+        .finally(() => {
+          if (verlaeufeUnterwegs.current.get(key) === backendLauf) {
+            verlaeufeUnterwegs.current.delete(key)
+          }
+        })
     },
-    [backend]
+    [backend, backendLauf, darfSchreiben]
   )
 
   const setzeWette = useCallback(
     (woche: string, text: string) => {
+      if (!darfSchreiben()) return
       const sauber = text.trim().replace(/\s+/g, ' ').slice(0, 160)
       if (!sauber) return
       const vorher = wettenRef.current
@@ -587,12 +654,13 @@ export function useTracker(backend: Backend) {
       setWetten(next)
       setFehler(null)
       backend.schreibeWette(woche, sauber).catch(() => {
+        if (!darfSchreiben()) return
         wettenRef.current = vorher
         setWetten(vorher)
         setFehler('wetteinsatz nicht gespeichert. versuch es nochmal.')
       })
     },
-    [backend]
+    [backend, darfSchreiben]
   )
 
   /**
@@ -602,6 +670,7 @@ export function useTracker(backend: Backend) {
    */
   const setzePruefungsfach = useCallback(
     (fachId: string, nummer: number | null) => {
+      if (!darfSchreiben()) return
       if (nummer !== null && nummer !== 4) return
       const fach = faecherRef.current.find((x) => x.id === fachId)
       if (!fach || fach.user !== meRef.current || fach.kursart !== 'gk') return
@@ -624,16 +693,18 @@ export function useTracker(backend: Backend) {
         if (altes) await backend.setzePruefungsfach(altes.id, null)
         await backend.setzePruefungsfach(fachId, nummer)
       }).catch(() => {
+        if (!darfSchreiben()) return
         faecherRef.current = vorher
         setFaecher(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, nacheinander]
+    [backend, darfSchreiben, nacheinander]
   )
 
   const noteHinzu = useCallback(
     (fachId: string, punkte: number, art: Notenart, datum: string, titel = ''): Note | null => {
+      if (!darfSchreiben()) return null
       const fach = faecherRef.current.find((x) => x.id === fachId)
       if (!fach || fach.user !== meRef.current || !istNotenDatum(datum)) return null
       const note: Note = {
@@ -652,17 +723,19 @@ export function useTracker(backend: Backend) {
       setNoten(next)
       setFehler(null)
       nacheinander([note.id], () => backend.schreibeNote(note)).catch(() => {
+        if (!darfSchreiben()) return
         notenRef.current = vorher
         setNoten(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
       return note
     },
-    [backend, nacheinander]
+    [backend, darfSchreiben, nacheinander]
   )
 
   const noteLoeschen = useCallback(
     (id: string) => {
+      if (!darfSchreiben()) return
       const note = notenRef.current.find((x) => x.id === id)
       if (!note || note.user !== meRef.current) return
       const vorher = notenRef.current
@@ -671,12 +744,13 @@ export function useTracker(backend: Backend) {
       setNoten(next)
       setFehler(null)
       nacheinander([id], () => backend.loescheNote(id)).catch(() => {
+        if (!darfSchreiben()) return
         notenRef.current = vorher
         setNoten(vorher)
         setFehler('nicht gespeichert. tippe nochmal.')
       })
     },
-    [backend, nacheinander]
+    [backend, darfSchreiben, nacheinander]
   )
 
   // eine stabile identität: sonst wäre jeder render ein neuer zustand und

@@ -42,8 +42,8 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 
 | Prio | Problem und Beleg | Nutzerwirkung | Vorgesehener Nachweis | Status |
 | --- | --- | --- | --- | --- |
-| P0 | `App.tsx`/`store.ts`: Mutationen bleiben während des initialen Ladens aktiv | doppelte Einträge oder leeres Sonntagsarchiv | verzögertes Backend, keine Mutation vor `bereit` | offen |
-| P0 | `Bereichszeile.tsx`: Tastenereignis eines Kindbuttons erreicht den Zeilen-Toggle | Plus/Minus kann den ganzen Tag löschen | Komponenten-/Browser-Tastaturtest | offen |
+| P0 | `App.tsx`/`store.ts`: Mutationen bleiben während des initialen Ladens aktiv | doppelte Einträge oder leeres Sonntagsarchiv | verzögertes Backend, keine Mutation vor `bereit` | behoben |
+| P0 | `Bereichszeile.tsx`: Tastenereignis eines Kindbuttons erreicht den Zeilen-Toggle | Plus/Minus kann den ganzen Tag löschen | Komponenten-/Browser-Tastaturtest | behoben |
 | P0 | `noten.ts`: weniger als 300 Punkte werden als 4,0 ausgegeben | nicht bestanden wirkt wie bestandene Abiturnote | Grenztests 299/300 und Blockhürden | offen |
 | P0 | Schlafprojektion berechnet Nachbarsegmente nicht mehr gemeinsam | Bettzeit, Effizienz und Score können trotz Rohdaten fehlen | DB-Test N-1/N/N+1 | blockiert durch Migrationsdrift |
 | P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | blockiert durch Migrationsdrift |
@@ -97,6 +97,34 @@ Advisors und eine ausdrückliche Freigabe erforderlich.
   sind nicht langfristig cachebar, gehashte Assets dagegen immutable.
 - Die sichtbare Fassungszeit wird aus dem Commit abgeleitet. Identische Commits
   erzeugen dadurch nicht allein wegen der Uhrzeit einen neuen Hauptchunk.
+
+### Welle 2: Schreibsperre und sichere Tracker-Tastatur
+
+- Der Store bindet jeden Ladevorgang an einen eigenen Lauf-Token. Vor einem
+  vollständig geladenen Zustand, nach Ladefehler, nach Unmount und nach einem
+  Backend- oder Kontowechsel bleiben sämtliche Mutationen gesperrt.
+- Späte Fehler alter Schreibvorgänge dürfen den Zustand eines neu geladenen
+  Kontos nicht mehr zurückrollen. Auch nachgeladene Schlafphasen sind an den
+  aktuellen Backendlauf gebunden.
+- Während des Ladens ist der produktive Inhaltsbereich `inert`; Abmelden bleibt
+  erreichbar. Der Sonntagsabschluss besitzt zusätzlich eine direkte
+  Bereitschaftsprüfung und erhält vor Abschluss des Ladens keinen Callback.
+- Die Tagesaktion in `Bereichszeile` ist jetzt ein nativer, eigenständiger
+  Button. Plus, Minus, weitere Einheit und Undo liegen nicht mehr darin; Enter
+  oder Leertaste auf einem dieser Bedienelemente kann daher nicht mehr den
+  ganzen Tag umschalten beziehungsweise löschen.
+- Erste DOM-Komponententests ergänzen die bisher reine Logiktestsuite. Sie
+  prüfen Enter, Leertaste, nicht verschachtelte Interaktionen und den komplett
+  deaktivierten Ladezustand. Store-Hook-Tests prüfen verzögertes Laden,
+  Ladefehler, Backendwechsel, Unmount und eine verspätete Fehlantwort.
+- Paketprüfung: `npm run check`, Exit 0, 19 Testdateien und 303 Tests. Das
+  Web-Artefakt umfasst 748.392 Byte JavaScript roh beziehungsweise 214.614 Byte
+  gzip; der geringe Zuwachs stammt aus den Laufzeit-Schutzprüfungen, nicht aus
+  der nur für Tests installierten DOM-Umgebung. `npm install` meldete 0 bekannte
+  Abhängigkeitslücken.
+- Visuelle Kontrolle: Prototyp bei 320 CSS-Pixeln nach HMR-Neustart geöffnet;
+  die Anzeigetafel-Geometrie blieb ohne neue horizontale Verschiebung. Dies ist
+  keine physische iPhone-Abnahme.
 
 ## Offene Prüfungen
 

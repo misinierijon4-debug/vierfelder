@@ -63,7 +63,14 @@ export function App() {
   if (hatSupabase && !session) return <Anmeldung />
   if (!backend) return <div className="min-h-[100dvh] bg-grund" />
 
-  return <Tracker backend={backend} onWechsel={() => setWechselNr((n) => n + 1)} />
+  const trackerKey = backend.art === 'supabase' ? `supabase:${kontoId}` : `lokal:${wechselNr}`
+  return (
+    <Tracker
+      key={trackerKey}
+      backend={backend}
+      onWechsel={() => setWechselNr((n) => n + 1)}
+    />
+  )
 }
 
 function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
@@ -94,6 +101,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     noteLoeschen,
     phasenNachladen,
   } = useTracker(backend)
+  const bereit = ladezustand === 'bereit'
   const [heute, setHeute] = useState(() => new Date())
   const [aktiverTab, setAktiverTab] = useState<AppTab>('tracker')
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
@@ -153,7 +161,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
   /** die sonntagsabrechnung dieser woche aus den tracker-daten bauen und archivieren */
   const schliesseWocheAb = () => {
-    if (!istBilanzzeit(heute)) return
+    if (!bereit || !istBilanzzeit(heute)) return
     const wocheKey = woche[0] ?? heuteKey
     const abr = abrechnungFuerWoche(zustand, woche, wetten[wocheKey] ?? null)
     abrechnungHinzu(abr)
@@ -217,8 +225,10 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           </AnimatePresence>
         </div>
 
-        {/* Tab-Inhalte */}
-        <AnimatePresence mode="wait">
+        {/* Tab-Inhalte bleiben bis zum vollstaendigen Erstladen inert. So kann
+            kein leerer Zwischenstand als echte Mutation gespeichert werden. */}
+        <div inert={!bereit} aria-busy={!bereit}>
+          <AnimatePresence mode="wait">
           {aktiverTab === 'tracker' ? (
             <motion.div
               key="tab-tracker"
@@ -260,6 +270,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       farbe={ich.farbe}
                       farbeEr={er.farbe}
                       zeigeUndo={undoFuer === area.id}
+                      disabled={!bereit}
                       onTap={() => toggle(area.id, heuteKey)}
                       onUndo={() => zurueck(area.id)}
                       onNeueEinheit={() => einheitHinzu(area.id, heuteKey)}
@@ -346,7 +357,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
                 onZumTracker={() => setAktiverTab('tracker')}
                 abrechnung={abrechnungDerWoche}
-                onAbschluss={schliesseWocheAb}
+                onAbschluss={bereit ? schliesseWocheAb : undefined}
               />
             </motion.div>
           ) : aktiverTab === 'schlaf' ? (
@@ -383,9 +394,10 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
               />
             </motion.div>
           )}
-        </AnimatePresence>
+          </AnimatePresence>
 
-        <Benachrichtigungen />
+          {bereit && <Benachrichtigungen />}
+        </div>
 
         <Fusszeile art={backend.art} me={me} onWechsel={onWechsel} />
       </main>
@@ -406,8 +418,8 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             zustand={zustand}
             auswahl={detail}
             heute={heuteKey}
-            editierbar={detail.tag === heuteKey && !altbestand}
-            zeitEditierbar={einheitVonVerfuegbar}
+            editierbar={bereit && detail.tag === heuteKey && !altbestand}
+            zeitEditierbar={bereit && einheitVonVerfuegbar}
             eigene={detail.user === me}
             onWertSetzen={wertSetzen}
             onZeitSetzen={zeitSetzen}
