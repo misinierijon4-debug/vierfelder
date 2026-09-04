@@ -14,6 +14,7 @@
     "build:pages": "node scripts/validate-pages-env.mjs && npm run build:web && npm run check:dist",
     "build:sites": "npm run build:web && node scripts/build-sites-worker.mjs",
     "check:dist": "node scripts/check-web-build.mjs",
+    "check:edge": "deno check --no-lock --node-modules-dir=none supabase/functions/fokus/index.ts supabase/functions/schlaf-import/index.ts supabase/functions/push-test/index.ts supabase/functions/gewicht-erinnerung/index.ts supabase/functions/schlaf-erinnerung/index.ts",
     "check": "npm run typecheck && npm test && npm run build:web && npm run check:dist",
     "preview": "vite preview",
     "test": "vitest run"

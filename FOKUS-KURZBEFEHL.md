@@ -183,26 +183,26 @@ Handy im Gym liegen lässt. Technik kann Lügen teuer machen, nicht unmöglich.
 20 Minuten Fokus kosten ungefähr so viel wie 20 Minuten lernen; der Unterschied
 ist, dass man in der Zeit auch hätte lernen können.
 
-## Anhang: dieselbe Sache ohne Edge Function
+## Sicherer Übergang: Token aus der URL nehmen
 
-Wer das Token nicht in der URL haben will, baut die Kurzbefehle wie die
-Standort-Kurzbefehle in [TRAINING-STANDORT.md](TRAINING-STANDORT.md): **Inhalte
-von URL abrufen** auf
-`https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_aufenthalt`,
-Methode `POST`, Header `Content-Type: application/json` und `apikey` mit dem
-Publishable Key, Haupttext `JSON` mit vier Feldern — **alle vom Typ Text**:
+Nach Deployment der vorbereiteten Function wird jeder Kurzbefehl einzeln auf
+**Inhalte von URL abrufen** umgestellt. Methode `POST`, kein Haupttext, ein
+Header `x-import-token` mit dem persönlichen Import-Token. In der URL stehen
+nur noch Bereich und Ereignis:
 
-| Kurzbefehl | `p_token` | `p_bereich` | `p_ereignis` | `p_ort` |
-|---|---|---|---|---|
-| lernen an | Token | `lernen` | `an` | `fokus lernen` |
-| lernen aus | Token | `lernen` | `aus` | `fokus lernen` |
-| lesen an | Token | `lesen` | `an` | `fokus lesen` |
-| lesen aus | Token | `lesen` | `aus` | `fokus lesen` |
-| training an | Token | `boxen` | `an` | `fokus boxen` |
-| training aus | Token | `boxen` | `aus` | `fokus boxen` |
+| Kurzbefehl | URL |
+|---|---|
+| lernen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lernen&e=an` |
+| lernen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lernen&e=aus` |
+| lesen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lesen&e=an` |
+| lesen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lesen&e=aus` |
+| training an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=boxen&e=an` |
+| training aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=boxen&e=aus` |
 
-Es ist dieselbe Datenbankfunktion und dasselbe Ergebnis — nur sechsmal sechs
-Felder statt sechsmal einer Zeile. `p_ort` steht hier genauso, wie die Function
-ihn ohne `o=` bildet; nur wenn Ein- und Ausschalten denselben Namen schreiben,
-findet der Abgang seine Ankunft wieder. `p_ereignis` versteht `an`/`aus` genauso wie
-`ankunft`/`abgang`.
+Der POST-Weg lehnt `t` und `token` in der URL ausdrücklich ab. Die alten GET-
+URLs bleiben zunächst erreichbar und antworten zusätzlich mit
+`"veraltet": true`. Erst wenn alle sechs Kurzbefehle auf beiden iPhones über
+POST erfolgreich geprüft sind, darf das gemeinsame Token rotiert und GET in
+einem späteren Release abgeschaltet werden. Der direkte RPC-Weg aus älteren
+Fassungen dieser Anleitung bleibt technisch kompatibel, ist aber für den
+Neuaufbau nicht mehr nötig.

@@ -6,7 +6,10 @@ type ImportBody = {
   segments?: unknown
 }
 
-const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
+const JSON_HEADERS = {
+  'content-type': 'application/json; charset=utf-8',
+  'cache-control': 'no-store',
+}
 const MAX_PAYLOAD_BYTES = 512 * 1024
 
 function antwort(status: number, body: Record<string, unknown>) {

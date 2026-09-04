@@ -52,6 +52,8 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | Push-Versand akzeptiert jedes gespeicherte HTTPS-Ziel und folgt Redirects | serverseitige Request-Forgery und Datenabfluss in Logs/Antworten | Provider-Allowlist, Redirect-, IP- und Log-Negativtests | lokal behoben; Deploy offen |
 | P0 | offene Registrierung + unprofilierte Push-Schreibrechte | fremde Konten können Provider-Endpunkte speichern und die Probe missbrauchen | Mitglieder-, RLS- und Rate-Limit-Matrix | blockiert durch Migrationsdrift |
 | P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
+| P0 | `fokus` fällt bei fehlendem anon-Key auf Service Role zurück | öffentlich erreichbarer Importweg erhält unnötige Vollrechte | Fehlkonfigurations- und Key-Auswahltests | lokal behoben; Deploy offen |
+| P1 | Fokus-GET trägt ein bereichsübergreifend gültiges Token in URL/Logs | Token-Leak erlaubt Schreibzugriff auf mehrere Importwege | POST-Header, Zweck-/Gerätetoken und Rotation | POST lokal fertig; Migration/iPhones offen |
 | P1 | gemessene und manuelle Einheiten werden als vollständig gemessen summiert | falsche Dauer und Belegquote | Mischquellen-/Überlappungstests | offen; Belegregel braucht Produktentscheidung |
 | P1 | Schlafphasenfehler werden verschluckt | Fehler erscheint endlos als Laden oder fälschlich als Health-Leerzustand | idle/loading/empty/error/retry | behoben |
 | P1 | Realtime-Status und Reconnect-Resync fehlen | gelöschte oder verpasste Daten bleiben lokal | Zwei-Client-Reconnect | offen |
@@ -284,11 +286,45 @@ und eine ausdrückliche Freigabe erforderlich.
   TypeScript, Webbuild und Artefaktprüfung bestehen. JavaScript: 759.205 Byte
   roh beziehungsweise 217.718 Byte gzip; gesamtes `dist`: 1.105.591 Byte.
 
+### Welle 2: Fokus fail-closed und sicherer POST-Übergang
+
+- `fokus` kann den Service-Role-Key nicht mehr lesen oder als Fallback nutzen.
+  Es bevorzugt `SUPABASE_PUBLISHABLE_KEYS.default`; nur wenn die neue Variable
+  vollständig fehlt, bleibt der unprivilegierte Legacy-anon-Key kompatibel.
+  Fehlerhaftes JSON, ein fehlender `default`-Eintrag oder eine Secret-Key-
+  Klasse führen fail-closed zum Konfigurationsfehler.
+- Der bevorzugte POST-Weg liest das Import-Token ausschließlich aus
+  `x-import-token` und weist `t`/`token` in der URL ab. Die sechs installierten
+  GET-Kurzbefehle bleiben bis zur physischen Umstellung beider iPhones aktiv,
+  kennzeichnen Antwort und Header aber als veraltet. Das ist bewusst noch
+  keine Tokenrotation und kein Abschalten des Altwegs.
+- Bereiche, Ereignisse, Token- und Ortslänge werden vor dem RPC geprüft.
+  Unbekannte Datenbank- und Netzwerkfehler geben keine internen Meldungen an
+  den Aufrufer weiter. `schlaf-import` setzt nun ebenfalls `no-store`.
+- Alle Supabase-JS-Imports der Edge Functions sind exakt auf 2.112.4 gepinnt.
+  Ein Quelltest verhindert unbemerkte schwimmende Versionen. Die PR-CI richtet
+  Deno 2.9.6 ein und typecheckt alle fünf Functions getrennt vom Webbuild.
+- Der zweite Sicherheitsreview bewahrte alle von `record_aufenthalt`
+  unterstützten Ereignis-Aliase, verengte die 401-Erkennung auf den exakten
+  Tokenfehler, behandelt einen nicht ausgeführten Abgang als HTTP 409 und
+  trennt ungültige Serverkonfiguration (500) von einem Netzfehler (502).
+- Gezielter Lauf: 2 Dateien und 41 Fokus-/Importtests, Exit 0. Der vollständige
+  `npm run check` endet mit Exit 0, 28 Dateien und 425 Tests. TypeScript,
+  Webbuild und Artefaktprüfung bestehen. Deno 2.9.6 prüft alle fünf Functions,
+  Exit 0. JavaScript: 759.205 Byte roh beziehungsweise 217.718 Byte gzip;
+  gesamtes `dist`: 1.105.591 Byte.
+- Der aktuelle Supabase-Keyweg folgt der offiziellen
+  [Migrationsanleitung](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys)
+  und den dokumentierten
+  [Function-Umgebungsvariablen](https://supabase.com/docs/guides/functions/secrets).
+  Scheduler-Secret, Zweck-/Gerätetokens und Abschaltung des GET-Altwegs bleiben
+  migrations-, staging- und freigabepflichtig.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas
 - zwei echte authentifizierte Browser/Geräte inklusive Realtime-Unterbrechung
-- lokaler/staging Supabase-Reset, RLS-/RPC-pgTAP und Edge-Function-Typecheck
+- lokaler/staging Supabase-Reset und RLS-/RPC-pgTAP
 - Staging-Migration, Backup und Restore-Probe
 - zuverlässiger Lighthouse-Lauf
 - öffentliche Preview, Push, PR, Merge und Produktion
