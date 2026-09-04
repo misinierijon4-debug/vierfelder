@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { tickKey } from './types'
 import type { Aufenthalt, Einheit, Fach, Note, Zustand } from './types'
-import { abiPrognose, brauchtFuerSchnitt, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, istNotenDatum, klausurAnteil, kursGewichteterSchnitt, lernMinutenVorNoten, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
+import { abiAuswertung, abiPrognose, brauchtFuerSchnitt, brauchtFuerZiel, brauchtInKlausur, defizite, fachSchnitt, gesamtpunkteZuAbinote, istNotenDatum, klausurAnteil, kursGewichteterSchnitt, lernMinutenVorNoten, notenGewicht, punkteKurz, punkteZuNote, trend, vergleich } from './noten'
 
 const fach = (id: string, kursart: 'lk' | 'gk' = 'gk'): Fach => ({
   id, user: 'erijon', name: id, kursart, pruefungsfach: null, sortierung: 0,
 })
+const viertesFach = (id: string): Fach => ({ ...fach(id), pruefungsfach: 4 })
 const note = (fachId: string, punkte: number, art: 'klausur' | 'epo' | 'hue' = 'klausur', gewicht = notenGewicht(art), datum = '2026-09-01'): Note => ({
   id: `${fachId}-${art}-${punkte}-${datum}-${gewicht}`, user: 'erijon', fachId, art, punkte, gewicht, datum, titel: '',
 })
@@ -59,6 +60,10 @@ describe('fachschnitt', () => {
   })
   it('zaehlt einen leeren topf nicht als null', () => {
     expect(fachSchnitt([note('m', 13)], fach('m')).gesamt).toBe(13)
+  })
+  it('mischt keine fremde Note in das Fach des anderen Nutzers', () => {
+    const fremd: Note = { ...note('m', 0), id: 'fremd', user: 'koray' }
+    expect(fachSchnitt([note('m', 12), fremd], fach('m')).gesamt).toBe(12)
   })
 })
 
@@ -127,7 +132,7 @@ describe('prognose', () => {
     expect(defizite(faecher, [note('a', 4), note('b', 5)], 'erijon').map((f) => f.id)).toEqual(['a'])
   })
   it('trifft die offiziellen grenzen 900 und 300', () => {
-    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), fach('d')]
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('d')]
     expect(abiPrognose(faecher, faecher.map((f) => note(f.id, 15)), 'erijon')).toMatchObject({ gesamt: 900, note: 1 })
     expect(abiPrognose(faecher, faecher.map((f) => note(f.id, 5)), 'erijon')).toMatchObject({ gesamt: 300, note: 4 })
   })
@@ -135,29 +140,106 @@ describe('prognose', () => {
     expect(gesamtpunkteZuAbinote(900)).toBe(1)
     expect(gesamtpunkteZuAbinote(823)).toBe(1)
     expect(gesamtpunkteZuAbinote(822)).toBe(1.1)
+    expect(gesamtpunkteZuAbinote(301)).toBe(3.9)
     expect(gesamtpunkteZuAbinote(300)).toBe(4)
+    expect(() => gesamtpunkteZuAbinote(299)).toThrow(RangeError)
+    expect(() => gesamtpunkteZuAbinote(299.5)).toThrow(RangeError)
+    expect(() => gesamtpunkteZuAbinote(300.5)).toThrow(RangeError)
   })
   it('wertet nur zwei leistungskurse doppelt und grundkurse einfach', () => {
-    const faecher = [fach('lk1', 'lk'), fach('lk2', 'lk'), fach('lk3', 'lk'), fach('gk')]
+    const faecher = [fach('lk1', 'lk'), fach('lk2', 'lk'), fach('lk3', 'lk'), viertesFach('gk')]
     const p = abiPrognose(faecher, [note('lk1', 15), note('lk2', 15), note('lk3', 0), note('gk', 0)], 'erijon')!
     expect(p.blockI).toBe(Math.round((15 * 16) * (40 / 44)))
   })
   it('setzt bei lauter 15 block i auf genau 600', () => {
-    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), fach('d')]
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('d')]
     expect(abiPrognose(faecher, faecher.map((f) => note(f.id, 15)), 'erijon')?.blockI).toBe(600)
   })
   it('liefert ohne noten null', () => expect(abiPrognose([fach('a')], [], 'erijon')).toBeNull())
   it('meldet 8 unterkurse und nullpunkte, aber keine erfundene lk-sondergrenze', () => {
-    const faecher = [fach('lk', 'lk'), fach('g1'), fach('g2'), fach('gut')]
-    const p = abiPrognose(faecher, [note('lk', 4), note('g1', 0), note('g2', 4), note('gut', 15)], 'erijon')!
+    const faecher = [
+      fach('lk', 'lk'), fach('lk2', 'lk'), fach('lk3', 'lk'),
+      fach('g1'), fach('g2'), viertesFach('gut'),
+    ]
+    const p = abiPrognose(faecher, [
+      note('lk', 4), note('lk2', 15), note('lk3', 15),
+      note('g1', 0), note('g2', 4), note('gut', 15),
+    ], 'erijon')!
     expect(p.unterkurse).toEqual({ lk: 4, gk: 8 })
     expect(p.huerden).toContain('mehr als 7 unterkurse')
     expect(p.huerden).toContain('ein kurs mit 0 punkten ist nicht einbringbar')
     expect(p.huerden.some((h) => h.includes('leistungskursen'))).toBe(false)
+    expect(p.ergebnis).toBe('nicht_auswertbar')
+    expect(p.note).toBeNull()
   })
   it('meldet keine huerde bei einer tragfaehigen hochrechnung', () => {
-    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), fach('d')]
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('d')]
     expect(abiPrognose(faecher, faecher.map((f) => note(f.id, 10)), 'erijon')?.huerden).toEqual([])
+  })
+  it('bleibt ohne alle Fachwerte oder ohne viertes Pruefungsfach unvollstaendig', () => {
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('d')]
+    expect(abiAuswertung(faecher, [note('a', 15)], 'erijon')).toMatchObject({
+      status: 'unvollstaendig', belegt: 1, faecherGesamt: 4,
+    })
+    const ohneWahl = faecher.map((f) => ({ ...f, pruefungsfach: null }))
+    expect(abiAuswertung(ohneWahl, ohneWahl.map((f) => note(f.id, 10)), 'erijon')).toMatchObject({
+      status: 'unvollstaendig', gruende: expect.arrayContaining(['viertes prüfungsfach fehlt']),
+    })
+  })
+  it('akzeptiert Sport nicht als muendliches Pruefungsfach', () => {
+    const sport = { ...viertesFach('sport'), name: 'Sport' }
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), sport]
+    expect(abiAuswertung(faecher, faecher.map((f) => note(f.id, 10)), 'erijon')).toMatchObject({
+      status: 'unvollstaendig',
+      gruende: expect.arrayContaining(['sport kann nicht mündliches prüfungsfach sein']),
+    })
+  })
+  it('zeigt trotz mehr als 300 Gesamtpunkten keine Note bei gerissener Block-I-Huerde', () => {
+    const schwacheGk = Array.from({ length: 20 }, (_, i) => fach(`g${i}`))
+    const faecher = [
+      fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('pruefung'), ...schwacheGk,
+    ]
+    const noten = [
+      note('a', 10), note('b', 10), note('c', 10), note('pruefung', 10),
+      ...schwacheGk.map((f) => note(f.id, 0)),
+    ]
+    const prognose = abiPrognose(faecher, noten, 'erijon')!
+
+    expect(prognose.gesamt).toBeGreaterThanOrEqual(300)
+    expect(prognose.huerden).toContain('block i unter 200 punkten')
+    expect(prognose.ergebnis).toBe('nicht_auswertbar')
+    expect(prognose.note).toBeNull()
+  })
+  it('behauptet bei einem nicht einbringbaren optionalen Kurs kein endgueltiges Nichtbestehen', () => {
+    const optional = fach('informatik')
+    const faecher = [
+      fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('pruefung'), optional,
+    ]
+    const noten = [
+      note('a', 15), note('b', 15), note('c', 15), note('pruefung', 15), note('informatik', 0),
+    ]
+    const prognose = abiPrognose(faecher, noten, 'erijon')!
+
+    expect(prognose.gesamt).toBeGreaterThan(700)
+    expect(prognose.ergebnis).toBe('nicht_auswertbar')
+    expect(prognose.huerden).toContain('ein kurs mit 0 punkten ist nicht einbringbar')
+    expect(prognose.note).toBeNull()
+  })
+  it('zeigt bei Block II unter 100 trotz mindestens 300 Gesamtpunkten keine Note', () => {
+    const starkeGk = Array.from({ length: 20 }, (_, i) => fach(`g${i}`))
+    const pruefung = viertesFach('pruefung')
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), pruefung, ...starkeGk]
+    const noten = [
+      note('a', 0), note('b', 0), note('c', 0), note('pruefung', 0),
+      ...starkeGk.map((f) => note(f.id, 15)),
+    ]
+    const prognose = abiPrognose(faecher, noten, 'erijon')!
+
+    expect(prognose.gesamt).toBeGreaterThanOrEqual(300)
+    expect(prognose.blockII).toBeLessThan(100)
+    expect(prognose.huerden).toContain('block ii unter 100 punkten')
+    expect(prognose.ergebnis).toBe('nicht_auswertbar')
+    expect(prognose.note).toBeNull()
   })
   it('rechnet vier pruefungen à 15 punkte auf block ii 300', () => {
     const gk = { ...fach('gk'), pruefungsfach: 4 }
@@ -181,10 +263,15 @@ describe('ziel und trend', () => {
     expect(brauchtInKlausur([note('m', 0, 'klausur', 50)], fach('m'), 14)).toBeNull()
   })
   it('leitet den nötigen punkteschnitt aus der amtlichen abinoten-grenze ab', () => {
-    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), fach('d')]
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('d')]
     const noten = faecher.map((f) => note(f.id, 8))
     expect(brauchtFuerZiel(faecher, noten, 'erijon', 2)).toBeCloseTo(643 / 60)
     expect(brauchtFuerZiel(faecher, faecher.map((f) => note(f.id, 15)), 'erijon', 2)).toBeNull()
+  })
+  it('nennt keinen punkteschnitt, wenn eine andere bedingung die hochrechnung blockiert', () => {
+    const faecher = [fach('a', 'lk'), fach('b', 'lk'), fach('c', 'lk'), viertesFach('d')]
+    const noten = [note('a', 15), note('b', 15), note('c', 15), note('d', 0)]
+    expect(brauchtFuerZiel(faecher, noten, 'erijon', 3)).toBeNull()
   })
   it('gibt die letzten werte aelteste zuerst zurueck', () => {
     const noten = [note('m', 12, 'klausur', 10, '2026-09-03'), note('m', 8, 'klausur', 10, '2026-09-01'), note('m', 10, 'klausur', 10, '2026-09-02')]

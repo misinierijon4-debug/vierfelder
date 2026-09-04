@@ -25,16 +25,38 @@ export type Fachschnitt = {
   anzahl: number
 }
 
-export type Abiprognose = {
+type AbiprognoseBasis = {
+  status: 'prognose'
   blockI: number
   blockII: number
   gesamt: number
-  note: number
   unterkurse: { lk: number; gk: number }
   huerden: string[]
   belegt: number
-  hochgerechnet: boolean
+  faecherGesamt: number
+  hochgerechnet: true
 }
+
+/**
+ * Eine amtliche Notenzuordnung gibt es nur, wenn die Hochrechnung alle hier
+ * pruefbaren Bedingungen erfuellt. `nicht_auswertbar` behauptet bewusst nicht,
+ * das Abitur sei endgueltig nicht bestanden: Ohne Halbjahres- und
+ * Einbringungsmodell kann etwa ein optionaler 0-Punkte-Kurs ersetzbar sein.
+ */
+export type Abiprognose = AbiprognoseBasis & (
+  | { ergebnis: 'bestanden'; note: number }
+  | { ergebnis: 'nicht_auswertbar'; note: null }
+)
+
+export type AbiUnvollstaendig = {
+  status: 'unvollstaendig'
+  belegt: number
+  faecherGesamt: number
+  fehlendeFachIds: string[]
+  gruende: string[]
+}
+
+export type AbiAuswertung = Abiprognose | AbiUnvollstaendig
 
 const KURZ = ['6', '5−', '5', '5+', '4−', '4', '4+', '3−', '3', '3+', '2−', '2', '2+', '1−', '1', '1+']
 
@@ -66,7 +88,9 @@ export function notenGewicht(art: Note['art']): number {
 }
 
 export function fachSchnitt(noten: Note[], fach: Fach): Fachschnitt {
-  const imFach = noten.filter((note) => note.fachId === fach.id)
+  const imFach = noten.filter(
+    (note) => note.fachId === fach.id && note.user === fach.user
+  )
   const klausur = gewichteterSchnitt(imFach.filter((note) => note.art === 'klausur'))
   const muendlich = gewichteterSchnitt(imFach.filter((note) => note.art === 'epo' || note.art === 'hue'))
   const anteil = klausurAnteil(fach.kursart)
@@ -198,8 +222,10 @@ const ABI_NOTEN: Array<[minimum: number, note: number]> = [
 ]
 
 export function gesamtpunkteZuAbinote(gesamt: number): number {
-  const punkte = Math.min(900, Math.max(300, Math.round(gesamt)))
-  return ABI_NOTEN.find(([minimum]) => punkte >= minimum)?.[1] ?? 4
+  if (!Number.isFinite(gesamt) || !Number.isInteger(gesamt) || gesamt < 300 || gesamt > 900) {
+    throw new RangeError('eine abinote ist nur fuer ganze 300 bis 900 gesamtpunkte definiert')
+  }
+  return ABI_NOTEN.find(([minimum]) => gesamt >= minimum)?.[1] ?? 4
 }
 
 function mittel(werte: number[]): number | null {
@@ -207,24 +233,47 @@ function mittel(werte: number[]): number | null {
 }
 
 /**
- * Nur das laufende Halbjahr ist vorhanden. Jeder aktuelle Fachschnitt wird
- * deshalb auf vier Kurshalbjahre hochgerechnet. Ab Abitur 2027 werden nur die
- * zwei staerkeren der drei LK doppelt gewertet.
+ * Nur das laufende Halbjahr ist vorhanden. Erst wenn jedes konfigurierte Fach
+ * einen aktuellen Schnitt hat und das reale Pruefungsprofil vollstaendig ist,
+ * wird auf vier Kurshalbjahre hochgerechnet. Fehlende Kurse werden nicht mit
+ * einem erfundenen Durchschnitt aufgefuellt.
  */
-export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abiprognose | null {
+export function abiAuswertung(faecher: Fach[], noten: Note[], user: UserId): AbiAuswertung {
   const eigene = faecher.filter((fach) => fach.user === user)
   const mitSchnitt = eigene.map((fach) => ({ fach, schnitt: fachSchnitt(noten, fach).gesamt }))
   const belegte = mitSchnitt.filter((x): x is { fach: Fach; schnitt: number } => x.schnitt !== null)
-  if (belegte.length === 0) return null
+  const fehlendeFachIds = mitSchnitt.filter((x) => x.schnitt === null).map((x) => x.fach.id)
+  const leistungsfaecher = eigene.filter((fach) => fach.kursart === 'lk')
+  const viertePruefungen = eigene.filter(
+    (fach) => fach.kursart === 'gk' && fach.pruefungsfach === 4
+  )
+  const gruende: string[] = []
+  if (eigene.length === 0) gruende.push('keine fächer geladen')
+  if (fehlendeFachIds.length > 0) {
+    gruende.push(`${fehlendeFachIds.length} fächer noch ohne note`)
+  }
+  if (leistungsfaecher.length !== 3) gruende.push('es müssen genau 3 leistungskurse vorliegen')
+  if (viertePruefungen.length === 0) gruende.push('viertes prüfungsfach fehlt')
+  if (viertePruefungen.length > 1) gruende.push('mehr als ein viertes prüfungsfach gewählt')
+  if (viertePruefungen.some((fach) => fach.name.toLocaleLowerCase('de-DE') === 'sport')) {
+    gruende.push('sport kann nicht mündliches prüfungsfach sein')
+  }
 
-  const fallback = mittel(belegte.map((x) => x.schnitt))!
-  const lk = mitSchnitt
+  if (gruende.length > 0) {
+    return {
+      status: 'unvollstaendig',
+      belegt: belegte.length,
+      faecherGesamt: eigene.length,
+      fehlendeFachIds,
+      gruende,
+    }
+  }
+
+  const lk = belegte
     .filter((x) => x.fach.kursart === 'lk')
-    .map((x) => x.schnitt ?? fallback)
-    .slice(0, 3)
-  while (lk.length < 3) lk.push(fallback)
+    .map((x) => x.schnitt)
   const gkBelegt = belegte.filter((x) => x.fach.kursart === 'gk')
-  const gkSchnitt = mittel(gkBelegt.map((x) => x.schnitt)) ?? fallback
+  const gkSchnitt = mittel(gkBelegt.map((x) => x.schnitt))!
   const lkAbsteigend = [...lk].sort((a, b) => b - a)
 
   const p = lk.reduce((summe, wert) => summe + wert * 4, 0)
@@ -232,11 +281,12 @@ export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abipr
     + gkSchnitt * GK_KURSE
   const blockI = Math.min(600, Math.max(0, Math.round(p * BLOCK_I_FAKTOR)))
 
-  // Vier Pruefungen: die drei LK schriftlich, dazu der eine muendliche GK.
-  // Solange dieser noch nicht gewaehlt ist, steht der GK-Schnitt dafuer ein.
+  // Vier Pruefungen: die drei LK schriftlich, dazu der gewaehlte muendliche GK.
   // Jede Pruefung zaehlt fuenffach, zusammen also hoechstens 300 Punkte.
-  const gkPruefung = mitSchnitt.find((x) => x.fach.kursart === 'gk' && x.fach.pruefungsfach !== null)
-  const pruefungen = [...lk, gkPruefung ? gkPruefung.schnitt ?? gkSchnitt : gkSchnitt]
+  const gkPruefung = belegte.find(
+    (x) => x.fach.kursart === 'gk' && x.fach.pruefungsfach === 4
+  )!
+  const pruefungen = [...lk, gkPruefung.schnitt]
   const blockII = Math.min(300, Math.max(0, Math.round(pruefungen.reduce((s, p) => s + p, 0) * 5)))
 
   const unter = defizite(eigene, noten, user)
@@ -254,16 +304,31 @@ export function abiPrognose(faecher: Fach[], noten: Note[], user: UserId): Abipr
   }
 
   const gesamt = Math.min(900, blockI + blockII)
-  return {
+  const basis: AbiprognoseBasis = {
+    status: 'prognose',
     blockI,
     blockII,
     gesamt,
-    note: gesamtpunkteZuAbinote(gesamt),
     unterkurse: { lk: lkUnter, gk: gkUnter },
     huerden,
     belegt: belegte.length,
+    faecherGesamt: eigene.length,
     hochgerechnet: true,
   }
+  if (gesamt < 300 || huerden.length > 0) {
+    return { ...basis, ergebnis: 'nicht_auswertbar', note: null }
+  }
+  return { ...basis, ergebnis: 'bestanden', note: gesamtpunkteZuAbinote(gesamt) }
+}
+
+/** Kompatibilitaetshelfer fuer reine Rechenverbraucher. */
+export function abiPrognose(
+  faecher: Fach[],
+  noten: Note[],
+  user: UserId
+): Abiprognose | null {
+  const auswertung = abiAuswertung(faecher, noten, user)
+  return auswertung.status === 'prognose' ? auswertung : null
 }
 
 /** welchen Punkteschnitt die Hochrechnung mindestens fuer die Zielnote braucht */
@@ -274,7 +339,7 @@ export function brauchtFuerZiel(
   ziel: number
 ): number | null {
   const prognose = abiPrognose(faecher, noten, user)
-  if (!prognose || prognose.note <= ziel) return null
+  if (!prognose || prognose.note === null || prognose.note <= ziel) return null
   const minimum = ABI_NOTEN.filter(([, note]) => note <= ziel).at(-1)?.[0]
   if (minimum === undefined) return null
   const benoetigt = minimum / 60

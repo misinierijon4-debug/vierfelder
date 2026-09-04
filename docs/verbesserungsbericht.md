@@ -44,7 +44,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | --- | --- | --- | --- | --- |
 | P0 | `App.tsx`/`store.ts`: Mutationen bleiben während des initialen Ladens aktiv | doppelte Einträge oder leeres Sonntagsarchiv | verzögertes Backend, keine Mutation vor `bereit` | behoben |
 | P0 | `Bereichszeile.tsx`: Tastenereignis eines Kindbuttons erreicht den Zeilen-Toggle | Plus/Minus kann den ganzen Tag löschen | Komponenten-/Browser-Tastaturtest | behoben |
-| P0 | `noten.ts`: weniger als 300 Punkte werden als 4,0 ausgegeben | nicht bestanden wirkt wie bestandene Abiturnote | Grenztests 299/300 und Blockhürden | offen |
+| P0 | `noten.ts`: weniger als 300 Punkte werden als 4,0 ausgegeben | nicht bestanden wirkt wie bestandene Abiturnote | Grenztests 299/300 und Blockhürden | behoben |
 | P0 | Schlafprojektion berechnet Nachbarsegmente nicht mehr gemeinsam | Bettzeit, Effizienz und Score können trotz Rohdaten fehlen | DB-Test N-1/N/N+1 | blockiert durch Migrationsdrift |
 | P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | blockiert durch Migrationsdrift |
 | P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | offen |
@@ -125,6 +125,43 @@ Advisors und eine ausdrückliche Freigabe erforderlich.
 - Visuelle Kontrolle: Prototyp bei 320 CSS-Pixeln nach HMR-Neustart geöffnet;
   die Anzeigetafel-Geometrie blieb ohne neue horizontale Verschiebung. Dies ist
   keine physische iPhone-Abnahme.
+
+### Welle 2: ehrliche MSS-Prognose
+
+- Die amtliche Notentabelle wird nur noch für 300 bis 900 Gesamtpunkte
+  ausgewertet. Werte außerhalb dieses Bereichs schlagen intern sichtbar fehl,
+  statt still auf 4,0 beziehungsweise 1,0 geklemmt zu werden.
+- Eine Abiturhochrechnung entsteht erst, wenn jedes konfigurierte Fach einen
+  Schnitt besitzt, genau drei Leistungskurse vorhanden sind und genau ein
+  zulässiges Grundfach als vierte Prüfung gewählt ist. Fehlende Fachwerte
+  werden nicht mehr mit dem Durchschnitt anderer Fächer aufgefüllt.
+- Gerissene Block-, Unterkurs-, Nullpunkt- oder Prüfungsbedingungen liefern
+  `nicht_auswertbar` und ausdrücklich keine numerische Abiturnote. Die UI sagt
+  neutral `keine belastbare abiturnote` und nennt die Gründe. Sie behauptet
+  bewusst kein endgültiges Nichtbestehen: Ohne Halbjahres- und
+  Einbringungsmodell kann etwa ein optionaler Nullpunkte-Kurs ersetzbar sein.
+- Der Ergebnistyp schließt widersprüchliche Kombinationen wie `bestanden` plus
+  `note: null` aus. Der ungenutzte Zielrechner nennt keinen reinen
+  Punkteschnitt, wenn eine andere formale Bedingung die Prognose blockiert.
+- Warnungen und Defizite verwenden die Farbe der tatsächlich betrachteten
+  Person; Prognoseänderungen werden als höflicher Live-Status angekündigt.
+- Noten eines Nutzers fließen nur in dessen eigenes Fach ein, selbst wenn
+  beschädigte Daten dieselbe Fach-ID mit einer anderen Person verbinden.
+- Die sichtbare Notenansicht wurde bei 320 CSS-Pixeln kontrolliert: im aktuellen
+  Prototyp steht nun `für 5 von 10 fächern liegen noten vor` statt einer aus
+  fünf fehlenden Fachwerten erfundenen Abiturnote; kein horizontaler Überlauf
+  war sichtbar.
+- Fachliche Quellen: offizielle RLP-Seiten zur
+  [Gesamtqualifikation ab Abitur 2027](https://mss.rlp.de/abitur-und-fh-reife/gesamtqualifikation-1)
+  und zum [Prüfungsbereich](https://mss.rlp.de/abitur-und-fh-reife/pruefungsbereich).
+- Erster Paketlauf: `npm run check`, Exit 0, 20 Testdateien und 310 Tests;
+  TypeScript, Produktions-Webbuild, Manifest- und Bundleprüfung erfolgreich.
+  JavaScript-Artefakt: 749.653 Byte roh beziehungsweise 215.056 Byte gzip.
+  Der anschließende unabhängige Review fand die zu starke Formulierung
+  `nicht bestanden`; nach der Korrektur bestehen die 53 gezielten Logik- und
+  Komponententests. Der erneute vollständige Lauf `npm run check` endet mit
+  Exit 0, 20 Testdateien und 314 Tests; TypeScript, Webbuild und Artefaktprüfung
+  bestehen. JavaScript: 749.706 Byte roh beziehungsweise 215.115 Byte gzip.
 
 ## Offene Prüfungen
 

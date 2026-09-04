@@ -762,12 +762,16 @@ auf schmalen Telefonen jede Trefferfläche mindestens 44 Pixel breit bleibt.
 
 **Die Prognose behauptet keine Vergangenheit.** Das große Ergebnis heißt
 `abiprognose`, direkt darunter steht `aus diesem halbjahr hochgerechnet`.
-Solange das mündliche Prüfungsfach nicht gewählt ist, sagt ein zweiter Satz
-offen, dass der Grundfachschnitt dafür einsteht. Die geprüfte MSS-Regel für
-Abitur 2027 wird nicht dekorativ versteckt: zwei der drei Leistungsfächer
-werden doppelt gewertet, Block I wird mit `40/44` normiert, und Block II hängt
-von vier oder fünf Prüfungsfächern ab. Formale Hürden erscheinen als Text; die
-Zahl bleibt in Kreide.
+Solange Werte fehlen, nicht genau drei Leistungsfächer vorliegen oder das
+vierte Prüfungsfach nicht gewählt ist, steht dort keine Ersatzrechnung. Die
+geprüfte MSS-Regel für Abitur 2027 wird nicht dekorativ versteckt: zwei der
+drei Leistungsfächer werden doppelt gewertet, Block I wird mit `40/44`
+normiert, und Block II rechnet die drei schriftlichen Leistungsfächer plus das
+gewählte mündliche Grundfach jeweils fünffach. Eine amtlich zugeordnete Note
+erscheint nur, wenn die Hochrechnung alle hier prüfbaren Bedingungen erfüllt.
+Andernfalls nennt die Oberfläche die Gründe und sagt neutral, dass keine
+belastbare Abiturnote vorliegt; ohne Halbjahres- und Einbringungsmodell wäre ein
+endgültiges „nicht bestanden“ eine zu starke Behauptung.
 
 
 ## 26. Nachtrag: das gewicht war nie gemessen (02.09.2026)

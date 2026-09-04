@@ -279,56 +279,76 @@ trend(noten, fachId, n = 6): number[]                // die letzten n punkte, ae
 ### Abitur (Rheinland-Pfalz, MSS)
 
 ```ts
-type Abiprognose = {
-  blockI: number        // 0…600
-  blockII: number       // 0…300
-  gesamt: number        // 0…900
-  note: number          // 1,0 … 4,0
-  /** kurse unter 5 punkten, getrennt nach lf und gf */
-  unterkurse: { lf: number; gf: number }
-  /** was die zulassung kippt: zu viele unterkurse, block I unter 200, … */
-  huerden: string[]
-  /** wie viele faecher wirklich noten haben */
-  belegt: number
-  hochgerechnet: boolean
-}
+type AbiAuswertung =
+  | {
+      status: 'unvollstaendig'
+      belegt: number
+      faecherGesamt: number
+      fehlendeFachIds: string[]
+      gruende: string[]
+    }
+  | {
+      status: 'prognose'
+      ergebnis: 'bestanden'
+      blockI: number        // 0…600
+      blockII: number       // 0…300
+      gesamt: number        // 0…900
+      note: number          // 1,0 … 4,0 nur bei erfuellten Bedingungen
+      unterkurse: { lk: number; gk: number }
+      huerden: string[]
+      belegt: number
+      faecherGesamt: number
+      hochgerechnet: true
+    }
+  | {
+      status: 'prognose'
+      ergebnis: 'nicht_auswertbar'
+      note: null
+      // dieselben Rechen- und Belegfelder wie oben
+    }
 
-abiPrognose(faecher, noten, user): Abiprognose | null
+abiAuswertung(faecher, noten, user): AbiAuswertung
 ```
 
 Die Zahlen der MSS, alle als benannte Konstanten oben in der Datei:
 
 - **Einbringung:** 36 Kurshalbjahre. 12 Leistungsfachkurse (3 LF × 4 Halbjahre),
-  jeder **doppelt** gewertet, plus 24 Grundfachkurse einfach.
-  Wertungen gesamt: 12 × 2 + 24 = **48**.
-- **Block I:** `blockI = summe(punkte × wertung) / 48 × 40`, gedeckelt auf 600.
+  davon die 8 Kurse der zwei stärkeren Leistungsfächer **doppelt** gewertet,
+  plus 24 Grundfachkurse einfach. Wertungen gesamt: 36 + 8 = **44**.
+- **Block I:** `blockI = summe(punkte × wertung) / 44 × 40`, gedeckelt auf 600.
   Volle 15 Punkte überall ergeben genau 600.
-- **Block II:** fünf Prüfungsfächer, jedes Ergebnis **vierfach** → max. 300.
-  In der MSS sind das die drei Leistungsfächer und ein Grundfach schriftlich,
-  dazu ein Grundfach mündlich.
-- **Note:** `17/3 − gesamt/180`, geklemmt auf [1,0 · 4,0], eine
-  Nachkommastelle. Die Formel trifft beide Enden exakt: 900 → 1,0, 300 → 4,0.
+- **Block II:** im hier verwendeten Vier-Prüfungsfächer-Modell die drei
+  Leistungsfächer schriftlich und genau ein Grundfach mündlich, jedes Ergebnis
+  **fünffach** → max. 300.
+- **Note:** Zuordnung über die amtliche Punktetabelle. Sie beginnt bei 300
+  Gesamtpunkten mit 4,0 und endet ab 823 Punkten mit 1,0. Unter 300 Punkten
+  existiert keine Abiturdurchschnittsnote.
 
 Hürden, die `huerden` benennt, sobald sie gerissen sind:
 
 - Block I unter 200 Punkten.
 - Block II unter 100 Punkten.
 - Mehr als 7 Unterkurse (unter 5 Punkte) unter den 36 eingebrachten.
-- Mehr als 3 Unterkurse in den Leistungsfächern.
 - Ein Kurs mit 0 Punkten.
+- Weniger als zwei der vier Prüfungsergebnisse mit mindestens 5 Punkten.
 
-> **Diese Liste ist gegen die MSS-Broschüre der Schule zu prüfen, bevor sie
-> jemand zu sehen bekommt.** Solange das nicht passiert ist, steht unter der
-> Prognose ein Satz, der sagt, dass sie ungeprüft ist. Lieber ein ehrlicher
-> Hinweis als eine Zahl, auf die sich zwei Leute im Abiturjahr verlassen.
+Die Regeln sind gegen die offizielle RLP-Fassung für das Abitur ab 2027 geprüft:
+[Gesamtqualifikation](https://mss.rlp.de/abitur-und-fh-reife/gesamtqualifikation-1)
+und [Prüfungsbereich](https://mss.rlp.de/abitur-und-fh-reife/pruefungsbereich).
 
 **Hochrechnung.** Es gibt nur dieses Halbjahr, also keine echten 36
 Kurshalbjahre. Für jede Einbringung eines Kurses wird der aktuelle Fachschnitt
 eingesetzt, für jedes Prüfungsergebnis der Schnitt des Prüfungsfachs.
 `hochgerechnet` ist dann `true`, und die Oberfläche sagt es auch.
 
-`null`, solange kein Fach eine Note hat — eine Prognose aus nichts ist keine
-Prognose.
+Solange ein konfiguriertes Fach noch keinen Schnitt hat, nicht genau drei
+Leistungskurse vorliegen oder das vierte Prüfungsfach fehlt, lautet der Zustand
+`unvollstaendig`. Fehlende Fachwerte werden nicht durch einen Durchschnitt
+ersetzt. Eine Prognose, die eine Mindest- oder Einbringungsbedingung nicht
+erfüllt, zeigt Punkte und Gründe, aber keine scheinbar bestandene Note. Sie
+lautet neutral `nicht_auswertbar`: Ohne vollständiges Halbjahr- und
+Einbringungsmodell darf ein einzelner nicht einbringbarer Kurs nicht als
+endgültiges Nichtbestehen ausgegeben werden.
 
 ### Zielrechner
 
