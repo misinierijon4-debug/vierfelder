@@ -1,9 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { StrictMode, useEffect } from 'react'
+import type { PropsWithChildren } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Anfangszustand, Backend, BackendEreignis } from './backend'
+import { phasenLadeKey } from './schlafLaden'
 import { useTracker } from './store'
+import type { Phase, Schlafnacht } from './types'
 
 afterEach(cleanup)
 
@@ -19,6 +23,27 @@ const ANFANG: Anfangszustand = {
   noten: { faecher: [], noten: [] },
   einheitVonVerfuegbar: true,
   altbestand: false,
+}
+
+const PHASE: Phase = { art: 'kern', start: 0, dauer: 480 }
+const SCHLAF_OFFEN: Schlafnacht = {
+  user: 'erijon',
+  nacht: '2026-09-03',
+  schlafMinuten: 480,
+  einschlafzeit: '2026-09-02T21:30:00.000Z',
+  aufwachzeit: '2026-09-03T05:30:00.000Z',
+  bettStart: null,
+  bettEnde: null,
+  bettMinuten: null,
+  tiefMinuten: 0,
+  remMinuten: 0,
+  kernMinuten: 480,
+  unspezMinuten: 0,
+  wachMinuten: 0,
+  zielMinuten: 480,
+  phasen: null,
+  nachtwert: 80,
+  scoreKonfidenz: 100,
 }
 
 function offen<T>() {
@@ -294,5 +319,252 @@ describe('useTracker Schreibbereitschaft', () => {
 
     expect(backend.schreibeAbrechnung).not.toHaveBeenCalled()
     expect(result.current.abrechnungen).toEqual([ABRECHNUNG])
+  })
+})
+
+describe('useTracker Schlafverlaeufe', () => {
+  const key = phasenLadeKey(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+
+  it('dedupliziert zwei Consumer und fuehrt loading in loaded ueber', async () => {
+    const antwort = offen<Phase[]>()
+    const ladePhasen = vi.fn<Backend['ladePhasen']>(() => antwort.promise)
+    const backend = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen,
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    let cleanupA: (() => void) | void
+    let cleanupB: (() => void) | void
+    act(() => {
+      cleanupA = result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+      cleanupB = result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+
+    expect(ladePhasen).toHaveBeenCalledTimes(1)
+    expect(ladePhasen.mock.calls[0]?.[2]).toBeInstanceOf(AbortSignal)
+    expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loading' })
+
+    await act(async () => {
+      antwort.resolve([PHASE])
+      await antwort.promise
+    })
+    await waitFor(() => {
+      expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loaded' })
+    })
+    expect(result.current.schlaf[0]?.phasen).toEqual([PHASE])
+
+    act(() => {
+      cleanupA?.()
+      cleanupB?.()
+    })
+  })
+
+  it('zeigt einen Fehler ohne Auto-Schleife und laesst erst den Retry erneut laden', async () => {
+    const ladePhasen = vi
+      .fn<Backend['ladePhasen']>()
+      .mockRejectedValueOnce(new Error('internes ziel mit token'))
+      .mockResolvedValueOnce([])
+    const backend = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen,
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+    await waitFor(() => {
+      expect(result.current.phasenLadezustaende[key]).toEqual({
+        status: 'error',
+        text: 'verlauf konnte nicht geladen werden.',
+      })
+    })
+    expect(result.current.schlaf[0]?.phasen).toBeNull()
+    expect(result.current.fehler).toBeNull()
+
+    act(() => {
+      result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+    expect(ladePhasen).toHaveBeenCalledTimes(1)
+
+    act(() => result.current.phasenNeuLaden(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht))
+    expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loading' })
+    await waitFor(() => {
+      expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'empty' })
+    })
+    expect(ladePhasen).toHaveBeenCalledTimes(2)
+    expect(result.current.schlaf[0]?.phasen).toEqual([])
+  })
+
+  it('bricht beim Backendwechsel ab und ignoriert die spaete alte Antwort', async () => {
+    const alteAntwort = offen<Phase[]>()
+    const ladeAlt = vi.fn((_user: unknown, _nacht: unknown, _signal: AbortSignal) => alteAntwort.promise)
+    const erstes = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen: ladeAlt,
+    })
+    const neueNacht = { ...SCHLAF_OFFEN, phasen: [] }
+    const zweites = backendMit(async () => ({ ...ANFANG, me: 'koray', schlaf: [neueNacht] }))
+    const { result, rerender } = renderHook(
+      ({ backend }) => useTracker(backend),
+      { initialProps: { backend: erstes as Backend } }
+    )
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+    const signal = ladeAlt.mock.calls[0]?.[2]
+    expect(signal?.aborted).toBe(false)
+
+    rerender({ backend: zweites })
+    await waitFor(() => expect(result.current.me).toBe('koray'))
+    expect(signal?.aborted).toBe(true)
+
+    await act(async () => {
+      alteAntwort.resolve([PHASE])
+      await alteAntwort.promise
+    })
+
+    expect(result.current.schlaf).toEqual([neueNacht])
+    expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'empty' })
+  })
+
+  it('laedt nach einer Realtime-Invalidierung derselben sichtbaren Nacht frisch', async () => {
+    const ersteAntwort = offen<Phase[]>()
+    const zweiteAntwort = offen<Phase[]>()
+    const ladePhasen = vi
+      .fn<Backend['ladePhasen']>()
+      .mockImplementationOnce(() => ersteAntwort.promise)
+      .mockImplementationOnce(() => zweiteAntwort.promise)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen,
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+    const altesSignal = ladePhasen.mock.calls[0]![2]
+
+    await act(async () => {
+      melde({
+        typ: 'schlaf',
+        art: 'wert',
+        nacht: { ...SCHLAF_OFFEN, schlafMinuten: 481, phasen: null },
+      })
+      await Promise.resolve()
+    })
+
+    expect(altesSignal.aborted).toBe(true)
+    expect(ladePhasen).toHaveBeenCalledTimes(2)
+    expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loading' })
+
+    await act(async () => {
+      ersteAntwort.resolve([{ art: 'tief', start: 0, dauer: 1 }])
+      await ersteAntwort.promise
+    })
+    expect(result.current.schlaf[0]?.phasen).toBeNull()
+
+    await act(async () => {
+      zweiteAntwort.resolve([PHASE])
+      await zweiteAntwort.promise
+    })
+    await waitFor(() => expect(result.current.schlaf[0]?.phasen).toEqual([PHASE]))
+  })
+
+  it('entfernt eine per Realtime geloeschte Nacht samt Pending-Abruf', async () => {
+    const antwort = offen<Phase[]>()
+    const ladePhasen = vi.fn<Backend['ladePhasen']>(() => antwort.promise)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen,
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+    const signal = ladePhasen.mock.calls[0]![2]
+    act(() => {
+      melde({
+        typ: 'schlaf',
+        art: 'weg',
+        user: SCHLAF_OFFEN.user,
+        nacht: SCHLAF_OFFEN.nacht,
+      })
+    })
+
+    expect(signal.aborted).toBe(true)
+    expect(result.current.schlaf).toEqual([])
+    expect(result.current.phasenLadezustaende[key]).toBeUndefined()
+
+    await act(async () => {
+      antwort.resolve([PHASE])
+      await antwort.promise
+    })
+    expect(result.current.schlaf).toEqual([])
+  })
+
+  it('bricht einen laufenden Verlaufabruf beim Unmount ab', async () => {
+    const antwort = offen<Phase[]>()
+    const ladePhasen = vi.fn<Backend['ladePhasen']>(() => antwort.promise)
+    const backend = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen,
+    })
+    const { result, unmount } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.phasenNeuLaden(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+    })
+    const signal = ladePhasen.mock.calls[0]![2]
+    expect(signal.aborted).toBe(false)
+
+    unmount()
+    expect(signal.aborted).toBe(true)
+  })
+
+  it('teilt den Abruf auch durch StrictMode-Effect-Cleanup hindurch', async () => {
+    const antwort = offen<Phase[]>()
+    const ladePhasen = vi.fn<Backend['ladePhasen']>(() => antwort.promise)
+    const backend = backendMit(async () => ({ ...ANFANG, schlaf: [SCHLAF_OFFEN] }), {
+      ladePhasen,
+    })
+    const wrapper = ({ children }: PropsWithChildren) => <StrictMode>{children}</StrictMode>
+    const { result } = renderHook(() => {
+      const tracker = useTracker(backend)
+      const status = tracker.phasenLadezustaende[key]?.status
+      useEffect(() => {
+        if (tracker.ladezustand !== 'bereit' || tracker.schlaf[0]?.phasen !== null) return
+        return tracker.phasenNachladen(SCHLAF_OFFEN.user, SCHLAF_OFFEN.nacht)
+      }, [status, tracker.ladezustand, tracker.phasenNachladen, tracker.schlaf])
+      return tracker
+    }, { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loading' })
+    })
+    expect(ladePhasen).toHaveBeenCalledTimes(1)
+    expect(ladePhasen.mock.calls[0]![2].aborted).toBe(false)
+
+    await act(async () => {
+      antwort.resolve([PHASE])
+      await antwort.promise
+    })
+    await waitFor(() => {
+      expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loaded' })
+    })
   })
 })

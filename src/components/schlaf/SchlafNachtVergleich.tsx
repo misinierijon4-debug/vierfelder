@@ -12,11 +12,15 @@ import {
   verlauf,
 } from '../../lib/schlafPhasen'
 import { nachtkurve } from '../../lib/nachtkurve'
+import { phasenLadeKey, phasenLadezustand } from '../../lib/schlafLaden'
+import type { PhasenLadezustand } from '../../lib/schlafLaden'
 
 type Props = {
   naechte: Schlafnacht[]
   gewaehlterTag: string
-  onVerlaufBrauchen: (user: UserId, nacht: string) => void
+  phasenLadezustaende: Record<string, PhasenLadezustand>
+  onVerlaufBrauchen: (user: UserId, nacht: string) => (() => void) | void
+  onVerlaufErneut: (user: UserId, nacht: string) => void
 }
 
 /** die kurve hat dieselben masse wie im nachtdetail, nur zweifarbig uebereinander */
@@ -104,7 +108,13 @@ function deltaText(a: number | null, b: number | null, einheit: Zeile['delta']):
   return `${zahl} ${einheit}`
 }
 
-export function SchlafNachtVergleich({ naechte, gewaehlterTag, onVerlaufBrauchen }: Props) {
+export function SchlafNachtVergleich({
+  naechte,
+  gewaehlterTag,
+  phasenLadezustaende,
+  onVerlaufBrauchen,
+  onVerlaufErneut,
+}: Props) {
   const nachtJeUser = useMemo(() => {
     const treffer: Partial<Record<UserId, Schlafnacht>> = {}
     for (const nacht of naechte) {
@@ -117,6 +127,12 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag, onVerlaufBrauchen
 
   const erijonNacht = nachtJeUser.erijon
   const korayNacht = nachtJeUser.koray
+  const verlaufZustaende = [erijonNacht, korayNacht].map((nacht) =>
+    nacht
+      ? phasenLadezustaende[phasenLadeKey(nacht.user, nacht.nacht)] ??
+        phasenLadezustand(nacht)
+      : { status: 'idle' as const }
+  )
   const bild = useMemo(() => {
     if (!erijonNacht || !korayNacht) return null
     const analysen = [analysiereSchlafnacht(erijonNacht), analysiereSchlafnacht(korayNacht)]
@@ -151,10 +167,23 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag, onVerlaufBrauchen
   }, [erijonNacht, korayNacht])
 
   useEffect(() => {
+    const aufraeumen: Array<() => void> = []
     for (const nacht of [erijonNacht, korayNacht]) {
-      if (nacht?.phasen === null) onVerlaufBrauchen(nacht.user, nacht.nacht)
+      if (nacht?.phasen === null) {
+        const cleanup = onVerlaufBrauchen(nacht.user, nacht.nacht)
+        if (cleanup) aufraeumen.push(cleanup)
+      }
     }
-  }, [erijonNacht, korayNacht, onVerlaufBrauchen])
+    return () => aufraeumen.forEach((cleanup) => cleanup())
+  }, [
+    erijonNacht?.user,
+    erijonNacht?.nacht,
+    korayNacht?.user,
+    korayNacht?.nacht,
+    verlaufZustaende[0]?.status,
+    verlaufZustaende[1]?.status,
+    onVerlaufBrauchen,
+  ])
 
   if (!bild) return null
 
@@ -270,9 +299,45 @@ export function SchlafNachtVergleich({ naechte, gewaehlterTag, onVerlaufBrauchen
             </svg>
           </div>
         ) : (
-          <p className="border-t border-linie px-3 py-2.5 text-pretty text-[10px] leading-snug text-kreide-52">
-            die kurven erscheinen erst, wenn die schlafphasen beider nächte geladen sind
-          </p>
+          <div className="border-t border-linie px-3 py-2.5" role="status">
+            {USERS.map((user, index) => {
+              const nacht = index === 0 ? erijonNacht : korayNacht
+              const zustand = verlaufZustaende[index]!
+              if (!nacht) return null
+              if (zustand.status === 'loaded') {
+                if (bild.analysen[index]?.hatPhasenDaten) return null
+                return (
+                  <p key={user.id} className="py-1 text-pretty text-[10px] leading-snug text-kreide-52">
+                    {user.name}: geladene phasen reichen nicht für eine belastbare kurve
+                  </p>
+                )
+              }
+              if (zustand.status === 'error') {
+                return (
+                  <div key={user.id} className="flex min-h-11 items-center justify-between gap-3">
+                    <span className="text-pretty text-[10px] leading-snug text-kreide-52">
+                      {user.name}: verlauf konnte nicht geladen werden
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onVerlaufErneut(nacht.user, nacht.nacht)}
+                      className="shrink-0 text-[10px] font-semibold text-kreide underline decoration-linie-hell underline-offset-4 focus-visible:outline-none"
+                    >
+                      erneut
+                    </button>
+                  </div>
+                )
+              }
+              return (
+                <p key={user.id} className="py-1 text-pretty text-[10px] leading-snug text-kreide-52">
+                  {user.name}:{' '}
+                  {zustand.status === 'empty'
+                    ? 'Health lieferte keine Schlafstadien'
+                    : 'verlauf wird geladen …'}
+                </p>
+              )
+            })}
+          </div>
         )}
       </div>
     </section>

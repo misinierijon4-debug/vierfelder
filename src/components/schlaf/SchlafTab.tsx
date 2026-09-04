@@ -9,17 +9,30 @@ import { SchlafNachtDetail } from './SchlafNachtDetail'
 import { SchlafNachtVergleich } from './SchlafNachtVergleich'
 import { SchlafRhythmus } from './SchlafRhythmus'
 import { SchlafKalender } from './SchlafKalender'
+import type { PhasenLadezustand } from '../../lib/schlafLaden'
 
 type Props = {
   naechte: Schlafnacht[]
   woche: string[]
   heuteKey: string
   me: UserId
+  istPrototyp: boolean
+  phasenLadezustaende: Record<string, PhasenLadezustand>
   /** der verlauf aelterer naechte kommt erst, wenn eine davon geoeffnet wird */
-  onVerlaufBrauchen: (user: UserId, nacht: string) => void
+  onVerlaufBrauchen: (user: UserId, nacht: string) => (() => void) | void
+  onVerlaufErneut: (user: UserId, nacht: string) => void
 }
 
-export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: Props) {
+export function SchlafTab({
+  naechte,
+  woche,
+  heuteKey,
+  me,
+  istPrototyp,
+  phasenLadezustaende,
+  onVerlaufBrauchen,
+  onVerlaufErneut,
+}: Props) {
   const registrierte = registrierteSchlafNutzer(naechte)
   const detailRef = useRef<HTMLDivElement>(null)
   const [kalenderOffen, setKalenderOffen] = useState(false)
@@ -97,6 +110,12 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
       transition={{ duration: 0.2 }}
       className="space-y-4"
     >
+      {istPrototyp && (
+        <p className="border-y border-linie py-2 text-pretty text-[10px] text-kreide-52" role="note">
+          beispieldaten im prototyp · nicht aus Apple Health
+        </p>
+      )}
+
       <SchlafWochenVergleich
         naechte={naechte}
         registrierte={registrierte}
@@ -118,11 +137,19 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
           gewaehlterTag={gewaehlterTag}
           ansichtUser={ansichtUser}
           onAnsichtUserWaehlen={setAnsichtUser}
+          phasenLadezustaende={phasenLadezustaende}
           onVerlaufBrauchen={onVerlaufBrauchen}
+          onVerlaufErneut={onVerlaufErneut}
         />
       </div>
 
-      <SchlafNachtVergleich naechte={naechte} gewaehlterTag={gewaehlterTag} onVerlaufBrauchen={onVerlaufBrauchen} />
+      <SchlafNachtVergleich
+        naechte={naechte}
+        gewaehlterTag={gewaehlterTag}
+        phasenLadezustaende={phasenLadezustaende}
+        onVerlaufBrauchen={onVerlaufBrauchen}
+        onVerlaufErneut={onVerlaufErneut}
+      />
 
       <SchlafRhythmus
         naechte={naechte}
@@ -136,6 +163,7 @@ export function SchlafTab({ naechte, woche, heuteKey, me, onVerlaufBrauchen }: P
         ansichtUser={ansichtUser}
         gewaehlterTag={gewaehlterTag}
         heuteKey={heuteKey}
+        istPrototyp={istPrototyp}
         onTagWaehlen={waehleKalenderTag}
         onSchliessen={() => setKalenderOffen(false)}
       />

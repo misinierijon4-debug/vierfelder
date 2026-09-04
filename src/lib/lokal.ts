@@ -523,10 +523,14 @@ export function lokalesBackend(): Backend {
     },
 
     // im prototyp liegt alles im browser, es gibt nichts nachzuladen
-    async ladePhasen(user, nacht) {
+    async ladePhasen(user, nacht, signal) {
+      if (signal.aborted) throw new DOMException('abgebrochen', 'AbortError')
       const gespeichert = lade<Schlafnacht[]>(SCHLAF_KEY, [])
       const alle = gespeichert.length > 0 ? gespeichert : erzeugeBeispielSchlaf()
-      return alle.find((n) => n.user === user && n.nacht === nacht)?.phasen ?? []
+      const gefunden = alle.find((n) => n.user === user && n.nacht === nacht)
+      if (!gefunden) throw new Error('schlafnacht wurde nicht gefunden')
+      if (gefunden.phasen === null) throw new Error('schlafphasen sind lokal nicht verfuegbar')
+      return gefunden.phasen
     },
 
     abonniere(cb) {

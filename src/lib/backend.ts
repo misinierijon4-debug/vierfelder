@@ -27,11 +27,12 @@ export type FachEreignis = { typ: 'fach'; art: 'neu' | 'weg' | 'wert'; fach: Fac
 export type NoteEreignis = { typ: 'note'; art: 'neu' | 'weg' | 'wert'; note: Note }
 
 /**
- * eine nacht, die gerade importiert oder neu bewertet wurde. sie ersetzt die
- * vorhandene nacht derselben person, sonst käme dieselbe nacht doppelt in die
- * liste, wenn der kurzbefehl zweimal läuft.
+ * eine nacht, die importiert, neu bewertet oder aus der lesprojektion entfernt
+ * wurde. eine wertmeldung ersetzt die vorhandene nacht derselben person.
  */
-export type SchlafEreignis = { typ: 'schlaf'; nacht: Schlafnacht }
+export type SchlafEreignis =
+  | { typ: 'schlaf'; art: 'wert'; nacht: Schlafnacht }
+  | { typ: 'schlaf'; art: 'weg'; user: UserId; nacht: string }
 
 /** ein gewicht von einem anderen gerät. `kg === null` heißt gelöscht */
 export type GewichtEreignis = {
@@ -112,7 +113,7 @@ export interface Backend {
    * holt den verlauf einer einzelnen nacht nach. nur das nachtdetail braucht
    * ihn, deshalb kommt er nicht mit der ganzen historie mit.
    */
-  ladePhasen(user: UserId, nacht: string): Promise<Phase[]>
+  ladePhasen(user: UserId, nacht: string, signal: AbortSignal): Promise<Phase[]>
   /** ruft cb bei jeder fremden oder eigenen einheit auf. gibt die abmeldung zurück */
   abonniere(cb: (e: BackendEreignis) => void): () => void
 }

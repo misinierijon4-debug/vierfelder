@@ -36,6 +36,14 @@ import {
   ohneTag,
 } from './tracker'
 import { istNotenDatum, notenGewicht } from './noten'
+import {
+  phasenLadeKey,
+  phasenLadezustand,
+} from './schlafLaden'
+import type {
+  PhasenLadezustand,
+  PhasenTransportzustand,
+} from './schlafLaden'
 
 let ereignisId = 0
 
@@ -55,6 +63,16 @@ function fehlertext(e: unknown): string {
 type Ladezustand = 'laden' | 'bereit' | 'fehler'
 export type AbrechnungSchreibstatus = 'speichern' | 'fehler'
 
+type VerlaufAnfrage = {
+  id: symbol
+  backendLauf: symbol
+  controller: AbortController
+}
+
+function istAbbruch(e: unknown): boolean {
+  return (e as { name?: string } | null)?.name === 'AbortError'
+}
+
 /**
  * hält den zustand, schreibt optimistisch und nimmt bei fehlern zurück.
  * refs statt state als schreibgrundlage: zwei taps im selben tick würden sich
@@ -66,6 +84,9 @@ export function useTracker(backend: Backend) {
   const [gewichte, setGewichte] = useState<Gewichte>({})
   const [gewichtQuellen, setGewichtQuellen] = useState<GewichtQuellen>({})
   const [schlaf, setSchlaf] = useState<Schlafnacht[]>([])
+  const [phasenTransport, setPhasenTransport] = useState<
+    Record<string, PhasenTransportzustand>
+  >({})
   // messungen schreibt nur die datenbank, deshalb gibt es hier kein ref und
   // keine optimistische rücknahme: der zustand ändert sich nur beim laden.
   const [aufenthalte, setAufenthalte] = useState<Aufenthalt[]>([])
@@ -96,11 +117,17 @@ export function useTracker(backend: Backend) {
    * welche verlaeufe gerade unterwegs sind. ohne das loeste jeder render des
    * nachtdetails eine weitere abfrage derselben nacht aus.
    */
-  const verlaeufeUnterwegs = useRef(new Map<string, symbol>())
+  const verlaeufeUnterwegs = useRef(new Map<string, VerlaufAnfrage>())
+  const verlaufBeobachter = useRef(new Map<string, Set<symbol>>())
+  const startePhasenAbrufRef = useRef(
+    (_user: UserId, _nacht: string, _erneut: boolean) => {}
+  )
 
   const einheitenRef = useRef<Einheiten>({})
   const gewichteRef = useRef<Gewichte>({})
   const gewichtQuellenRef = useRef<GewichtQuellen>({})
+  const schlafRef = useRef<Schlafnacht[]>([])
+  const phasenTransportRef = useRef<Record<string, PhasenTransportzustand>>({})
 
   /**
    * hält fest, wie eine zahl entstanden ist. `null` heißt: der eintrag ist weg.
@@ -164,13 +191,23 @@ export function useTracker(backend: Backend) {
     bereiteLadungRef.current = null
     letzteAktion.current = null
     kette.current.clear()
+    for (const anfrage of verlaeufeUnterwegs.current.values()) anfrage.controller.abort()
     verlaeufeUnterwegs.current.clear()
+    verlaufBeobachter.current.clear()
+    phasenTransportRef.current = {}
+    setPhasenTransport({})
     abrechnungStatusRef.current = {}
     setAbrechnungStatus({})
 
     return () => {
       if (aktiveLadungRef.current === backendLauf) aktiveLadungRef.current = null
       if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
+      for (const anfrage of verlaeufeUnterwegs.current.values()) {
+        if (anfrage.backendLauf === backendLauf) anfrage.controller.abort()
+      }
+      verlaeufeUnterwegs.current.clear()
+      verlaufBeobachter.current.clear()
+      phasenTransportRef.current = {}
     }
   }, [backendLauf])
 
@@ -201,6 +238,31 @@ export function useTracker(backend: Backend) {
     setEinheiten(next)
   }, [])
 
+  const uebernimmSchlaf = useCallback((next: Schlafnacht[]) => {
+    schlafRef.current = next
+    setSchlaf(next)
+  }, [])
+
+  const merkePhasenTransport = useCallback(
+    (key: string, status: PhasenTransportzustand | null) => {
+      const vorher = phasenTransportRef.current
+      if (status === null && vorher[key] === undefined) return
+      if (
+        status !== null &&
+        vorher[key]?.status === status.status &&
+        (status.status !== 'error' ||
+          (vorher[key] as Extract<PhasenTransportzustand, { status: 'error' }>).text === status.text)
+      ) return
+
+      const next = { ...vorher }
+      if (status === null) delete next[key]
+      else next[key] = status
+      phasenTransportRef.current = next
+      setPhasenTransport(next)
+    },
+    []
+  )
+
   useEffect(() => {
     let aktiv = true
     bereiteLadungRef.current = null
@@ -227,7 +289,9 @@ export function useTracker(backend: Backend) {
         setEinheiten(anfang.einheiten)
         setGewichte(anfang.gewichte)
         setGewichtQuellen(anfang.gewichtQuellen)
-        setSchlaf(anfang.schlaf)
+        uebernimmSchlaf(anfang.schlaf)
+        phasenTransportRef.current = {}
+        setPhasenTransport({})
         setAufenthalte(anfang.aufenthalte)
         setWetten(anfang.wetten)
         setAbrechnungen(anfang.abrechnungen)
@@ -299,7 +363,29 @@ export function useTracker(backend: Backend) {
       // des kurzbefehls meldet dieselbe nacht noch einmal, und zwei zeilen für
       // eine nacht würden den kalender und den wochenschnitt verdoppeln
       if (e.typ === 'schlaf') {
-        setSchlaf((vorher) => mitNacht(vorher, e.nacht))
+        const user = e.art === 'weg' ? e.user : e.nacht.user
+        const nachtKey = e.art === 'weg' ? e.nacht : e.nacht.nacht
+        const key = phasenLadeKey(user, nachtKey)
+        const anfrage = verlaeufeUnterwegs.current.get(key)
+        if (anfrage) {
+          anfrage.controller.abort()
+          verlaeufeUnterwegs.current.delete(key)
+        }
+        merkePhasenTransport(key, null)
+        if (e.art === 'weg') {
+          verlaufBeobachter.current.delete(key)
+          uebernimmSchlaf(
+            schlafRef.current.filter((n) => n.user !== e.user || n.nacht !== e.nacht)
+          )
+        } else {
+          uebernimmSchlaf(mitNacht(schlafRef.current, e.nacht))
+          if (
+            e.nacht.phasen === null &&
+            (verlaufBeobachter.current.get(key)?.size ?? 0) > 0
+          ) {
+            queueMicrotask(() => startePhasenAbrufRef.current(user, nachtKey, false))
+          }
+        }
         return
       }
 
@@ -357,7 +443,15 @@ export function useTracker(backend: Backend) {
       if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
       abmelden()
     }
-  }, [backend, backendLauf, istAktuell, merkeAbrechnungStatus, uebernimm])
+  }, [
+    backend,
+    backendLauf,
+    istAktuell,
+    merkeAbrechnungStatus,
+    merkePhasenTransport,
+    uebernimm,
+    uebernimmSchlaf,
+  ])
 
   /** legt eine weitere durchführung an. gibt sie zurück, damit undo sie kennt */
   const einheitHinzu = useCallback(
@@ -643,37 +737,110 @@ export function useTracker(backend: Backend) {
   )
 
   /**
-   * holt den verlauf einer nacht nach, die ohne ihn geladen wurde.
-   *
-   * Fehler bleiben still: der Verlauf ist die Zugabe, die Nacht steht auch
-   * ohne ihn vollstaendig da. Ein zweiter Aufruf laeuft nach einem Fehler
-   * wieder los, weil der Schluessel dann nicht mehr gesperrt ist.
+   * Startet genau einen Verlaufabruf je Nacht. Die individuelle Request-ID
+   * verhindert, dass ein spaeter Abschluss eines abgebrochenen Abrufs einen
+   * neueren Retry entfernt oder dessen Zustand ueberschreibt.
    */
-  const phasenNachladen = useCallback(
-    (user: UserId, nacht: string) => {
+  const startePhasenAbruf = useCallback(
+    (user: UserId, nacht: string, erneut: boolean) => {
       if (!darfSchreiben()) return
-      const key = `${user}|${nacht}`
-      if (verlaeufeUnterwegs.current.get(key) === backendLauf) return
-      verlaeufeUnterwegs.current.set(key, backendLauf)
+      const key = phasenLadeKey(user, nacht)
+      const vorhanden = schlafRef.current.find((n) => n.user === user && n.nacht === nacht)
+      if (!vorhanden || vorhanden.phasen !== null) return
+      if (verlaeufeUnterwegs.current.has(key)) return
+      if (!erneut && phasenTransportRef.current[key]?.status === 'error') return
+
+      const anfrage: VerlaufAnfrage = {
+        id: Symbol('phasen-abruf'),
+        backendLauf,
+        controller: new AbortController(),
+      }
+      verlaeufeUnterwegs.current.set(key, anfrage)
+      merkePhasenTransport(key, { status: 'loading' })
 
       void backend
-        .ladePhasen(user, nacht)
+        .ladePhasen(user, nacht, anfrage.controller.signal)
         .then((phasen) => {
-          if (!darfSchreiben() || verlaeufeUnterwegs.current.get(key) !== backendLauf) return
-          setSchlaf((vorher) => {
-            const vorhanden = vorher.find((n) => n.user === user && n.nacht === nacht)
-            if (!vorhanden || vorhanden.phasen !== null) return vorher
-            return mitNacht(vorher, { ...vorhanden, phasen })
-          })
+          const aktuell = verlaeufeUnterwegs.current.get(key)
+          if (
+            !darfSchreiben() ||
+            aktuell?.id !== anfrage.id ||
+            aktuell.backendLauf !== backendLauf
+          ) return
+          const nachtJetzt = schlafRef.current.find(
+            (eintrag) => eintrag.user === user && eintrag.nacht === nacht
+          )
+          if (nachtJetzt?.phasen === null) {
+            uebernimmSchlaf(mitNacht(schlafRef.current, { ...nachtJetzt, phasen }))
+          }
+          merkePhasenTransport(key, null)
         })
-        .catch(() => {})
+        .catch((e: unknown) => {
+          const aktuell = verlaeufeUnterwegs.current.get(key)
+          if (
+            aktuell?.id !== anfrage.id ||
+            aktuell.backendLauf !== backendLauf ||
+            !darfSchreiben()
+          ) return
+          merkePhasenTransport(
+            key,
+            istAbbruch(e)
+              ? null
+              : { status: 'error', text: 'verlauf konnte nicht geladen werden.' }
+          )
+        })
         .finally(() => {
-          if (verlaeufeUnterwegs.current.get(key) === backendLauf) {
+          if (verlaeufeUnterwegs.current.get(key)?.id === anfrage.id) {
             verlaeufeUnterwegs.current.delete(key)
           }
         })
     },
-    [backend, backendLauf, darfSchreiben]
+    [backend, backendLauf, darfSchreiben, merkePhasenTransport, uebernimmSchlaf]
+  )
+  useLayoutEffect(() => {
+    startePhasenAbrufRef.current = startePhasenAbruf
+    return () => {
+      if (startePhasenAbrufRef.current === startePhasenAbruf) {
+        startePhasenAbrufRef.current = () => {}
+      }
+    }
+  }, [startePhasenAbruf])
+
+  /**
+   * Registriert eine sichtbare Nacht als Consumer. Der um eine Microtask
+   * verzoegerte Abbruch laesst Reacts StrictMode setup/cleanup/setup dieselbe
+   * Anfrage weiterverwenden, beendet sie aber beim echten Nachtwechsel.
+   */
+  const phasenNachladen = useCallback(
+    (user: UserId, nacht: string): (() => void) | void => {
+      if (!darfSchreiben()) return
+      const key = phasenLadeKey(user, nacht)
+      const consumer = Symbol('phasen-consumer')
+      const consumers = verlaufBeobachter.current.get(key) ?? new Set<symbol>()
+      consumers.add(consumer)
+      verlaufBeobachter.current.set(key, consumers)
+      startePhasenAbruf(user, nacht, false)
+
+      return () => {
+        const aktuell = verlaufBeobachter.current.get(key)
+        aktuell?.delete(consumer)
+        if (aktuell?.size === 0) verlaufBeobachter.current.delete(key)
+        queueMicrotask(() => {
+          if ((verlaufBeobachter.current.get(key)?.size ?? 0) > 0) return
+          const anfrage = verlaeufeUnterwegs.current.get(key)
+          if (!anfrage || anfrage.backendLauf !== backendLauf) return
+          anfrage.controller.abort()
+          verlaeufeUnterwegs.current.delete(key)
+          merkePhasenTransport(key, null)
+        })
+      }
+    },
+    [backendLauf, darfSchreiben, merkePhasenTransport, startePhasenAbruf]
+  )
+
+  const phasenNeuLaden = useCallback(
+    (user: UserId, nacht: string) => startePhasenAbruf(user, nacht, true),
+    [startePhasenAbruf]
   )
 
   const setzeWette = useCallback(
@@ -795,10 +962,20 @@ export function useTracker(backend: Backend) {
 
   const notenstand = useMemo<Notenstand>(() => ({ faecher, noten }), [faecher, noten])
 
+  const phasenLadezustaende = useMemo<Record<string, PhasenLadezustand>>(() => {
+    const next: Record<string, PhasenLadezustand> = {}
+    for (const nacht of schlaf) {
+      const key = phasenLadeKey(nacht.user, nacht.nacht)
+      next[key] = phasenLadezustand(nacht, phasenTransport[key])
+    }
+    return next
+  }, [phasenTransport, schlaf])
+
   return {
     me,
     zustand,
     schlaf,
+    phasenLadezustaende,
     wetten,
     abrechnungen,
     abrechnungStatus,
@@ -822,5 +999,6 @@ export function useTracker(backend: Backend) {
     noteHinzu,
     noteLoeschen,
     phasenNachladen,
+    phasenNeuLaden,
   }
 }

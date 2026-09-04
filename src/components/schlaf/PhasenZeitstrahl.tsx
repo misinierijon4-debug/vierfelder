@@ -11,10 +11,13 @@ import {
 } from '../../lib/schlafPhasen'
 import { EBENE, nachtkurve } from '../../lib/nachtkurve'
 import { DIAGRAMM, EASE } from '../../lib/motion'
+import type { PhasenLadezustand } from '../../lib/schlafLaden'
 import type { PhasenArt } from '../../lib/types'
 
 type Props = {
   analyse: NachtPhasenAnalyse
+  ladezustand: PhasenLadezustand
+  onErneut: () => void
 }
 
 /**
@@ -66,7 +69,7 @@ const RANDSCHUTZ = 42
 /** groesse der uhrzeiten. die eckzeit ist fuenf zeichen breit, daher der randschutz */
 const ACHSE_SCHRIFT = 10
 
-export function PhasenZeitstrahl({ analyse }: Props) {
+export function PhasenZeitstrahl({ analyse, ladezustand, onErneut }: Props) {
   const reduced = useReducedMotion()
   // useId liefert zeichen, die in einer url-referenz nichts zu suchen haben
   const roheId = useId()
@@ -104,12 +107,61 @@ export function PhasenZeitstrahl({ analyse }: Props) {
     }
   }, [analyse])
 
-  if (!analyse.hatPhasenDaten || kurve.d === '') {
+  if (ladezustand.status === 'idle' || ladezustand.status === 'loading') {
+    return (
+      <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
+        <div className="px-3.5 pt-3">
+          <span className="text-[11px] font-medium text-kreide">verlauf der nacht</span>
+        </div>
+        <div
+          className="flex items-center justify-center px-3.5"
+          style={{ height: `${KURVE_HOEHE}px` }}
+          role="status"
+        >
+          <span className="text-[11px] text-kreide-52">verlauf wird geladen …</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (ladezustand.status === 'error') {
+    return (
+      <div
+        className="mt-4 rounded-[2px] border border-linie bg-flaeche px-3.5 py-4"
+        role="alert"
+      >
+        <p className="text-[11px] font-medium text-kreide">{ladezustand.text}</p>
+        <p className="mt-1 text-pretty text-[10px] text-kreide-52">
+          die nachtwerte bleiben erhalten. prüfe die verbindung und versuche es erneut.
+        </p>
+        <button
+          type="button"
+          onClick={onErneut}
+          className="mt-2 flex min-h-11 items-center text-[11px] font-semibold text-kreide underline decoration-linie-hell underline-offset-4 focus-visible:outline-none"
+        >
+          erneut versuchen
+        </button>
+      </div>
+    )
+  }
+
+  if (ladezustand.status === 'empty') {
     return (
       <div className="mt-4 border-y border-linie py-4">
         <p className="text-[11px] font-medium text-kreide">keine schlafphasen erfasst</p>
         <p className="mt-1 text-pretty text-[10px] text-kreide-52">
-          health hat für diese nacht nur die schlafdauer geliefert.
+          health hat für diese nacht keine schlafstadien geliefert.
+        </p>
+      </div>
+    )
+  }
+
+  if (!analyse.hatPhasenDaten || kurve.d === '') {
+    return (
+      <div className="mt-4 border-y border-linie py-4">
+        <p className="text-[11px] font-medium text-kreide">verlauf unvollständig</p>
+        <p className="mt-1 text-pretty text-[10px] text-kreide-52">
+          die geladenen phasen reichen nicht für eine belastbare kurve.
         </p>
       </div>
     )
@@ -142,27 +194,6 @@ export function PhasenZeitstrahl({ analyse }: Props) {
       filter={filter}
     />
   )
-
-  // Eine Nacht ausserhalb des geladenen Fensters hat ihre Kennzahlen, aber
-  // ihren Verlauf noch nicht. Ein durchgehender Block waere hier keine
-  // Wartemeldung, sondern eine Behauptung ueber die Nacht — also steht hier,
-  // was wirklich der Fall ist, in derselben Karte und ohne Sprung im Layout.
-  if (!analyse.verlaufGeladen) {
-    return (
-      <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
-        <div className="px-3.5 pt-3">
-          <span className="text-[11px] font-medium text-kreide">verlauf der nacht</span>
-        </div>
-        <div
-          className="flex items-center justify-center px-3.5"
-          style={{ height: `${KURVE_HOEHE}px` }}
-          role="status"
-        >
-          <span className="text-[11px] text-kreide-52">verlauf wird geladen …</span>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="mt-4 overflow-hidden rounded-[2px] border border-linie bg-flaeche">

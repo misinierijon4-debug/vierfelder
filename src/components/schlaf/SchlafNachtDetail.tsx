@@ -6,6 +6,8 @@ import { addDays, fromKey, langesDatum } from '../../lib/dates'
 import { STEMPEL } from '../../lib/motion'
 import { abendDatum, analysiereSchlafnacht, formatDauer } from '../../lib/schlafPhasen'
 import { medianAbweichung, scoreKomponentenZeilen } from '../../lib/schlafPhasen'
+import { phasenLadeKey, phasenLadezustand } from '../../lib/schlafLaden'
+import type { PhasenLadezustand } from '../../lib/schlafLaden'
 import { PhasenZeitstrahl } from './PhasenZeitstrahl'
 import { Ring } from './Ring'
 
@@ -17,8 +19,10 @@ type Props = {
   gewaehlterTag: string
   ansichtUser: UserId
   onAnsichtUserWaehlen: (user: UserId) => void
+  phasenLadezustaende: Record<string, PhasenLadezustand>
   /** wird gerufen, sobald eine nacht ohne verlauf angezeigt werden soll */
-  onVerlaufBrauchen: (user: UserId, nacht: string) => void
+  onVerlaufBrauchen: (user: UserId, nacht: string) => (() => void) | void
+  onVerlaufErneut: (user: UserId, nacht: string) => void
 }
 
 export function SchlafNachtDetail({
@@ -27,7 +31,9 @@ export function SchlafNachtDetail({
   gewaehlterTag,
   ansichtUser,
   onAnsichtUserWaehlen,
+  phasenLadezustaende,
   onVerlaufBrauchen,
+  onVerlaufErneut,
 }: Props) {
   const aktuelleNacht = naechte.find(
     (nacht) => abendDatum(nacht.einschlafzeit) === gewaehlterTag && nacht.user === ansichtUser
@@ -44,9 +50,20 @@ export function SchlafNachtDetail({
     aktuelleNacht && aktuelleNacht.phasen === null
       ? { user: aktuelleNacht.user, nacht: aktuelleNacht.nacht }
       : null
+  const verlaufStatus = aktuelleNacht
+    ? phasenLadezustaende[phasenLadeKey(aktuelleNacht.user, aktuelleNacht.nacht)] ??
+      phasenLadezustand(aktuelleNacht)
+    : { status: 'idle' as const }
   useEffect(() => {
-    if (fehlenderVerlauf) onVerlaufBrauchen(fehlenderVerlauf.user, fehlenderVerlauf.nacht)
-  }, [fehlenderVerlauf?.user, fehlenderVerlauf?.nacht, onVerlaufBrauchen])
+    if (fehlenderVerlauf) {
+      return onVerlaufBrauchen(fehlenderVerlauf.user, fehlenderVerlauf.nacht)
+    }
+  }, [
+    fehlenderVerlauf?.user,
+    fehlenderVerlauf?.nacht,
+    verlaufStatus.status,
+    onVerlaufBrauchen,
+  ])
   const person = userDef(ansichtUser)
   const istRegistriert = registrierte.has(ansichtUser)
 
@@ -132,11 +149,11 @@ export function SchlafNachtDetail({
                 <Ring
                   anteil={analyse.qualitaet / 100}
                   farbe={person.farbe}
-                  label="qualität"
+                  label={analyse.nachtwert === null ? 'geschätzt' : 'nachtwert'}
                 />
 
                 <div className="min-w-0 flex-1">
-                  <span className="text-[10px] text-kreide-52">echte schlafzeit</span>
+                  <span className="text-[10px] text-kreide-52">schlafzeit</span>
                   <div
                     className="tnum mt-1 truncate text-[28px] font-bold leading-none"
                     style={{ color: person.farbe }}
@@ -213,7 +230,13 @@ export function SchlafNachtDetail({
               )}
             </div>
 
-            <PhasenZeitstrahl analyse={analyse} />
+            <PhasenZeitstrahl
+              analyse={analyse}
+              ladezustand={verlaufStatus}
+              onErneut={() => {
+                if (aktuelleNacht) onVerlaufErneut(aktuelleNacht.user, aktuelleNacht.nacht)
+              }}
+            />
           </motion.div>
         ) : (
           <motion.div

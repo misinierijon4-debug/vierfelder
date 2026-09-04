@@ -21,6 +21,7 @@ type Props = {
   ansichtUser: UserId
   gewaehlterTag: string
   heuteKey: string
+  istPrototyp: boolean
   onTagWaehlen: (tag: string) => void
   onSchliessen: () => void
 }
@@ -31,6 +32,7 @@ export function SchlafKalender({
   ansichtUser,
   gewaehlterTag,
   heuteKey,
+  istPrototyp,
   onTagWaehlen,
   onSchliessen,
 }: Props) {
@@ -107,6 +109,15 @@ export function SchlafKalender({
           </div>
         </header>
 
+        <div className="shrink-0 border-b border-linie px-5 py-2 text-[9px] text-kreide-52">
+          {istPrototyp && (
+            <p className="text-pretty" role="note">
+              beispieldaten im prototyp · nicht aus Apple Health
+            </p>
+          )}
+          <p className={istPrototyp ? 'mt-0.5' : ''}>~ = nur aus der schlafdauer geschätzt</p>
+        </div>
+
         <div
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4"
@@ -140,13 +151,18 @@ export function SchlafKalender({
                       const istGewaehlt = tag === gewaehlterTag
                       const istHeute = tag === heuteKey
                       const istZukunft = tag > heuteKey
+                      const istGeschaetzt = nacht?.nachtwert === null
                       const wert = nacht ? (nacht.nachtwert ?? qualitaet(nacht.schlafMinuten)) : null
                       const grad = wert === null ? 0 : wert * 3.6
                       const ring =
                         wert === null
                           ? 'var(--linie)'
                           : `conic-gradient(from -90deg, ${person.farbe} 0deg ${grad}deg, var(--linie) ${grad}deg 360deg)`
-                      const status = wert === null ? 'keine Schlafdaten' : `${wert} Prozent Qualität`
+                      const status = wert === null
+                        ? 'keine Schlafdaten'
+                        : istGeschaetzt
+                          ? `${wert} Prozent, nur aus der Schlafdauer geschätzt`
+                          : `${wert} Punkte Nachtwert`
 
                       return (
                         <button
@@ -171,6 +187,11 @@ export function SchlafKalender({
                             }}
                           >
                             <span className="absolute inset-1 rounded-full bg-grund" />
+                            {istGeschaetzt && (
+                              <span className="tnum absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-kreide-52">
+                                ~
+                              </span>
+                            )}
                           </span>
                           {/* die dauer der nacht als mini-balken unter dem ring */}
                           {nacht && (

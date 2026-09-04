@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Abrechnung } from './types'
-import { istFehlendeVonSpalte, schreibeUndBestaetigeAbrechnung } from './supabase'
+import type { Abrechnung, Phase } from './types'
+import {
+  istFehlendeVonSpalte,
+  phasenAusAnsicht,
+  schreibeUndBestaetigeAbrechnung,
+} from './supabase'
 
 describe('supabase migrationskompatibilitaet', () => {
   it('erkennt fehlende von-spalten aus postgres und postgrest', () => {
@@ -87,5 +91,24 @@ describe('kanonische Wochenabrechnung', () => {
       abrechnungDb(null).db as unknown as Parameters<typeof schreibeUndBestaetigeAbrechnung>[0],
       KANDIDAT
     )).rejects.toThrow('wurde nicht bestaetigt')
+  })
+
+  it('unterscheidet eine echte leere Phasenliste von einer fehlenden Zeile', () => {
+    const phase: Phase = { art: 'kern', start: 0, dauer: 45 }
+    expect(phasenAusAnsicht({ phasen: [] }, null)).toEqual([])
+    expect(phasenAusAnsicht({ phasen: [phase] }, null)).toEqual([phase])
+    expect(() => phasenAusAnsicht(null, null)).toThrow('schlafnacht wurde nicht gefunden')
+  })
+
+  it.each([{}, { phasen: null }, { phasen: 'kaputt' }])(
+    'deutet eine ungueltige Phasenantwort %j nicht als Health-Leerzustand',
+    (data) => {
+      expect(() => phasenAusAnsicht(data, null)).toThrow('schlafphasen sind ungueltig')
+    }
+  )
+
+  it('reicht einen Supabase-Abruffehler unveraendert weiter', () => {
+    const fehler = { code: '42501' }
+    expect(() => phasenAusAnsicht({ phasen: [] }, fehler)).toThrow(fehler)
   })
 })

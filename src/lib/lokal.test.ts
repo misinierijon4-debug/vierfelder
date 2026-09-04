@@ -102,3 +102,41 @@ describe('altbestand aus dem alten format', () => {
     expect(abrechnungen.find((a) => a.woche === basis.woche)).toMatchObject({ sieger: 'erijon', differenz: 2 })
   })
 })
+
+describe('lokale Schlafverlaeufe', () => {
+  beforeEach(() => {
+    speicher.clear()
+  })
+
+  it('liefert nur fuer eine vorhandene Nacht deren echten lokalen Verlauf', async () => {
+    const backend = lokalesBackend()
+    const anfang = await backend.laden()
+    const nacht = anfang.schlaf[0]!
+
+    await expect(
+      backend.ladePhasen(nacht.user, nacht.nacht, new AbortController().signal)
+    ).resolves.toEqual(nacht.phasen)
+    await expect(
+      backend.ladePhasen(nacht.user, '1900-01-01', new AbortController().signal)
+    ).rejects.toThrow('schlafnacht wurde nicht gefunden')
+  })
+
+  it('deutet lokal nicht geladene Phasen nicht als bestaetigten Leerzustand', async () => {
+    const beispiel = (await lokalesBackend().laden()).schlaf[0]!
+    speicher.setItem('vierfelder.schlaf.v2', JSON.stringify([{ ...beispiel, phasen: null }]))
+
+    await expect(
+      lokalesBackend().ladePhasen(beispiel.user, beispiel.nacht, new AbortController().signal)
+    ).rejects.toThrow('schlafphasen sind lokal nicht verfuegbar')
+  })
+
+  it('beachtet ein bereits abgebrochenes Signal', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const backend = lokalesBackend()
+
+    await expect(backend.ladePhasen('erijon', '2026-09-03', controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+  })
+})

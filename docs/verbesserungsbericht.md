@@ -52,7 +52,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | offene Registrierung + unprofilierte Push-Schreibrechte + beliebiges HTTPS-Ziel | erreichbare serverseitige Request-Forgery | RLS- und Endpoint-Negativtests | offen |
 | P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
 | P1 | gemessene und manuelle Einheiten werden als vollständig gemessen summiert | falsche Dauer und Belegquote | Mischquellen-/Überlappungstests | offen; Belegregel braucht Produktentscheidung |
-| P1 | Schlafphasenfehler werden verschluckt | Fehler erscheint endlos als Laden | idle/loading/empty/error/retry | offen |
+| P1 | Schlafphasenfehler werden verschluckt | Fehler erscheint endlos als Laden oder fälschlich als Health-Leerzustand | idle/loading/empty/error/retry | behoben |
 | P1 | Realtime-Status und Reconnect-Resync fehlen | gelöschte oder verpasste Daten bleiben lokal | Zwei-Client-Reconnect | offen |
 | P1 | Historienabfragen sind nicht paginiert | ab 1.000 Zeilen stille Trunkierung | 1.001+-Datensatz-Test | offen |
 | P1 | Prüfungsfachwechsel besteht aus zwei Updates | bei Teilfehler fehlt das vierte Fach | transaktionale RPC | blockiert durch Migrationsdrift |
@@ -199,6 +199,50 @@ Advisors und eine ausdrückliche Freigabe erforderlich.
   `beleg 12:13`, jeweils sichtbar `archiviert`. Die Herkunftsschrift wurde nach
   dem Review von 9 auf 10 CSS-Pixel angehoben. Keine Browserkonsolenfehler und
   kein physisches iPhone geprüft.
+
+### Welle 3: ehrliche Schlafphasen-Nachladung
+
+- Jede Nacht hat nun den expliziten Verlaufzustand `idle`, `loading`, `loaded`,
+  `empty` oder `error`. `Schlafnacht.phasen` bleibt die fachliche Wahrheit:
+  `null` ist nicht geladen, `[]` ist erfolgreich ohne Stadien geladen und eine
+  nicht leere Liste ist ein vorhandener Verlauf. Der Store hält daneben nur
+  laufende beziehungsweise fehlgeschlagene Transportzustände.
+- Ein fehlgeschlagener Abruf bleibt nicht mehr unendlich bei `wird geladen` und
+  wird nicht als `Health lieferte keine Phasen` umgedeutet. Detail und
+  Zwei-Personen-Vergleich nennen den betroffenen Verlauf inline und bieten
+  einen gezielten Retry; Nachtkennzahlen bleiben dabei sichtbar.
+- Gleiche Abrufe aus Detail und Vergleich werden dedupliziert. Ein Consumer-
+  Modell mit verzögertem Abbruch schützt React StrictMode, bricht aber einen
+  wirklich verlassenen Nachtabruf ab. Request-ID und Backendlauf verhindern,
+  dass eine späte alte Antwort einen Retry oder ein neu geladenes Konto
+  überschreibt. Ein vollständiges Realtime-Schlafereignis gewinnt gegen einen
+  älteren Pending-Abruf.
+- Supabase unterscheidet eine bestätigte Zeile ohne Phasen von einer fehlenden,
+  per RLS unsichtbaren oder beschädigten Antwort. Die optionale 56-Tage-
+  Verlaufsvorladung darf bei einem Netzfehler nicht mehr den gesamten
+  App-Start verhindern. Der lokale Prototyp macht fehlende Verläufe ebenfalls
+  nicht zu einem falschen Empty-Erfolg.
+- Realtime-Updates brechen einen älteren Abruf derselben Nacht ab und laden bei
+  einem weiterhin sichtbaren, invalidierten Verlauf frisch. Ein Delete mit
+  stabiler Nutzer- und Nacht-ID entfernt die Projektion samt Pending-Abruf aus
+  dem Client. Dass das Löschen der geschützten Quellnacht serverseitig derzeit
+  noch kein solches Delete erzeugt, bleibt getrennt als migrationsblockiertes
+  P0 dokumentiert.
+- Prototyp-Schlafwerte sind oben im Tab und im Vollbildkalender sichtbar als
+  Beispieldaten gekennzeichnet. Ein nur aus Schlafdauer berechneter Ring heißt
+  `geschätzt`; der Kalender markiert ihn mit `~` und erklärt die Markierung.
+- Tests schützen Statusableitung, Deduplizierung, Retry, Abbruch beim
+  Backendwechsel, späte Antworten, Supabase-Nullzeilen, beschädigte Payloads,
+  lokalen Abort, Realtime-Update/Delete, unvollständige Kurven und die sichtbaren
+  Loading-/Error-/Empty-Texte. Vollständiger Lauf `npm run check`: Exit 0,
+  24 Testdateien und 352 Tests; TypeScript, Webbuild und Artefaktprüfung
+  bestehen. Haupt-JavaScript: 752.869 Byte roh beziehungsweise 215.266 Byte
+  gzip; gesamtes JavaScript 758.522 Byte roh beziehungsweise 217.465 Byte gzip.
+- Visuelle Kontrolle bei 320 × 568 CSS-Pixeln: Schlaf-Tab und Vollbildkalender
+  ohne sichtbaren horizontalen Überlauf; Prototyp- und Schätzungshinweis sind
+  sichtbar, die zugänglichen Kalendernamen unterscheiden Schätzung und
+  Nachtwert. Keine Browserkonsolenfehler. Ein physisches iPhone und ein echter
+  Supabase-Abruffehler bleiben ungeprüft.
 
 ## Offene Prüfungen
 

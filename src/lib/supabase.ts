@@ -85,6 +85,18 @@ export function istFehlendeVonSpalte(code?: string): boolean {
   return code === '42703' || code === 'PGRST204'
 }
 
+export function phasenAusAnsicht(
+  data: { phasen?: unknown } | null,
+  error: unknown
+): Phase[] {
+  if (error) throw error
+  // Keine Zeile bedeutet geloescht, unsichtbar oder noch nicht projiziert. Das
+  // ist ein Abruffehler und nicht die fachliche Aussage "Health ohne Phasen".
+  if (data === null) throw new Error('schlafnacht wurde nicht gefunden')
+  if (!Array.isArray(data.phasen)) throw new Error('schlafphasen sind ungueltig')
+  return data.phasen as Phase[]
+}
+
 /** numeric kommt aus postgrest als string, genau wie schlaf_minuten */
 type GewichtZeile = {
   user_id: string
@@ -295,7 +307,7 @@ export function supabaseBackend(eigeneId: string): Backend {
       wachMinuten: zahl(n.wach_minuten),
       zielMinuten: n.schlafziel_minuten,
       // ohne die spalte im select bleibt `undefined` — das ist "nicht geladen"
-      phasen: Array.isArray(n.phasen) ? n.phasen : n.phasen === null ? [] : null,
+      phasen: Array.isArray(n.phasen) ? n.phasen : null,
       nachtwert: n.nachtwert ?? null,
       scoreKonfidenz: n.score_konfidenz ?? null,
       scoreKomponenten: n.score_komponenten ?? null,
@@ -426,7 +438,9 @@ export function supabaseBackend(eigeneId: string): Backend {
 
       if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
-      if (phasenZeilen.error && !fehltNoch(phasenZeilen.error.code)) throw phasenZeilen.error
+      // Die 56-Tage-Vorladung ist nur eine Beschleunigung. Scheitert sie,
+      // bleiben die Verlaeufe `null` und werden beim Oeffnen mit sichtbarem
+      // Fehlerzustand einzeln nachgeladen; die Kernnachtwerte starten trotzdem.
       if (gewichtMitQuelle.error && !fehltNoch(gewichtMitQuelle.error.code)) {
         throw gewichtMitQuelle.error
       }
@@ -494,8 +508,8 @@ export function supabaseBackend(eigeneId: string): Backend {
       }
 
       const verlaeufe = new Map<string, Phase[]>()
-      for (const z of (phasenZeilen.data ?? []) as SchlafZeile[]) {
-        verlaeufe.set(`${z.user_id}|${z.nacht}`, Array.isArray(z.phasen) ? z.phasen : [])
+      for (const z of (phasenZeilen.error ? [] : (phasenZeilen.data ?? [])) as SchlafZeile[]) {
+        if (Array.isArray(z.phasen)) verlaeufe.set(`${z.user_id}|${z.nacht}`, z.phasen)
       }
 
       const schlaf: Schlafnacht[] = []
@@ -710,17 +724,17 @@ export function supabaseBackend(eigeneId: string): Backend {
       if (error) throw error
     },
 
-    async ladePhasen(user, nacht) {
+    async ladePhasen(user, nacht, signal) {
       const id = [...personen.entries()].find(([, person]) => person === user)?.[0]
-      if (!id) return []
+      if (!id) throw new Error('person wurde nicht gefunden')
       const { data, error } = await db
         .from('schlafnaechte_ansicht')
         .select('phasen')
         .eq('user_id', id)
         .eq('nacht', nacht)
+        .abortSignal(signal)
         .maybeSingle()
-      if (error) throw error
-      return Array.isArray(data?.phasen) ? (data.phasen as Phase[]) : []
+      return phasenAusAnsicht(data, error)
     },
 
     abonniere(cb) {
@@ -744,10 +758,18 @@ export function supabaseBackend(eigeneId: string): Backend {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'schlaf_updates' },
             (p) => {
+              if (p.eventType === 'DELETE') {
+                const alt = p.old as Pick<SchlafZeile, 'user_id' | 'nacht'> | null
+                const person = alt?.user_id ? personen.get(alt.user_id) : null
+                if (person && alt?.nacht) {
+                  cb({ typ: 'schlaf', art: 'weg', user: person, nacht: alt.nacht })
+                }
+                return
+              }
               const zeile = p.new as SchlafZeile | null
               if (!zeile?.user_id) return
               const nacht = zeileZuSchlafnacht(zeile)
-              if (nacht) cb({ typ: 'schlaf', nacht })
+              if (nacht) cb({ typ: 'schlaf', art: 'wert', nacht })
             }
           )
           .on(

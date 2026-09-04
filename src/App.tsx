@@ -78,6 +78,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     me,
     zustand,
     schlaf,
+    phasenLadezustaende,
     wetten,
     abrechnungen,
     abrechnungStatus,
@@ -101,6 +102,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     noteHinzu,
     noteLoeschen,
     phasenNachladen,
+    phasenNeuLaden,
   } = useTracker(backend)
   const bereit = ladezustand === 'bereit'
   const [heute, setHeute] = useState(() => new Date())
@@ -379,7 +381,10 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 woche={woche}
                 heuteKey={heuteKey}
                 me={me}
+                istPrototyp={backend.art === 'lokal'}
+                phasenLadezustaende={phasenLadezustaende}
                 onVerlaufBrauchen={phasenNachladen}
+                onVerlaufErneut={phasenNeuLaden}
               />
             </motion.div>
           ) : (
