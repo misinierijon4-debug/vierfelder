@@ -309,6 +309,24 @@ describe('useTracker Schreibbereitschaft', () => {
     expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBeUndefined()
   })
 
+  it('meldet einen Abschlussfehler und laesst denselben Abschluss erneut zu', async () => {
+    const schreibeAbrechnung = vi.fn<Backend['schreibeAbrechnung']>()
+      .mockRejectedValueOnce(new Error('netz weg'))
+      .mockResolvedValueOnce(ABRECHNUNG)
+    const backend = backendMit(async () => ANFANG, { schreibeAbrechnung })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.abrechnungHinzu(ABRECHNUNG))
+    await waitFor(() => expect(result.current.abrechnungStatus[ABRECHNUNG.woche]).toBe('fehler'))
+    expect(result.current.fehler).toBe('wochenabschluss fehlgeschlagen.')
+
+    act(() => result.current.abrechnungHinzu(ABRECHNUNG))
+    await waitFor(() => expect(result.current.abrechnungen).toEqual([ABRECHNUNG]))
+    expect(schreibeAbrechnung).toHaveBeenCalledTimes(2)
+    expect(result.current.fehler).toBeNull()
+  })
+
   it('schreibt eine bereits geladene Wochenabrechnung kein zweites Mal', async () => {
     const anfang = { ...ANFANG, abrechnungen: [ABRECHNUNG] }
     const backend = backendMit(async () => anfang)

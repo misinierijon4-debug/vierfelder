@@ -1,6 +1,6 @@
 # Verbesserungsbericht
 
-Stand: 4. September 2026. Dieses Journal beschreibt den nachweisbaren Stand der
+Stand: 5. September 2026. Dieses Journal beschreibt den nachweisbaren Stand der
 Arbeitsbranch `codex/ganzprojekt-verbesserung`; es ist kein Produktionsfreigabeprotokoll.
 
 ## Ausgangszustand und Baseline
@@ -48,7 +48,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | Schlafprojektion berechnet Nachbarsegmente nicht mehr gemeinsam | Bettzeit, Effizienz und Score können trotz Rohdaten fehlen | DB-Test N-1/N/N+1 | blockiert durch Migrationsdrift |
 | P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | blockiert durch Migrationsdrift |
 | P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | behoben |
-| P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | blockiert durch Migrationsdrift |
+| P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | lokal behoben; Migration/Staging offen |
 | P0 | Push-Versand akzeptiert jedes gespeicherte HTTPS-Ziel und folgt Redirects | serverseitige Request-Forgery und Datenabfluss in Logs/Antworten | Provider-Allowlist, Redirect-, IP- und Log-Negativtests | lokal behoben; Deploy offen |
 | P0 | offene Registrierung + unprofilierte Push-Schreibrechte | fremde Konten können Provider-Endpunkte speichern und die Probe missbrauchen | Mitglieder-, RLS- und Rate-Limit-Matrix | blockiert durch Migrationsdrift |
 | P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
@@ -319,6 +319,43 @@ und eine ausdrückliche Freigabe erforderlich.
   [Function-Umgebungsvariablen](https://supabase.com/docs/guides/functions/secrets).
   Scheduler-Secret, Zweck-/Gerätetokens und Abschaltung des GET-Altwegs bleiben
   migrations-, staging- und freigabepflichtig.
+
+### Welle 2: serverautoritiver Wochenabschluss
+
+- Der Browser darf keine Archivzeile mehr direkt einfuegen und sendet nur noch
+  den Wochenmontag an eine schmale RPC. Eine nicht exponierte, privilegierte
+  Datenbankfunktion prueft die Zwei-Personen-Mitgliedschaft, den Montag und den
+  Abschlusszeitpunkt in `Europe/Berlin` und berechnet Sieger, Abstand, Beleg,
+  Wette und Auditwerte in einem SQL-Statement aus den kanonischen Tabellen.
+- Ein transaktionsgebundener Advisory Lock, der Primaerschluessel und
+  `ON CONFLICT DO NOTHING` machen zwei gleichzeitige Abschluesse idempotent.
+  Eine bereits vorhandene Zeile gewinnt unveraendert; bestehende Clientarchive
+  werden nicht aus spaeter veraenderten Rohdaten neu erfunden.
+- Neue Archive tragen Berechnungsversion, absolute Punktestaende,
+  ausloesendes Profil sowie `server_planmaessig` oder `server_nachgeholt`.
+  Legacy-Zeilen bleiben als Version 0 erhalten. Eine CHECK-Invariante bindet
+  Differenz, Sieger, Grund und Auditpunkte widerspruchsfrei zusammen.
+- Verpasste Wochen werden im Supabase-Modus sequenziell von alt nach neu
+  nachgeholt, aber nur wenn Tracker-/Gewichtsdaten oder eine echte Wette
+  existieren. Leere Kalenderluecken werden nicht nachtraeglich als Remis
+  erfunden. Pending und Fehler sind sichtbar; ein fehlgeschlagener Abschluss
+  kann direkt erneut angestossen werden.
+- Der Client betrachtet auch eine technisch erfolgreiche RPC-Antwort erst dann
+  als Bestaetigung, wenn Woche, Wertebereiche, Version, Herkunft, absolute
+  Punkte und Tiebreak-Entscheidung zusammenpassen. Die Historie zeigt fuer neue
+  Serverarchive echte absolute Staende, fuer Legacyarchive weiterhin nur den
+  belegten Abstand.
+- Der unabhaengige Review bestaetigte Formelparitaet, Mischquellen-
+  Deduplizierung, Schwellen, Berliner Kalendertage, konsistenten Snapshot und
+  Race-Schutz. Gezielter Schlusslauf: 5 Dateien und 69 Tests, Exit 0.
+  Vollstaendiger Lauf `npm run check`: Exit 0, 29 Dateien und 439 Tests;
+  TypeScript, Webbuild und Artefaktpruefung bestehen. JavaScript: 762.981 Byte
+  roh beziehungsweise 218.734 Byte gzip; gesamtes `dist`: 1.109.521 Byte.
+- Die Migration `20260905120728_duell_wochenabschluss_serverautoritaer.sql`
+  wurde bewusst weder lokal noch produktiv angewandt. Vor Freigabe fehlen ein
+  frischer beziehungsweise Staging-Reset, Legacy-Upgradefixture, Rollenmatrix,
+  echte parallele Transaktionen und der Nachweis, dass spaetere Rohdaten- oder
+  Wettenaenderungen das Archiv nicht beeinflussen.
 
 ## Offene Prüfungen
 

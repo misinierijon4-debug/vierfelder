@@ -38,6 +38,10 @@ export const hatSupabase = Boolean(url && key)
  * das Nachtdetail beim Oeffnen nach.
  */
 const PHASEN_FENSTER_TAGE = 56
+const ABRECHNUNG_SPALTEN =
+  'woche,sieger,grund,differenz,beleg_erijon,beleg_koray,wette,abgeschlossen,berechnung_version,archiv_quelle,punkte_erijon,punkte_koray'
+const ABRECHNUNG_SPALTEN_LEGACY =
+  'woche,sieger,grund,differenz,beleg_erijon,beleg_koray,wette,abgeschlossen'
 
 export const supabase = hatSupabase ? createClient(url!, key!) : null
 
@@ -122,6 +126,10 @@ type AbrechnungZeile = {
   beleg_koray: number
   wette: string | null
   abgeschlossen: string
+  berechnung_version?: number
+  archiv_quelle?: Abrechnung['archivQuelle']
+  punkte_erijon?: number | null
+  punkte_koray?: number | null
 }
 
 const zeileZuAbrechnung = (a: AbrechnungZeile): Abrechnung => ({
@@ -133,38 +141,120 @@ const zeileZuAbrechnung = (a: AbrechnungZeile): Abrechnung => ({
   belegKoray: Number(a.beleg_koray),
   wette: a.wette,
   abgeschlossen: a.abgeschlossen,
+  berechnungVersion: a.berechnung_version === undefined ? 0 : Number(a.berechnung_version),
+  archivQuelle: a.archiv_quelle ?? 'legacy_client',
+  punkteErijon: a.punkte_erijon === undefined || a.punkte_erijon === null
+    ? null
+    : Number(a.punkte_erijon),
+  punkteKoray: a.punkte_koray === undefined || a.punkte_koray === null
+    ? null
+    : Number(a.punkte_koray),
 })
 
-/**
- * Ein Konflikt ist bei `ignoreDuplicates` kein Fehler. Erst die anschließend
- * gelesene Zeile bestätigt, welcher Client tatsächlich zuerst geschrieben hat.
- */
-export async function schreibeUndBestaetigeAbrechnung(
-  db: NonNullable<typeof supabase>,
-  a: Abrechnung
-): Promise<Abrechnung> {
-  const { error } = await db.from('wochenabrechnung').upsert(
-    {
-      woche: a.woche,
-      sieger: a.sieger,
-      grund: a.grund,
-      differenz: a.differenz,
-      beleg_erijon: a.belegErijon,
-      beleg_koray: a.belegKoray,
-      wette: a.wette,
-    },
-    { onConflict: 'woche', ignoreDuplicates: true }
-  )
-  if (error) throw error
+function istGanzeZahl(
+  wert: unknown,
+  minimum: number,
+  maximum: number
+): wert is number | string {
+  if (typeof wert !== 'number' && typeof wert !== 'string') return false
+  if (typeof wert === 'string' && wert.trim() === '') return false
+  const n = Number(wert)
+  return Number.isSafeInteger(n) && n >= minimum && n <= maximum
+}
 
-  const bestaetigt = await db
-    .from('wochenabrechnung')
-    .select('woche,sieger,grund,differenz,beleg_erijon,beleg_koray,wette,abgeschlossen')
-    .eq('woche', a.woche)
-    .single()
-  if (bestaetigt.error) throw bestaetigt.error
-  if (!bestaetigt.data) throw new Error('wochenabrechnung wurde nicht bestaetigt')
-  return zeileZuAbrechnung(bestaetigt.data as AbrechnungZeile)
+/**
+ * Eine erfolgreiche HTTP-Antwort ist noch keine bestaetigte Mutation. Die RPC
+ * muss genau die angefragte, intern widerspruchsfreie Archivzeile liefern.
+ * So kann weder eine alte Funktion noch eine verformte PostgREST-Antwort im
+ * Client als erfolgreicher Wochenabschluss erscheinen.
+ */
+function bestaetigteAbrechnung(data: unknown, angefragteWoche: string): Abrechnung {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('wochenabrechnung wurde nicht bestaetigt')
+  }
+  const a = data as Record<string, unknown>
+  const sieger = a.sieger
+  const grund = a.grund
+  const quelle = a.archiv_quelle
+  const abgeschlossen = a.abgeschlossen
+  const wette = a.wette
+  if (a.woche !== angefragteWoche) {
+    throw new Error('wochenabrechnung bestaetigte eine andere woche')
+  }
+  if (sieger !== 'erijon' && sieger !== 'koray' && sieger !== 'unentschieden') {
+    throw new Error('wochenabrechnung hat einen ungueltigen sieger')
+  }
+  if (grund !== 'punkte' && grund !== 'beleg' && grund !== 'unentschieden') {
+    throw new Error('wochenabrechnung hat einen ungueltigen grund')
+  }
+  if (quelle !== 'legacy_client' && quelle !== 'server_planmaessig' && quelle !== 'server_nachgeholt') {
+    throw new Error('wochenabrechnung hat eine ungueltige herkunft')
+  }
+  if (typeof abgeschlossen !== 'string' || Number.isNaN(Date.parse(abgeschlossen))) {
+    throw new Error('wochenabrechnung hat keinen gueltigen abschlusszeitpunkt')
+  }
+  if (wette !== null && (typeof wette !== 'string' || wette.length > 160)) {
+    throw new Error('wochenabrechnung hat einen ungueltigen wetteinsatz')
+  }
+  if (
+    !istGanzeZahl(a.differenz, -35, 35)
+    || !istGanzeZahl(a.beleg_erijon, 0, 35)
+    || !istGanzeZahl(a.beleg_koray, 0, 35)
+    || !istGanzeZahl(a.berechnung_version, 0, 1)
+  ) {
+    throw new Error('wochenabrechnung hat ungueltige zaehlwerte')
+  }
+
+  const differenz = Number(a.differenz)
+  const belegErijon = Number(a.beleg_erijon)
+  const belegKoray = Number(a.beleg_koray)
+  const version = Number(a.berechnung_version)
+  const punkteErijon = a.punkte_erijon === null ? null : Number(a.punkte_erijon)
+  const punkteKoray = a.punkte_koray === null ? null : Number(a.punkte_koray)
+
+  if (version === 0) {
+    if (quelle !== 'legacy_client' || a.punkte_erijon !== null || a.punkte_koray !== null) {
+      throw new Error('legacy-wochenabrechnung widerspricht ihrer herkunft')
+    }
+  } else {
+    if (
+      (quelle !== 'server_planmaessig' && quelle !== 'server_nachgeholt')
+      || !istGanzeZahl(a.punkte_erijon, 0, 35)
+      || !istGanzeZahl(a.punkte_koray, 0, 35)
+      || differenz !== punkteErijon! - punkteKoray!
+    ) {
+      throw new Error('server-wochenabrechnung widerspricht ihren auditwerten')
+    }
+    const erwarteteEntscheidung = punkteErijon! !== punkteKoray!
+      ? {
+          sieger: punkteErijon! > punkteKoray! ? 'erijon' : 'koray',
+          grund: 'punkte',
+        }
+      : belegErijon !== belegKoray
+        ? {
+            sieger: belegErijon > belegKoray ? 'erijon' : 'koray',
+            grund: 'beleg',
+          }
+        : { sieger: 'unentschieden', grund: 'unentschieden' }
+    if (sieger !== erwarteteEntscheidung.sieger || grund !== erwarteteEntscheidung.grund) {
+      throw new Error('server-wochenabrechnung hat eine widerspruechliche entscheidung')
+    }
+  }
+
+  return zeileZuAbrechnung(a as unknown as AbrechnungZeile)
+}
+
+/**
+ * Der Browser sendet nur den Wochenmontag. Sieger, Abstand, Beleg, Wette und
+ * Abschlusszeit kommen ausschliesslich aus der serverautoritativen RPC.
+ */
+export async function finalisiereUndBestaetigeAbrechnung(
+  db: NonNullable<typeof supabase>,
+  woche: string
+): Promise<Abrechnung> {
+  const { data, error } = await db.rpc('finalisiere_wochenabrechnung', { p_woche: woche })
+  if (error) throw error
+  return bestaetigteAbrechnung(data, woche)
 }
 type FachZeile = {
   id: string
@@ -396,7 +486,7 @@ export function supabaseBackend(eigeneId: string): Backend {
           db.from('duell_wetten').select('woche, text'),
           db
             .from('wochenabrechnung')
-            .select('woche, sieger, grund, differenz, beleg_erijon, beleg_koray, wette, abgeschlossen')
+            .select(ABRECHNUNG_SPALTEN)
             .order('woche', { ascending: true }),
           db
             .from('faecher')
@@ -435,6 +525,20 @@ export function supabaseBackend(eigeneId: string): Backend {
           .select('user_id, tag, kg')
           .order('tag', { ascending: true })
       }
+      // Vor der serverautoritativen Migration fehlen die beiden
+      // Provenienzspalten. Alte Archive bleiben lesbar und werden im Mapper
+      // ehrlich als `legacy_client` markiert; finalisieren kann diese
+      // Frontendfassung ohne die neue RPC trotzdem nicht.
+      let abrechnungMitQuelle: {
+        data: unknown[] | null
+        error: { code?: string } | null
+      } = abrechnungZeilen
+      if (abrechnungZeilen.error && istFehlendeVonSpalte(abrechnungZeilen.error.code)) {
+        abrechnungMitQuelle = await db
+          .from('wochenabrechnung')
+          .select(ABRECHNUNG_SPALTEN_LEGACY)
+          .order('woche', { ascending: true })
+      }
 
       if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
@@ -448,13 +552,13 @@ export function supabaseBackend(eigeneId: string): Backend {
         throw aufenthaltZeilen.error
       }
       if (wetteZeilen.error && !fehltNoch(wetteZeilen.error.code)) throw wetteZeilen.error
-      if (abrechnungZeilen.error && !fehltNoch(abrechnungZeilen.error.code)) {
-        throw abrechnungZeilen.error
+      if (abrechnungMitQuelle.error && !fehltNoch(abrechnungMitQuelle.error.code)) {
+        throw abrechnungMitQuelle.error
       }
       if (fachZeilen.error && !fehltNoch(fachZeilen.error.code)) throw fachZeilen.error
       if (notenZeilen.error && !fehltNoch(notenZeilen.error.code)) throw notenZeilen.error
       wettenVerfuegbar = !wetteZeilen.error
-      abrechnungVerfuegbar = !abrechnungZeilen.error
+      abrechnungVerfuegbar = !abrechnungMitQuelle.error
       notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
 
       altbestand = Boolean(einheitZeilen.error)
@@ -541,7 +645,7 @@ export function supabaseBackend(eigeneId: string): Backend {
       for (const w of (wetteZeilen.data ?? []) as WetteZeile[]) wetten[w.woche] = w.text
 
       const abrechnungen: Abrechnung[] = []
-      for (const a of (abrechnungZeilen.data ?? []) as AbrechnungZeile[]) {
+      for (const a of (abrechnungMitQuelle.data ?? []) as AbrechnungZeile[]) {
         abrechnungen.push(zeileZuAbrechnung(a))
       }
 
@@ -688,7 +792,7 @@ export function supabaseBackend(eigeneId: string): Backend {
 
     async schreibeAbrechnung(a) {
       if (!abrechnungVerfuegbar) throw new Error('wochenabrechnung fehlt noch')
-      return schreibeUndBestaetigeAbrechnung(db, a)
+      return finalisiereUndBestaetigeAbrechnung(db, a.woche)
     },
 
     async setzePruefungsfach(fachId, nummer) {

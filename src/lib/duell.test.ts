@@ -8,6 +8,7 @@ import {
   duellStatusText,
   duellTickerEintraege,
   entscheideDuell,
+  fehlendeAbschlussWochen,
   historieWochen,
   saisonHistorie,
 } from './duell'
@@ -374,5 +375,30 @@ describe('duell.ts logik & berechnungen', () => {
     const lang = 'x'.repeat(200)
     const a = abrechnungFuerWoche(leererZustand(), woche, '  ' + lang + '  ')
     expect(a.wette).toBe(lang.slice(0, 160))
+  })
+
+  it('holt nur vergangene belegte Wochen in stabiler Reihenfolge nach', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'gym', '2026-08-19')] = [
+      { id: 'alt', user: 'erijon', area: 'gym', tag: '2026-08-19', erfasst: null, wert: 60 },
+    ]
+    z.gewichte['koray|2026-08-31'] = 89
+    z.gewichte['erijon|2026-09-07'] = 81
+
+    expect(fehlendeAbschlussWochen(
+      z,
+      { '2026-08-24': 'nur eine wette', 'kein-datum': 'ignorieren' },
+      [archiv('2026-08-17')],
+      new Date(2026, 8, 9, 12)
+    )).toEqual(['2026-08-24', '2026-08-31'])
+  })
+
+  it('erfindet weder leere Luecken noch Archive fuer die laufende Woche', () => {
+    expect(fehlendeAbschlussWochen(
+      leererZustand(),
+      { '2026-09-07': 'laufende wette' },
+      [],
+      new Date(2026, 8, 13, 20)
+    )).toEqual([])
   })
 })

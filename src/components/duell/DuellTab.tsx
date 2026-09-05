@@ -47,6 +47,11 @@ export function DuellTab({
     abrechnung?.sieger === me ? ich.name : abrechnung?.sieger === er.id ? er.name : 'unentschieden'
   const abrechnungFarbe =
     abrechnung?.sieger === me ? ich.farbe : abrechnung?.sieger === er.id ? er.farbe : 'var(--kreide-52)'
+  const archivHinweis = abrechnung?.archivQuelle === 'legacy_client'
+    ? 'legacy-archiv'
+    : abrechnung?.archivQuelle === 'server_nachgeholt'
+      ? 'nachgeholt'
+      : null
   const historie = useMemo(
     () => saisonHistorie(
       zustand,
@@ -208,6 +213,11 @@ export function DuellTab({
           <div className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-[2px] border border-linie bg-flaeche px-3 text-[12px]">
             <span className="text-kreide-60">
               kw <span className="tnum">{abrechnungKw}</span> abgerechnet
+              {archivHinweis && (
+                <span className="ml-1.5 text-[10px] uppercase tracking-[0.08em] text-kreide-52">
+                  {archivHinweis}
+                </span>
+              )}
             </span>
             <span className="text-kreide-52" aria-hidden="true">·</span>
             <span className="font-bold" style={{ color: abrechnungFarbe }}>
@@ -254,7 +264,13 @@ export function DuellTab({
               <div key={w.wocheKey} className="flex min-h-11 items-center justify-between text-[12px]">
                 <span className="text-kreide-52">
                   <span className="tnum block">kw {w.kw}</span>
-                  <span className="block text-[10px]">{w.herkunft}</span>
+                  <span className="block text-[10px]">
+                    {w.archivQuelle === 'legacy_client'
+                      ? 'legacy-archiv'
+                      : w.archivQuelle === 'server_nachgeholt'
+                        ? 'nachgeholt'
+                        : w.herkunft}
+                  </span>
                 </span>
                 <span
                   className="tnum font-bold"

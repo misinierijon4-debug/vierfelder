@@ -2,7 +2,7 @@ import { AREAS, FELDER, other } from './types'
 import type { Abrechnung, FeldId, TickQuelle, UserId, Zustand } from './types'
 import { addDays, fromKey, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
-import { erledigteFelder, quelle, wocheBereich, wocheGesamt } from './tracker'
+import { erledigteFelder, quelle, tageMitDaten, wocheBereich, wocheGesamt } from './tracker'
 
 export type DruckStatus =
   | 'offen'
@@ -88,6 +88,7 @@ export type WochenBilanz = {
   grund: Abrechnung['grund']
   differenz: number
   herkunft: 'archiviert' | 'nachberechnet'
+  archivQuelle?: Abrechnung['archivQuelle']
 }
 
 export type DuellHistorie = {
@@ -175,6 +176,10 @@ export function abrechnungFuerWoche(
     belegKoray,
     wette,
     abgeschlossen: new Date().toISOString(),
+    berechnungVersion: 1,
+    archivQuelle: 'lokal',
+    punkteErijon,
+    punkteKoray,
   }
 }
 
@@ -490,6 +495,41 @@ function gueltigerTag(tag: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(tag) && toKey(fromKey(tag)) === tag
 }
 
+function istDatumsschluessel(key: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) && toKey(fromKey(key)) === key
+}
+
+/**
+ * Verpasste Wochen werden nur dann nachgeholt, wenn mindestens eine echte
+ * Trackerquelle oder ein bewusst gesetzter Wetteinsatz zu dieser Woche
+ * gehoert. Leere Luecken werden nicht als nachtraegliche Remis erfunden.
+ */
+export function fehlendeAbschlussWochen(
+  z: Zustand,
+  wetten: Readonly<Record<string, string>>,
+  abrechnungen: readonly Abrechnung[],
+  jetzt: Date
+): string[] {
+  const laufendeWoche = toKey(startOfWeek(jetzt))
+  const vorhanden = new Set(abrechnungen.map((a) => a.woche))
+  const kandidaten = new Set<string>()
+
+  for (const user of ['erijon', 'koray'] as const) {
+    for (const tag of tageMitDaten(z, user)) {
+      if (!istDatumsschluessel(tag)) continue
+      kandidaten.add(toKey(startOfWeek(fromKey(tag))))
+    }
+  }
+  for (const woche of Object.keys(wetten)) {
+    if (!istDatumsschluessel(woche)) continue
+    if (toKey(startOfWeek(fromKey(woche))) === woche) kandidaten.add(woche)
+  }
+
+  return [...kandidaten]
+    .filter((woche) => woche < laufendeWoche && !vorhanden.has(woche))
+    .sort()
+}
+
 /**
  * Ganze Kalenderwochen bis zum ältesten Rohdatum oder Archiv. Die Rechnung
  * läuft über UTC-Kalendertage, damit eine Zeitumstellung keine Woche verliert.
@@ -573,14 +613,19 @@ export function saisonHistorie(
         wocheKey,
         montag: wocheTage[0],
         sonntag: wocheTage[6],
-        punkteIch: null,
-        punkteEr: null,
+        punkteIch: me === 'erijon'
+          ? (archiv.punkteErijon ?? null)
+          : (archiv.punkteKoray ?? null),
+        punkteEr: me === 'erijon'
+          ? (archiv.punkteKoray ?? null)
+          : (archiv.punkteErijon ?? null),
         belegIch: me === 'erijon' ? archiv.belegErijon : archiv.belegKoray,
         belegEr: me === 'erijon' ? archiv.belegKoray : archiv.belegErijon,
         sieger,
         grund: archiv.grund,
         differenz,
         herkunft: 'archiviert',
+        archivQuelle: archiv.archivQuelle,
       })
       continue
     }

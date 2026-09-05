@@ -629,6 +629,7 @@ export function useTracker(backend: Backend) {
       if (abrechnungenRef.current.some((x) => x.woche === a.woche)) return
       if (abrechnungStatusRef.current[a.woche] === 'speichern') return
       merkeAbrechnungStatus(a.woche, 'speichern')
+      setFehler(null)
       backend.schreibeAbrechnung(a)
         .then((kanonisch) => {
           if (!darfSchreiben()) return
@@ -650,6 +651,7 @@ export function useTracker(backend: Backend) {
             return
           }
           merkeAbrechnungStatus(a.woche, 'fehler')
+          setFehler('wochenabschluss fehlgeschlagen.')
         })
     },
     [backend, darfSchreiben, merkeAbrechnungStatus]

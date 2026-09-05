@@ -69,6 +69,13 @@ describe('DuellTab Archive und Abschlussstatus', () => {
     expect(inBilanz.queryByLabelText('1 zu 0')).toBeNull()
   })
 
+  it('kennzeichnet unverändert übernommene clientarchive sichtbar als legacy', () => {
+    const alt = { ...archiv('2026-08-17'), archivQuelle: 'legacy_client' as const }
+    zeige(new Date(2026, 7, 24, 12), leer(), [alt])
+
+    expect(screen.getByText('legacy-archiv')).toBeTruthy()
+  })
+
   it('zeigt einen unbestaetigten Abschluss als laufend und sperrt Doppelklicks', () => {
     zeige(new Date(2026, 7, 30, 19), leer(), [], 'speichern')
 

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Abrechnung, Phase } from './types'
 import {
+  finalisiereUndBestaetigeAbrechnung,
   istFehlendeVonSpalte,
   phasenAusAnsicht,
-  schreibeUndBestaetigeAbrechnung,
 } from './supabase'
 
 describe('supabase migrationskompatibilitaet', () => {
@@ -26,21 +26,13 @@ const KANDIDAT: Abrechnung = {
   abgeschlossen: '2026-09-06T16:00:00.000Z',
 }
 
-function abrechnungDb(
-  data: Record<string, unknown> | null,
-  selectError: unknown = null,
-  insertError: unknown = null
-) {
-  const single = vi.fn(async () => ({ data, error: selectError }))
-  const eq = vi.fn(() => ({ single }))
-  const select = vi.fn(() => ({ eq }))
-  const upsert = vi.fn(async () => ({ error: insertError }))
-  const from = vi.fn(() => ({ upsert, select }))
-  return { db: { from }, from, upsert, select, eq, single }
+function abrechnungDb(data: Record<string, unknown> | null, error: unknown = null) {
+  const rpc = vi.fn(async () => ({ data, error }))
+  return { db: { rpc }, rpc }
 }
 
 describe('kanonische Wochenabrechnung', () => {
-  it('liest nach einem konfliktfreien Insert die tatsaechlich gespeicherte Zeile', async () => {
+  it('sendet nur den wochenmontag und übernimmt die serverzeile', async () => {
     const zeile = {
       woche: KANDIDAT.woche,
       sieger: 'erijon',
@@ -50,19 +42,23 @@ describe('kanonische Wochenabrechnung', () => {
       beleg_koray: '7',
       wette: 'erste wette',
       abgeschlossen: '2026-09-06T16:05:00.000Z',
+      berechnung_version: 1,
+      archiv_quelle: 'server_planmaessig',
+      punkte_erijon: 12,
+      punkte_koray: 12,
     }
     const fake = abrechnungDb(zeile)
 
-    const bestaetigt = await schreibeUndBestaetigeAbrechnung(
-      fake.db as unknown as Parameters<typeof schreibeUndBestaetigeAbrechnung>[0],
-      KANDIDAT
+    const bestaetigt = await finalisiereUndBestaetigeAbrechnung(
+      fake.db as unknown as Parameters<typeof finalisiereUndBestaetigeAbrechnung>[0],
+      KANDIDAT.woche
     )
 
-    expect(fake.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ woche: KANDIDAT.woche, sieger: 'koray' }),
-      { onConflict: 'woche', ignoreDuplicates: true }
-    )
-    expect(fake.eq).toHaveBeenCalledWith('woche', KANDIDAT.woche)
+    expect(fake.rpc).toHaveBeenCalledWith('finalisiere_wochenabrechnung', {
+      p_woche: KANDIDAT.woche,
+    })
+    expect(JSON.stringify(fake.rpc.mock.calls)).not.toContain(KANDIDAT.sieger)
+    expect(JSON.stringify(fake.rpc.mock.calls)).not.toContain(KANDIDAT.wette)
     expect(bestaetigt).toEqual({
       woche: KANDIDAT.woche,
       sieger: 'erijon',
@@ -72,25 +68,102 @@ describe('kanonische Wochenabrechnung', () => {
       belegKoray: 7,
       wette: 'erste wette',
       abgeschlossen: '2026-09-06T16:05:00.000Z',
+      berechnungVersion: 1,
+      archivQuelle: 'server_planmaessig',
+      punkteErijon: 12,
+      punkteKoray: 12,
     })
   })
 
-  it('lehnt Insert-, Lesefehler und eine nicht bestaetigte Nullzeile ab', async () => {
-    const insertFehler = { code: '42501' }
-    const leseFehler = { code: 'PGRST116' }
-
-    await expect(schreibeUndBestaetigeAbrechnung(
-      abrechnungDb(null, null, insertFehler).db as unknown as Parameters<typeof schreibeUndBestaetigeAbrechnung>[0],
-      KANDIDAT
-    )).rejects.toBe(insertFehler)
-    await expect(schreibeUndBestaetigeAbrechnung(
-      abrechnungDb(null, leseFehler).db as unknown as Parameters<typeof schreibeUndBestaetigeAbrechnung>[0],
-      KANDIDAT
-    )).rejects.toBe(leseFehler)
-    await expect(schreibeUndBestaetigeAbrechnung(
-      abrechnungDb(null).db as unknown as Parameters<typeof schreibeUndBestaetigeAbrechnung>[0],
-      KANDIDAT
+  it('lehnt RPC-Fehler und eine nicht bestaetigte Nullzeile ab', async () => {
+    const rpcFehler = { code: '42501' }
+    await expect(finalisiereUndBestaetigeAbrechnung(
+      abrechnungDb(null, rpcFehler).db as unknown as Parameters<typeof finalisiereUndBestaetigeAbrechnung>[0],
+      KANDIDAT.woche
+    )).rejects.toBe(rpcFehler)
+    await expect(finalisiereUndBestaetigeAbrechnung(
+      abrechnungDb(null).db as unknown as Parameters<typeof finalisiereUndBestaetigeAbrechnung>[0],
+      KANDIDAT.woche
     )).rejects.toThrow('wurde nicht bestaetigt')
+  })
+
+  it('uebernimmt eine explizit als legacy gekennzeichnete Archivzeile', async () => {
+    const zeile = {
+      woche: KANDIDAT.woche,
+      sieger: KANDIDAT.sieger,
+      grund: KANDIDAT.grund,
+      differenz: KANDIDAT.differenz,
+      beleg_erijon: KANDIDAT.belegErijon,
+      beleg_koray: KANDIDAT.belegKoray,
+      wette: KANDIDAT.wette,
+      abgeschlossen: KANDIDAT.abgeschlossen,
+      berechnung_version: 0,
+      archiv_quelle: 'legacy_client',
+      punkte_erijon: null,
+      punkte_koray: null,
+    }
+    const fake = abrechnungDb(zeile)
+    const bestaetigt = await finalisiereUndBestaetigeAbrechnung(
+      fake.db as unknown as Parameters<typeof finalisiereUndBestaetigeAbrechnung>[0],
+      KANDIDAT.woche
+    )
+    expect(bestaetigt).toMatchObject({
+      berechnungVersion: 0,
+      archivQuelle: 'legacy_client',
+      punkteErijon: null,
+      punkteKoray: null,
+    })
+  })
+
+  it.each([
+    [{}, 'andere woche'],
+    [{
+      woche: '2026-08-24',
+      sieger: 'erijon',
+      grund: 'punkte',
+      differenz: 1,
+      beleg_erijon: 0,
+      beleg_koray: 0,
+      wette: null,
+      abgeschlossen: KANDIDAT.abgeschlossen,
+      berechnung_version: 1,
+      archiv_quelle: 'server_nachgeholt',
+      punkte_erijon: 1,
+      punkte_koray: 0,
+    }, 'andere woche'],
+    [{
+      woche: KANDIDAT.woche,
+      sieger: 'koray',
+      grund: 'punkte',
+      differenz: 1,
+      beleg_erijon: 0,
+      beleg_koray: 0,
+      wette: null,
+      abgeschlossen: KANDIDAT.abgeschlossen,
+      berechnung_version: 1,
+      archiv_quelle: 'server_nachgeholt',
+      punkte_erijon: 1,
+      punkte_koray: 0,
+    }, 'widerspruechliche entscheidung'],
+    [{
+      woche: KANDIDAT.woche,
+      sieger: 'erijon',
+      grund: 'punkte',
+      differenz: 2,
+      beleg_erijon: 0,
+      beleg_koray: 0,
+      wette: null,
+      abgeschlossen: KANDIDAT.abgeschlossen,
+      berechnung_version: 1,
+      archiv_quelle: 'server_nachgeholt',
+      punkte_erijon: 1,
+      punkte_koray: 0,
+    }, 'auditwerten'],
+  ] as const)('lehnt eine nicht bestaetigende RPC-Zeile ab: %s', async (zeile, text) => {
+    await expect(finalisiereUndBestaetigeAbrechnung(
+      abrechnungDb(zeile as unknown as Record<string, unknown>).db as unknown as Parameters<typeof finalisiereUndBestaetigeAbrechnung>[0],
+      KANDIDAT.woche
+    )).rejects.toThrow(text)
   })
 
   it('unterscheidet eine echte leere Phasenliste von einer fehlenden Zeile', () => {

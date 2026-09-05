@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { CalendarBlank } from '@phosphor-icons/react'
 import { AREAS, other, user as userDef } from './lib/types'
@@ -38,7 +38,7 @@ import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
-import { abrechnungFuerWoche, berechneDuell } from './lib/duell'
+import { abrechnungFuerWoche, berechneDuell, fehlendeAbschlussWochen } from './lib/duell'
 
 const UNDO_MS = 5000
 
@@ -132,6 +132,24 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   const abrechnungDerWocheStatus = abrechnungDerWoche
     ? 'gespeichert' as const
     : abrechnungStatus[woche[0] ?? heuteKey] ?? 'idle'
+  const nachzuholendeWochen = useMemo(
+    () => fehlendeAbschlussWochen(zustand, wetten, abrechnungen, heute),
+    [zustand, wetten, abrechnungen, heute]
+  )
+  const nachholWoche = nachzuholendeWochen[0] ?? null
+  const nachholStatus = nachholWoche ? abrechnungStatus[nachholWoche] ?? 'idle' : 'idle'
+
+  const holeWocheNach = useCallback((wocheKey: string) => {
+    const tage = weekDays(fromKey(wocheKey))
+    abrechnungHinzu(abrechnungFuerWoche(zustand, tage, wetten[wocheKey] ?? null))
+  }, [abrechnungHinzu, zustand, wetten])
+
+  // Immer nur die aelteste belegte Luecke: Nach kanonischer Bestaetigung wird
+  // sie Teil des Archivs und der naechste Render nimmt erst dann die naechste.
+  useEffect(() => {
+    if (!bereit || backend.art !== 'supabase' || !nachholWoche || nachholStatus !== 'idle') return
+    holeWocheNach(nachholWoche)
+  }, [backend.art, bereit, holeWocheNach, nachholStatus, nachholWoche])
 
   // datumswechsel und das sonntagsfinale um 18 uhr, ohne die app neu zu öffnen.
   // ein neues date-objekt kommt nur, wenn sich tag oder bilanzzeit ändern —
@@ -230,6 +248,28 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             )}
           </AnimatePresence>
         </div>
+
+        {backend.art === 'supabase' && nachholWoche && nachholStatus !== 'idle' && (
+          <p
+            className="mb-2 flex min-h-8 items-center justify-between gap-3 border border-linie px-2 text-[11px]"
+            aria-live="polite"
+          >
+            <span>
+              {nachholStatus === 'speichern'
+                ? `woche ${nachholWoche} wird sicher abgeschlossen`
+                : `woche ${nachholWoche} konnte nicht abgeschlossen werden`}
+            </span>
+            {nachholStatus === 'fehler' && (
+              <button
+                type="button"
+                className="min-h-7 shrink-0 underline underline-offset-2"
+                onClick={() => holeWocheNach(nachholWoche)}
+              >
+                erneut
+              </button>
+            )}
+          </p>
+        )}
 
         {/* Tab-Inhalte bleiben bis zum vollstaendigen Erstladen inert. So kann
             kein leerer Zwischenstand als echte Mutation gespeichert werden. */}

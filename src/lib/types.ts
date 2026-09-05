@@ -262,6 +262,13 @@ export type Abrechnung = {
   wette: string | null
   /** iso-zeitpunkt des abschlusses */
   abgeschlossen: string
+  /** 0 kennzeichnet unveraendert uebernommene Clientarchive */
+  berechnungVersion?: number
+  /** Herkunft der unveraenderlichen Archivzeile; alte Clients kennen sie nicht */
+  archivQuelle?: 'server_planmaessig' | 'server_nachgeholt' | 'legacy_client' | 'lokal'
+  /** serverseitige Auditwerte; bei Legacy-Archiven nicht mehr sicher rekonstruierbar */
+  punkteErijon?: number | null
+  punkteKoray?: number | null
 }
 
 export function tickKey(u: UserId, a: AreaId, tag: string): TickKey {
