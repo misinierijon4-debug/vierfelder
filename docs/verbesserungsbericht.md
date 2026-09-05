@@ -50,7 +50,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | behoben |
 | P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | lokal behoben; Migration/Staging offen |
 | P0 | Push-Versand akzeptiert jedes gespeicherte HTTPS-Ziel und folgt Redirects | serverseitige Request-Forgery und Datenabfluss in Logs/Antworten | Provider-Allowlist, Redirect-, IP- und Log-Negativtests | lokal behoben; Deploy offen |
-| P0 | offene Registrierung + unprofilierte Push-Schreibrechte | fremde Konten können Provider-Endpunkte speichern und die Probe missbrauchen | Mitglieder-, RLS- und Rate-Limit-Matrix | blockiert durch Migrationsdrift |
+| P0 | offene Registrierung + unprofilierte Push-Schreibrechte | fremde Konten können Provider-Endpunkte speichern und die Probe missbrauchen | Mitglieder-, RLS- und Rate-Limit-Matrix | lokal behoben; Migration, Live-Signup und Staging offen |
 | P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
 | P0 | `fokus` fällt bei fehlendem anon-Key auf Service Role zurück | öffentlich erreichbarer Importweg erhält unnötige Vollrechte | Fehlkonfigurations- und Key-Auswahltests | lokal behoben; Deploy offen |
 | P1 | Fokus-GET trägt ein bereichsübergreifend gültiges Token in URL/Logs | Token-Leak erlaubt Schreibzugriff auf mehrere Importwege | POST-Header, Zweck-/Gerätetoken und Rotation | POST lokal fertig; Migration/iPhones offen |
@@ -80,8 +80,8 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 
 ## Produktions- und Migrationsgrenzen
 
-Der lesende Live-Abgleich meldet 29 produktive und mit den beiden neuen
-Forward-Fixes 30 lokale Migrationen; nur 15 Versionsnummern stimmen überein.
+Der lesende Live-Abgleich meldet 29 produktive und mit den drei neuen
+Forward-Fixes 31 lokale Migrationen; nur 15 Versionsnummern stimmen überein.
 `gewicht.quelle` und `record_gewicht` stehen lokal in einer Migration, existieren
 produktiv aber noch nicht. Deshalb werden derzeit keine Migration, kein Reset,
 keine Tokenrotation und keine produktive Änderung ausgeführt. Vor einem späteren
@@ -394,6 +394,57 @@ und eine ausdrückliche Freigabe erforderlich.
   Bei Live-Loeschungen muessen parallele Importe pausieren oder pro Nutzer
   serialisiert werden. Subscription-Status, Initial-Gap und Reconnect-
   Vollabgleich bleiben das naechste eigenstaendige Zuverlaessigkeitspaket.
+
+### Welle 2: serverseitige Zwei-Personen-Grenze
+
+- `public.profile` ist nun auch fuer Own-Row-Operationen die ausdrueckliche
+  Mitgliedschaftsquelle. Die zentrale `private.ist_duellprofil()`-Funktion hat
+  einen leeren Suchpfad und voll qualifizierte Objekte. Gemeinsame Daten bleiben
+  fuer Erijon und Koray sichtbar; private Werte, Push-Abos und
+  Erinnerungseinstellungen bleiben zusaetzlich auf den Eigentuemer begrenzt.
+- Alle 13 bisher nur an `auth.users` gebundenen `user_id`-Tabellen erhalten
+  einen zusaetzlichen, validierten Profil-Fremdschluessel. Die alten FKs bleiben
+  fuer Kompatibilitaet erhalten. Der neue FK kaskadiert bewusst nicht von einer
+  Profilzeile: Eine versehentliche Membership-Aenderung darf keine Gesundheits-,
+  Noten- oder Trackerhistorie loeschen.
+- Vor der Constraint-Anlage sucht die Migration tabellenweise nach fremden
+  Altzeilen. Bei einem Fund bricht sie mit den betroffenen Tabellennamen ab;
+  nichts wird automatisch geloescht oder umgedeutet. Der letzte lesende
+  Live-Audit fand zwei Auth-Nutzer, zwei Profile und keine solchen Zeilen. Das
+  ersetzt keinen unmittelbar vor Staging und Produktion wiederholten Check.
+- `kurzbefehl_laeufe` ist nicht mehr fuer jedes beliebige authentifizierte Konto
+  lesbar. Die Push-Probe validiert das JWT serverseitig, prueft das konkrete
+  Profil vor dem ersten Abo-Lesen und reserviert atomar hoechstens einen Versand
+  pro Mitglied und Minute. Fremdkonten erhalten 403; zu schnelle Wiederholungen
+  429 mit `Retry-After`, ohne Push-Dienstzugriff.
+- Der neue Publishable-Key-Resolver wird nun von Fokus und Push-Probe gemeinsam
+  verwendet. Kaputtes `SUPABASE_PUBLISHABLE_KEYS`-JSON faellt nicht auf den
+  Legacy-Key zurueck; Secret-, Service-Role- und fremde JWT-Rollen werden
+  abgewiesen. Auth-401/403 bleibt eine abgelaufene Anmeldung, waehrend ein
+  Auth-Infrastrukturfehler ehrlich als 502 erscheint.
+- Pro Profil sind hoechstens fuenf Push-Abos zulaessig. Ein Advisory Lock macht
+  auch parallele Inserts zaehlsicher; bestehende Endpunkte koennen weiterhin
+  aktualisiert werden. Der lesende Live-Check fand zwei Abos fuer Erijon und
+  eines fuer Koray, also keinen blockierenden Altbestand. Der privilegierte
+  Rate-Limit-Kern liegt in `private`; die exponierte RPC ist nur ein
+  `SECURITY INVOKER`-Wrapper.
+- Die lokale Supabase-Reproduktionskonfiguration deaktiviert normale und
+  anonyme Registrierung. Die produktive Auth-Einstellung ist weiterhin offen
+  und wurde nicht veraendert; ihr Abschalten bleibt eine ausdrueckliche
+  Freigabeaktion. RLS/FKs bleiben unabhaengig davon erforderlich.
+- Die Umsetzung folgt der aktuellen offiziellen
+  [RLS-Anleitung](https://supabase.com/docs/guides/database/postgres/row-level-security),
+  der [Function-Haertung](https://supabase.com/docs/guides/database/functions)
+  und der [CLI-Konfigurationsreferenz](https://supabase.com/docs/guides/local-development/cli/config).
+- Gezielter Schlusslauf: 4 Dateien und 58 Tests, Exit 0. Vollstaendiger Lauf
+  `npm run check`: Exit 0, 32 Dateien und 465 Tests; TypeScript, Webbuild und
+  Artefaktpruefung bestehen. Deno 2.9.0 prueft alle fuenf Functions, Exit 0.
+  JavaScript: 764.841 Byte roh beziehungsweise 219.090 Byte gzip; gesamtes
+  `dist`: 1.111.405 Byte. SQL-Quelltests sind kein Datenbankbeweis: Docker oder
+  Podman fehlen, daher bleiben Reset, pgTAP-Rollenmatrix, Migration und Staging
+  offen. Die Datenbankmigration muss vor der neuen `push-test`-Function
+  ausgerollt werden; umgekehrt fehlt der Handler-RPC und endet fail-closed mit
+  500.
 
 ## Offene Prüfungen
 

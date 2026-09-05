@@ -1,3 +1,7 @@
+import { publizierbarerSupabaseKey } from './supabaseKey.ts'
+
+export { publizierbarerSupabaseKey } from './supabaseKey.ts'
+
 export const FOKUS_BEREICHE = ['lernen', 'gym', 'boxen', 'lesen'] as const
 
 type FokusBereich = (typeof FOKUS_BEREICHE)[number]
@@ -65,46 +69,6 @@ function hole(params: URLSearchParams, ...namen: string[]): string {
     if (wert !== null && wert.trim() !== '') return wert.trim()
   }
   return ''
-}
-
-/**
- * Die neuen Supabase-Variablen sind JSON-Woerterbuecher. Ist eines vorhanden,
- * aber kaputt, endet die Function bewusst fail-closed und faellt nicht auf
- * einen anderen Key zurueck. Nur wenn die neue Variable ganz fehlt, bleibt der
- * unprivilegierte Legacy-anon-Key waehrend des Uebergangs erlaubt.
- */
-export function publizierbarerSupabaseKey(
-  umgebung: FokusAbhaengigkeiten['umgebung']
-): string | null {
-  const neu = umgebung('SUPABASE_PUBLISHABLE_KEYS')
-  if (neu !== undefined) {
-    try {
-      const keys = JSON.parse(neu) as unknown
-      if (!keys || typeof keys !== 'object' || Array.isArray(keys)) return null
-      const standard = (keys as Record<string, unknown>).default
-      if (typeof standard !== 'string' || !standard.startsWith('sb_publishable_')) return null
-      return standard
-    } catch {
-      return null
-    }
-  }
-
-  const legacy = umgebung('SUPABASE_ANON_KEY')?.trim()
-  if (!legacy || legacy.startsWith('sb_secret_')) return null
-  if (legacy.startsWith('sb_publishable_')) return legacy
-
-  // Bei den alten JWT-Keys ist nur die Rolle `anon` fuer diesen oeffentlichen
-  // Weg korrekt. Unbekannte Rollen und unlesbare JWTs enden fail-closed.
-  const teile = legacy.split('.')
-  if (teile.length !== 3) return null
-  try {
-    const payload = teile[1].replace(/-/g, '+').replace(/_/g, '/')
-    const aufgefuellt = payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')
-    const rolle = (JSON.parse(atob(aufgefuellt)) as { role?: unknown }).role
-    return rolle === 'anon' ? legacy : null
-  } catch {
-    return null
-  }
 }
 
 function normalisiereEreignis(roh: string): FokusEreignis | null {

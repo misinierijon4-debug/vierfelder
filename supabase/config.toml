@@ -1,3 +1,9 @@
+[auth]
+# zweikampf ist eine private Zwei-Personen-Anwendung. Weitere Konten werden
+# ausschliesslich kontrolliert ueber die Projektverwaltung eingeladen.
+enable_signup = false
+enable_anonymous_sign_ins = false
+
 [functions.schlaf-import]
 verify_jwt = false
 
