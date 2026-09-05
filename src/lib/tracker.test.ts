@@ -16,6 +16,7 @@ import {
   mitAufenthalt,
   mitGewicht,
   mitNacht,
+  ohneAufenthalt,
   setzeEinheitWert,
   setzeTick,
   streak,
@@ -403,5 +404,31 @@ describe('live eintreffende daten zusammenfuehren', () => {
     }
     const liste = [a]
     expect(mitAufenthalt(liste, { ...a })).toBe(liste)
+  })
+
+  it('ersetzt und entfernt Aufenthalte anhand der technischen Realtime-ID', () => {
+    const offen = {
+      id: '42',
+      user: 'erijon' as UserId,
+      bereich: 'gym' as const,
+      ort: 'fitx',
+      ankunft: '2026-08-26T17:00:00.000Z',
+      abgang: null,
+    }
+    const geschlossen = mitAufenthalt([offen], {
+      ...offen,
+      ort: 'umbenannte quelle',
+      ankunft: '2026-08-26T17:01:00.000Z',
+      abgang: '2026-08-26T18:00:00.000Z',
+    })
+    expect(geschlossen).toHaveLength(1)
+    expect(geschlossen[0]?.abgang).toBe('2026-08-26T18:00:00.000Z')
+    const andererBereich = mitAufenthalt(geschlossen, {
+      ...geschlossen[0]!,
+      bereich: 'boxen',
+    })
+    expect(andererBereich[0]?.bereich).toBe('boxen')
+    expect(ohneAufenthalt(geschlossen, '42')).toEqual([])
+    expect(ohneAufenthalt(geschlossen, '99')).toBe(geschlossen)
   })
 })

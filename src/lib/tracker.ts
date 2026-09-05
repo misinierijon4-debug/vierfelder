@@ -296,18 +296,34 @@ export function mitGewicht(
  *
  * Die Ankunft legt den Aufenthalt an, der Abgang schliesst ihn — dieselbe
  * Ankunft kommt also zweimal, das zweite Mal mit `abgang`. Person, Bereich und
- * Ankunftszeit sind der Schluessel; die Ankunftszeit aendert sich nie.
+ * In Supabase ist die technische ID der Schluessel. Alte lokale Daten ohne ID
+ * fallen auf Person, Bereich und Ankunftszeit zurueck.
  */
 export function mitAufenthalt(aufenthalte: Aufenthalt[], neuer: Aufenthalt): Aufenthalt[] {
   const idx = aufenthalte.findIndex(
-    (x) => x.user === neuer.user && x.bereich === neuer.bereich && x.ankunft === neuer.ankunft
+    (x) => neuer.id !== undefined && x.id !== undefined
+      ? x.id === neuer.id
+      : x.user === neuer.user && x.bereich === neuer.bereich && x.ankunft === neuer.ankunft
   )
   if (idx === -1) return [...aufenthalte, neuer]
   const vorhanden = aufenthalte[idx]!
-  if (vorhanden.abgang === neuer.abgang && vorhanden.ort === neuer.ort) return aufenthalte
+  if (
+    vorhanden.id === neuer.id
+    && vorhanden.user === neuer.user
+    && vorhanden.bereich === neuer.bereich
+    && vorhanden.ort === neuer.ort
+    && vorhanden.ankunft === neuer.ankunft
+    && vorhanden.abgang === neuer.abgang
+  ) return aufenthalte
   const next = [...aufenthalte]
   next[idx] = neuer
   return next
+}
+
+/** Realtime-DELETE liefert unter RLS nur die technische Primaerschluessel-ID. */
+export function ohneAufenthalt(aufenthalte: Aufenthalt[], id: string): Aufenthalt[] {
+  const next = aufenthalte.filter((a) => a.id !== id)
+  return next.length === aufenthalte.length ? aufenthalte : next
 }
 
 export function mitWert(einheiten: Einheiten, id: string, wert: number | null): Einheiten {

@@ -173,6 +173,8 @@ export type GewichtQuellen = Record<string, TickQuelle>
  * ein lerntag.
  */
 export type Aufenthalt = {
+  /** technische Tabellen-ID; lokale Beispieldaten vor dieser Version haben keine */
+  id?: string
   user: UserId
   bereich: MessbarerBereich
   /** name der quelle: ein trainingsort oder ein fokus */

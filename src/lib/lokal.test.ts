@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BackendEreignis } from './backend'
 import { lokalesBackend } from './lokal'
 import { tickKey } from './types'
 
@@ -138,5 +139,89 @@ describe('lokale Schlafverlaeufe', () => {
     await expect(backend.ladePhasen('erijon', '2026-09-03', controller.signal)).rejects.toMatchObject({
       name: 'AbortError',
     })
+  })
+})
+
+describe('lokaler Zwei-Tab-Kanal', () => {
+  it('meldet Aenderungen und haelt Delete-Nachrichten fuer alte Tabs lesbar', async () => {
+    const vorher = globalThis.BroadcastChannel
+    class TestKanal {
+      static alle: TestKanal[] = []
+      private listener = new Set<(e: MessageEvent) => void>()
+
+      constructor(_name: string) {
+        TestKanal.alle.push(this)
+      }
+
+      postMessage(data: unknown) {
+        for (const kanal of TestKanal.alle) {
+          if (kanal === this) continue
+          for (const cb of kanal.listener) cb({ data } as MessageEvent)
+        }
+      }
+
+      addEventListener(_typ: string, cb: (e: MessageEvent) => void) {
+        this.listener.add(cb)
+      }
+
+      removeEventListener(_typ: string, cb: (e: MessageEvent) => void) {
+        this.listener.delete(cb)
+      }
+    }
+
+    try {
+      ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = TestKanal
+      vi.resetModules()
+      const tabA = (await import('./lokal')).lokalesBackend()
+      vi.resetModules()
+      const tabB = (await import('./lokal')).lokalesBackend()
+      const ereignisse: BackendEreignis[] = []
+      const roheNachrichten: unknown[] = []
+      const monitor = new TestKanal('vierfelder')
+      monitor.addEventListener('message', (e) => roheNachrichten.push(e.data))
+      const abmelden = tabB.abonniere((e) => ereignisse.push(e))
+
+      await tabA.schreibeGewicht('2026-09-05', 81.4)
+      await tabA.schreibeGewicht('2026-09-05', 0)
+
+      expect(ereignisse).toEqual([
+        {
+          typ: 'gewicht', user: 'erijon', tag: '2026-09-05',
+          kg: 81.4, quelle: 'getippt',
+        },
+        {
+          typ: 'gewicht', user: 'erijon', tag: '2026-09-05',
+          kg: null, quelle: 'getippt',
+        },
+      ])
+
+      const einheit = {
+        id: 'tab-einheit', user: 'erijon' as const, area: 'gym' as const,
+        tag: '2026-09-05', wert: 60, erfasst: null,
+      }
+      const note = {
+        id: 'tab-note', user: 'erijon' as const,
+        fachId: 'a0000000-0000-4000-8000-000000000004',
+        art: 'klausur' as const, punkte: 12, gewicht: 10,
+        datum: '2026-09-05', titel: 'arbeit',
+      }
+      await tabA.schreibeEinheit(einheit)
+      await tabA.loescheEinheit(einheit)
+      await tabA.schreibeNote(note)
+      await tabA.loescheNote(note.id)
+
+      expect(ereignisse).toContainEqual({ typ: 'einheit', art: 'weg', id: einheit.id })
+      expect(ereignisse).toContainEqual({ typ: 'note', art: 'weg', id: note.id })
+      expect(roheNachrichten).toContainEqual(expect.objectContaining({
+        typ: 'einheit', art: 'weg', id: einheit.id, einheit,
+      }))
+      expect(roheNachrichten).toContainEqual(expect.objectContaining({
+        typ: 'note', art: 'weg', id: note.id, note,
+      }))
+      abmelden()
+    } finally {
+      ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = vorher
+      vi.resetModules()
+    }
   })
 })

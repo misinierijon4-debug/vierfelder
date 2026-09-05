@@ -50,7 +50,12 @@ const MIGRIERT_KEY = 'vierfelder.einheiten.migriert.v1'
 const KANAL = 'vierfelder'
 
 type AlleWerte = Record<UserId, Werte>
-type Nachricht = BackendEreignis & { von: string }
+type Nachricht =
+  | (BackendEreignis & { von: string })
+  // Uebergangsformat: neue Tabs lesen `id`, bereits offene alte Tabs die
+  // Vollzeile. Nach dem naechsten erzwungenen PWA-Update kann das entfallen.
+  | { von: string; typ: 'einheit'; art: 'weg'; id: string; einheit: Einheit }
+  | { von: string; typ: 'note'; art: 'weg'; id: string; note: Note }
 
 function lade<T>(key: string, fallback: T): T {
   try {
@@ -397,14 +402,24 @@ function holeKanal(): BroadcastChannel | null {
 export function lokalesBackend(): Backend {
   const absender = Math.random().toString(36).slice(2)
 
-  const sende = (art: EinheitEreignis['art'], einheit: Einheit) => {
-    holeKanal()?.postMessage({ von: absender, typ: 'einheit', art, einheit } satisfies Nachricht)
+  const sende = (ereignis: EinheitEreignis) => {
+    holeKanal()?.postMessage({ von: absender, ...ereignis } satisfies Nachricht)
   }
-  const sendeFach = (art: FachEreignis['art'], fach: Fach) => {
-    holeKanal()?.postMessage({ von: absender, typ: 'fach', art, fach } satisfies Nachricht)
+  const sendeFach = (ereignis: FachEreignis) => {
+    holeKanal()?.postMessage({ von: absender, ...ereignis } satisfies Nachricht)
   }
-  const sendeNote = (art: NoteEreignis['art'], note: Note) => {
-    holeKanal()?.postMessage({ von: absender, typ: 'note', art, note } satisfies Nachricht)
+  const sendeNote = (ereignis: NoteEreignis) => {
+    holeKanal()?.postMessage({ von: absender, ...ereignis } satisfies Nachricht)
+  }
+  const sendeEinheitWeg = (einheit: Einheit) => {
+    holeKanal()?.postMessage({
+      von: absender, typ: 'einheit', art: 'weg', id: einheit.id, einheit,
+    } satisfies Nachricht)
+  }
+  const sendeNoteWeg = (note: Note) => {
+    holeKanal()?.postMessage({
+      von: absender, typ: 'note', art: 'weg', id: note.id, note,
+    } satisfies Nachricht)
   }
 
   return {
@@ -448,31 +463,31 @@ export function lokalesBackend(): Backend {
       if (alle.some((x) => x.id === e.id)) return
       alle.push(e)
       sichere(alle)
-      sende('neu', e)
+      sende({ typ: 'einheit', art: 'neu', einheit: e })
     },
 
     async schreibeEinheitWert(e: Einheit, wert: number | null) {
       const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, wert } : x))
       sichere(alle)
-      sende('wert', { ...e, wert })
+      sende({ typ: 'einheit', art: 'wert', einheit: { ...e, wert } })
     },
 
     async schreibeEinheitVon(e: Einheit, von: string | null) {
       const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, von } : x))
       sichere(alle)
-      sende('wert', { ...e, von })
+      sende({ typ: 'einheit', art: 'wert', einheit: { ...e, von } })
     },
 
     async loescheEinheit(e: Einheit) {
       sichere(alleEinheiten().filter((x) => x.id !== e.id))
-      sende('weg', e)
+      sendeEinheitWeg(e)
     },
 
     async loescheTag(einheiten: Einheit[]) {
       if (einheiten.length === 0) return
       const weg = new Set(einheiten.map((e) => e.id))
       sichere(alleEinheiten().filter((x) => !weg.has(x.id)))
-      for (const e of einheiten) sende('weg', e)
+      for (const e of einheiten) sendeEinheitWeg(e)
     },
 
     async schreibeGewicht(tag: string, kg: number) {
@@ -482,6 +497,14 @@ export function lokalesBackend(): Backend {
       if (kg <= 0) delete gewichte[key]
       else gewichte[key] = kg
       localStorage.setItem(GEWICHT_KEY, JSON.stringify(gewichte))
+      holeKanal()?.postMessage({
+        von: absender,
+        typ: 'gewicht',
+        user: me,
+        tag,
+        kg: kg <= 0 ? null : kg,
+        quelle: 'getippt',
+      } satisfies Nachricht)
     },
 
     async schreibeWette(woche: string, text: string) {
@@ -505,21 +528,21 @@ export function lokalesBackend(): Backend {
       if (!fach) return
       const next = { ...fach, pruefungsfach: nummer }
       localStorage.setItem(FAECHER_KEY, JSON.stringify(alleFaecher().map((x) => x.id === id ? next : x)))
-      sendeFach('wert', next)
+      sendeFach({ typ: 'fach', art: 'wert', fach: next })
     },
 
     async schreibeNote(note: Note) {
       const alle = alleNoten()
       if (alle.some((x) => x.id === note.id)) return
       localStorage.setItem(NOTEN_KEY, JSON.stringify([...alle, note]))
-      sendeNote('neu', note)
+      sendeNote({ typ: 'note', art: 'neu', note })
     },
 
     async loescheNote(id: string) {
       const note = alleNoten().find((x) => x.id === id)
       if (!note) return
       localStorage.setItem(NOTEN_KEY, JSON.stringify(alleNoten().filter((x) => x.id !== id)))
-      sendeNote('weg', note)
+      sendeNoteWeg(note)
     },
 
     // im prototyp liegt alles im browser, es gibt nichts nachzuladen
@@ -539,11 +562,47 @@ export function lokalesBackend(): Backend {
       const onMessage = (e: MessageEvent<Nachricht>) => {
         const n = e.data
         if (!n || n.von === absender) return
-        if (n.typ === 'wette') cb({ typ: 'wette', woche: n.woche, text: n.text })
-        else if (n.typ === 'abrechnung') cb({ typ: 'abrechnung', abrechnung: n.abrechnung })
-        else if (n.typ === 'einheit') cb({ typ: 'einheit', art: n.art, einheit: n.einheit })
-        else if (n.typ === 'fach') cb({ typ: 'fach', art: n.art, fach: n.fach })
-        else if (n.typ === 'note') cb({ typ: 'note', art: n.art, note: n.note })
+        // Ein bereits offener Tab mit der vorherigen Fassung sendet bei
+        // Deletes noch die ganze Zeile. Bis alle Tabs aktualisiert sind,
+        // normalisieren wir sie auf denselben stabilen ID-Vertrag.
+        const alt = n as unknown as {
+          typ?: string
+          art?: string
+          einheit?: Einheit
+          fach?: Fach
+          note?: Note
+          id?: string
+        }
+        if (alt.art === 'weg' && alt.id) {
+          if (alt.typ === 'einheit') {
+            cb({ typ: 'einheit', art: 'weg', id: alt.id })
+            return
+          }
+          if (alt.typ === 'fach') {
+            cb({ typ: 'fach', art: 'weg', id: alt.id })
+            return
+          }
+          if (alt.typ === 'note') {
+            cb({ typ: 'note', art: 'weg', id: alt.id })
+            return
+          }
+        }
+        if (alt.art === 'weg' && !alt.id) {
+          if (alt.typ === 'einheit' && alt.einheit?.id) {
+            cb({ typ: 'einheit', art: 'weg', id: alt.einheit.id })
+            return
+          }
+          if (alt.typ === 'fach' && alt.fach?.id) {
+            cb({ typ: 'fach', art: 'weg', id: alt.fach.id })
+            return
+          }
+          if (alt.typ === 'note' && alt.note?.id) {
+            cb({ typ: 'note', art: 'weg', id: alt.note.id })
+            return
+          }
+        }
+        const { von: _absender, ...ereignis } = n
+        cb(ereignis as BackendEreignis)
       }
       ch.addEventListener('message', onMessage)
       return () => ch.removeEventListener('message', onMessage)

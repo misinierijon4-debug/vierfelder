@@ -15,16 +15,18 @@ import type {
 } from './types'
 
 /** eine einheit, so wie realtime oder ein anderer tab sie meldet */
-export type EinheitEreignis = {
-  typ: 'einheit'
-  art: 'neu' | 'weg' | 'wert'
-  einheit: Einheit
-}
+export type EinheitEreignis =
+  | { typ: 'einheit'; art: 'neu' | 'wert'; einheit: Einheit }
+  | { typ: 'einheit'; art: 'weg'; id: string }
 
-export type WetteEreignis = { typ: 'wette'; woche: string; text: string }
+export type WetteEreignis = { typ: 'wette'; woche: string; text: string | null }
 export type AbrechnungEreignis = { typ: 'abrechnung'; abrechnung: Abrechnung }
-export type FachEreignis = { typ: 'fach'; art: 'neu' | 'weg' | 'wert'; fach: Fach }
-export type NoteEreignis = { typ: 'note'; art: 'neu' | 'weg' | 'wert'; note: Note }
+export type FachEreignis =
+  | { typ: 'fach'; art: 'neu' | 'wert'; fach: Fach }
+  | { typ: 'fach'; art: 'weg'; id: string }
+export type NoteEreignis =
+  | { typ: 'note'; art: 'neu' | 'wert'; note: Note }
+  | { typ: 'note'; art: 'weg'; id: string }
 
 /**
  * eine nacht, die importiert, neu bewertet oder aus der lesprojektion entfernt
@@ -45,7 +47,9 @@ export type GewichtEreignis = {
 }
 
 /** eine gemessene ankunft oder ein abgang, so wie die automation sie schreibt */
-export type AufenthaltEreignis = { typ: 'aufenthalt'; aufenthalt: Aufenthalt }
+export type AufenthaltEreignis =
+  | { typ: 'aufenthalt'; art: 'wert'; aufenthalt: Aufenthalt }
+  | { typ: 'aufenthalt'; art: 'weg'; id: string }
 
 export type BackendEreignis =
   | EinheitEreignis

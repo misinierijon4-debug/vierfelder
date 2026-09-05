@@ -46,7 +46,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | `Bereichszeile.tsx`: Tastenereignis eines Kindbuttons erreicht den Zeilen-Toggle | Plus/Minus kann den ganzen Tag löschen | Komponenten-/Browser-Tastaturtest | behoben |
 | P0 | `noten.ts`: weniger als 300 Punkte werden als 4,0 ausgegeben | nicht bestanden wirkt wie bestandene Abiturnote | Grenztests 299/300 und Blockhürden | behoben |
 | P0 | Schlafprojektion berechnet Nachbarsegmente nicht mehr gemeinsam | Bettzeit, Effizienz und Score können trotz Rohdaten fehlen | DB-Test N-1/N/N+1 | blockiert durch Migrationsdrift |
-| P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | blockiert durch Migrationsdrift |
+| P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | lokal behoben; Migration/Staging offen |
 | P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | behoben |
 | P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | lokal behoben; Migration/Staging offen |
 | P0 | Push-Versand akzeptiert jedes gespeicherte HTTPS-Ziel und folgt Redirects | serverseitige Request-Forgery und Datenabfluss in Logs/Antworten | Provider-Allowlist, Redirect-, IP- und Log-Negativtests | lokal behoben; Deploy offen |
@@ -56,7 +56,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P1 | Fokus-GET trägt ein bereichsübergreifend gültiges Token in URL/Logs | Token-Leak erlaubt Schreibzugriff auf mehrere Importwege | POST-Header, Zweck-/Gerätetoken und Rotation | POST lokal fertig; Migration/iPhones offen |
 | P1 | gemessene und manuelle Einheiten werden als vollständig gemessen summiert | falsche Dauer und Belegquote | Mischquellen-/Überlappungstests | offen; Belegregel braucht Produktentscheidung |
 | P1 | Schlafphasenfehler werden verschluckt | Fehler erscheint endlos als Laden oder fälschlich als Health-Leerzustand | idle/loading/empty/error/retry | behoben |
-| P1 | Realtime-Status und Reconnect-Resync fehlen | gelöschte oder verpasste Daten bleiben lokal | Zwei-Client-Reconnect | offen |
+| P1 | Realtime-DELETE erwartet unter RLS Vollzeilen; Status und Reconnect-Resync fehlen | gelöschte oder verpasste Daten bleiben lokal | PK-only-Delete und Zwei-Client-Reconnect | PK-Delete lokal behoben; Reconnect offen |
 | P1 | Historienabfragen sind nicht paginiert | ab 1.000 Zeilen stille Trunkierung | 1.001+-Datensatz-Test | offen |
 | P1 | Prüfungsfachwechsel besteht aus zwei Updates | bei Teilfehler fehlt das vierte Fach | transaktionale RPC | blockiert durch Migrationsdrift |
 | P1 | PWA `autoUpdate` kann offene Eingaben neu laden | Entwürfe gehen verloren | Zwei-Build-SW-Test mit offenem Formular | offen |
@@ -80,8 +80,8 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 
 ## Produktions- und Migrationsgrenzen
 
-Der lesende Live-Abgleich meldet 29 produktive und nach der gezielten
-Rückführung 28 lokale Migrationen; nur 15 Versionsnummern stimmen überein.
+Der lesende Live-Abgleich meldet 29 produktive und mit den beiden neuen
+Forward-Fixes 30 lokale Migrationen; nur 15 Versionsnummern stimmen überein.
 `gewicht.quelle` und `record_gewicht` stehen lokal in einer Migration, existieren
 produktiv aber noch nicht. Deshalb werden derzeit keine Migration, kein Reset,
 keine Tokenrotation und keine produktive Änderung ausgeführt. Vor einem späteren
@@ -356,6 +356,44 @@ und eine ausdrückliche Freigabe erforderlich.
   frischer beziehungsweise Staging-Reset, Legacy-Upgradefixture, Rollenmatrix,
   echte parallele Transaktionen und der Nachweis, dass spaetere Rohdaten- oder
   Wettenaenderungen das Archiv nicht beeinflussen.
+
+### Welle 2/3: Schlafloeschung und robuste Realtime-Deletes
+
+- Eine neue Statement-Trigger-Migration loescht bei jeder geloeschten
+  `schlafnaechte`-Quellzeile atomar die gleichschluesselige sichtbare
+  `schlaf_updates`-Projektion. Damit bleiben sensible Schlafdaten nicht mehr
+  nach einer fachlichen Loeschung fuer App, View und Realtime erhalten.
+- Weil Score v3 die 13 vorherigen Einschlafzeiten nutzt, bewertet derselbe
+  Statement-Trigger fuer jede geloeschte Nacht hoechstens die 13 betroffenen
+  Folgenaechte neu. Eine `OLD TABLE`-Transition-Relation macht Einzel-, Bulk-
+  und Cascade-Deletes sicherer als ein Row-Trigger, der noch zu loeschende
+  Zeilen waehrend desselben Statements aktualisieren koennte.
+- Realtime-DELETE fuer Einheiten, Faecher und Noten verwendet jetzt nur die
+  UUID; Aufenthalte tragen ihre bigint-Tabellen-ID bis in den Zustand und
+  werden ebenfalls anhand dieser ID ersetzt oder entfernt. Ein Wetten-Delete
+  entfernt den lokalen Schluessel. Damit haengt kein Delete mehr von einer
+  unter RLS nicht gelieferten Vollzeile ab.
+- Der Store fuehrt doppelte ID-Deletes idempotent zusammen und behaelt, soweit
+  vorhanden, die lokale Einheitenzeile nur fuer die Animation. Aufenthalt-
+  Updates vergleichen alle fachlich relevanten Felder einschliesslich Bereich.
+- Der lokale Prototyp sendet Gewichts-Aenderung und -Loeschung nun ueber den
+  bestehenden BroadcastChannel. Delete-Nachrichten enthalten waehrend des
+  Versionsuebergangs zugleich stabile ID und Vollzeile: neue Tabs nutzen die
+  ID, bereits offene alte Tabs bleiben lesefaehig. Der Empfaenger normalisiert
+  beide Richtungen auf den neuen Store-Vertrag.
+- Gezielter Schlusslauf: 5 Dateien und 86 Tests, Exit 0. Vollstaendiger Lauf
+  `npm run check`: Exit 0, 30 Dateien und 448 Tests; TypeScript, Webbuild und
+  Artefaktpruefung bestehen. JavaScript: 764.841 Byte roh beziehungsweise
+  219.089 Byte gzip; gesamtes `dist`: 1.111.405 Byte. (Der dokumentierte
+  Bytewert stammt aus dem letzten Vollbuild; der anschliessende Kommentarfix
+  aendert keinen Laufzeitcode.)
+- Die Schlaf-Migration `20260905123543_schlaf_quellloeschung_propagieren.sql`
+  ist nur vorbereitet. Regex-Quelltests ersetzen keinen PostgreSQL-Lauf. Vor
+  Freigabe fehlen Einzel-/Bulk-/Cascade-Fixtures, beide Profile, der Vergleich
+  der 13 neu berechneten Folgenaechte, RLS sowie ein echter Zwei-Client-Delete.
+  Bei Live-Loeschungen muessen parallele Importe pausieren oder pro Nutzer
+  serialisiert werden. Subscription-Status, Initial-Gap und Reconnect-
+  Vollabgleich bleiben das naechste eigenstaendige Zuverlaessigkeitspaket.
 
 ## Offene Prüfungen
 

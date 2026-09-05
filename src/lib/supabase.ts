@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import type { Anfangszustand, Backend, EinheitEreignis, Wetten } from './backend'
+import type { Anfangszustand, Backend, Wetten } from './backend'
 import { addDays, toKey } from './dates'
 import { gewichtKey, tickKey } from './types'
 import type {
@@ -110,6 +110,7 @@ type GewichtZeile = {
   quelle?: string | null
 }
 type AufenthaltZeile = {
+  id: number | string
   user_id: string
   bereich: MessbarerBereich
   ort: string
@@ -130,6 +131,33 @@ type AbrechnungZeile = {
   archiv_quelle?: Abrechnung['archivQuelle']
   punkte_erijon?: number | null
   punkte_koray?: number | null
+}
+
+/** RLS-DELETE liefert bei UUID-Tabellen nur `old.id`, nicht die Vollzeile. */
+export function realtimeTextId(alt: unknown): string | null {
+  if (!alt || typeof alt !== 'object' || Array.isArray(alt)) return null
+  const id = (alt as { id?: unknown }).id
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/** PostgREST kann bigint-IDs als JSON-Zahl oder als Dezimaltext liefern. */
+export function realtimeBigintId(alt: unknown): string | null {
+  if (!alt || typeof alt !== 'object' || Array.isArray(alt)) return null
+  const id = (alt as { id?: unknown }).id
+  if (typeof id === 'number') {
+    return Number.isSafeInteger(id) && id > 0 ? String(id) : null
+  }
+  return typeof id === 'string' && /^[1-9]\d*$/.test(id) ? id : null
+}
+
+export function realtimeLoeschId(
+  payload: unknown,
+  art: 'text' | 'bigint' = 'text'
+): string | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const p = payload as { eventType?: unknown; old?: unknown }
+  if (p.eventType !== 'DELETE') return null
+  return art === 'bigint' ? realtimeBigintId(p.old) : realtimeTextId(p.old)
 }
 
 const zeileZuAbrechnung = (a: AbrechnungZeile): Abrechnung => ({
@@ -408,6 +436,7 @@ export function supabaseBackend(eigeneId: string): Backend {
     const person = personen.get(a.user_id)
     if (!person) return null
     return {
+      id: String(a.id),
       user: person,
       bereich: a.bereich,
       ort: a.ort,
@@ -481,7 +510,7 @@ export function supabaseBackend(eigeneId: string): Backend {
             .order('tag', { ascending: true }),
           db
             .from('aufenthalte')
-            .select('user_id, bereich, ort, ankunft, abgang')
+            .select('id, user_id, bereich, ort, ankunft, abgang')
             .order('ankunft', { ascending: true }),
           db.from('duell_wetten').select('woche, text'),
           db
@@ -895,10 +924,15 @@ export function supabaseBackend(eigeneId: string): Backend {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'aufenthalte' },
             (p) => {
+              if (p.eventType === 'DELETE') {
+                const id = realtimeLoeschId(p, 'bigint')
+                if (id) cb({ typ: 'aufenthalt', art: 'weg', id })
+                return
+              }
               const zeile = p.new as AufenthaltZeile | null
               if (!zeile?.user_id) return
               const aufenthalt = zeileZuAufenthalt(zeile)
-              if (aufenthalt) cb({ typ: 'aufenthalt', aufenthalt })
+              if (aufenthalt) cb({ typ: 'aufenthalt', art: 'wert', aufenthalt })
             }
           )
 
@@ -909,12 +943,17 @@ export function supabaseBackend(eigeneId: string): Backend {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'faecher' },
             (p) => {
-              const zeile = (p.eventType === 'DELETE' ? p.old : p.new) as FachZeile | null
+              if (p.eventType === 'DELETE') {
+                const id = realtimeLoeschId(p)
+                if (id) cb({ typ: 'fach', art: 'weg', id })
+                return
+              }
+              const zeile = p.new as FachZeile | null
               if (!zeile?.id) return
               const fach = zeileZuFach(zeile)
               if (fach) cb({
                 typ: 'fach',
-                art: p.eventType === 'INSERT' ? 'neu' : p.eventType === 'DELETE' ? 'weg' : 'wert',
+                art: p.eventType === 'INSERT' ? 'neu' : 'wert',
                 fach,
               })
             }
@@ -923,12 +962,17 @@ export function supabaseBackend(eigeneId: string): Backend {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'noten' },
             (p) => {
-              const zeile = (p.eventType === 'DELETE' ? p.old : p.new) as NoteZeile | null
+              if (p.eventType === 'DELETE') {
+                const id = realtimeLoeschId(p)
+                if (id) cb({ typ: 'note', art: 'weg', id })
+                return
+              }
+              const zeile = p.new as NoteZeile | null
               if (!zeile?.id) return
               const note = zeileZuNote(zeile)
               if (note) cb({
                 typ: 'note',
-                art: p.eventType === 'INSERT' ? 'neu' : p.eventType === 'DELETE' ? 'weg' : 'wert',
+                art: p.eventType === 'INSERT' ? 'neu' : 'wert',
                 note,
               })
             }
@@ -943,7 +987,10 @@ export function supabaseBackend(eigeneId: string): Backend {
             if (!zeile) return
             const person = personen.get(zeile.user_id)
             if (!person) return
-            cb({ typ: 'einheit', art, einheit: alteEinheit(person, zeile.bereich, zeile.tag, null) })
+            const einheit = alteEinheit(person, zeile.bereich, zeile.tag, null)
+            cb(art === 'weg'
+              ? { typ: 'einheit', art: 'weg', id: einheit.id }
+              : { typ: 'einheit', art: 'neu', einheit })
           }
 
           let builder = db
@@ -963,7 +1010,11 @@ export function supabaseBackend(eigeneId: string): Backend {
               'postgres_changes',
               { event: '*', schema: 'public', table: 'duell_wetten' },
               (p) => {
-                const w = p.new as WetteZeile | null
+                const w = (p.eventType === 'DELETE' ? p.old : p.new) as Partial<WetteZeile> | null
+                if (p.eventType === 'DELETE' && w?.woche) {
+                  cb({ typ: 'wette', woche: w.woche, text: null })
+                  return
+                }
                 if (w?.woche && typeof w.text === 'string') {
                   cb({ typ: 'wette', woche: w.woche, text: w.text })
                 }
@@ -975,7 +1026,8 @@ export function supabaseBackend(eigeneId: string): Backend {
               'postgres_changes',
               { event: '*', schema: 'public', table: 'wochenabrechnung' },
               (p) => {
-                const a = (p.eventType === 'DELETE' ? p.old : p.new) as AbrechnungZeile | null
+                if (p.eventType === 'DELETE') return
+                const a = p.new as AbrechnungZeile | null
                 if (a?.woche) cb({ typ: 'abrechnung', abrechnung: zeileZuAbrechnung(a) })
               }
             )
@@ -984,7 +1036,7 @@ export function supabaseBackend(eigeneId: string): Backend {
           return
         }
 
-        const melde = (zeile: EinheitZeile | null, art: EinheitEreignis['art']) => {
+        const melde = (zeile: EinheitZeile | null, art: 'neu' | 'wert') => {
           if (!zeile) return
           const einheit = zeileZuEinheit(zeile)
           if (einheit) cb({ typ: 'einheit', art, einheit })
@@ -1002,18 +1054,26 @@ export function supabaseBackend(eigeneId: string): Backend {
             { event: 'UPDATE', schema: 'public', table: 'einheiten' },
             (p) => melde(p.new as EinheitZeile, 'wert')
           )
-          // `replica identity full` liefert hier die ganze zeile, nicht nur die id
+          // Unter RLS enthaelt old bei DELETE auch mit replica identity full
+          // nur den Primaerschluessel. Mehr braucht der Store zum Entfernen nicht.
           .on(
             'postgres_changes',
             { event: 'DELETE', schema: 'public', table: 'einheiten' },
-            (p) => melde(p.old as EinheitZeile, 'weg')
+            (p) => {
+              const id = realtimeLoeschId(p)
+              if (id) cb({ typ: 'einheit', art: 'weg', id })
+            }
           )
         if (wettenVerfuegbar) {
           builder = builder.on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'duell_wetten' },
             (p) => {
-              const w = p.new as WetteZeile | null
+              const w = (p.eventType === 'DELETE' ? p.old : p.new) as Partial<WetteZeile> | null
+              if (p.eventType === 'DELETE' && w?.woche) {
+                cb({ typ: 'wette', woche: w.woche, text: null })
+                return
+              }
               if (w?.woche && typeof w.text === 'string') {
                 cb({ typ: 'wette', woche: w.woche, text: w.text })
               }
@@ -1025,7 +1085,8 @@ export function supabaseBackend(eigeneId: string): Backend {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'wochenabrechnung' },
             (p) => {
-              const a = (p.eventType === 'DELETE' ? p.old : p.new) as AbrechnungZeile | null
+              if (p.eventType === 'DELETE') return
+              const a = p.new as AbrechnungZeile | null
               if (a?.woche) cb({ typ: 'abrechnung', abrechnung: zeileZuAbrechnung(a) })
             }
           )

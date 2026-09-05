@@ -33,6 +33,7 @@ import {
   mitWert,
   mitVon,
   ohneEinheit,
+  ohneAufenthalt,
   ohneTag,
 } from './tracker'
 import { istNotenDatum, notenGewicht } from './noten'
@@ -320,7 +321,9 @@ export function useTracker(backend: Backend) {
     const abmelden = backend.abonniere((e) => {
       if (!aktiv || !istAktuell()) return
       if (e.typ === 'wette') {
-        const next = { ...wettenRef.current, [e.woche]: e.text }
+        const next = { ...wettenRef.current }
+        if (e.text === null) delete next[e.woche]
+        else next[e.woche] = e.text
         wettenRef.current = next
         setWetten(next)
         return
@@ -338,12 +341,13 @@ export function useTracker(backend: Backend) {
 
       if (e.typ === 'fach') {
         const vorher = faecherRef.current
-        const ohne = vorher.filter((fach) => fach.id !== e.fach.id)
+        const id = e.art === 'weg' ? e.id : e.fach.id
+        const ohne = vorher.filter((fach) => fach.id !== id)
         const next = e.art === 'weg' ? ohne : [...ohne, e.fach]
         faecherRef.current = next
         setFaecher(next)
         if (e.art === 'weg') {
-          const neueNoten = notenRef.current.filter((note) => note.fachId !== e.fach.id)
+          const neueNoten = notenRef.current.filter((note) => note.fachId !== id)
           notenRef.current = neueNoten
           setNoten(neueNoten)
         }
@@ -352,7 +356,8 @@ export function useTracker(backend: Backend) {
 
       if (e.typ === 'note') {
         const vorher = notenRef.current
-        const ohne = vorher.filter((note) => note.id !== e.note.id)
+        const id = e.art === 'weg' ? e.id : e.note.id
+        const ohne = vorher.filter((note) => note.id !== id)
         const next = e.art === 'weg' ? ohne : [...ohne, e.note]
         notenRef.current = next
         setNoten(next)
@@ -402,14 +407,19 @@ export function useTracker(backend: Backend) {
         return
       }
 
-      // ankunft legt an, abgang schließt: dieselbe ankunft kommt zweimal, das
-      // zweite mal mit abgang. der schlüssel ist person, bereich und ankunft
+      // ankunft legt an, abgang schließt: dieselbe Tabellen-ID kommt zweimal,
+      // das zweite Mal mit Abgang. DELETE braucht ebenfalls nur diese ID.
       if (e.typ === 'aufenthalt') {
-        setAufenthalte((vorher) => mitAufenthalt(vorher, e.aufenthalt))
+        setAufenthalte((vorher) => e.art === 'weg'
+          ? ohneAufenthalt(vorher, e.id)
+          : mitAufenthalt(vorher, e.aufenthalt))
         return
       }
 
-      const einheit = e.einheit
+      const einheit = e.art === 'weg'
+        ? Object.values(einheitenRef.current).flat().find((x) => x.id === e.id)
+        : e.einheit
+      if (!einheit) return
       // über die id zusammengeführt: ein doppelt gemeldetes ereignis ändert
       // nichts, und ein eigener schreibvorgang kommt nicht doppelt zurück.
       const vorher = einheitenRef.current
@@ -417,7 +427,7 @@ export function useTracker(backend: Backend) {
         e.art === 'neu'
           ? fuegeHinzu(vorher, einheit)
           : e.art === 'weg'
-            ? ohneEinheit(vorher, einheit.id)
+            ? ohneEinheit(vorher, e.id)
             : mitEinheit(vorher, einheit)
       if (next === vorher) return
       uebernimm(next)

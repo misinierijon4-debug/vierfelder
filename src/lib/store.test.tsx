@@ -338,6 +338,54 @@ describe('useTracker Schreibbereitschaft', () => {
     expect(backend.schreibeAbrechnung).not.toHaveBeenCalled()
     expect(result.current.abrechnungen).toEqual([ABRECHNUNG])
   })
+
+  it('entfernt Realtime-Zeilen allein anhand ihrer stabilen Primaerschluessel', async () => {
+    const einheit = {
+      id: 'einheit-1', user: 'erijon' as const, area: 'gym' as const,
+      tag: '2026-09-04', wert: 60, erfasst: null,
+    }
+    const fach = {
+      id: 'fach-1', user: 'erijon' as const, name: 'mathe', kursart: 'gk' as const,
+      pruefungsfach: 4, sortierung: 0,
+    }
+    const note = {
+      id: 'note-1', user: 'erijon' as const, fachId: fach.id, art: 'klausur' as const,
+      punkte: 12, gewicht: 10, datum: '2026-09-04', titel: 'arbeit',
+    }
+    const anfang: Anfangszustand = {
+      ...ANFANG,
+      einheiten: { 'erijon|gym|2026-09-04': [einheit] },
+      aufenthalte: [{
+        id: '42', user: 'erijon', bereich: 'gym', ort: 'fitx',
+        ankunft: '2026-09-04T16:00:00Z', abgang: '2026-09-04T17:00:00Z',
+      }],
+      wetten: { '2026-08-31': 'einsatz' },
+      noten: { faecher: [fach], noten: [note] },
+    }
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(async () => anfang, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      melde({ typ: 'einheit', art: 'weg', id: einheit.id })
+      melde({ typ: 'aufenthalt', art: 'weg', id: '42' })
+      melde({ typ: 'note', art: 'weg', id: note.id })
+      melde({ typ: 'wette', woche: '2026-08-31', text: null })
+    })
+    expect(result.current.zustand.einheiten).toEqual({})
+    expect(result.current.zustand.aufenthalte).toEqual([])
+    expect(result.current.notenstand.noten).toEqual([])
+    expect(result.current.wetten).toEqual({})
+
+    act(() => melde({ typ: 'fach', art: 'weg', id: fach.id }))
+    expect(result.current.notenstand.faecher).toEqual([])
+  })
 })
 
 describe('useTracker Schlafverlaeufe', () => {

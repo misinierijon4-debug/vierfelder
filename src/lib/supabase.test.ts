@@ -4,6 +4,9 @@ import {
   finalisiereUndBestaetigeAbrechnung,
   istFehlendeVonSpalte,
   phasenAusAnsicht,
+  realtimeBigintId,
+  realtimeLoeschId,
+  realtimeTextId,
 } from './supabase'
 
 describe('supabase migrationskompatibilitaet', () => {
@@ -12,6 +15,24 @@ describe('supabase migrationskompatibilitaet', () => {
     expect(istFehlendeVonSpalte('PGRST204')).toBe(true)
     expect(istFehlendeVonSpalte('PGRST205')).toBe(false)
     expect(istFehlendeVonSpalte()).toBe(false)
+  })
+
+  it('liest Realtime-Deletes ausschliesslich aus dem Primaerschluessel', () => {
+    expect(realtimeTextId({ id: 'uuid-1' })).toBe('uuid-1')
+    expect(realtimeTextId({ id: 1, user_id: 'nicht-noetig' })).toBeNull()
+    expect(realtimeTextId({ user_id: 'nur-vollzeilenfeld' })).toBeNull()
+
+    expect(realtimeBigintId({ id: 42 })).toBe('42')
+    expect(realtimeBigintId({ id: '9007199254740993' })).toBe('9007199254740993')
+    expect(realtimeBigintId({ id: Number.MAX_SAFE_INTEGER + 1 })).toBeNull()
+    expect(realtimeBigintId({ id: '0' })).toBeNull()
+
+    expect(realtimeLoeschId({ eventType: 'DELETE', old: { id: 'uuid-1' } })).toBe('uuid-1')
+    expect(realtimeLoeschId(
+      { eventType: 'DELETE', old: { id: '9007199254740993' } },
+      'bigint'
+    )).toBe('9007199254740993')
+    expect(realtimeLoeschId({ eventType: 'UPDATE', old: { id: 'uuid-1' } })).toBeNull()
   })
 })
 
