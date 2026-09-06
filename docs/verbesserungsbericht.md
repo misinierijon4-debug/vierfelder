@@ -669,6 +669,15 @@ und eine ausdrückliche Freigabe erforderlich.
 - Gezielter Lauf: 5 Dateien und 41 Tests, Exit 0. Ein echter Push-Browser,
   Providerannahme, Konto-Wechsel und RLS-Test gegen Staging bleiben offen.
 
+### Welle 1: reproduzierbarer Edge-Function-Modulgraph
+
+- Der Deno-Modulgraph besitzt jetzt eine eingecheckte Lockdatei. Der CI-Pfad
+  prüft sie im Frozen-Modus, statt Abhängigkeiten trotz exakt gepinnter direkter
+  Imports bei jedem Lauf neu aufzulösen.
+- Erzeugung und Kontrolllauf erfolgten mit Deno 2.9.6 für Fokus-, Schlafimport-,
+  Push-Test- sowie beide Reminder-Functions und `node-modules-dir=none`, jeweils
+  Exit 0. Die Lockdatei ersetzt keinen separaten Deploy- oder Function-Smoke.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas
