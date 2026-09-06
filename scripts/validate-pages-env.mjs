@@ -3,6 +3,7 @@ const fehler = []
 const base = process.env.VITE_BASE ?? ''
 const supabaseUrl = process.env.VITE_SUPABASE_URL ?? ''
 const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
+const erwarteterSupabaseOrigin = 'https://ogxwazageufvalkocywh.supabase.co'
 
 if (base !== '/vierfelder/') {
   fehler.push('VITE_BASE muss fuer GitHub Pages exakt /vierfelder/ sein')
@@ -10,8 +11,15 @@ if (base !== '/vierfelder/') {
 
 try {
   const parsed = new URL(supabaseUrl)
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
-    fehler.push('VITE_SUPABASE_URL muss eine HTTPS-URL ohne Zugangsdaten sein')
+  if (
+    parsed.origin !== erwarteterSupabaseOrigin ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    fehler.push(`VITE_SUPABASE_URL muss exakt ${erwarteterSupabaseOrigin} sein`)
   }
 } catch {
   fehler.push('VITE_SUPABASE_URL fehlt oder ist keine gueltige URL')
@@ -32,4 +40,4 @@ if (fehler.length > 0) {
   process.exit(1)
 }
 
-console.log('Pages-Konfiguration: Unterpfad, Supabase-URL und Key-Klasse sind plausibel.')
+console.log('Pages-Konfiguration: Unterpfad, feste Supabase-Identitaet und Key-Klasse sind bestaetigt.')

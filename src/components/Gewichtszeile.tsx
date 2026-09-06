@@ -6,6 +6,7 @@ import { EASE } from '../lib/motion'
 import { formatKg, parseKg } from '../lib/gewicht'
 import type { Rohwert } from '../lib/gewicht'
 import type { TickQuelle } from '../lib/types'
+import { useNeustartBlocker } from '../lib/pwaBlocker'
 import { Marke } from './Marke'
 import { Schritt } from './Schritt'
 
@@ -43,6 +44,7 @@ export function Gewichtszeile({
   onSetze,
 }: Props) {
   const [entwurf, setEntwurf] = useState<string | null>(null)
+  useNeustartBlocker(entwurf !== null)
   const feld = useRef<HTMLInputElement>(null)
   /**
    * fokus und blur ohne tippen dürfen keinen eintrag erfinden — die vorbelegung

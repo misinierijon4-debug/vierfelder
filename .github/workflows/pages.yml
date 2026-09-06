@@ -23,8 +23,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6
       - run: npm ci
       - run: npm test
+      - run: npm run check:edge
       - run: npm run build:pages
         env:
           # Die technische Identitaet und der installierte PWA-Scope bleiben fest.

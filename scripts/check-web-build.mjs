@@ -7,6 +7,8 @@ const erforderlich = [
   'manifest.webmanifest',
   'sw.js',
   'push-sw.js',
+  'favicon-32x32.png',
+  'apple-touch-icon.png',
   'pwa-192x192.png',
   'pwa-512x512.png',
 ]
@@ -19,6 +21,61 @@ for (const feld of ['id', 'scope', 'start_url']) {
   if (manifest[feld] !== erwartet) {
     throw new Error(`manifest.${feld} ist ${JSON.stringify(manifest[feld])}, erwartet ${erwartet}`)
   }
+}
+
+const erwarteteIcons = [
+  { datei: 'pwa-192x192.png', groesse: '192x192', purpose: 'any' },
+  { datei: 'pwa-512x512.png', groesse: '512x512', purpose: 'any maskable' },
+]
+for (const icon of erwarteteIcons) {
+  const eintrag = manifest.icons?.find((wert) => wert.src === `${erwartet}${icon.datei}`)
+  if (
+    !eintrag ||
+    eintrag.sizes !== icon.groesse ||
+    eintrag.type !== 'image/png' ||
+    eintrag.purpose !== icon.purpose
+  ) {
+    throw new Error(`manifest enthaelt kein gueltiges ${icon.groesse}-icon unter ${erwartet}`)
+  }
+}
+
+for (const [datei, breite, hoehe] of [
+  ['favicon-32x32.png', 32, 32],
+  ['apple-touch-icon.png', 180, 180],
+  ['pwa-192x192.png', 192, 192],
+  ['pwa-512x512.png', 512, 512],
+]) {
+  const png = await readFile(new URL(datei, dist))
+  const signatur = png.subarray(0, 8).toString('hex')
+  if (signatur !== '89504e470d0a1a0a' || png.toString('ascii', 12, 16) !== 'IHDR') {
+    throw new Error(`${datei} ist keine lesbare PNG-Datei`)
+  }
+  if (png.readUInt32BE(16) !== breite || png.readUInt32BE(20) !== hoehe) {
+    throw new Error(`${datei} hat nicht die erwarteten ${breite}x${hoehe} Pixel`)
+  }
+}
+
+const worker = await readFile(new URL('sw.js', dist), 'utf8')
+for (const datei of [
+  'push-sw.js',
+  'favicon-32x32.png',
+  'apple-touch-icon.png',
+  'pwa-192x192.png',
+  'pwa-512x512.png',
+  'manifest.webmanifest',
+]) {
+  if (!worker.includes(`\"${datei}\"`)) {
+    throw new Error(`${datei} fehlt im PWA-Precache`)
+  }
+}
+if (!worker.includes('SKIP_WAITING')) {
+  throw new Error('Service Worker besitzt keinen ausdruecklichen Update-Pfad')
+}
+if (/\.clientsClaim\(\)/.test(worker)) {
+  throw new Error('Service Worker wuerde neue Fassungen automatisch uebernehmen')
+}
+if (!/importScripts\(["']push-sw\.js["']\)/.test(worker)) {
+  throw new Error('push-sw.js wird nicht relativ zum PWA-Scope geladen')
 }
 
 const html = await readFile(new URL('index.html', dist), 'utf8')
@@ -35,11 +92,13 @@ for (const referenz of referenzen) {
 }
 
 if (process.env.CHECK_NO_SERVER === '1') {
-  try {
-    await access(new URL('server/', dist))
-    throw new Error('Pages-Artefakt enthaelt unerwartet dist/server')
-  } catch (ursache) {
-    if (ursache instanceof Error && ursache.message.includes('unerwartet')) throw ursache
+  for (const ordner of ['server/', '.openai/']) {
+    try {
+      await access(new URL(ordner, dist))
+      throw new Error(`Pages-Artefakt enthaelt unerwartet dist/${ordner.slice(0, -1)}`)
+    } catch (ursache) {
+      if (ursache instanceof Error && ursache.message.includes('unerwartet')) throw ursache
+    }
   }
 }
 

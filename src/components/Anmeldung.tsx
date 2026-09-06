@@ -3,12 +3,14 @@ import type { FormEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { anmelden } from '../lib/supabase'
 import { EASE, EINGANG } from '../lib/motion'
+import { useNeustartBlocker } from '../lib/pwaBlocker'
 
 export function Anmeldung() {
   const [email, setEmail] = useState('')
   const [passwort, setPasswort] = useState('')
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+  useNeustartBlocker(email.length > 0 || passwort.length > 0 || laeuft)
   const reduced = useReducedMotion()
 
   const absenden = async (e: FormEvent) => {

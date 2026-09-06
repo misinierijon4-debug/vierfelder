@@ -156,4 +156,14 @@ describe('push-sw: ein tipp auf die mitteilung', () => {
     expect(w.fenster[0]!.fokussiert).toBeUndefined()
     expect(w.geoeffnet).toEqual([SCOPE])
   })
+
+  it.each([
+    ['fremder origin', 'https://example.com/phishing'],
+    ['pfad ausserhalb des app-scope', 'https://misinierijon4-debug.github.io/admin'],
+    ['aehnlicher geschwisterpfad', 'https://misinierijon4-debug.github.io/vierfelder-falsch/'],
+  ])('begrenzt %s fail-closed auf den App-Scope', async (_fall, url) => {
+    const w = ladeWorker()
+    await w.klick({ url })
+    expect(w.geoeffnet).toEqual([SCOPE])
+  })
 })

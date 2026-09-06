@@ -7,10 +7,6 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { sites } from '@openai/sites-vite-plugin'
 import { execFileSync } from 'node:child_process'
 
-// bei github pages liegt die app unter /reponame/, bei einer <name>.github.io-seite unter /.
-// gesetzt wird das nur im deploy-workflow, lokal bleibt es '/'.
-const base = process.env.VITE_BASE || '/'
-
 /**
  * Der sichtbare Stand bleibt fuer denselben Commit reproduzierbar. Eine echte
  * Uhrzeit bei jedem Build veraenderte bislang den Hauptchunk, obwohl der Code
@@ -29,12 +25,25 @@ function standDerFassung(): string {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const istSitesBuild = mode === 'sites'
+  // Sites liefert immer ab Root aus. Pages behaelt unveraendert /vierfelder/.
+  const base = istSitesBuild ? '/' : process.env.VITE_BASE || '/'
+
+  return {
   base,
   // der commit-stand steht in der fusszeile. er beantwortet die eine frage, die
   // man einer app auf einem fremden telefon sonst nicht stellen kann: laeuft
   // dort die fassung, ueber die wir gerade reden?
-  define: { __BAUZEIT__: JSON.stringify(standDerFassung()) },
+  define: {
+    __BAUZEIT__: JSON.stringify(standDerFassung()),
+    // Die separate Sites-Vorschau ist absichtlich ein klarer Prototyp und
+    // darf auch bei vorhandener .env.local nicht die Produktivdaten anbinden.
+    ...(istSitesBuild ? {
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(''),
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(''),
+    } : {}),
+  },
   test: {
     /**
      * Die Schlafanalyse rechnet in lokaler Zeit. Eine Nacht ueber die
@@ -52,10 +61,23 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    sites(),
+    ...(istSitesBuild ? [sites()] : []),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png'],
+      /**
+       * Eine neue Fassung darf eine offene Eingabe nicht durch einen Reload
+       * abschneiden. Der Worker wartet deshalb, bis der Nutzer ihn in der App
+       * ausdrücklich aktiviert. `src/lib/pwa.ts` fängt auch die Übernahme ab,
+       * die ein zweiter Tab ausgelöst hat.
+       */
+      registerType: 'prompt',
+      // Manifest-Dateien sind nicht in jeder Plugin-Konfiguration automatisch
+      // Teil des Precaches. Explizit aufführen und im Build nachweisen.
+      includeAssets: [
+        'favicon-32x32.png',
+        'apple-touch-icon.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+      ],
       workbox: {
         /**
          * Der erzeugte Service Worker kann von sich aus kein Push. Statt auf
@@ -110,7 +132,6 @@ export default defineConfig({
         theme_color: '#14171c',
         background_color: '#14171c',
         display: 'standalone',
-        orientation: 'portrait',
         scope: base,
         start_url: base,
         icons: [
@@ -130,4 +151,5 @@ export default defineConfig({
       },
     }),
   ],
+  }
 })

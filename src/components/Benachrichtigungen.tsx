@@ -14,6 +14,7 @@ import {
   ladeGewichtErinnerungszeit,
   setzeGewichtErinnerungszeit,
 } from '../lib/erinnerung'
+import { blockiereNeustart } from '../lib/pwaBlocker'
 
 /**
  * Der Schalter fuer Benachrichtigungen.
@@ -63,6 +64,7 @@ export function Benachrichtigungen() {
    * geaendert haben, und der schalter soll zeigen, was ist.
    */
   async function fuehreAus(was: () => Promise<string | null>) {
+    const loeseNeustartschutz = blockiereNeustart()
     setLaeuft(true)
     setMeldung(null)
     try {
@@ -70,12 +72,18 @@ export function Benachrichtigungen() {
     } catch (fehler) {
       setMeldung(fehler instanceof Error ? fehler.message : 'hat nicht geklappt.')
     } finally {
-      setZustand(await pushZustand())
+      try {
+        setZustand(await pushZustand())
+      } catch {
+        setMeldung('benachrichtigungsstatus konnte nicht bestätigt werden.')
+      }
       setLaeuft(false)
+      loeseNeustartschutz()
     }
   }
 
   async function aendereZeit(neu: string) {
+    const loeseNeustartschutz = blockiereNeustart()
     const vorher = zeit
     setZeit(neu)
     setZeitLaeuft(true)
@@ -88,6 +96,7 @@ export function Benachrichtigungen() {
       setMeldung(fehler instanceof Error ? fehler.message : 'uhrzeit konnte nicht gespeichert werden.')
     } finally {
       setZeitLaeuft(false)
+      loeseNeustartschutz()
     }
   }
 

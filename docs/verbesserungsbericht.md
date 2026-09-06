@@ -1,6 +1,6 @@
 # Verbesserungsbericht
 
-Stand: 5. September 2026. Dieses Journal beschreibt den nachweisbaren Stand der
+Stand: 6. September 2026. Dieses Journal beschreibt den nachweisbaren Stand der
 Arbeitsbranch `codex/ganzprojekt-verbesserung`; es ist kein Produktionsfreigabeprotokoll.
 
 ## Ausgangszustand und Baseline
@@ -531,6 +531,31 @@ und eine ausdrückliche Freigabe erforderlich.
   auslassen und ist nicht freigegeben. Der Rueckweg ist ein Forward-Fix oder
   die zuvor gepruefte Wiederherstellung, nicht der alte Writer auf dem neuen
   Schema.
+
+### Welle 3: PWA-Update, Offline-Grenze und getrennte Auslieferung
+
+- Der Service Worker verwendet jetzt den Prompt-Modus. Eine neue Fassung wird
+  angezeigt, aber weder automatisch aktiviert noch geladen. Offene Formulare,
+  Store-Mutationen und Push-Einstellungen setzen einen gemeinsamen
+  Neustartblocker; auch ein zweiter Tab darf einen Entwurf nicht wegReloaden.
+- Aktivierung, ausstehender Reload, Offline-Hinweis und Fehler besitzen einen
+  sichtbaren, per `aria-live` angekündigten Status. Der feste Hinweis reserviert
+  seine gemessene Höhe, damit er keine untere Bedienfläche verdeckt. Verspätete
+  Worker-Callbacks nach dem Abbau erzeugen keine neuen Timer.
+- Bekannte Offline-Zustände sperren Supabase-Mutationen ausdrücklich. Ohne eine
+  kontogebundene, idempotente Outbox wird kein nur optimistisch sichtbarer
+  Erfolg versprochen; der lokale Prototyp bleibt davon unabhängig bedienbar.
+- Das Manifest erzwingt kein Hochformat mehr. Push-Klickziele bleiben auf
+  denselben Origin und den `/vierfelder/`-Scope begrenzt.
+- Pages akzeptiert ausschließlich die feste Supabase-Projektidentität und eine
+  Publishable-Key-Klasse. Web-, Pages- und Sites-Build sind getrennt; Sites
+  baut immer unter `/`, ohne produktive Supabase-Variablen, und prüft Root,
+  HTML-Assets, MIME-Typen, PWA-Dateien, Navigation, 404 sowie HEAD gegen den
+  generierten Worker. Normale Web-/Pages-Builds laden das Sites-Plugin nicht.
+- Gezielter Paketlauf: 6 Dateien und 37 Tests, Exit 0. `npm run build:sites`:
+  Exit 0; 568.644 Byte JavaScript roh, 170.215 Byte gzip, 870.433 Byte
+  Webartefakt. Der Worker-Smoke bestätigte Root plus fünf HTML-Assets. Ein
+  echter Zwei-Build-/Zwei-Tab-Test einer installierten PWA bleibt offen.
 
 ## Offene Prüfungen
 

@@ -46,16 +46,22 @@ self.addEventListener('push', (ereignis) => {
 self.addEventListener('notificationclick', (ereignis) => {
   ereignis.notification.close()
 
-  const ziel = new URL(
+  const scope = new URL(self.registration.scope)
+  const angefragt = new URL(
     (ereignis.notification.data && ereignis.notification.data.url) || './',
-    self.registration.scope
-  ).href
+    scope
+  )
+  // Ein Serverpaket darf nur innerhalb dieser installierten App navigieren.
+  // Fremde Origins und Geschwisterpfade fallen fail-closed auf den Scope.
+  const ziel = angefragt.origin === scope.origin && angefragt.href.startsWith(scope.href)
+    ? angefragt.href
+    : scope.href
 
   ereignis.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((fenster) => {
       // ein offenes fenster der app wird geholt, nicht ein zweites geoeffnet.
       for (const f of fenster) {
-        if (f.url.startsWith(self.registration.scope) && 'focus' in f) {
+        if (f.url.startsWith(scope.href) && 'focus' in f) {
           if (f.url !== ziel && 'navigate' in f) return f.navigate(ziel).then((g) => g && g.focus())
           return f.focus()
         }
