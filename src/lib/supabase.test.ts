@@ -5,6 +5,7 @@ import {
   entferneRealtimeKanal,
   finalisiereUndBestaetigeAbrechnung,
   istFehlendeVonSpalte,
+  ladeAlleSeiten,
   neuerRealtimeKanalname,
   phasenAusAnsicht,
   realtimeBigintId,
@@ -14,8 +15,284 @@ import {
   realtimeTextId,
   loescheUndBestaetigeNote,
   schreibeUndBestaetigeNote,
+  supabaseBackend,
+  validiereDuellprofile,
   wechsleUndBestaetigePruefungsfach,
 } from './supabase'
+
+type Testzeile = { id: string }
+
+function paginierteTestabfrage(
+  zeilen: Testzeile[],
+  antwort?: (seite: number, von: number, bis: number) => {
+    data: Testzeile[] | null
+    error: unknown
+    count?: number | null
+  }
+) {
+  let seite = 0
+  const range = vi.fn(async (von: number, bis: number) => {
+    const aktuelleSeite = seite
+    seite += 1
+    return antwort
+      ? antwort(aktuelleSeite, von, bis)
+      : { data: zeilen.slice(von, bis + 1), error: null, count: zeilen.length }
+  })
+  return { baue: () => ({ range }), range }
+}
+
+describe('vollstaendige Supabase-Paginierung', () => {
+  it.each([1000, 2037])('liest %i Zeilen ohne PostgREST-Trunkierung', async (anzahl) => {
+    const zeilen = Array.from({ length: anzahl }, (_, index) => ({ id: `zeile-${index}` }))
+    const abfrage = paginierteTestabfrage(zeilen)
+
+    const ergebnis = await ladeAlleSeiten(abfrage.baue, {
+      name: 'testdaten',
+      schluessel: (zeile) => zeile.id,
+    })
+
+    expect(ergebnis).toHaveLength(anzahl)
+    expect(ergebnis.at(-1)?.id).toBe(`zeile-${anzahl - 1}`)
+    expect(abfrage.range.mock.calls).toEqual(
+      anzahl === 1000
+        ? [[0, 999]]
+        : [[0, 999], [1000, 1999], [2000, 2999]]
+    )
+  })
+
+  it('reicht einen Fehler der zweiten Seite unveraendert weiter', async () => {
+    const fehler = { code: '57014', message: 'abgebrochen' }
+    const ersteSeite = Array.from({ length: 1000 }, (_, index) => ({ id: `zeile-${index}` }))
+    const abfrage = paginierteTestabfrage([], (seite) => seite === 0
+      ? { data: ersteSeite, error: null, count: 1001 }
+      : { data: null, error: fehler, count: 1001 })
+
+    await expect(ladeAlleSeiten(abfrage.baue, {
+      name: 'testdaten',
+      schluessel: (zeile) => zeile.id,
+    })).rejects.toBe(fehler)
+  })
+
+  it('bricht bei wechselnder Gesamtzahl und doppeltem Seitenschluessel ab', async () => {
+    const ersteSeite = [{ id: 'eins' }, { id: 'zwei' }]
+    const countWechsel = paginierteTestabfrage([], (seite) => seite === 0
+      ? { data: ersteSeite, error: null, count: 3 }
+      : { data: [{ id: 'drei' }], error: null, count: 4 })
+    await expect(ladeAlleSeiten(countWechsel.baue, {
+      name: 'testdaten',
+      schluessel: (zeile) => zeile.id,
+      seitengroesse: 2,
+    })).rejects.toThrow('gesamtzahl hat sich')
+
+    const doppelt = paginierteTestabfrage([], (seite) => seite === 0
+      ? { data: ersteSeite, error: null, count: 3 }
+      : { data: [{ id: 'zwei' }], error: null, count: 3 })
+    await expect(ladeAlleSeiten(doppelt.baue, {
+      name: 'testdaten',
+      schluessel: (zeile) => zeile.id,
+      seitengroesse: 2,
+    })).rejects.toThrow('doppelte oder ungueltige zeile zwei')
+
+    const zuKurz = paginierteTestabfrage([], (seite) => seite === 0
+      ? { data: ersteSeite, error: null, count: 3 }
+      : { data: [], error: null, count: 3 })
+    await expect(ladeAlleSeiten(zuKurz.baue, {
+      name: 'testdaten',
+      schluessel: (zeile) => zeile.id,
+      seitengroesse: 2,
+    })).rejects.toThrow('gesamtzahl wurde nicht erreicht')
+  })
+
+  it('beendet eine Abfrage ohne Count erst nach einer leeren Folgeseite', async () => {
+    const zeilen = Array.from({ length: 1001 }, (_, index) => ({ id: `zeile-${index}` }))
+    const abfrage = paginierteTestabfrage([], (_seite, von, bis) => ({
+      data: zeilen.slice(von, bis + 1),
+      error: null,
+      count: null,
+    }))
+
+    await expect(ladeAlleSeiten(abfrage.baue, {
+      name: 'testdaten',
+      schluessel: (zeile) => zeile.id,
+    })).resolves.toHaveLength(1001)
+    expect(abfrage.range.mock.calls).toEqual([[0, 999], [1000, 1999], [1001, 2000]])
+  })
+})
+
+const ERIJON_ID = '11111111-1111-4111-8111-111111111111'
+const KORAY_ID = '22222222-2222-4222-8222-222222222222'
+
+describe('kanonische Zwei-Personen-Mitgliedschaft', () => {
+  const profile = [
+    { id: KORAY_ID, person: 'koray' },
+    { id: ERIJON_ID, person: 'erijon' },
+  ]
+
+  it('ordnet nur die zwei eindeutigen kanonischen Profile zu', () => {
+    expect(validiereDuellprofile(profile, ERIJON_ID)).toEqual({
+      profile: [
+        { id: ERIJON_ID, person: 'erijon' },
+        { id: KORAY_ID, person: 'koray' },
+      ],
+      me: 'erijon',
+      userIds: [ERIJON_ID, KORAY_ID],
+    })
+  })
+
+  it.each([
+    [profile.slice(0, 1), 'unvollstaendig'],
+    [[...profile, { id: '33333333-3333-4333-8333-333333333333', person: 'gast' }], 'fremde'],
+    [[profile[0], { id: ERIJON_ID, person: 'koray' }], 'doppelte'],
+    [[profile[0], { id: ERIJON_ID, person: 'gast' }], 'unbekannte'],
+    [[profile[0], { id: 'keine-uuid', person: 'erijon' }], 'ungueltige profil-id'],
+  ])('lehnt eine nicht kanonische Mitgliedschaft ab: %s', (daten, meldung) => {
+    expect(() => validiereDuellprofile(daten, ERIJON_ID)).toThrow(meldung)
+  })
+
+  it('lehnt ein authentifiziertes Konto ausserhalb der zwei Profile ab', () => {
+    expect(() => validiereDuellprofile(
+      profile,
+      '33333333-3333-4333-8333-333333333333'
+    )).toThrow('gehoert nicht zum zweikampf')
+  })
+})
+
+type AbfrageProtokoll = {
+  tabelle: string
+  userFilter: unknown[] | null
+  eigenerFilter: unknown | null
+  profileFertigBeimStart: boolean
+  auswahl: string | null
+}
+
+function startDb(einheitenFehler?: 'von' | 'tabelle', profilVerzoegert = false) {
+  let profileFertig = false
+  let profileFreigeben: () => void = () => {}
+  const protokoll: AbfrageProtokoll[] = []
+  const profile = [
+    { id: ERIJON_ID, person: 'erijon' },
+    { id: KORAY_ID, person: 'koray' },
+  ]
+
+  const from = vi.fn((tabelle: string) => {
+    const eintrag: AbfrageProtokoll = {
+      tabelle,
+      userFilter: null,
+      eigenerFilter: null,
+      profileFertigBeimStart: profileFertig,
+      auswahl: null,
+    }
+    protokoll.push(eintrag)
+    const builder = {
+      select: vi.fn((spalten: string) => {
+        eintrag.auswahl = spalten
+        return builder
+      }),
+      in: vi.fn((spalte: string, werte: unknown[]) => {
+        if (spalte === 'user_id') eintrag.userFilter = [...werte]
+        return builder
+      }),
+      eq: vi.fn((spalte: string, wert: unknown) => {
+        if (spalte === 'user_id') eintrag.eigenerFilter = wert
+        return builder
+      }),
+      order: vi.fn(() => builder),
+      gte: vi.fn(() => builder),
+      range: vi.fn(async (von: number, bis: number) => {
+        if (tabelle === 'profile') {
+          const antwort = { data: profile.slice(von, bis + 1), error: null, count: profile.length }
+          if (!profilVerzoegert) {
+            profileFertig = true
+            return antwort
+          }
+          return await new Promise<typeof antwort>((resolve) => {
+            profileFreigeben = () => {
+              profileFertig = true
+              resolve(antwort)
+            }
+          })
+        }
+        if (tabelle === 'einheiten' && einheitenFehler === 'tabelle') {
+          return { data: null, error: { code: 'PGRST205' }, count: null }
+        }
+        if (tabelle === 'einheiten' && einheitenFehler === 'von' && eintrag.auswahl?.includes('von')) {
+          return { data: null, error: { code: 'PGRST204' }, count: null }
+        }
+        return { data: [], error: null, count: 0 }
+      }),
+    }
+    return builder
+  })
+
+  return { db: { from }, protokoll, profileFreigeben: () => profileFreigeben() }
+}
+
+describe('Supabase-Startreihenfolge und Serverfilter', () => {
+  it('validiert beide Profile vor Fachdaten und filtert jede personenbezogene Liste', async () => {
+    const fake = startDb(undefined, true)
+    const backend = supabaseBackend(
+      ERIJON_ID,
+      fake.db as unknown as NonNullable<Parameters<typeof supabaseBackend>[1]>
+    )
+
+    const ladevorgang = backend.laden()
+    expect(fake.protokoll.map((eintrag) => eintrag.tabelle)).toEqual(['profile'])
+    fake.profileFreigeben()
+    await expect(ladevorgang).resolves.toMatchObject({ me: 'erijon' })
+    expect(fake.protokoll[0]).toMatchObject({
+      tabelle: 'profile',
+      profileFertigBeimStart: false,
+    })
+    const fachdaten = fake.protokoll.slice(1)
+    expect(fachdaten.length).toBeGreaterThan(0)
+    expect(fachdaten.every((eintrag) => eintrag.profileFertigBeimStart)).toBe(true)
+
+    const personenbezogen = fachdaten.filter((eintrag) => [
+      'einheiten',
+      'schlafnaechte_ansicht',
+      'gewicht',
+      'aufenthalte',
+      'faecher',
+      'noten',
+    ].includes(eintrag.tabelle))
+    expect(personenbezogen).toHaveLength(7)
+    for (const eintrag of personenbezogen) {
+      expect(eintrag.userFilter).toEqual([ERIJON_ID, KORAY_ID])
+    }
+  })
+
+  it('paginiert und filtert auch Spalten- und Tabellen-Fallbacks', async () => {
+    const ohneVon = startDb('von')
+    const neuerBackend = supabaseBackend(
+      ERIJON_ID,
+      ohneVon.db as unknown as NonNullable<Parameters<typeof supabaseBackend>[1]>
+    )
+    await expect(neuerBackend.laden()).resolves.toMatchObject({
+      altbestand: false,
+      einheitVonVerfuegbar: false,
+    })
+    const einheitAnfragen = ohneVon.protokoll.filter((eintrag) => eintrag.tabelle === 'einheiten')
+    expect(einheitAnfragen).toHaveLength(2)
+    expect(einheitAnfragen[0].auswahl).toContain('von')
+    expect(einheitAnfragen[1].auswahl).not.toContain('von')
+    expect(einheitAnfragen.every((eintrag) =>
+      JSON.stringify(eintrag.userFilter) === JSON.stringify([ERIJON_ID, KORAY_ID])
+    )).toBe(true)
+
+    const alt = startDb('tabelle')
+    const altBackend = supabaseBackend(
+      ERIJON_ID,
+      alt.db as unknown as NonNullable<Parameters<typeof supabaseBackend>[1]>
+    )
+    await expect(altBackend.laden()).resolves.toMatchObject({ altbestand: true })
+    expect(alt.protokoll.find((eintrag) => eintrag.tabelle === 'eintraege')?.userFilter)
+      .toEqual([ERIJON_ID, KORAY_ID])
+    expect(alt.protokoll.find((eintrag) => eintrag.tabelle === 'werte')).toMatchObject({
+      userFilter: null,
+      eigenerFilter: ERIJON_ID,
+    })
+  })
+})
 
 describe('supabase migrationskompatibilitaet', () => {
   it('erkennt fehlende von-spalten aus postgres und postgrest', () => {

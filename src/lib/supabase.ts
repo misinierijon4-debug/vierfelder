@@ -99,7 +99,176 @@ export function entferneRealtimeKanal<T>(
   void client.removeChannel(kanal)
 }
 
+const STANDARD_SEITENGROESSE = 1000
+const MAXIMALE_LADEZEILEN = 100_000
+
+type SeitenAntwort<T> = {
+  data: T[] | null
+  error: unknown
+  count?: number | null
+}
+
+type SeitenAnfrage<T> = {
+  range(von: number, bis: number): PromiseLike<SeitenAntwort<T>>
+}
+
+export type LadeAlleSeitenOptionen<T> = {
+  name: string
+  schluessel: (zeile: T) => string
+  seitengroesse?: number
+  maximaleZeilen?: number
+}
+
+/**
+ * Liest eine geordnete PostgREST-Abfrage vollstaendig statt still an der
+ * projektweiten Zeilengrenze abzuschneiden. Die Factory muss fuer jede Seite
+ * dieselbe deterministisch sortierte Abfrage bauen; `range` ist inklusiv.
+ */
+export async function ladeAlleSeiten<T>(
+  baueAnfrage: () => SeitenAnfrage<T>,
+  optionen: LadeAlleSeitenOptionen<T>
+): Promise<T[]> {
+  const seitengroesse = optionen.seitengroesse ?? STANDARD_SEITENGROESSE
+  const maximaleZeilen = optionen.maximaleZeilen ?? MAXIMALE_LADEZEILEN
+  if (!Number.isSafeInteger(seitengroesse) || seitengroesse < 1) {
+    throw new Error(`${optionen.name}: ungueltige seitengroesse`)
+  }
+  if (!Number.isSafeInteger(maximaleZeilen) || maximaleZeilen < seitengroesse) {
+    throw new Error(`${optionen.name}: ungueltige zeilengrenze`)
+  }
+
+  const alle: T[] = []
+  const gesehen = new Set<string>()
+  let erwarteteAnzahl: number | null | undefined
+
+  while (true) {
+    const von = alle.length
+    if (von >= maximaleZeilen) {
+      throw new Error(`${optionen.name}: mehr als ${maximaleZeilen} zeilen`)
+    }
+    const bis = Math.min(von + seitengroesse - 1, maximaleZeilen - 1)
+    const antwort = await baueAnfrage().range(von, bis)
+    if (antwort.error) throw antwort.error
+    if (!Array.isArray(antwort.data)) {
+      throw new Error(`${optionen.name}: datenbank lieferte keine zeilenliste`)
+    }
+
+    const anzahl = antwort.count
+    if (anzahl !== null && anzahl !== undefined) {
+      if (!Number.isSafeInteger(anzahl) || anzahl < 0 || anzahl > maximaleZeilen) {
+        throw new Error(`${optionen.name}: ungueltige gesamtzahl`)
+      }
+      if (erwarteteAnzahl === null || erwarteteAnzahl === undefined) {
+        erwarteteAnzahl = anzahl
+      } else if (anzahl !== erwarteteAnzahl) {
+        throw new Error(`${optionen.name}: gesamtzahl hat sich waehrend des ladens geaendert`)
+      }
+    } else if (erwarteteAnzahl === undefined) {
+      erwarteteAnzahl = null
+    } else if (erwarteteAnzahl !== null) {
+      throw new Error(`${optionen.name}: gesamtzahl fehlt auf einer folgeseite`)
+    }
+
+    for (const zeile of antwort.data) {
+      const schluessel = optionen.schluessel(zeile)
+      if (!schluessel || gesehen.has(schluessel)) {
+        throw new Error(`${optionen.name}: doppelte oder ungueltige zeile ${schluessel || '?'}`)
+      }
+      gesehen.add(schluessel)
+      alle.push(zeile)
+      if (alle.length > maximaleZeilen) {
+        throw new Error(`${optionen.name}: mehr als ${maximaleZeilen} zeilen`)
+      }
+    }
+
+    if (erwarteteAnzahl !== null && erwarteteAnzahl !== undefined) {
+      if (alle.length > erwarteteAnzahl) {
+        throw new Error(`${optionen.name}: mehr zeilen als angekuendigt`)
+      }
+      if (alle.length === erwarteteAnzahl) return alle
+      if (antwort.data.length === 0) {
+        throw new Error(`${optionen.name}: gesamtzahl wurde nicht erreicht`)
+      }
+      continue
+    }
+
+    // Ohne Count bestaetigt erst eine explizit leere Folgeseite das Ende.
+    // Dadurch bleibt auch eine niedrigere serverseitige Zeilengrenze als die
+    // angeforderte Seitengroesse ohne stilles Abschneiden beherrschbar.
+    if (antwort.data.length === 0) return alle
+  }
+}
+
+type LadeAntwort<T> = { data: T[] | null; error: unknown }
+
+async function versucheAlleSeiten<T>(
+  baueAnfrage: () => SeitenAnfrage<T>,
+  optionen: LadeAlleSeitenOptionen<T>
+): Promise<LadeAntwort<T>> {
+  try {
+    return { data: await ladeAlleSeiten(baueAnfrage, optionen), error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
+}
+
+function fehlercode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
+}
+
 type ProfilZeile = { id: string; person: UserId }
+const UUID_MUSTER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function validiereDuellprofile(
+  rohdaten: unknown,
+  eigeneId: string
+): {
+  profile: ProfilZeile[]
+  me: UserId
+  userIds: readonly [string, string]
+} {
+  if (!Array.isArray(rohdaten) || rohdaten.length !== 2) {
+    throw new Error('mitgliedschaft ist unvollstaendig oder enthaelt fremde profile')
+  }
+
+  const nachPerson = new Map<UserId, ProfilZeile>()
+  const ids = new Set<string>()
+  for (const rohprofil of rohdaten) {
+    if (!rohprofil || typeof rohprofil !== 'object' || Array.isArray(rohprofil)) {
+      throw new Error('mitgliedschaft enthaelt ein ungueltiges profil')
+    }
+    const { id, person } = rohprofil as { id?: unknown; person?: unknown }
+    if (typeof id !== 'string' || !UUID_MUSTER.test(id)) {
+      throw new Error('mitgliedschaft enthaelt eine ungueltige profil-id')
+    }
+    if (person !== 'erijon' && person !== 'koray') {
+      throw new Error('mitgliedschaft enthaelt eine unbekannte person')
+    }
+    if (ids.has(id) || nachPerson.has(person)) {
+      throw new Error('mitgliedschaft enthaelt doppelte profile')
+    }
+    const profil: ProfilZeile = { id, person }
+    ids.add(id)
+    nachPerson.set(person, profil)
+  }
+
+  const erijon = nachPerson.get('erijon')
+  const koray = nachPerson.get('koray')
+  if (!erijon || !koray) {
+    throw new Error('mitgliedschaft muss erijon und koray eindeutig enthalten')
+  }
+  const me = eigeneId === erijon.id ? 'erijon' : eigeneId === koray.id ? 'koray' : null
+  if (!me) throw new Error('dieses konto gehoert nicht zum zweikampf')
+
+  return {
+    profile: [erijon, koray],
+    me,
+    userIds: [erijon.id, koray.id],
+  }
+}
+
 type EintragZeile = { user_id: string; bereich: AreaId; tag: string }
 type WertZeile = { bereich: AreaId; tag: string; wert: number }
 type EinheitZeile = {
@@ -133,6 +302,7 @@ type SchlafZeile = {
   nachtwert: number | null
   score_konfidenz: number | null
 }
+type SchlafphasenZeile = Pick<SchlafZeile, 'user_id' | 'nacht' | 'phasen'>
 
 function zahl(wert: number | string | null | undefined): number {
   return wert === null || wert === undefined ? 0 : Number(wert)
@@ -502,9 +672,12 @@ export async function abmelden() {
   if (error) throw error
 }
 
-export function supabaseBackend(eigeneId: string): Backend {
-  if (!supabase) throw new Error('supabase ist nicht eingerichtet')
-  const db = supabase
+export function supabaseBackend(
+  eigeneId: string,
+  client: NonNullable<typeof supabase> | null = supabase
+): Backend {
+  if (!client) throw new Error('supabase ist nicht eingerichtet')
+  const db = client
   /** uuid -> person. wird beim laden gefüllt und von realtime mitbenutzt */
   const personen = new Map<string, UserId>()
 
@@ -635,8 +808,24 @@ export function supabaseBackend(eigeneId: string): Backend {
     art: 'supabase',
 
     async laden(): Promise<Anfangszustand> {
+      // Die Mitgliedschaft ist die Zugriffsliste fuer alle folgenden Reads.
+      // Sie muss vollstaendig und eindeutig sein, bevor eine Fachtabelle auch
+      // nur angefragt wird; unbekannte Auth-Konten werden nie still zugeordnet.
+      const profilAntwort = await versucheAlleSeiten<ProfilZeile>(
+        () => db
+          .from('profile')
+          .select('id, person', { count: 'exact' })
+          .order('person', { ascending: true })
+          .order('id', { ascending: true }),
+        { name: 'profile', schluessel: (profil) => profil.id }
+      )
+      if (profilAntwort.error) throw profilAntwort.error
+      const mitgliedschaft = validiereDuellprofile(profilAntwort.data, eigeneId)
+      personen.clear()
+      for (const profil of mitgliedschaft.profile) personen.set(profil.id, profil.person)
+      const userIds = [...mitgliedschaft.userIds]
+
       const [
-        profile,
         einheitAnfrage,
         schlafZeilen,
         phasenZeilen,
@@ -647,103 +836,164 @@ export function supabaseBackend(eigeneId: string): Backend {
         fachZeilen,
         notenZeilen,
       ] = await Promise.all([
-        db.from('profile').select('id, person'),
-        db.from('einheiten').select('id, user_id, bereich, tag, wert, erfasst, von'),
-          db
+        versucheAlleSeiten<EinheitZeile>(
+          () => db
+            .from('einheiten')
+            .select('id, user_id, bereich, tag, wert, erfasst, von', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('user_id', { ascending: true })
+            .order('tag', { ascending: true })
+            .order('erfasst', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'einheiten', schluessel: (einheit) => einheit.id }
+        ),
+        versucheAlleSeiten<SchlafZeile>(
+          () => db
             .from('schlafnaechte_ansicht')
             .select(
-              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, nachtwert, score_konfidenz, score_komponenten'
+              'user_id, nacht, schlaf_minuten, einschlafzeit, aufwachzeit, bett_start, bett_ende, bett_minuten, tief_minuten, rem_minuten, kern_minuten, unspez_minuten, wach_minuten, schlafziel_minuten, nachtwert, score_konfidenz, score_komponenten',
+              { count: 'exact' }
             )
-            .order('nacht', { ascending: true }),
-          // die verlaeufe der letzten wochen kommen mit: was man gleich
-          // aufschlaegt, soll nicht erst nachladen. alles davor holt sich das
-          // nachtdetail bei bedarf
-          db
+            .in('user_id', userIds)
+            .order('nacht', { ascending: true })
+            .order('user_id', { ascending: true }),
+          { name: 'schlafnaechte', schluessel: (nacht) => `${nacht.user_id}|${nacht.nacht}` }
+        ),
+        // Die Verlaeufe der letzten Wochen kommen mit: was man gleich
+        // aufschlaegt, soll nicht erst nachladen. Alles davor holt sich das
+        // Nachtdetail bei Bedarf.
+        versucheAlleSeiten<SchlafphasenZeile>(
+          () => db
             .from('schlafnaechte_ansicht')
-            .select('user_id, nacht, phasen')
-            .gte('nacht', toKey(addDays(new Date(), -PHASEN_FENSTER_TAGE))),
-          db
+            .select('user_id, nacht, phasen', { count: 'exact' })
+            .in('user_id', userIds)
+            .gte('nacht', toKey(addDays(new Date(), -PHASEN_FENSTER_TAGE)))
+            .order('nacht', { ascending: true })
+            .order('user_id', { ascending: true }),
+          { name: 'schlafphasen', schluessel: (nacht) => `${nacht.user_id}|${nacht.nacht}` }
+        ),
+        versucheAlleSeiten<GewichtZeile>(
+          () => db
             .from('gewicht')
-            .select('user_id, tag, kg, quelle')
-            .order('tag', { ascending: true }),
-          db
+            .select('user_id, tag, kg, quelle', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('tag', { ascending: true })
+            .order('user_id', { ascending: true }),
+          { name: 'gewicht', schluessel: (gewicht) => `${gewicht.user_id}|${gewicht.tag}` }
+        ),
+        versucheAlleSeiten<AufenthaltZeile>(
+          () => db
             .from('aufenthalte')
-            .select('id, user_id, bereich, ort, ankunft, abgang')
-            .order('ankunft', { ascending: true }),
-          db.from('duell_wetten').select('woche, text'),
-          db
-            .from('wochenabrechnung')
-            .select(ABRECHNUNG_SPALTEN)
+            .select('id, user_id, bereich, ort, ankunft, abgang', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('ankunft', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'aufenthalte', schluessel: (aufenthalt) => String(aufenthalt.id) }
+        ),
+        versucheAlleSeiten<WetteZeile>(
+          () => db
+            .from('duell_wetten')
+            .select('woche, text', { count: 'exact' })
             .order('woche', { ascending: true }),
-          db
+          { name: 'duell_wetten', schluessel: (wette) => wette.woche }
+        ),
+        versucheAlleSeiten<AbrechnungZeile>(
+          () => db
+            .from('wochenabrechnung')
+            .select(ABRECHNUNG_SPALTEN, { count: 'exact' })
+            .order('woche', { ascending: true }),
+          { name: 'wochenabrechnung', schluessel: (abrechnung) => abrechnung.woche }
+        ),
+        versucheAlleSeiten<FachZeile>(
+          () => db
             .from('faecher')
-            .select('id, user_id, name, kursart, pruefungsfach, sortierung')
-            .order('sortierung', { ascending: true }),
-          db
+            .select('id, user_id, name, kursart, pruefungsfach, sortierung', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('user_id', { ascending: true })
+            .order('sortierung', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'faecher', schluessel: (fach) => fach.id }
+        ),
+        versucheAlleSeiten<NoteZeile>(
+          () => db
             .from('noten')
-            .select('id, user_id, fach_id, art, punkte, gewicht, datum, titel')
-            .order('datum', { ascending: true }),
-        ])
+            .select('id, user_id, fach_id, art, punkte, gewicht, datum, titel', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('datum', { ascending: true })
+            .order('user_id', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'noten', schluessel: (note) => note.id }
+        ),
+      ])
 
-      if (profile.error) throw profile.error
       // Während Schema und Frontend getrennt veröffentlicht werden, darf eine
       // neue Ansicht oder Tabelle den bestehenden Tracker nicht lahmlegen.
       const fehltNoch = (code?: string) => code === '42P01' || code === 'PGRST205'
       // `von` wird getrennt ausgerollt. PGRST204 ist laut Data-API der Fehler
       // fuer eine angefragte, aber noch nicht vorhandene Spalte.
       let einheitZeilen = einheitAnfrage
-      if (einheitAnfrage.error && istFehlendeVonSpalte(einheitAnfrage.error.code)) {
+      if (einheitAnfrage.error && istFehlendeVonSpalte(fehlercode(einheitAnfrage.error))) {
         einheitVonVerfuegbar = false
-        einheitZeilen = await db
-          .from('einheiten')
-          .select('id, user_id, bereich, tag, wert, erfasst')
+        einheitZeilen = await versucheAlleSeiten<EinheitZeile>(
+          () => db
+            .from('einheiten')
+            .select('id, user_id, bereich, tag, wert, erfasst', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('user_id', { ascending: true })
+            .order('tag', { ascending: true })
+            .order('erfasst', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'einheiten', schluessel: (einheit) => einheit.id }
+        )
       } else {
         einheitVonVerfuegbar = !einheitAnfrage.error
       }
       // `quelle` wird getrennt ausgerollt: ohne die spalte bleibt jede zahl
       // getippt, statt dass die ganze abfrage scheitert.
-      let gewichtMitQuelle: {
-        data: GewichtZeile[] | null
-        error: { code?: string } | null
-      } = gewichtZeilen
-      if (gewichtZeilen.error && istFehlendeVonSpalte(gewichtZeilen.error.code)) {
-        gewichtMitQuelle = await db
-          .from('gewicht')
-          .select('user_id, tag, kg')
-          .order('tag', { ascending: true })
+      let gewichtMitQuelle: LadeAntwort<GewichtZeile> = gewichtZeilen
+      if (gewichtZeilen.error && istFehlendeVonSpalte(fehlercode(gewichtZeilen.error))) {
+        gewichtMitQuelle = await versucheAlleSeiten<GewichtZeile>(
+          () => db
+            .from('gewicht')
+            .select('user_id, tag, kg', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('tag', { ascending: true })
+            .order('user_id', { ascending: true }),
+          { name: 'gewicht', schluessel: (gewicht) => `${gewicht.user_id}|${gewicht.tag}` }
+        )
       }
       // Vor der serverautoritativen Migration fehlen die beiden
       // Provenienzspalten. Alte Archive bleiben lesbar und werden im Mapper
       // ehrlich als `legacy_client` markiert; finalisieren kann diese
       // Frontendfassung ohne die neue RPC trotzdem nicht.
-      let abrechnungMitQuelle: {
-        data: unknown[] | null
-        error: { code?: string } | null
-      } = abrechnungZeilen
-      if (abrechnungZeilen.error && istFehlendeVonSpalte(abrechnungZeilen.error.code)) {
-        abrechnungMitQuelle = await db
-          .from('wochenabrechnung')
-          .select(ABRECHNUNG_SPALTEN_LEGACY)
-          .order('woche', { ascending: true })
+      let abrechnungMitQuelle: LadeAntwort<AbrechnungZeile> = abrechnungZeilen
+      if (abrechnungZeilen.error && istFehlendeVonSpalte(fehlercode(abrechnungZeilen.error))) {
+        abrechnungMitQuelle = await versucheAlleSeiten<AbrechnungZeile>(
+          () => db
+            .from('wochenabrechnung')
+            .select(ABRECHNUNG_SPALTEN_LEGACY, { count: 'exact' })
+            .order('woche', { ascending: true }),
+          { name: 'wochenabrechnung', schluessel: (abrechnung) => abrechnung.woche }
+        )
       }
 
-      if (einheitZeilen.error && !fehltNoch(einheitZeilen.error.code)) throw einheitZeilen.error
-      if (schlafZeilen.error && !fehltNoch(schlafZeilen.error.code)) throw schlafZeilen.error
+      if (einheitZeilen.error && !fehltNoch(fehlercode(einheitZeilen.error))) throw einheitZeilen.error
+      if (schlafZeilen.error && !fehltNoch(fehlercode(schlafZeilen.error))) throw schlafZeilen.error
       // Die 56-Tage-Vorladung ist nur eine Beschleunigung. Scheitert sie,
       // bleiben die Verlaeufe `null` und werden beim Oeffnen mit sichtbarem
       // Fehlerzustand einzeln nachgeladen; die Kernnachtwerte starten trotzdem.
-      if (gewichtMitQuelle.error && !fehltNoch(gewichtMitQuelle.error.code)) {
+      if (gewichtMitQuelle.error && !fehltNoch(fehlercode(gewichtMitQuelle.error))) {
         throw gewichtMitQuelle.error
       }
-      if (aufenthaltZeilen.error && !fehltNoch(aufenthaltZeilen.error.code)) {
+      if (aufenthaltZeilen.error && !fehltNoch(fehlercode(aufenthaltZeilen.error))) {
         throw aufenthaltZeilen.error
       }
-      if (wetteZeilen.error && !fehltNoch(wetteZeilen.error.code)) throw wetteZeilen.error
-      if (abrechnungMitQuelle.error && !fehltNoch(abrechnungMitQuelle.error.code)) {
+      if (wetteZeilen.error && !fehltNoch(fehlercode(wetteZeilen.error))) throw wetteZeilen.error
+      if (abrechnungMitQuelle.error && !fehltNoch(fehlercode(abrechnungMitQuelle.error))) {
         throw abrechnungMitQuelle.error
       }
-      if (fachZeilen.error && !fehltNoch(fachZeilen.error.code)) throw fachZeilen.error
-      if (notenZeilen.error && !fehltNoch(notenZeilen.error.code)) throw notenZeilen.error
+      if (fachZeilen.error && !fehltNoch(fehlercode(fachZeilen.error))) throw fachZeilen.error
+      if (notenZeilen.error && !fehltNoch(fehlercode(notenZeilen.error))) throw notenZeilen.error
       wettenVerfuegbar = !wetteZeilen.error
       abrechnungVerfuegbar = !abrechnungMitQuelle.error
       notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
@@ -753,20 +1003,33 @@ export function supabaseBackend(eigeneId: string): Backend {
       // die beiden alten tabellen werden nur noch gelesen, wenn es sein muss
       const [eintraege, werteZeilen] = altbestand
         ? await Promise.all([
-            db.from('eintraege').select('user_id, bereich, tag'),
-            db.from('werte').select('bereich, tag, wert'),
+            versucheAlleSeiten<EintragZeile>(
+              () => db
+                .from('eintraege')
+                .select('user_id, bereich, tag', { count: 'exact' })
+                .in('user_id', userIds)
+                .order('user_id', { ascending: true })
+                .order('tag', { ascending: true })
+                .order('bereich', { ascending: true }),
+              {
+                name: 'eintraege',
+                schluessel: (eintrag) => `${eintrag.user_id}|${eintrag.bereich}|${eintrag.tag}`,
+              }
+            ),
+            versucheAlleSeiten<WertZeile>(
+              () => db
+                .from('werte')
+                .select('bereich, tag, wert', { count: 'exact' })
+                .eq('user_id', eigeneId)
+                .order('tag', { ascending: true })
+                .order('bereich', { ascending: true }),
+              { name: 'werte', schluessel: (wert) => `${wert.bereich}|${wert.tag}` }
+            ),
           ])
         : [null, null]
       if (eintraege?.error) throw eintraege.error
       if (werteZeilen?.error) throw werteZeilen.error
-
-      personen.clear()
-      for (const p of (profile.data ?? []) as ProfilZeile[]) personen.set(p.id, p.person)
-
-      const me = personen.get(eigeneId)
-      if (!me) {
-        throw new Error('kein profil für dieses konto. lege in der tabelle profile eine zeile an.')
-      }
+      const me = mitgliedschaft.me
 
       const einheiten: Einheiten = {}
       if (altbestand) {
@@ -798,7 +1061,7 @@ export function supabaseBackend(eigeneId: string): Backend {
       }
 
       const verlaeufe = new Map<string, Phase[]>()
-      for (const z of (phasenZeilen.error ? [] : (phasenZeilen.data ?? [])) as SchlafZeile[]) {
+      for (const z of (phasenZeilen.error ? [] : (phasenZeilen.data ?? []))) {
         if (Array.isArray(z.phasen)) verlaeufe.set(`${z.user_id}|${z.nacht}`, z.phasen)
       }
 

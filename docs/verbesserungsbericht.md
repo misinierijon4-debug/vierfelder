@@ -690,6 +690,30 @@ und eine ausdrückliche Freigabe erforderlich.
   Produktionslauf meldete 0. Verfügbare Majorupdates für Motion, TypeScript und
   Vitest wurden ohne belegten Nutzen bewusst nicht als Massenupdate übernommen.
 
+### Welle 2/3: Mitgliedschaft zuerst und vollständige Datenladung
+
+- Der Supabase-Start lädt und paginiert zuerst ausschließlich `profile`. Genau
+  zwei eindeutige UUID-Profile mit den kanonischen Personen Erijon und Koray
+  sowie die Zugehörigkeit der aktuellen Session sind Voraussetzung für jede
+  weitere Abfrage. Fehlende, doppelte oder unbekannte Profile brechen
+  fail-closed ab.
+- Erst danach beginnen Fachdatenabfragen. Alle Tabellen mit `user_id` werden
+  bereits serverseitig auf genau diese beiden UUIDs begrenzt; der private
+  Legacy-Wertpfad zusätzlich auf die eigene UUID. Damit können Fremdzeilen
+  auch vor dem noch ausstehenden produktiven RLS-Rollout legitime Daten nicht
+  mehr aus einem begrenzten PostgREST-Ergebnis verdrängen.
+- Sämtliche Haupt- und Legacy-Listen verwenden stabile Sortierungen und einen
+  gemeinsamen Range-Loader. Er prüft exakte Gesamtzahlen seitenübergreifend,
+  Folgeseitenfehler, vorzeitiges Ende und doppelte IDs. Ohne Count beendet erst
+  eine ausdrücklich leere Folgeseite die Abfrage; oberhalb von 100.000 Zeilen
+  je Tabelle wird bewusst statt einer unkontrollierten Vollhistorie
+  abgebrochen.
+- Gezielter Lauf: Supabase- und Store-Tests 2 Dateien/78 Tests, Exit 0;
+  TypeScript Exit 0. Der Test umfasst 1.000 und 2.037 Zeilen, Folgefehler,
+  Count-Wechsel, Duplikate, Profil-vor-Daten-Reihenfolge sowie Schema- und
+  Legacy-Fallbacks. Ein echter PostgREST-/Staging-Lauf mit mehr als 1.000
+  Datensätzen und konkurrierenden Inserts bleibt offen.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas
