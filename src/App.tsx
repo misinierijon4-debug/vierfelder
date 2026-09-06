@@ -29,7 +29,11 @@ import { Tagesdetail } from './components/Tagesdetail'
 import type { Tagesauswahl } from './components/Tagesdetail'
 import { TrackerKalender } from './components/TrackerKalender'
 import { Anmeldung } from './components/Anmeldung'
-import { TabLeiste } from './components/TabLeiste'
+import {
+  HAUPTBEREICH_PANEL_ID,
+  hauptbereichTabId,
+  TabLeiste,
+} from './components/TabLeiste'
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
@@ -43,7 +47,7 @@ import { abrechnungFuerWoche, berechneDuell, fehlendeAbschlussWochen } from './l
 const UNDO_MS = 5000
 
 export function App() {
-  const { status, session } = useSession()
+  const { status, session, fehler, erneut } = useSession()
   const [wechselNr, setWechselNr] = useState(0)
 
   /**
@@ -59,9 +63,12 @@ export function App() {
     // wechselNr erzwingt beim nutzerwechsel im prototyp ein neues laden
   }, [kontoId, wechselNr])
 
-  if (hatSupabase && status === 'laden') return <div className="min-h-[100dvh] bg-grund" />
+  if (hatSupabase && status === 'laden') return <AppStartzustand status="laden" />
+  if (hatSupabase && status === 'fehler') {
+    return <AppStartzustand status="fehler" fehler={fehler} onErneut={erneut} />
+  }
   if (hatSupabase && !session) return <Anmeldung />
-  if (!backend) return <div className="min-h-[100dvh] bg-grund" />
+  if (!backend) return <AppStartzustand status="fehler" fehler="anmeldung konnte nicht gelesen werden." />
 
   const trackerKey = backend.art === 'supabase' ? `supabase:${kontoId}` : `lokal:${wechselNr}`
   return (
@@ -84,6 +91,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     abrechnungStatus,
     notenstand,
     ladezustand,
+    synchronisationszustand,
     fehler,
     ereignis,
     altbestand,
@@ -101,8 +109,10 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,
+    noteWiederherstellen,
     phasenNachladen,
     phasenNeuLaden,
+    ladenNeu,
   } = useTracker(backend)
   const bereit = ladezustand === 'bereit'
   const [heute, setHeute] = useState(() => new Date())
@@ -116,6 +126,13 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
    */
   const [blick, setBlick] = useState<string | null>(null)
   const rasterRef = useRef<HTMLDivElement>(null)
+
+  const wechsleTabMitFokus = useCallback((tab: AppTab) => {
+    setAktiverTab(tab)
+    window.requestAnimationFrame(() => {
+      document.getElementById(hauptbereichTabId(tab))?.focus()
+    })
+  }, [])
 
   const heuteKey = useMemo(() => toKey(heute), [heute])
   const woche = useMemo(() => weekDays(heute), [heute])
@@ -214,6 +231,27 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     })
   }
 
+  if (!bereit) {
+    return (
+      <AppStartzustand
+        status={ladezustand === 'fehler' ? 'fehler' : 'laden'}
+        fehler={fehler}
+        onErneut={ladenNeu}
+        onAbmelden={backend.art === 'supabase' ? abmelden : undefined}
+      />
+    )
+  }
+
+  const synchronisationstext = backend.art === 'supabase'
+    ? synchronisationszustand === 'verbindet'
+      ? 'live-verbindung wird hergestellt'
+      : synchronisationszustand === 'abgleichen'
+        ? 'daten werden abgeglichen'
+        : synchronisationszustand === 'veraltet'
+          ? 'stand möglicherweise veraltet · erneuter abgleich folgt automatisch'
+          : null
+    : null
+
   return (
     <div className="min-h-[100dvh] bg-grund">
       <main className="app-frame mx-auto w-full max-w-[420px]">
@@ -232,7 +270,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
         {/* fester platz, damit eine fehlermeldung nichts verschiebt */}
         <div className="flex h-5 items-start">
           <AnimatePresence mode="wait" initial={false}>
-            {fehler && (
+            {fehler ? (
               <motion.p
                 key={fehler}
                 role="alert"
@@ -245,7 +283,20 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
               >
                 {fehler}
               </motion.p>
-            )}
+            ) : synchronisationstext ? (
+              <motion.p
+                key={synchronisationszustand}
+                role="status"
+                aria-live="polite"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.14 }}
+                className="text-[11px] text-kreide-52"
+              >
+                {synchronisationstext}
+              </motion.p>
+            ) : null}
           </AnimatePresence>
         </div>
 
@@ -273,7 +324,14 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
         {/* Tab-Inhalte bleiben bis zum vollstaendigen Erstladen inert. So kann
             kein leerer Zwischenstand als echte Mutation gespeichert werden. */}
-        <div inert={!bereit} aria-busy={!bereit}>
+        <div
+          id={HAUPTBEREICH_PANEL_ID}
+          role="tabpanel"
+          aria-labelledby={hauptbereichTabId(aktiverTab)}
+          tabIndex={0}
+          inert={!bereit}
+          aria-busy={!bereit}
+        >
           <AnimatePresence mode="wait">
           {aktiverTab === 'tracker' ? (
             <motion.div
@@ -287,8 +345,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 
               <section
                 aria-label="heute eintragen"
-                className="mt-2 border-t border-linie transition-opacity duration-200"
-                style={{ opacity: ladezustand === 'laden' ? 0.4 : 1 }}
+                className="mt-2 border-t border-linie"
               >
                 {AREAS.map((area, i) => {
                   // die schritte gelten der neuesten einheit, die zahl zwischen
@@ -401,7 +458,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 match={match}
                 wette={wetten[woche[0] ?? heuteKey] ?? ''}
                 onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
-                onZumTracker={() => setAktiverTab('tracker')}
+                onZumTracker={() => wechsleTabMitFokus('tracker')}
                 abrechnung={abrechnungDerWoche}
                 abrechnungen={abrechnungen}
                 abschlussStatus={abrechnungDerWocheStatus}
@@ -442,6 +499,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                 onPruefungsfach={setzePruefungsfach}
                 onNote={noteHinzu}
                 onNoteLoeschen={noteLoeschen}
+                onNoteWiederherstellen={noteWiederherstellen}
               />
             </motion.div>
           )}
@@ -483,6 +541,102 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
   )
 }
 
+export function AppStartzustand({
+  status,
+  fehler = null,
+  onErneut,
+  onAbmelden,
+}: {
+  status: 'laden' | 'fehler'
+  fehler?: string | null
+  onErneut?: () => void
+  onAbmelden?: () => void | Promise<void>
+}) {
+  const istFehler = status === 'fehler'
+  const [aktionsfehler, setAktionsfehler] = useState<string | null>(null)
+
+  const sicherAbmelden = async () => {
+    setAktionsfehler(null)
+    try {
+      await onAbmelden?.()
+    } catch {
+      setAktionsfehler('abmeldung konnte nicht bestätigt werden. versuch es erneut.')
+    }
+  }
+
+  return (
+    <div className="min-h-[100dvh] bg-grund">
+      <main className="app-frame mx-auto w-full max-w-[420px]">
+        <header className="border-b border-linie py-5">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-kreide-52">
+            private anzeigetafel
+          </p>
+          <h1 className="display mt-1 text-[28px] font-semibold lowercase leading-none">
+            zweikampf
+          </h1>
+        </header>
+
+        <section
+          role={istFehler ? 'alert' : 'status'}
+          aria-live={istFehler ? 'assertive' : 'polite'}
+          aria-busy={!istFehler}
+          className="pt-6"
+        >
+          {istFehler ? (
+            <div className="border-y border-linie py-5">
+              <h2 className="display text-[21px] font-semibold lowercase">
+                daten nicht geladen
+              </h2>
+              <p className="mt-2 max-w-[34ch] text-[13px] leading-relaxed text-kreide-60">
+                {aktionsfehler ?? fehler ?? 'die app konnte den gemeinsamen stand nicht laden.'}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {onErneut && (
+                  <button
+                    type="button"
+                    onClick={onErneut}
+                    className="min-h-11 rounded-[2px] border border-kreide px-4 text-[13px] font-semibold"
+                  >
+                    erneut versuchen
+                  </button>
+                )}
+                {onAbmelden && (
+                  <button
+                    type="button"
+                    onClick={() => void sicherAbmelden()}
+                    className="min-h-11 px-3 text-[13px] text-kreide-60 underline decoration-linie-hell underline-offset-4"
+                  >
+                    sicher abmelden
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <h2 className="sr-only">gemeinsamer stand wird geladen</h2>
+              <p className="text-[11px] text-kreide-52">gemeinsamer stand wird geladen …</p>
+              <div aria-hidden="true" className="mt-4 border-t border-linie">
+                {[74, 58, 68, 50].map((breite, index) => (
+                  <div
+                    key={breite}
+                    className="flex min-h-[68px] items-center justify-between border-b border-linie"
+                  >
+                    <span
+                      className="block h-4 rounded-[1px] bg-flaeche-hell"
+                      style={{ width: `${breite}%`, opacity: 0.5 - index * 0.06 }}
+                    />
+                    <span className="ml-5 block size-5 shrink-0 rounded-[2px] bg-flaeche-hell opacity-50" />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
 function Fusszeile({
   art,
   me,
@@ -493,14 +647,24 @@ function Fusszeile({
   onWechsel: () => void
 }) {
   const er = other(me)
+  const [abmeldefehler, setAbmeldefehler] = useState<string | null>(null)
+
+  const meldeAb = async () => {
+    setAbmeldefehler(null)
+    try {
+      await abmelden()
+    } catch {
+      setAbmeldefehler('abmeldung nicht bestätigt')
+    }
+  }
 
   if (art === 'supabase') {
     return (
-      <footer className="mt-6 flex min-h-11 items-center gap-2 text-[11px] text-kreide-52">
-        <span>angemeldet als {userDef(me).name}</span>
+      <footer className="mt-6 flex min-h-11 flex-wrap items-center gap-2 text-[11px] text-kreide-52">
+        <span>{abmeldefehler ?? `angemeldet als ${userDef(me).name}`}</span>
         <button
           type="button"
-          onClick={() => abmelden()}
+          onClick={() => void meldeAb()}
           className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4"
         >
           abmelden

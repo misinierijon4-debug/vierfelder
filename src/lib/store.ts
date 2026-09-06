@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Backend, Wetten } from './backend'
+import type {
+  Anfangszustand,
+  Backend,
+  BackendDatenEreignis,
+  Wetten,
+} from './backend'
 import {
   gewichtKey,
   neueNotenId,
@@ -37,6 +42,7 @@ import {
   ohneTag,
 } from './tracker'
 import { istNotenDatum, notenGewicht } from './noten'
+import { blockiereNeustart } from './pwaBlocker'
 import {
   phasenLadeKey,
   phasenLadezustand,
@@ -63,6 +69,7 @@ function fehlertext(e: unknown): string {
 
 type Ladezustand = 'laden' | 'bereit' | 'fehler'
 export type AbrechnungSchreibstatus = 'speichern' | 'fehler'
+export type Synchronisationszustand = 'verbindet' | 'abgleichen' | 'aktuell' | 'veraltet'
 
 type VerlaufAnfrage = {
   id: symbol
@@ -97,6 +104,9 @@ export function useTracker(backend: Backend) {
   const [faecher, setFaecher] = useState<Fach[]>([])
   const [noten, setNoten] = useState<Note[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
+  const [ladeversuch, setLadeversuch] = useState(0)
+  const [synchronisationszustand, setSynchronisationszustand] =
+    useState<Synchronisationszustand>(backend.art === 'lokal' ? 'aktuell' : 'verbindet')
   const [fehler, setFehler] = useState<string | null>(null)
   const [ereignis, setEreignis] = useState<Ereignis | null>(null)
   /** ohne die tabelle `einheiten` bleibt es bei einer einheit pro tag */
@@ -163,6 +173,10 @@ export function useTracker(backend: Backend) {
    * Und zwei schnelle schritte könnten sich in der datenbank vertauschen.
    */
   const kette = useRef(new Map<string, Promise<unknown>>())
+  const laufendeMutationen = useRef(new Set<Promise<unknown>>())
+  const mutationsBlocker = useRef(new Set<{ lauf: symbol; loese: () => void }>())
+  const beiMutationsruheRef = useRef<() => void>(() => {})
+  const abgleichAnfordernRef = useRef<(_stark?: boolean) => void>(() => {})
 
   /**
    * Ein Backendwechsel ist zugleich ein Wechsel der Daten- und oft der
@@ -172,6 +186,7 @@ export function useTracker(backend: Backend) {
   const backendLauf = useMemo(() => Symbol('backend-lauf'), [backend])
   const aktiveLadungRef = useRef<symbol | null>(null)
   const bereiteLadungRef = useRef<symbol | null>(null)
+  const abgleichSperreRef = useRef<symbol | null>(null)
 
   const merkeAbrechnungStatus = useCallback(
     (woche: string, status: AbrechnungSchreibstatus | null) => {
@@ -192,6 +207,12 @@ export function useTracker(backend: Backend) {
     bereiteLadungRef.current = null
     letzteAktion.current = null
     kette.current.clear()
+    laufendeMutationen.current.clear()
+    for (const blocker of [...mutationsBlocker.current]) {
+      blocker.loese()
+      mutationsBlocker.current.delete(blocker)
+    }
+    abgleichSperreRef.current = null
     for (const anfrage of verlaeufeUnterwegs.current.values()) anfrage.controller.abort()
     verlaeufeUnterwegs.current.clear()
     verlaufBeobachter.current.clear()
@@ -203,6 +224,12 @@ export function useTracker(backend: Backend) {
     return () => {
       if (aktiveLadungRef.current === backendLauf) aktiveLadungRef.current = null
       if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
+      if (abgleichSperreRef.current === backendLauf) abgleichSperreRef.current = null
+      for (const blocker of [...mutationsBlocker.current]) {
+        if (blocker.lauf !== backendLauf) continue
+        blocker.loese()
+        mutationsBlocker.current.delete(blocker)
+      }
       for (const anfrage of verlaeufeUnterwegs.current.values()) {
         if (anfrage.backendLauf === backendLauf) anfrage.controller.abort()
       }
@@ -221,6 +248,55 @@ export function useTracker(backend: Backend) {
     () => istAktuell() && bereiteLadungRef.current === backendLauf,
     [backendLauf, istAktuell]
   )
+
+  const darfMutationStarten = useCallback(
+    () => {
+      if (!darfSchreiben() || abgleichSperreRef.current === backendLauf) return false
+      if (backend.art === 'supabase' && typeof navigator !== 'undefined' && !navigator.onLine) {
+        setFehler('offline: eingaben sind ohne sichere warteschlange gesperrt.')
+        return false
+      }
+      return true
+    },
+    [backend.art, backendLauf, darfSchreiben]
+  )
+
+  const ladenNeu = useCallback(() => {
+    if (!istAktuell()) return
+    bereiteLadungRef.current = null
+    setLadezustand('laden')
+    setFehler(null)
+    setSynchronisationszustand(backend.art === 'lokal' ? 'aktuell' : 'verbindet')
+    setLadeversuch((versuch) => versuch + 1)
+  }, [backend.art, istAktuell])
+
+  const verfolgeMutation = useCallback(<T,>(starte: () => Promise<T>): Promise<T> => {
+    const loeseNeustartblocker = blockiereNeustart()
+    const blocker = { lauf: backendLauf, loese: loeseNeustartblocker }
+    mutationsBlocker.current.add(blocker)
+    let promise: Promise<T>
+    try {
+      // Der Blocker steht bereits, bevor das Backend den Request oder eine
+      // davor wartende Schreibkette anlegt.
+      promise = starte()
+    } catch (e: unknown) {
+      promise = Promise.reject(e)
+    }
+    let verfolgt: Promise<T>
+    verfolgt = promise.finally(() => {
+      laufendeMutationen.current.delete(verfolgt)
+      mutationsBlocker.current.delete(blocker)
+      loeseNeustartblocker()
+      if (
+        aktiveLadungRef.current === backendLauf &&
+        laufendeMutationen.current.size === 0
+      ) {
+        beiMutationsruheRef.current()
+      }
+    })
+    laufendeMutationen.current.add(verfolgt)
+    return verfolgt
+  }, [backendLauf])
 
   const nacheinander = useCallback((ids: string[], schreibe: () => Promise<void>) => {
     const laufende = ids.map((id) => kette.current.get(id)).filter(Boolean)
@@ -264,54 +340,419 @@ export function useTracker(backend: Backend) {
     []
   )
 
+  const uebernimmAnfang = useCallback((anfang: Anfangszustand, ersterLauf: boolean) => {
+    meRef.current = anfang.me
+    einheitenRef.current = anfang.einheiten
+    gewichteRef.current = anfang.gewichte
+    gewichtQuellenRef.current = anfang.gewichtQuellen
+    wettenRef.current = anfang.wetten
+    abrechnungenRef.current = anfang.abrechnungen
+    faecherRef.current = anfang.noten.faecher
+    notenRef.current = anfang.noten.noten
+
+    // Ein Kontrollabgleich laedt alte Schlafphasen absichtlich nicht erneut.
+    // Bereits geoeffnete Verlaeufe bleiben deshalb erhalten, solange die Nacht
+    // im kanonischen Snapshot noch existiert.
+    const schlafstand = ersterLauf
+      ? anfang.schlaf
+      : anfang.schlaf.map((nacht) => {
+          if (nacht.phasen !== null) return nacht
+          const vorher = schlafRef.current.find(
+            (alt) => alt.user === nacht.user && alt.nacht === nacht.nacht
+          )
+          return vorher?.phasen === null || vorher === undefined
+            ? nacht
+            : { ...nacht, phasen: vorher.phasen }
+        })
+
+    setMe(anfang.me)
+    setEinheiten(anfang.einheiten)
+    setGewichte(anfang.gewichte)
+    setGewichtQuellen(anfang.gewichtQuellen)
+    uebernimmSchlaf(schlafstand)
+    setAufenthalte(anfang.aufenthalte)
+    setWetten(anfang.wetten)
+    setAbrechnungen(anfang.abrechnungen)
+    setFaecher(anfang.noten.faecher)
+    setNoten(anfang.noten.noten)
+    setEinheitVonVerfuegbar(anfang.einheitVonVerfuegbar)
+    setAltbestand(anfang.altbestand)
+    if (ersterLauf) {
+      phasenTransportRef.current = {}
+      setPhasenTransport({})
+    }
+  }, [uebernimmSchlaf])
+
+  const verarbeiteBackendEreignis = useCallback((e: BackendDatenEreignis) => {
+    if (e.typ === 'wette') {
+      const next = { ...wettenRef.current }
+      if (e.text === null) delete next[e.woche]
+      else next[e.woche] = e.text
+      wettenRef.current = next
+      setWetten(next)
+      return
+    }
+
+    if (e.typ === 'abrechnung') {
+      const vorher = abrechnungenRef.current
+      const ohne = vorher.filter((a) => a.woche !== e.abrechnung.woche)
+      const next = [...ohne, e.abrechnung].sort((a, b) => (a.woche < b.woche ? -1 : 1))
+      abrechnungenRef.current = next
+      setAbrechnungen(next)
+      merkeAbrechnungStatus(e.abrechnung.woche, null)
+      return
+    }
+
+    if (e.typ === 'fach') {
+      const vorher = faecherRef.current
+      const id = e.art === 'weg' ? e.id : e.fach.id
+      const ohne = vorher.filter((fach) => fach.id !== id)
+      let next: Fach[]
+      if (e.art === 'weg') {
+        next = ohne
+      } else if (e.fach.pruefungsfach === 4) {
+        // Der positive Teil eines atomaren Wechsels ist kanonisch: selbst wenn
+        // das Null-Event des alten Fachs fehlt, bleibt genau dieses Ziel aktiv.
+        next = [...ohne, e.fach].map((fach) =>
+          fach.user === e.fach.user && fach.id !== e.fach.id && fach.pruefungsfach !== null
+            ? { ...fach, pruefungsfach: null }
+            : fach
+        )
+      } else {
+        const bisher = vorher.find((fach) => fach.id === e.fach.id)
+        const anderesAktiv = vorher.some(
+          (fach) => fach.user === e.fach.user && fach.id !== e.fach.id && fach.pruefungsfach === 4
+        )
+        // Das erste Realtime-Event der Transaktion kann das alte Fach leeren.
+        // Solange das neue positive Event noch fehlt, zeigen wir keinen
+        // fachlich unmoeglichen Nullstand.
+        next = bisher?.pruefungsfach === 4 && !anderesAktiv
+          ? [...ohne, { ...e.fach, pruefungsfach: 4 }]
+          : [...ohne, e.fach]
+      }
+      faecherRef.current = next
+      setFaecher(next)
+      if (e.art === 'weg') {
+        const neueNoten = notenRef.current.filter((note) => note.fachId !== id)
+        notenRef.current = neueNoten
+        setNoten(neueNoten)
+      }
+      return
+    }
+
+    if (e.typ === 'note') {
+      const vorher = notenRef.current
+      const id = e.art === 'weg' ? e.id : e.note.id
+      const ohne = vorher.filter((note) => note.id !== id)
+      const next = e.art === 'weg' ? ohne : [...ohne, e.note]
+      notenRef.current = next
+      setNoten(next)
+      return
+    }
+
+    if (e.typ === 'schlaf') {
+      const user = e.art === 'weg' ? e.user : e.nacht.user
+      const nachtKey = e.art === 'weg' ? e.nacht : e.nacht.nacht
+      const key = phasenLadeKey(user, nachtKey)
+      const anfrage = verlaeufeUnterwegs.current.get(key)
+      if (anfrage) {
+        anfrage.controller.abort()
+        verlaeufeUnterwegs.current.delete(key)
+      }
+      merkePhasenTransport(key, null)
+      if (e.art === 'weg') {
+        verlaufBeobachter.current.delete(key)
+        uebernimmSchlaf(
+          schlafRef.current.filter((n) => n.user !== e.user || n.nacht !== e.nacht)
+        )
+      } else {
+        uebernimmSchlaf(mitNacht(schlafRef.current, e.nacht))
+        if (
+          e.nacht.phasen === null &&
+          (verlaufBeobachter.current.get(key)?.size ?? 0) > 0
+        ) {
+          queueMicrotask(() => startePhasenAbrufRef.current(user, nachtKey, false))
+        }
+      }
+      return
+    }
+
+    if (e.typ === 'gewicht') {
+      merkeGewichtQuelle(e.user, e.tag, e.kg === null ? null : e.quelle ?? 'getippt')
+      const vorher = gewichteRef.current
+      const next = mitGewicht(vorher, e.user, e.tag, e.kg)
+      if (next === vorher) return
+      gewichteRef.current = next
+      setGewichte(next)
+      return
+    }
+
+    if (e.typ === 'aufenthalt') {
+      setAufenthalte((vorher) => e.art === 'weg'
+        ? ohneAufenthalt(vorher, e.id)
+        : mitAufenthalt(vorher, e.aufenthalt))
+      return
+    }
+
+    const einheit = e.art === 'weg'
+      ? Object.values(einheitenRef.current).flat().find((x) => x.id === e.id)
+      : e.einheit
+    if (!einheit) return
+    const vorher = einheitenRef.current
+    let next = e.art === 'neu'
+      ? fuegeHinzu(vorher, einheit)
+      : e.art === 'weg'
+        ? ohneEinheit(vorher, e.id)
+        : mitEinheit(vorher, einheit)
+    // Ein UPDATE kann nach einem Verbindungsabbruch ohne sein INSERT
+    // eintreffen. Die komplette Realtime-Zeile reicht dann zum Nachtragen.
+    if (e.art === 'wert' && next === vorher) next = fuegeHinzu(vorher, einheit)
+    if (next === vorher) return
+    uebernimm(next)
+
+    if (e.art === 'wert') return
+    const gesetzt = (next[tickKey(einheit.user, einheit.area, einheit.tag)] ?? []).length > 0
+    if (document.visibilityState === 'visible') {
+      setEreignis({
+        id: ++ereignisId,
+        user: einheit.user,
+        area: einheit.area,
+        tag: einheit.tag,
+        gesetzt,
+        quelle: einheit.user === meRef.current ? 'selbst' : 'fremd',
+      })
+    }
+  }, [merkeAbrechnungStatus, merkeGewichtQuelle, merkePhasenTransport, uebernimm, uebernimmSchlaf])
+
   useEffect(() => {
+    const ABGLEICH_DROSSEL_MS = 5_000
+    const MUTATION_WARTEZEIT_MS = 10_000
+    const SNAPSHOT_WARTEZEIT_MS = 15_000
+
     let aktiv = true
+    let initialGeladen = false
+    let kanalEpoche = 0
+    let replikationBereit = backend.art === 'lokal'
+    let abgleichLaeuft = false
+    let erneutNoetig = false
+    let erneutStark = false
+    let nachInitialNoetig = false
+    let nachInitialStark = false
+    let wartetAufMutationsruhe = false
+    let abgleichNachMutationsruheStark = false
+    let letzterAbgleich = 0
+    let abgleichTimer: ReturnType<typeof setTimeout> | null = null
+    let frueheEreignisse: BackendDatenEreignis[] = []
+    let puffer: Array<{ epoche: number; ereignis: BackendDatenEreignis }> | null = null
+
     bereiteLadungRef.current = null
+    abgleichSperreRef.current = null
     setLadezustand('laden')
+    setSynchronisationszustand(backend.art === 'lokal' ? 'aktuell' : 'verbindet')
+
+    const nochAktuell = () => aktiv && istAktuell()
+
+    const spielePuffer = (epoche: number) => {
+      if (!puffer) return
+      const passend = puffer.filter((eintrag) => eintrag.epoche === epoche)
+      puffer = puffer.filter((eintrag) => eintrag.epoche !== epoche)
+      for (const eintrag of passend) verarbeiteBackendEreignis(eintrag.ereignis)
+    }
+
+    const warteAufMutationen = async (): Promise<boolean> => {
+      const ende = Date.now() + MUTATION_WARTEZEIT_MS
+      while (laufendeMutationen.current.size > 0) {
+        const rest = ende - Date.now()
+        if (rest <= 0) return false
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const fertig = await Promise.race([
+          Promise.allSettled([...laufendeMutationen.current]).then(() => true),
+          new Promise<boolean>((resolve) => {
+            timer = setTimeout(() => resolve(false), rest)
+          }),
+        ])
+        if (timer) clearTimeout(timer)
+        if (!fertig) return false
+      }
+      return true
+    }
+
+    const ladeSnapshot = async (): Promise<Anfangszustand> => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        return await Promise.race([
+          backend.laden(),
+          new Promise<Anfangszustand>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('kontrollabgleich hat das zeitlimit ueberschritten')),
+              SNAPSHOT_WARTEZEIT_MS
+            )
+          }),
+        ])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    let starteAbgleich = (_stark: boolean) => {}
+
+    const fuehreAbgleich = async (startEpoche: number, stark: boolean) => {
+      abgleichLaeuft = true
+      letzterAbgleich = Date.now()
+      abgleichSperreRef.current = backendLauf
+      // Ein neuer Snapshot startet nach allen bisher empfangenen Events. Nur
+      // Ereignisse ab jetzt muessen danach replayt werden.
+      puffer = []
+      if (nochAktuell()) setSynchronisationszustand('abgleichen')
+
+      let erfolgreich = false
+      try {
+        const mutationenFertig = await warteAufMutationen()
+        if (!nochAktuell()) return
+        if (!mutationenFertig) {
+          // Den optimistischen Stand nicht mit einem Snapshot ueberschreiben,
+          // solange eine HTTP-Antwort noch aussteht. Auch der Puffer bleibt
+          // stehen; beim spaeteren Settle folgt automatisch ein neuer Lauf.
+          if (laufendeMutationen.current.size === 0) {
+            // Settle und Timeout koennen in derselben Microtask konkurrieren.
+            // Dann ist kein spaeterer Ruhe-Callback mehr zu erwarten.
+            erneutNoetig = true
+            erneutStark ||= stark
+          } else {
+            wartetAufMutationsruhe = true
+            abgleichNachMutationsruheStark ||= stark
+          }
+          setSynchronisationszustand('veraltet')
+          return
+        }
+
+        const anfang = await ladeSnapshot()
+        if (!nochAktuell()) return
+        if (kanalEpoche !== startEpoche) {
+          // Ein Disconnect macht die zeitliche Garantie dieses Snapshots
+          // unbrauchbar. Der Reconnect fordert unten einen neuen Lauf an.
+          return
+        }
+
+        uebernimmAnfang(anfang, false)
+        spielePuffer(startEpoche)
+        erfolgreich = true
+      } catch {
+        if (!nochAktuell()) return
+        // REST-Fehler duerfen weder den letzten Stand noch bereits empfangene
+        // Live-Ereignisse vernichten.
+        if (kanalEpoche === startEpoche) spielePuffer(startEpoche)
+        setSynchronisationszustand('veraltet')
+      } finally {
+        abgleichLaeuft = false
+        if (abgleichSperreRef.current === backendLauf) abgleichSperreRef.current = null
+
+        const nochmal = erneutNoetig
+        const nochmalStark = erneutStark
+        erneutNoetig = false
+        erneutStark = false
+
+        if (nochAktuell()) {
+          if (erfolgreich) {
+            setSynchronisationszustand(
+              stark && replikationBereit ? 'aktuell' : 'veraltet'
+            )
+          }
+          if (wartetAufMutationsruhe) {
+            abgleichNachMutationsruheStark ||= nochmalStark
+          } else if (nochmal) {
+            queueMicrotask(() => {
+              if (nochAktuell()) starteAbgleich(nochmalStark)
+            })
+          } else {
+            puffer = null
+          }
+        }
+      }
+    }
+
+    starteAbgleich = (stark: boolean) => {
+      if (!nochAktuell() || backend.art !== 'supabase') return
+      if (!initialGeladen) {
+        nachInitialNoetig = true
+        nachInitialStark ||= stark
+        return
+      }
+      if (wartetAufMutationsruhe && laufendeMutationen.current.size > 0) {
+        abgleichNachMutationsruheStark ||= stark
+        return
+      }
+      if (abgleichLaeuft) {
+        erneutNoetig = true
+        erneutStark ||= stark
+        return
+      }
+      void fuehreAbgleich(kanalEpoche, stark)
+    }
+
+    const beiMutationsruhe = () => {
+      if (!nochAktuell() || !wartetAufMutationsruhe) return
+      wartetAufMutationsruhe = false
+      const stark = abgleichNachMutationsruheStark || replikationBereit
+      abgleichNachMutationsruheStark = false
+      starteAbgleich(stark)
+    }
+    beiMutationsruheRef.current = beiMutationsruhe
+    const fordereAbgleich = (stark = true) => starteAbgleich(stark)
+    abgleichAnfordernRef.current = fordereAbgleich
+
+    const planeGedrosseltenAbgleich = () => {
+      if (!nochAktuell() || backend.art !== 'supabase') return
+      if (abgleichLaeuft) return
+      const rest = ABGLEICH_DROSSEL_MS - (Date.now() - letzterAbgleich)
+      if (rest <= 0) {
+        starteAbgleich(replikationBereit)
+        return
+      }
+      if (abgleichTimer !== null) return
+      abgleichTimer = setTimeout(() => {
+        abgleichTimer = null
+        starteAbgleich(replikationBereit)
+      }, rest)
+    }
 
     /**
-     * direkt nach dem anmelden kann eine abfrage noch mit dem alten token
-     * rausgehen und 401 kassieren. das ist vorbei, bevor man es lesen kann,
-     * also einmal still nachfassen statt den nutzer in eine sackgasse zu schicken.
+     * Direkt nach dem Anmelden kann eine Abfrage noch mit dem alten Token
+     * rausgehen und 401 kassieren. Das ist vorbei, bevor man es lesen kann,
+     * also einmal still nachfassen statt den Nutzer in eine Sackgasse zu schicken.
      */
     const versuche = async (rest: number): Promise<void> => {
       try {
         const anfang = await backend.laden()
-        if (!aktiv || !istAktuell()) return
-        meRef.current = anfang.me
-        einheitenRef.current = anfang.einheiten
-        gewichteRef.current = anfang.gewichte
-        gewichtQuellenRef.current = anfang.gewichtQuellen
-        wettenRef.current = anfang.wetten
-        abrechnungenRef.current = anfang.abrechnungen
-        faecherRef.current = anfang.noten.faecher
-        notenRef.current = anfang.noten.noten
-        setMe(anfang.me)
-        setEinheiten(anfang.einheiten)
-        setGewichte(anfang.gewichte)
-        setGewichtQuellen(anfang.gewichtQuellen)
-        uebernimmSchlaf(anfang.schlaf)
-        phasenTransportRef.current = {}
-        setPhasenTransport({})
-        setAufenthalte(anfang.aufenthalte)
-        setWetten(anfang.wetten)
-        setAbrechnungen(anfang.abrechnungen)
-        setFaecher(anfang.noten.faecher)
-        setNoten(anfang.noten.noten)
-        setEinheitVonVerfuegbar(anfang.einheitVonVerfuegbar)
-        setAltbestand(anfang.altbestand)
+        if (!nochAktuell()) return
+        uebernimmAnfang(anfang, true)
         bereiteLadungRef.current = backendLauf
+        initialGeladen = true
         setLadezustand('bereit')
         setFehler(null)
+
+        const frueh = frueheEreignisse
+        frueheEreignisse = []
+        for (const ereignis of frueh) verarbeiteBackendEreignis(ereignis)
+
+        if (backend.art === 'lokal') {
+          setSynchronisationszustand('aktuell')
+        } else if (nachInitialNoetig) {
+          const stark = nachInitialStark
+          nachInitialNoetig = false
+          nachInitialStark = false
+          starteAbgleich(stark)
+        }
       } catch (e: unknown) {
-        if (!aktiv || !istAktuell()) return
+        if (!nochAktuell()) return
         if (rest > 0 && !istProfilfehler(e)) {
-          await new Promise((r) => setTimeout(r, 700))
-          if (!aktiv) return
+          await new Promise((resolve) => setTimeout(resolve, 700))
+          if (!nochAktuell()) return
           return versuche(rest - 1)
         }
         bereiteLadungRef.current = null
         setLadezustand('fehler')
+        setSynchronisationszustand('veraltet')
         setFehler(fehlertext(e))
       }
     }
@@ -319,154 +760,91 @@ export function useTracker(backend: Backend) {
     void versuche(1)
 
     const abmelden = backend.abonniere((e) => {
-      if (!aktiv || !istAktuell()) return
-      if (e.typ === 'wette') {
-        const next = { ...wettenRef.current }
-        if (e.text === null) delete next[e.woche]
-        else next[e.woche] = e.text
-        wettenRef.current = next
-        setWetten(next)
-        return
-      }
-
-      if (e.typ === 'abrechnung') {
-        const vorher = abrechnungenRef.current
-        const ohne = vorher.filter((a) => a.woche !== e.abrechnung.woche)
-        const next = [...ohne, e.abrechnung].sort((a, b) => (a.woche < b.woche ? -1 : 1))
-        abrechnungenRef.current = next
-        setAbrechnungen(next)
-        merkeAbrechnungStatus(e.abrechnung.woche, null)
-        return
-      }
-
-      if (e.typ === 'fach') {
-        const vorher = faecherRef.current
-        const id = e.art === 'weg' ? e.id : e.fach.id
-        const ohne = vorher.filter((fach) => fach.id !== id)
-        const next = e.art === 'weg' ? ohne : [...ohne, e.fach]
-        faecherRef.current = next
-        setFaecher(next)
-        if (e.art === 'weg') {
-          const neueNoten = notenRef.current.filter((note) => note.fachId !== id)
-          notenRef.current = neueNoten
-          setNoten(neueNoten)
-        }
-        return
-      }
-
-      if (e.typ === 'note') {
-        const vorher = notenRef.current
-        const id = e.art === 'weg' ? e.id : e.note.id
-        const ohne = vorher.filter((note) => note.id !== id)
-        const next = e.art === 'weg' ? ohne : [...ohne, e.note]
-        notenRef.current = next
-        setNoten(next)
-        return
-      }
-
-      // eine nacht ersetzt die vorhandene derselben person: ein zweiter lauf
-      // des kurzbefehls meldet dieselbe nacht noch einmal, und zwei zeilen für
-      // eine nacht würden den kalender und den wochenschnitt verdoppeln
-      if (e.typ === 'schlaf') {
-        const user = e.art === 'weg' ? e.user : e.nacht.user
-        const nachtKey = e.art === 'weg' ? e.nacht : e.nacht.nacht
-        const key = phasenLadeKey(user, nachtKey)
-        const anfrage = verlaeufeUnterwegs.current.get(key)
-        if (anfrage) {
-          anfrage.controller.abort()
-          verlaeufeUnterwegs.current.delete(key)
-        }
-        merkePhasenTransport(key, null)
-        if (e.art === 'weg') {
-          verlaufBeobachter.current.delete(key)
-          uebernimmSchlaf(
-            schlafRef.current.filter((n) => n.user !== e.user || n.nacht !== e.nacht)
-          )
+      if (!nochAktuell()) return
+      if (e.typ !== 'verbindung') {
+        if (!initialGeladen) {
+          frueheEreignisse.push(e)
+        } else if (puffer !== null) {
+          puffer.push({ epoche: kanalEpoche, ereignis: e })
         } else {
-          uebernimmSchlaf(mitNacht(schlafRef.current, e.nacht))
-          if (
-            e.nacht.phasen === null &&
-            (verlaufBeobachter.current.get(key)?.size ?? 0) > 0
-          ) {
-            queueMicrotask(() => startePhasenAbrufRef.current(user, nachtKey, false))
-          }
+          verarbeiteBackendEreignis(e)
         }
         return
       }
 
-      // ein gewicht vom zweiten gerät. eine eigene, noch laufende schreibung
-      // darf es nicht überholen — deshalb geht es über dieselbe ref wie der
-      // optimistische weg und nicht an ihr vorbei
-      if (e.typ === 'gewicht') {
-        merkeGewichtQuelle(e.user, e.tag, e.kg === null ? null : e.quelle ?? 'getippt')
-        const vorher = gewichteRef.current
-        const next = mitGewicht(vorher, e.user, e.tag, e.kg)
-        if (next === vorher) return
-        gewichteRef.current = next
-        setGewichte(next)
+      if (e.status === 'verbindet') {
+        replikationBereit = false
+        setSynchronisationszustand('verbindet')
+        return
+      }
+      if (e.status === 'transportbereit') {
+        kanalEpoche += 1
+        replikationBereit = false
+        setSynchronisationszustand('verbindet')
+        // Fallback fuer Server ohne replication_ready: schliesst die bekannte
+        // Luecke mit einem REST-Abgleich, bleibt aber ehrlich als veraltet
+        // markiert, bis der starke Systemevent eintrifft.
+        starteAbgleich(false)
+        return
+      }
+      if (e.status === 'bereit') {
+        if (kanalEpoche === 0) kanalEpoche = 1
+        replikationBereit = true
+        starteAbgleich(true)
         return
       }
 
-      // ankunft legt an, abgang schließt: dieselbe Tabellen-ID kommt zweimal,
-      // das zweite Mal mit Abgang. DELETE braucht ebenfalls nur diese ID.
-      if (e.typ === 'aufenthalt') {
-        setAufenthalte((vorher) => e.art === 'weg'
-          ? ohneAufenthalt(vorher, e.id)
-          : mitAufenthalt(vorher, e.aufenthalt))
-        return
-      }
-
-      const einheit = e.art === 'weg'
-        ? Object.values(einheitenRef.current).flat().find((x) => x.id === e.id)
-        : e.einheit
-      if (!einheit) return
-      // über die id zusammengeführt: ein doppelt gemeldetes ereignis ändert
-      // nichts, und ein eigener schreibvorgang kommt nicht doppelt zurück.
-      const vorher = einheitenRef.current
-      const next =
-        e.art === 'neu'
-          ? fuegeHinzu(vorher, einheit)
-          : e.art === 'weg'
-            ? ohneEinheit(vorher, e.id)
-            : mitEinheit(vorher, einheit)
-      if (next === vorher) return
-      uebernimm(next)
-
-      if (e.art === 'wert') return
-      const gesetzt = (next[tickKey(einheit.user, einheit.area, einheit.tag)] ?? []).length > 0
-
-      // nur live eintreffende ereignisse werden animiert
-      if (document.visibilityState === 'visible') {
-        setEreignis({
-          id: ++ereignisId,
-          user: einheit.user,
-          area: einheit.area,
-          tag: einheit.tag,
-          gesetzt,
-          quelle: einheit.user === meRef.current ? 'selbst' : 'fremd',
-        })
-      }
+      kanalEpoche += 1
+      replikationBereit = false
+      setSynchronisationszustand('veraltet')
     })
+
+    const beiOnline = () => planeGedrosseltenAbgleich()
+    const beiSichtbarkeit = () => {
+      if (document.visibilityState === 'visible') planeGedrosseltenAbgleich()
+    }
+    const beiOffline = () => {
+      if (!nochAktuell() || backend.art !== 'supabase') return
+      kanalEpoche += 1
+      replikationBereit = false
+      setSynchronisationszustand('veraltet')
+    }
+
+    window.addEventListener('online', beiOnline)
+    window.addEventListener('offline', beiOffline)
+    document.addEventListener('visibilitychange', beiSichtbarkeit)
 
     return () => {
       aktiv = false
+      if (abgleichTimer !== null) clearTimeout(abgleichTimer)
+      if (beiMutationsruheRef.current === beiMutationsruhe) {
+        beiMutationsruheRef.current = () => {}
+      }
+      if (abgleichAnfordernRef.current === fordereAbgleich) {
+        abgleichAnfordernRef.current = () => {}
+      }
       if (bereiteLadungRef.current === backendLauf) bereiteLadungRef.current = null
+      if (abgleichSperreRef.current === backendLauf) abgleichSperreRef.current = null
+      puffer = null
+      frueheEreignisse = []
+      window.removeEventListener('online', beiOnline)
+      window.removeEventListener('offline', beiOffline)
+      document.removeEventListener('visibilitychange', beiSichtbarkeit)
       abmelden()
     }
   }, [
     backend,
     backendLauf,
     istAktuell,
-    merkeAbrechnungStatus,
-    merkePhasenTransport,
-    uebernimm,
-    uebernimmSchlaf,
+    ladeversuch,
+    uebernimmAnfang,
+    verarbeiteBackendEreignis,
   ])
 
   /** legt eine weitere durchführung an. gibt sie zurück, damit undo sie kennt */
   const einheitHinzu = useCallback(
     (area: AreaId, tag: string, von: string | null = null): Einheit | null => {
-      if (!darfSchreiben()) return null
+      if (!darfMutationStarten()) return null
       const u = meRef.current
       const vorher = einheitenRef.current
       const einheit = baueEinheit(u, area, tag, null, new Date(), von)
@@ -483,21 +861,23 @@ export function useTracker(backend: Backend) {
       })
       setFehler(null)
 
-      nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
 
       return einheit
     },
-    [backend, darfSchreiben, nacheinander, uebernimm]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** nimmt eine einzelne durchführung zurück */
   const einheitWeg = useCallback(
     (einheit: Einheit) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       if (einheit.user !== meRef.current) return
       const vorher = einheitenRef.current
       const next = ohneEinheit(vorher, einheit.id)
@@ -512,19 +892,21 @@ export function useTracker(backend: Backend) {
       })
       setFehler(null)
 
-      nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, nacheinander, uebernimm]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** der an/aus-schalter: an legt die erste einheit an, aus räumt den tag */
   const toggle = useCallback(
     (area: AreaId, tag: string) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const u = meRef.current
       const vorher = einheitenRef.current
       const vorhandene = vorher[tickKey(u, area, tag)] ?? []
@@ -539,16 +921,26 @@ export function useTracker(backend: Backend) {
       setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt: false, quelle: 'selbst' })
       setFehler(null)
 
-      nacheinander(
-        vorhandene.map((e) => e.id),
-        () => backend.loescheTag(vorhandene)
-      ).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander(
+          vorhandene.map((e) => e.id),
+          () => backend.loescheTag(vorhandene)
+        ).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, einheitHinzu, nacheinander, uebernimm]
+    [
+      backend,
+      darfMutationStarten,
+      darfSchreiben,
+      einheitHinzu,
+      nacheinander,
+      uebernimm,
+      verfolgeMutation,
+    ]
   )
 
   /**
@@ -558,7 +950,7 @@ export function useTracker(backend: Backend) {
    */
   const rueckgaengig = useCallback(
     (area: AreaId, tag: string) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const aktion = letzteAktion.current
       if (!aktion || aktion.area !== area || aktion.tag !== tag) {
         // nichts gemerkt: dann ist der schalter die ehrlichste antwort
@@ -580,21 +972,32 @@ export function useTracker(backend: Backend) {
       setEreignis({ id: ++ereignisId, user: u, area, tag, gesetzt: true, quelle: 'selbst' })
       setFehler(null)
 
-      Promise.all(
-        aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
-      ).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        Promise.all(
+          aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
+        ).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, einheitWeg, nacheinander, toggle, uebernimm]
+    [
+      backend,
+      darfMutationStarten,
+      darfSchreiben,
+      einheitWeg,
+      nacheinander,
+      toggle,
+      uebernimm,
+      verfolgeMutation,
+    ]
   )
 
   /** setzt den wert einer einzelnen einheit — das detail bearbeitet jede zeile */
   const wertSetzen = useCallback(
     (id: string, wert: number) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const vorher = einheitenRef.current
       const einheit = Object.values(vorher)
         .flat()
@@ -603,19 +1006,21 @@ export function useTracker(backend: Backend) {
       const sauber = Math.max(0, Math.round(wert))
       uebernimm(mitWert(vorher, id, sauber))
       setFehler(null)
-      nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, nacheinander, uebernimm]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** setzt die durchführungszeit einer einzelnen einheit. null löscht sie */
   const zeitSetzen = useCallback(
     (id: string, von: string | null) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const vorher = einheitenRef.current
       const einheit = Object.values(vorher)
         .flat()
@@ -623,48 +1028,52 @@ export function useTracker(backend: Backend) {
       if (!einheit) return
       uebernimm(mitVon(vorher, id, von))
       setFehler(null)
-      nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, nacheinander, uebernimm]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** archiviert erst nach kanonischer Backend-Bestaetigung; die erste Zeile gewinnt */
   const abrechnungHinzu = useCallback(
     (a: Abrechnung) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       if (abrechnungenRef.current.some((x) => x.woche === a.woche)) return
       if (abrechnungStatusRef.current[a.woche] === 'speichern') return
       merkeAbrechnungStatus(a.woche, 'speichern')
       setFehler(null)
-      backend.schreibeAbrechnung(a)
-        .then((kanonisch) => {
-          if (!darfSchreiben()) return
-          const aktuell = abrechnungenRef.current
-          const neue = [
-            ...aktuell.filter((x) => x.woche !== kanonisch.woche),
-            kanonisch,
-          ].sort((x, y) => (x.woche < y.woche ? -1 : 1))
-          abrechnungenRef.current = neue
-          setAbrechnungen(neue)
-          merkeAbrechnungStatus(a.woche, null)
-        })
-        .catch(() => {
-          if (!darfSchreiben()) return
-          // Kam die echte Zeile bereits per Realtime, ist die verlorene
-          // HTTP-Antwort kein fachlicher Fehler mehr.
-          if (abrechnungenRef.current.some((x) => x.woche === a.woche)) {
+      void verfolgeMutation(() =>
+        backend.schreibeAbrechnung(a)
+          .then((kanonisch) => {
+            if (!darfSchreiben()) return
+            const aktuell = abrechnungenRef.current
+            const neue = [
+              ...aktuell.filter((x) => x.woche !== kanonisch.woche),
+              kanonisch,
+            ].sort((x, y) => (x.woche < y.woche ? -1 : 1))
+            abrechnungenRef.current = neue
+            setAbrechnungen(neue)
             merkeAbrechnungStatus(a.woche, null)
-            return
-          }
-          merkeAbrechnungStatus(a.woche, 'fehler')
-          setFehler('wochenabschluss fehlgeschlagen.')
-        })
+          })
+          .catch(() => {
+            if (!darfSchreiben()) return
+            // Kam die echte Zeile bereits per Realtime, ist die verlorene
+            // HTTP-Antwort kein fachlicher Fehler mehr.
+            if (abrechnungenRef.current.some((x) => x.woche === a.woche)) {
+              merkeAbrechnungStatus(a.woche, null)
+              return
+            }
+            merkeAbrechnungStatus(a.woche, 'fehler')
+            setFehler('wochenabschluss fehlgeschlagen.')
+          })
+      )
     },
-    [backend, darfSchreiben, merkeAbrechnungStatus]
+    [backend, darfMutationStarten, darfSchreiben, merkeAbrechnungStatus, verfolgeMutation]
   )
 
   /**
@@ -675,7 +1084,7 @@ export function useTracker(backend: Backend) {
    */
   const wertAendern = useCallback(
     (area: AreaId, tag: string, delta: number) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const u = meRef.current
       const vorher = einheitenRef.current
       const liste = vorher[tickKey(u, area, tag)] ?? []
@@ -694,11 +1103,13 @@ export function useTracker(backend: Backend) {
 
         // dieselbe id in der schlange: das anlegen ist durch, bevor der wert
         // auf eine zeile geht, die es sonst noch nicht gäbe.
-        nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(nachAnlegen)
-          setFehler('nicht gespeichert. tippe nochmal.')
-        })
+        void verfolgeMutation(() =>
+          nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
+            if (!darfSchreiben()) return
+            uebernimm(nachAnlegen)
+            setFehler('nicht gespeichert. tippe nochmal.')
+          })
+        )
         return
       }
 
@@ -706,18 +1117,28 @@ export function useTracker(backend: Backend) {
       uebernimm(mitWert(vorher, letzte.id, sauber))
       setFehler(null)
 
-      nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch(() => {
-        if (!darfSchreiben()) return
-        uebernimm(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch(() => {
+          if (!darfSchreiben()) return
+          uebernimm(vorher)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, einheitHinzu, nacheinander, uebernimm]
+    [
+      backend,
+      darfMutationStarten,
+      darfSchreiben,
+      einheitHinzu,
+      nacheinander,
+      uebernimm,
+      verfolgeMutation,
+    ]
   )
 
   const setzeGewicht = useCallback(
     (tag: string, kg: number) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const u = meRef.current
       const vorher = gewichteRef.current
       const vorherQuellen = gewichtQuellenRef.current
@@ -736,16 +1157,18 @@ export function useTracker(backend: Backend) {
       // automation zurück und setzt die quelle dann selbst.
       merkeGewichtQuelle(u, tag, sauber <= 0 ? null : 'getippt')
 
-      backend.schreibeGewicht(tag, sauber).catch(() => {
-        if (!darfSchreiben()) return
-        gewichteRef.current = vorher
-        setGewichte(vorher)
-        gewichtQuellenRef.current = vorherQuellen
-        setGewichtQuellen(vorherQuellen)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        backend.schreibeGewicht(tag, sauber).catch(() => {
+          if (!darfSchreiben()) return
+          gewichteRef.current = vorher
+          setGewichte(vorher)
+          gewichtQuellenRef.current = vorherQuellen
+          setGewichtQuellen(vorherQuellen)
+          setFehler('nicht gespeichert. tippe nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben, merkeGewichtQuelle]
+    [backend, darfMutationStarten, darfSchreiben, merkeGewichtQuelle, verfolgeMutation]
   )
 
   /**
@@ -857,7 +1280,7 @@ export function useTracker(backend: Backend) {
 
   const setzeWette = useCallback(
     (woche: string, text: string) => {
-      if (!darfSchreiben()) return
+      if (!darfMutationStarten()) return
       const sauber = text.trim().replace(/\s+/g, ' ').slice(0, 160)
       if (!sauber) return
       const vorher = wettenRef.current
@@ -865,58 +1288,80 @@ export function useTracker(backend: Backend) {
       wettenRef.current = next
       setWetten(next)
       setFehler(null)
-      backend.schreibeWette(woche, sauber).catch(() => {
-        if (!darfSchreiben()) return
-        wettenRef.current = vorher
-        setWetten(vorher)
-        setFehler('wetteinsatz nicht gespeichert. versuch es nochmal.')
-      })
+      void verfolgeMutation(() =>
+        backend.schreibeWette(woche, sauber).catch(() => {
+          if (!darfSchreiben()) return
+          wettenRef.current = vorher
+          setWetten(vorher)
+          setFehler('wetteinsatz nicht gespeichert. versuch es nochmal.')
+        })
+      )
     },
-    [backend, darfSchreiben]
+    [backend, darfMutationStarten, darfSchreiben, verfolgeMutation]
   )
 
   /**
-   * es gibt genau ein muendliches pruefungsfach je person — die vierte pruefung
-   * neben den drei lk. der eindeutige index in der datenbank laesst kein zweites
-   * zu, deshalb faellt das alte erst weg und das neue kommt danach.
+   * Es gibt genau ein muendliches Pruefungsfach je Person. Der Browser sendet
+   * nur Ziel und erwarteten Ausgangsstand; die Datenbank wechselt beide Zeilen
+   * in einer Transaktion und erkennt parallele Entscheidungen.
    */
   const setzePruefungsfach = useCallback(
-    (fachId: string, nummer: number | null) => {
-      if (!darfSchreiben()) return
-      if (nummer !== null && nummer !== 4) return
+    (fachId: string) => {
+      if (!darfMutationStarten()) return
       const fach = faecherRef.current.find((x) => x.id === fachId)
-      if (!fach || fach.user !== meRef.current || fach.kursart !== 'gk') return
-      const altes = nummer === null
-        ? undefined
-        : faecherRef.current.find(
-            (x) => x.user === meRef.current && x.id !== fachId && x.pruefungsfach !== null
-          )
+      if (
+        !fach ||
+        fach.user !== meRef.current ||
+        fach.kursart !== 'gk' ||
+        fach.name.trim().toLocaleLowerCase('de-DE') === 'sport'
+      ) return
+      const altes = faecherRef.current.find(
+        (x) => x.user === meRef.current && x.pruefungsfach === 4
+      )
+      if (!altes || altes.id === fachId) return
+
       const vorher = faecherRef.current
       const next = vorher.map((x) =>
-        x.id === fachId ? { ...x, pruefungsfach: nummer }
-          : x.id === altes?.id ? { ...x, pruefungsfach: null }
+        x.id === fachId ? { ...x, pruefungsfach: 4 }
+          : x.id === altes.id ? { ...x, pruefungsfach: null }
           : x
       )
       faecherRef.current = next
       setFaecher(next)
       setFehler(null)
-      const ids = altes ? [fachId, altes.id] : [fachId]
-      nacheinander(ids, async () => {
-        if (altes) await backend.setzePruefungsfach(altes.id, null)
-        await backend.setzePruefungsfach(fachId, nummer)
-      }).catch(() => {
-        if (!darfSchreiben()) return
-        faecherRef.current = vorher
-        setFaecher(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+
+      void verfolgeMutation(() =>
+        nacheinander([`pruefungsfach:${meRef.current}`], async () => {
+          const bestaetigt = await backend.setzePruefungsfach(fachId, altes.id)
+          if (bestaetigt !== fachId) {
+            throw new Error('pruefungsfachwechsel wurde nicht bestaetigt')
+          }
+        }).catch((e: unknown) => {
+          if (!darfSchreiben()) return
+          if (backend.art === 'lokal') {
+            const zurueck = faecherRef.current.map((aktuell) => {
+              const alt = vorher.find((vorheriges) => vorheriges.id === aktuell.id)
+              return alt ? { ...aktuell, pruefungsfach: alt.pruefungsfach } : aktuell
+            })
+            faecherRef.current = zurueck
+            setFaecher(zurueck)
+          } else {
+            abgleichAnfordernRef.current(true)
+          }
+          setFehler(
+            (e as { code?: string } | null)?.code === '40001'
+              ? 'prüfungsfach wurde auf einem anderen gerät geändert. stand wird abgeglichen.'
+              : 'prüfungsfach nicht bestätigt. stand wird abgeglichen.'
+          )
+        })
+      )
     },
-    [backend, darfSchreiben, nacheinander]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
   )
 
   const noteHinzu = useCallback(
     (fachId: string, punkte: number, art: Notenart, datum: string, titel = ''): Note | null => {
-      if (!darfSchreiben()) return null
+      if (!darfMutationStarten()) return null
       const fach = faecherRef.current.find((x) => x.id === fachId)
       if (!fach || fach.user !== meRef.current || !istNotenDatum(datum)) return null
       const note: Note = {
@@ -929,40 +1374,89 @@ export function useTracker(backend: Backend) {
         datum,
         titel: titel.trim().toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').slice(0, 40),
       }
-      const vorher = notenRef.current
-      const next = [...vorher, note]
+      const next = [...notenRef.current, note]
       notenRef.current = next
       setNoten(next)
       setFehler(null)
-      nacheinander([note.id], () => backend.schreibeNote(note)).catch(() => {
-        if (!darfSchreiben()) return
-        notenRef.current = vorher
-        setNoten(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([note.id], () => backend.schreibeNote(note).then((bestaetigt) => {
+          if (bestaetigt !== note.id) throw new Error('note wurde nicht bestaetigt')
+        })).catch(() => {
+          if (!darfSchreiben()) return
+          if (backend.art === 'lokal') {
+            const zurueck = notenRef.current.filter((aktuell) => aktuell.id !== note.id)
+            notenRef.current = zurueck
+            setNoten(zurueck)
+          } else {
+            abgleichAnfordernRef.current(true)
+          }
+          setFehler('note nicht bestätigt. stand wird abgeglichen.')
+        })
+      )
       return note
     },
-    [backend, darfSchreiben, nacheinander]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
   )
 
   const noteLoeschen = useCallback(
-    (id: string) => {
-      if (!darfSchreiben()) return
+    (id: string): Note | null => {
+      if (!darfMutationStarten()) return null
       const note = notenRef.current.find((x) => x.id === id)
-      if (!note || note.user !== meRef.current) return
-      const vorher = notenRef.current
-      const next = vorher.filter((x) => x.id !== id)
+      if (!note || note.user !== meRef.current) return null
+      const next = notenRef.current.filter((x) => x.id !== id)
       notenRef.current = next
       setNoten(next)
       setFehler(null)
-      nacheinander([id], () => backend.loescheNote(id)).catch(() => {
-        if (!darfSchreiben()) return
-        notenRef.current = vorher
-        setNoten(vorher)
-        setFehler('nicht gespeichert. tippe nochmal.')
-      })
+      void verfolgeMutation(() =>
+        nacheinander([id], () => backend.loescheNote(id).then((bestaetigt) => {
+          if (bestaetigt !== id) throw new Error('notenloeschung wurde nicht bestaetigt')
+        })).catch(() => {
+          if (!darfSchreiben()) return
+          if (backend.art === 'lokal') {
+            if (!notenRef.current.some((aktuell) => aktuell.id === note.id)) {
+              const zurueck = [...notenRef.current, note]
+              notenRef.current = zurueck
+              setNoten(zurueck)
+            }
+          } else {
+            abgleichAnfordernRef.current(true)
+          }
+          setFehler('löschung nicht bestätigt. stand wird abgeglichen.')
+        })
+      )
+      return note
     },
-    [backend, darfSchreiben, nacheinander]
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
+  )
+
+  const noteWiederherstellen = useCallback(
+    (note: Note): boolean => {
+      if (!darfMutationStarten() || note.user !== meRef.current) return false
+      const fach = faecherRef.current.find((x) => x.id === note.fachId)
+      if (!fach || fach.user !== meRef.current) return false
+      if (notenRef.current.some((aktuell) => aktuell.id === note.id)) return true
+
+      notenRef.current = [...notenRef.current, note]
+      setNoten(notenRef.current)
+      setFehler(null)
+      void verfolgeMutation(() =>
+        nacheinander([note.id], () => backend.schreibeNote(note).then((bestaetigt) => {
+          if (bestaetigt !== note.id) throw new Error('note wurde nicht bestaetigt')
+        })).catch(() => {
+          if (!darfSchreiben()) return
+          if (backend.art === 'lokal') {
+            const zurueck = notenRef.current.filter((aktuell) => aktuell.id !== note.id)
+            notenRef.current = zurueck
+            setNoten(zurueck)
+          } else {
+            abgleichAnfordernRef.current(true)
+          }
+          setFehler('wiederherstellung nicht bestätigt. stand wird abgeglichen.')
+        })
+      )
+      return true
+    },
+    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
   )
 
   // eine stabile identität: sonst wäre jeder render ein neuer zustand und
@@ -993,6 +1487,8 @@ export function useTracker(backend: Backend) {
     abrechnungStatus,
     notenstand,
     ladezustand,
+    synchronisationszustand,
+    ladenNeu,
     fehler,
     ereignis,
     altbestand,
@@ -1010,6 +1506,7 @@ export function useTracker(backend: Backend) {
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,
+    noteWiederherstellen,
     phasenNachladen,
     phasenNeuLaden,
   }

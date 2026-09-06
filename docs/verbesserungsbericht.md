@@ -591,6 +591,64 @@ und eine ausdrückliche Freigabe erforderlich.
   anschließend noch eine konkrete Fokuslücke beim zeitgesteuerten Entfernen
   des Noten-Undo-Buttons; sie wird zusammen mit dem Notenpaket geschlossen.
 
+### Welle 3: kanonischer Realtime-Abgleich und ehrlicher App-Start
+
+- Realtime-Kanäle sind pro Backendinstanz eindeutig. Der Store unterscheidet
+  Transportaufbau, Replikationsbereitschaft, laufenden Abgleich und einen
+  möglicherweise veralteten Stand. Ereignisse vor dem ersten autoritativen
+  Snapshot werden FIFO gepuffert; alte Kanal-Epochen und doppelte Ereignisse
+  dürfen den aktuellen Stand nicht mehr zurückdrehen.
+- Nach Reconnect, Rückkehr in einen sichtbaren Tab und Browser-Online-Ereignis
+  wird gedrosselt vollständig nachgeladen. Mutationen warten den laufenden
+  Abgleich ab; ein Fehler verwirft vorhandene Daten nicht als vermeintlich
+  leeren Zustand. Ein zweiter Client kann so Deletes über stabile IDs und
+  anschließenden Vollabgleich nachvollziehen.
+- Authentifizierung und Datenstart besitzen jetzt getrennte Loading- und
+  Vollfehlerzustände mit Retry. Ein Session-Lesefehler wird nicht mehr als
+  sichere Abmeldung ausgegeben. Bekannte Offline-Zustände blockieren
+  Supabase-Schreibaktionen, bis eine kontogebundene idempotente Outbox wirklich
+  verfügbar ist.
+- Dieser Stand ist mit simulierten Kanalfolgen, Reconnect, veralteten Events,
+  Mutationsreihenfolge und Reload geprüft. Zwei echte authentifizierte
+  Browser/Geräte und eine reale Netzwerkunterbrechung bleiben offen.
+
+### Welle 2: atomare und bestätigte Notenmutationen
+
+- Der Wechsel des vierten Prüfungsfachs ist als additive `SECURITY INVOKER`-
+  RPC vorbereitet. Sie sperrt die Fächer eines Nutzers in stabiler Reihenfolge,
+  prüft den erwarteten Ausgangsstand, ist nach verlorener Erfolgsantwort
+  idempotent und bestätigt die Ziel-UUID. Ein verzögerter Constraint-Trigger
+  schützt auch alte direkte Writer vor einem Zustand ohne oder mit mehreren
+  vierten Prüfungsfächern.
+- Die Migration stoppt bei widersprüchlichen Bestandsdaten und erzwingt drei
+  LK plus genau einen ausgewählten GK, wobei Sport ausgeschlossen ist. Eine
+  zusammengesetzte Fremdschlüsselbeziehung verhindert Noten an einem Fach
+  eines anderen Nutzers. Grundlage für den Sport-Ausschluss ist die aktuelle
+  MSS-Broschüre des Landes Rheinland-Pfalz; die bestehende Punkte- und
+  Prognoseformel wurde nicht verändert.
+- Noten-Insert und -Delete gelten erst nach kanonischer Zeilenbestätigung als
+  erfolgreich. Ein Lösch-Undo schreibt dieselbe UUID und denselben Inhalt
+  zurück. Optimistische Fehler rollen nur die betroffene Entität zurück oder
+  fordern einen autoritativen Abgleich an, statt eine gesamte Liste über
+  neuere Realtime-Änderungen zu kopieren.
+- Im lokalen Prototyp umfassen Web Locks je gemeinsamen Fächer- und Noten-
+  Schlüssel den gesamten Read-Modify-Write-Zyklus samt Broadcast. Parallele
+  Tabs können deshalb nicht mehr beide denselben Ausgangsstand bestätigen oder
+  unterschiedliche Notenarrays überschreiben; ein Browser ohne Web Locks
+  bricht diese sensiblen Schreibpfade fail-closed ab.
+- Der Notendialog lässt die einzige Auswahl nicht vollständig abwählen, bietet
+  Sport nicht an und hält den Fokus auch nach Ablauf des sieben Sekunden
+  sichtbaren Undo-Fensters im Dialog.
+- Die Migration hält bereits vor dem Bestandscheck schreibblockierende
+  Tabellensperren bis COMMIT, damit ein alter Client die geprüfte Invariante
+  nicht zwischen Vorabcheck und Constraint-Anlage verändern kann. Ein lokales
+  Zehn-Sekunden-Lock-Limit lässt den Rollout bei lang blockierenden Alt-
+  Transaktionen kontrolliert scheitern, statt unbegrenzt zu warten.
+- Gemeinsamer gezielter Lauf für Start, Realtime, Noten, Offline-Sperre und
+  Undo: 6 Dateien und 88 Tests, Exit 0; TypeScript Exit 0. Die neue SQL-Datei
+  wurde nur statisch geprüft und weder lokal gegen PostgreSQL noch in Staging
+  oder Produktion angewandt.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas

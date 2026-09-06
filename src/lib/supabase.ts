@@ -1,7 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import type { Anfangszustand, Backend, Wetten } from './backend'
+import type {
+  Anfangszustand,
+  Backend,
+  VerbindungEreignis,
+  Wetten,
+} from './backend'
 import { addDays, toKey } from './dates'
 import { gewichtKey, tickKey } from './types'
 import type {
@@ -44,6 +49,55 @@ const ABRECHNUNG_SPALTEN_LEGACY =
   'woche,sieger,grund,differenz,beleg_erijon,beleg_koray,wette,abgeschlossen'
 
 export const supabase = hatSupabase ? createClient(url!, key!) : null
+
+let realtimeKanalFolge = 0
+export const REALTIME_KANAL_OPTIONEN = {
+  config: { broadcast: { replication_ready: true } },
+} as const
+
+/**
+ * Supabase fuehrt Kanaele mit demselben Topic clientseitig zusammen. Ein
+ * einmaliges Topic verhindert deshalb, dass ein spaet schliessender Kanal
+ * eines alten Backend-Laufs den neuen Lauf mit abmeldet.
+ */
+export function neuerRealtimeKanalname(basis: string): string {
+  realtimeKanalFolge += 1
+  return `zweikampf:${basis}:${realtimeKanalFolge}`
+}
+
+/** Der Subscribe-Callback beschreibt den Transport, nicht die Replikationsbereitschaft. */
+export function realtimeSubscribeEreignis(status: string): VerbindungEreignis | null {
+  if (status === 'SUBSCRIBED') return { typ: 'verbindung', status: 'transportbereit' }
+  if (status === 'CHANNEL_ERROR') {
+    return { typ: 'verbindung', status: 'veraltet', grund: 'channel_error' }
+  }
+  if (status === 'TIMED_OUT') {
+    return { typ: 'verbindung', status: 'veraltet', grund: 'timed_out' }
+  }
+  if (status === 'CLOSED') {
+    return { typ: 'verbindung', status: 'veraltet', grund: 'closed' }
+  }
+  return null
+}
+
+export function realtimeSystemEreignis(payload: {
+  extension?: string
+  status?: string
+}): VerbindungEreignis | null {
+  if (payload.extension !== 'system') return null
+  if (payload.status === 'ok') return { typ: 'verbindung', status: 'bereit' }
+  if (payload.status === 'error') {
+    return { typ: 'verbindung', status: 'veraltet', grund: 'replication_error' }
+  }
+  return null
+}
+
+export function entferneRealtimeKanal<T>(
+  client: { removeChannel(kanal: T): PromiseLike<unknown> | unknown },
+  kanal: T
+): void {
+  void client.removeChannel(kanal)
+}
 
 type ProfilZeile = { id: string; person: UserId }
 type EintragZeile = { user_id: string; bereich: AreaId; tag: string }
@@ -303,31 +357,133 @@ type NoteZeile = {
   titel: string
 }
 
-export type Anmeldestatus = 'laden' | 'an' | 'aus'
+export async function wechsleUndBestaetigePruefungsfach(
+  db: NonNullable<typeof supabase>,
+  fachId: string,
+  erwartetesFachId: string
+): Promise<string> {
+  const { data, error } = await db.rpc('setze_pruefungsfach', {
+    p_fach_id: fachId,
+    p_erwartetes_fach_id: erwartetesFachId,
+  })
+  if (error) throw error
+  if (data !== fachId) throw new Error('pruefungsfachwechsel wurde nicht bestaetigt')
+  return fachId
+}
+
+function notenPayload(note: Note, eigeneId: string): NoteZeile {
+  return {
+    id: note.id,
+    user_id: eigeneId,
+    fach_id: note.fachId,
+    art: note.art,
+    punkte: note.punkte,
+    gewicht: note.gewicht,
+    datum: note.datum,
+    titel: note.titel,
+  }
+}
+
+function istDieselbeNotenzeile(zeile: unknown, erwartet: NoteZeile): boolean {
+  if (!zeile || typeof zeile !== 'object' || Array.isArray(zeile)) return false
+  const wert = zeile as Record<string, unknown>
+  return Object.entries(erwartet).every(([name, inhalt]) => wert[name] === inhalt)
+}
+
+/**
+ * `DO NOTHING` macht eine UUID-Wiederholung idempotent. Erst der anschließende
+ * kanonische Read bestätigt, dass nicht eine abweichende Kollision überlebt hat.
+ */
+export async function schreibeUndBestaetigeNote(
+  db: NonNullable<typeof supabase>,
+  note: Note,
+  eigeneId: string
+): Promise<string> {
+  const payload = notenPayload(note, eigeneId)
+  const { error } = await db
+    .from('noten')
+    .upsert(payload, { onConflict: 'id', ignoreDuplicates: true })
+  if (error) throw error
+
+  const bestaetigung = await db
+    .from('noten')
+    .select('id,user_id,fach_id,art,punkte,gewicht,datum,titel')
+    .eq('id', note.id)
+    .eq('user_id', eigeneId)
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!istDieselbeNotenzeile(bestaetigung.data, payload)) {
+    throw new Error('note wurde nicht eindeutig bestaetigt')
+  }
+  return note.id
+}
+
+export async function loescheUndBestaetigeNote(
+  db: NonNullable<typeof supabase>,
+  id: string,
+  eigeneId: string
+): Promise<string> {
+  const bestaetigung = await db
+    .from('noten')
+    .delete()
+    .match({ id, user_id: eigeneId })
+    .select('id')
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (bestaetigung.data?.id !== id) {
+    throw new Error('notenloeschung wurde nicht bestaetigt')
+  }
+  return id
+}
+
+export type Anmeldestatus = 'laden' | 'an' | 'aus' | 'fehler'
 
 export function useSession() {
   const [status, setStatus] = useState<Anmeldestatus>(hatSupabase ? 'laden' : 'aus')
   const [session, setSession] = useState<Session | null>(null)
+  const [fehler, setFehler] = useState<string | null>(null)
+  const [ladeversuch, setLadeversuch] = useState(0)
 
   useEffect(() => {
     if (!supabase) return
     let aktiv = true
-    supabase.auth.getSession().then(({ data }) => {
-      if (!aktiv) return
-      setSession(data.session)
-      setStatus(data.session ? 'an' : 'aus')
-    })
+    setStatus('laden')
+    setFehler(null)
+    void supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (!aktiv) return
+        if (error) {
+          setSession(null)
+          setStatus('fehler')
+          setFehler('anmeldung konnte nicht sicher gelesen werden.')
+          return
+        }
+        setSession(data.session)
+        setStatus(data.session ? 'an' : 'aus')
+      })
+      .catch(() => {
+        if (!aktiv) return
+        setSession(null)
+        setStatus('fehler')
+        setFehler('anmeldung konnte nicht sicher gelesen werden.')
+      })
     const { data } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       setStatus(s ? 'an' : 'aus')
+      setFehler(null)
     })
     return () => {
       aktiv = false
       data.subscription.unsubscribe()
     }
-  }, [])
+  }, [ladeversuch])
 
-  return { status, session }
+  return {
+    status,
+    session,
+    fehler,
+    erneut: () => setLadeversuch((wert) => wert + 1),
+  }
 }
 
 export async function anmelden(email: string, passwort: string): Promise<string | null> {
@@ -341,7 +497,9 @@ export async function anmelden(email: string, passwort: string): Promise<string 
 }
 
 export async function abmelden() {
-  await supabase?.auth.signOut()
+  if (!supabase) return
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
 }
 
 export function supabaseBackend(eigeneId: string): Backend {
@@ -591,7 +749,6 @@ export function supabaseBackend(eigeneId: string): Backend {
       notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
 
       altbestand = Boolean(einheitZeilen.error)
-      modusBekannt()
 
       // die beiden alten tabellen werden nur noch gelesen, wenn es sein muss
       const [eintraege, werteZeilen] = altbestand
@@ -689,6 +846,10 @@ export function supabaseBackend(eigeneId: string): Backend {
         if (note) noten.push(note)
       }
 
+      // Erst der vollstaendig validierte Zustand darf den passenden
+      // Realtime-Kanal freigeben. Ein fehlendes Profil baut keinen nutzlosen
+      // Kanal mit einer unvollstaendigen UUID-zu-Person-Zuordnung auf.
+      modusBekannt()
       return {
         me,
         einheiten,
@@ -824,37 +985,19 @@ export function supabaseBackend(eigeneId: string): Backend {
       return finalisiereUndBestaetigeAbrechnung(db, a.woche)
     },
 
-    async setzePruefungsfach(fachId, nummer) {
+    async setzePruefungsfach(fachId, erwartetesFachId) {
       if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
-      const { error } = await db
-        .from('faecher')
-        .update({ pruefungsfach: nummer })
-        .match({ id: fachId, user_id: eigeneId, kursart: 'gk' })
-      if (error) throw error
+      return wechsleUndBestaetigePruefungsfach(db, fachId, erwartetesFachId)
     },
 
     async schreibeNote(note) {
       if (!notenVerfuegbar) throw new Error('noten fehlt noch')
-      const { error } = await db.from('noten').upsert(
-        {
-          id: note.id,
-          user_id: eigeneId,
-          fach_id: note.fachId,
-          art: note.art,
-          punkte: note.punkte,
-          gewicht: note.gewicht,
-          datum: note.datum,
-          titel: note.titel,
-        },
-        { onConflict: 'id', ignoreDuplicates: true }
-      )
-      if (error) throw error
+      return schreibeUndBestaetigeNote(db, note, eigeneId)
     },
 
     async loescheNote(id) {
       if (!notenVerfuegbar) throw new Error('noten fehlt noch')
-      const { error } = await db.from('noten').delete().match({ id, user_id: eigeneId })
-      if (error) throw error
+      return loescheUndBestaetigeNote(db, id, eigeneId)
     },
 
     async ladePhasen(user, nacht, signal) {
@@ -874,6 +1017,26 @@ export function supabaseBackend(eigeneId: string): Backend {
       // welcher kanal der richtige ist, steht erst nach dem laden fest.
       let kanal: ReturnType<typeof db.channel> | null = null
       let abgemeldet = false
+      cb({ typ: 'verbindung', status: 'verbindet' })
+
+      const neuerKanal = (basis: string) => db.channel(
+        neuerRealtimeKanalname(basis),
+        REALTIME_KANAL_OPTIONEN
+      )
+
+      const starteKanal = (builder: ReturnType<typeof db.channel>) => {
+        kanal = builder
+          .on('system', {}, (payload) => {
+            if (abgemeldet) return
+            const ereignis = realtimeSystemEreignis(payload)
+            if (ereignis) cb(ereignis)
+          })
+          .subscribe((status) => {
+            if (abgemeldet) return
+            const ereignis = realtimeSubscribeEreignis(status)
+            if (ereignis) cb(ereignis)
+          })
+      }
 
       /**
        * schlaf, gewicht und aufenthalte hängen an denselben kanal wie die
@@ -993,8 +1156,7 @@ export function supabaseBackend(eigeneId: string): Backend {
               : { typ: 'einheit', art: 'neu', einheit })
           }
 
-          let builder = db
-            .channel('eintraege')
+          let builder = neuerKanal('eintraege')
             .on(
               'postgres_changes',
               { event: 'INSERT', schema: 'public', table: 'eintraege' },
@@ -1032,7 +1194,7 @@ export function supabaseBackend(eigeneId: string): Backend {
               }
             )
           }
-          kanal = mitNoten(mitGesundheit(builder)).subscribe()
+          starteKanal(mitNoten(mitGesundheit(builder)))
           return
         }
 
@@ -1042,8 +1204,7 @@ export function supabaseBackend(eigeneId: string): Backend {
           if (einheit) cb({ typ: 'einheit', art, einheit })
         }
 
-        let builder = db
-          .channel('einheiten')
+        let builder = neuerKanal('einheiten')
           .on(
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'einheiten' },
@@ -1091,12 +1252,12 @@ export function supabaseBackend(eigeneId: string): Backend {
             }
           )
         }
-        kanal = mitNoten(mitGesundheit(builder)).subscribe()
+        starteKanal(mitNoten(mitGesundheit(builder)))
       })
 
       return () => {
         abgemeldet = true
-        if (kanal) db.removeChannel(kanal)
+        if (kanal) entferneRealtimeKanal(db, kanal)
       }
     },
   }

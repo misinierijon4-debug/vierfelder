@@ -68,6 +68,24 @@ function lade<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * Ein localStorage-Schreibzyklus ist nur innerhalb eines einzelnen Tabs
+ * unteilbar. Web Locks serialisiert read-modify-write auch zwischen Tabs,
+ * ohne einen zweiten dauerhaften Speichervertrag einzuführen.
+ */
+function mitLokalerSperre<T>(key: string, aktion: () => T | Promise<T>): Promise<T> {
+  if (typeof navigator === 'undefined') return Promise.resolve(aktion())
+  const sperren = navigator.locks
+  if (!sperren) {
+    return Promise.reject(new Error('sichere lokale mehrtab-speicherung wird nicht unterstützt'))
+  }
+  return sperren.request<Promise<T>>(
+    `vierfelder.storage.${key}`,
+    { mode: 'exclusive' },
+    async () => await aktion()
+  ).then((wert) => wert)
+}
+
 function alleWerte(): AlleWerte {
   const alle = lade<AlleWerte>(WERTE_KEY, { erijon: {}, koray: {} })
   return { erijon: alle.erijon ?? {}, koray: alle.koray ?? {} }
@@ -523,26 +541,58 @@ export function lokalesBackend(): Backend {
       return a
     },
 
-    async setzePruefungsfach(id: string, nummer: number | null) {
-      const fach = alleFaecher().find((x) => x.id === id)
-      if (!fach) return
-      const next = { ...fach, pruefungsfach: nummer }
-      localStorage.setItem(FAECHER_KEY, JSON.stringify(alleFaecher().map((x) => x.id === id ? next : x)))
-      sendeFach({ typ: 'fach', art: 'wert', fach: next })
+    async setzePruefungsfach(id: string, erwartetesFachId: string) {
+      return mitLokalerSperre(FAECHER_KEY, () => {
+        const me = lokalesMe()
+        const faecher = alleFaecher()
+        const ziel = faecher.find((x) => x.id === id)
+        const aktuell = faecher.find((x) => x.user === me && x.pruefungsfach === 4)
+        if (!ziel || ziel.user !== me || ziel.kursart !== 'gk' || ziel.name === 'sport') {
+          throw new Error('ungueltiges pruefungsfach')
+        }
+        if (!aktuell) throw new Error('fachmodell ist widerspruechlich')
+        if (aktuell.id === ziel.id) return ziel.id
+        if (aktuell.id !== erwartetesFachId) {
+          throw Object.assign(new Error('pruefungsfach wurde parallel geaendert'), { code: '40001' })
+        }
+
+        const altes = { ...aktuell, pruefungsfach: null }
+        const neues = { ...ziel, pruefungsfach: 4 }
+        const next = faecher.map((fach) =>
+          fach.id === altes.id ? altes : fach.id === neues.id ? neues : fach
+        )
+        localStorage.setItem(FAECHER_KEY, JSON.stringify(next))
+        sendeFach({ typ: 'fach', art: 'wert', fach: altes })
+        sendeFach({ typ: 'fach', art: 'wert', fach: neues })
+        return neues.id
+      })
     },
 
     async schreibeNote(note: Note) {
-      const alle = alleNoten()
-      if (alle.some((x) => x.id === note.id)) return
-      localStorage.setItem(NOTEN_KEY, JSON.stringify([...alle, note]))
-      sendeNote({ typ: 'note', art: 'neu', note })
+      return mitLokalerSperre(NOTEN_KEY, () => {
+        const alle = alleNoten()
+        const vorhanden = alle.find((x) => x.id === note.id)
+        if (vorhanden) {
+          if (JSON.stringify(vorhanden) !== JSON.stringify(note)) {
+            throw new Error('noten-id gehoert zu einem anderen eintrag')
+          }
+          return note.id
+        }
+        localStorage.setItem(NOTEN_KEY, JSON.stringify([...alle, note]))
+        sendeNote({ typ: 'note', art: 'neu', note })
+        return note.id
+      })
     },
 
     async loescheNote(id: string) {
-      const note = alleNoten().find((x) => x.id === id)
-      if (!note) return
-      localStorage.setItem(NOTEN_KEY, JSON.stringify(alleNoten().filter((x) => x.id !== id)))
-      sendeNoteWeg(note)
+      return mitLokalerSperre(NOTEN_KEY, () => {
+        const alle = alleNoten()
+        const note = alle.find((x) => x.id === id)
+        if (!note) throw new Error('note wurde nicht bestaetigt geloescht')
+        localStorage.setItem(NOTEN_KEY, JSON.stringify(alle.filter((x) => x.id !== id)))
+        sendeNoteWeg(note)
+        return id
+      })
     },
 
     // im prototyp liegt alles im browser, es gibt nichts nachzuladen

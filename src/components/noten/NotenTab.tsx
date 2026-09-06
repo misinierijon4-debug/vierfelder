@@ -10,12 +10,13 @@ type Props = {
   stand: Notenstand
   me: UserId
   heute: string
-  onPruefungsfach: (fachId: string, nummer: number | null) => void
+  onPruefungsfach: (fachId: string) => void
   onNote: (fachId: string, punkte: number, art: Notenart, datum: string, titel?: string) => Note | null
-  onNoteLoeschen: (id: string) => void
+  onNoteLoeschen: (id: string) => Note | null
+  onNoteWiederherstellen: (note: Note) => boolean
 }
 
-export function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoeschen }: Props) {
+export function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoeschen, onNoteWiederherstellen }: Props) {
   const [offen, setOffen] = useState<string | null>(null)
   const faecher = stand.faecher.filter((fach) => fach.user === me).sort((a, b) => a.sortierung - b.sortierung || a.name.localeCompare(b.name, 'de'))
   const detail = offen ? stand.faecher.find((fach) => fach.id === offen) ?? null : null
@@ -27,7 +28,7 @@ export function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoes
         {faecher.length === 0 ? <p className="mt-3 text-[12px] text-kreide-52">keine fächer geladen</p> : <ul className="mt-2 border-t border-linie">{faecher.map((fach) => <Fachzeile key={fach.id} fach={fach} noten={stand.noten} onOeffnen={() => setOffen(fach.id)} />)}</ul>}
       </section>
       <NotenVergleich stand={stand} />
-      <AnimatePresence>{detail && <Fachdetail key={detail.id} fach={detail} noten={stand.noten} heute={heute} onSchliessen={() => setOffen(null)} onPruefungsfach={onPruefungsfach} onNote={(punkte, art, titel, datum) => { onNote(detail.id, punkte, art, datum, titel) }} onNoteLoeschen={onNoteLoeschen} />}</AnimatePresence>
+      <AnimatePresence>{detail && <Fachdetail key={detail.id} fach={detail} noten={stand.noten} heute={heute} onSchliessen={() => setOffen(null)} onPruefungsfach={onPruefungsfach} onNote={(punkte, art, titel, datum) => onNote(detail.id, punkte, art, datum, titel)} onNoteLoeschen={onNoteLoeschen} onNoteWiederherstellen={onNoteWiederherstellen} />}</AnimatePresence>
     </div>
   )
 }

@@ -5,11 +5,15 @@ import { StrictMode, useEffect } from 'react'
 import type { PropsWithChildren } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Anfangszustand, Backend, BackendEreignis } from './backend'
+import { hatNeustartBlocker } from './pwaBlocker'
 import { phasenLadeKey } from './schlafLaden'
 import { useTracker } from './store'
-import type { Phase, Schlafnacht } from './types'
+import type { Einheit, Fach, Note, Phase, Schlafnacht } from './types'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const ANFANG: Anfangszustand = {
   me: 'erijon',
@@ -46,6 +50,16 @@ const SCHLAF_OFFEN: Schlafnacht = {
   scoreKonfidenz: 100,
 }
 
+const LIVE_EINHEIT: Einheit = {
+  id: 'live-einheit-1',
+  user: 'koray',
+  area: 'gym',
+  tag: '2026-09-05',
+  wert: 60,
+  erfasst: '2026-09-05T15:00:00.000Z',
+  von: null,
+}
+
 function offen<T>() {
   let resolve!: (wert: T) => void
   let reject!: (grund?: unknown) => void
@@ -68,9 +82,9 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     schreibeGewicht: vi.fn(async () => {}),
     schreibeWette: vi.fn(async () => {}),
     schreibeAbrechnung: vi.fn(async (a) => a),
-    setzePruefungsfach: vi.fn(async () => {}),
-    schreibeNote: vi.fn(async () => {}),
-    loescheNote: vi.fn(async () => {}),
+    setzePruefungsfach: vi.fn(async (fachId: string) => fachId),
+    schreibeNote: vi.fn(async (note) => note.id),
+    loescheNote: vi.fn(async (id: string) => id),
     ladePhasen: vi.fn(async () => []),
     abonniere: vi.fn(() => () => {}),
     ...overrides,
@@ -166,6 +180,44 @@ describe('useTracker Schreibbereitschaft', () => {
     expect(result.current.zustand.gewichte).toEqual({})
     expect(result.current.wetten).toEqual({})
     expect(result.current.abrechnungen).toEqual([])
+  })
+
+  it('blockiert bekannte Offline-Eingaben ohne sichere Warteschlange sichtbar', async () => {
+    const backend = backendMit(async () => ANFANG)
+    const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.toggle('lernen', '2026-09-04')
+      result.current.setzeGewicht('2026-09-04', 81.2)
+    })
+
+    expect(backend.schreibeEinheit).not.toHaveBeenCalled()
+    expect(backend.schreibeGewicht).not.toHaveBeenCalled()
+    expect(result.current.zustand.einheiten).toEqual({})
+    expect(result.current.fehler).toBe('offline: eingaben sind ohne sichere warteschlange gesperrt.')
+    online.mockRestore()
+  })
+
+  it('laesst einen endgueltigen Ladefehler ausdruecklich erneut versuchen', async () => {
+    const zweiterVersuch = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockRejectedValueOnce(new Error('kein profil fuer dieses konto'))
+      .mockImplementationOnce(() => zweiterVersuch.promise)
+    const backend = backendMit(laden)
+    const { result } = renderHook(() => useTracker(backend))
+
+    await waitFor(() => expect(result.current.ladezustand).toBe('fehler'))
+    act(() => result.current.ladenNeu())
+    await waitFor(() => expect(result.current.ladezustand).toBe('laden'))
+
+    act(() => result.current.toggle('lernen', '2026-09-04'))
+    expect(backend.schreibeEinheit).not.toHaveBeenCalled()
+
+    act(() => zweiterVersuch.resolve(ANFANG))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    expect(laden).toHaveBeenCalledTimes(2)
   })
 
   it('laesst eine spaete Fehlantwort nicht in ein neues Konto zurueckrollen', async () => {
@@ -385,6 +437,561 @@ describe('useTracker Schreibbereitschaft', () => {
 
     act(() => melde({ typ: 'fach', art: 'weg', id: fach.id }))
     expect(result.current.notenstand.faecher).toEqual([])
+  })
+})
+
+const FACH_ALT: Fach = {
+  id: '40000000-0000-4000-8000-000000000001',
+  user: 'erijon',
+  name: 'mathe',
+  kursart: 'gk',
+  pruefungsfach: 4,
+  sortierung: 0,
+}
+const FACH_NEU: Fach = {
+  id: '40000000-0000-4000-8000-000000000002',
+  user: 'erijon',
+  name: 'deutsch',
+  kursart: 'gk',
+  pruefungsfach: null,
+  sortierung: 1,
+}
+const FACH_DRITTES: Fach = {
+  id: '40000000-0000-4000-8000-000000000003',
+  user: 'erijon',
+  name: 'sozialkunde',
+  kursart: 'gk',
+  pruefungsfach: null,
+  sortierung: 2,
+}
+const NOTE_REMOTE: Note = {
+  id: '50000000-0000-4000-8000-000000000001',
+  user: 'erijon',
+  fachId: FACH_ALT.id,
+  art: 'epo',
+  punkte: 11,
+  gewicht: 2,
+  datum: '2026-09-05',
+  titel: 'remote',
+}
+
+describe('useTracker atomare Notenmutationen', () => {
+  const anfangMitFaecher: Anfangszustand = {
+    ...ANFANG,
+    noten: { faecher: [FACH_ALT, FACH_NEU, FACH_DRITTES], noten: [] },
+  }
+
+  it('wechselt das Pruefungsfach mit genau einem bestaetigten RPC-Aufruf', async () => {
+    const setzePruefungsfach = vi.fn(async (id: string) => id)
+    const backend = backendMit(async () => anfangMitFaecher, { setzePruefungsfach })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.setzePruefungsfach(FACH_NEU.id))
+
+    expect(result.current.notenstand.faecher.filter((fach) => fach.pruefungsfach === 4))
+      .toEqual([expect.objectContaining({ id: FACH_NEU.id })])
+    await waitFor(() => expect(setzePruefungsfach).toHaveBeenCalledOnce())
+    expect(setzePruefungsfach).toHaveBeenCalledWith(FACH_NEU.id, FACH_ALT.id)
+  })
+
+  it('ordnet schnelle Folgewechsel ueber denselben fachlichen Schluessel', async () => {
+    const erster = offen<string>()
+    const setzePruefungsfach = vi.fn<Backend['setzePruefungsfach']>()
+      .mockImplementationOnce(() => erster.promise)
+      .mockImplementationOnce(async (id) => id)
+    const backend = backendMit(async () => anfangMitFaecher, { setzePruefungsfach })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzePruefungsfach(FACH_NEU.id)
+      result.current.setzePruefungsfach(FACH_DRITTES.id)
+    })
+    await waitFor(() => expect(setzePruefungsfach).toHaveBeenCalledTimes(1))
+
+    act(() => erster.resolve(FACH_NEU.id))
+    await waitFor(() => expect(setzePruefungsfach).toHaveBeenCalledTimes(2))
+    expect(setzePruefungsfach).toHaveBeenNthCalledWith(2, FACH_DRITTES.id, FACH_NEU.id)
+    expect(result.current.notenstand.faecher.filter((fach) => fach.pruefungsfach === 4))
+      .toEqual([expect.objectContaining({ id: FACH_DRITTES.id })])
+  })
+
+  it('laesst bei unbestaetigtem Noten-Insert ein Realtime-Ereignis bis zum Abgleich stehen', async () => {
+    const schreiben = offen<string>()
+    const zweiterStand = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(anfangMitFaecher)
+      .mockImplementationOnce(() => zweiterStand.promise)
+    let live: ((e: BackendEreignis) => void) | null = null
+    const backend = backendMit(laden, {
+      schreibeNote: vi.fn(() => schreiben.promise),
+      abonniere: vi.fn((cb) => {
+        live = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    let lokal: Note | null = null
+    act(() => {
+      lokal = result.current.noteHinzu(FACH_ALT.id, 12, 'klausur', '2026-09-06')
+      live?.({ typ: 'note', art: 'neu', note: NOTE_REMOTE })
+    })
+    await act(async () => {
+      schreiben.reject(new Error('antwort verloren'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    expect(result.current.notenstand.noten.map((note) => note.id)).toEqual(
+      expect.arrayContaining([lokal!.id, NOTE_REMOTE.id])
+    )
+
+    act(() => zweiterStand.resolve({
+      ...anfangMitFaecher,
+      noten: { ...anfangMitFaecher.noten, noten: [NOTE_REMOTE] },
+    }))
+    await waitFor(() => expect(result.current.notenstand.noten).toEqual([NOTE_REMOTE]))
+  })
+
+  it('ignoriert Sport als viertes Pruefungsfach', async () => {
+    const sport: Fach = { ...FACH_NEU, id: 'sport-id', name: 'sport' }
+    const setzePruefungsfach = vi.fn(async (id: string) => id)
+    const backend = backendMit(async () => ({
+      ...anfangMitFaecher,
+      noten: { faecher: [...anfangMitFaecher.noten.faecher, sport], noten: [] },
+    }), { setzePruefungsfach })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.setzePruefungsfach(sport.id))
+    expect(setzePruefungsfach).not.toHaveBeenCalled()
+    expect(result.current.notenstand.faecher.find((fach) => fach.id === sport.id)?.pruefungsfach)
+      .toBeNull()
+  })
+})
+
+describe('useTracker PWA-Neustartschutz', () => {
+  it('blockiert waehrend einer pending Mutation und gibt nach Erfolg frei', async () => {
+    const antwort = offen<void>()
+    const backend = backendMit(async () => ANFANG, {
+      schreibeGewicht: vi.fn(() => antwort.promise),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.setzeGewicht('2026-09-05', 81.2))
+    expect(hatNeustartBlocker()).toBe(true)
+
+    await act(async () => {
+      antwort.resolve()
+      await antwort.promise
+    })
+    await waitFor(() => expect(hatNeustartBlocker()).toBe(false))
+  })
+
+  it('gibt den Neustartblocker auch nach einer Fehlantwort frei', async () => {
+    const antwort = offen<void>()
+    const backend = backendMit(async () => ANFANG, {
+      schreibeGewicht: vi.fn(() => antwort.promise),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.setzeGewicht('2026-09-05', 81.2))
+    expect(hatNeustartBlocker()).toBe(true)
+
+    await act(async () => {
+      antwort.reject(new Error('netz weg'))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(hatNeustartBlocker()).toBe(false))
+  })
+
+  it('bleibt bei parallelen Mutationen bis zum letzten Abschluss blockiert', async () => {
+    const erste = offen<void>()
+    const zweite = offen<void>()
+    const schreibeGewicht = vi.fn<Backend['schreibeGewicht']>()
+      .mockImplementationOnce(() => erste.promise)
+      .mockImplementationOnce(() => zweite.promise)
+    const backend = backendMit(async () => ANFANG, { schreibeGewicht })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzeGewicht('2026-09-05', 81.2)
+      result.current.setzeGewicht('2026-09-06', 81.1)
+    })
+    expect(hatNeustartBlocker()).toBe(true)
+
+    await act(async () => {
+      erste.resolve()
+      await erste.promise
+    })
+    expect(hatNeustartBlocker()).toBe(true)
+
+    await act(async () => {
+      zweite.resolve()
+      await zweite.promise
+    })
+    await waitFor(() => expect(hatNeustartBlocker()).toBe(false))
+  })
+
+  it('loest den laufbezogenen Blocker beim Backendwechsel', async () => {
+    const antwort = offen<void>()
+    const erstes = backendMit(async () => ANFANG, {
+      schreibeGewicht: vi.fn(() => antwort.promise),
+    })
+    const zweites = backendMit(async () => ({ ...ANFANG, me: 'koray' }))
+    const { result, rerender } = renderHook(
+      ({ backend }) => useTracker(backend),
+      { initialProps: { backend: erstes as Backend } }
+    )
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.setzeGewicht('2026-09-05', 81.2))
+    expect(hatNeustartBlocker()).toBe(true)
+
+    rerender({ backend: zweites })
+    await waitFor(() => expect(result.current.me).toBe('koray'))
+    expect(hatNeustartBlocker()).toBe(false)
+  })
+})
+
+describe('useTracker Realtime-Lifecycle', () => {
+  it('puffert Ereignisse, die vor dem ersten Snapshot eintreffen', async () => {
+    const ersterSnapshot = offen<Anfangszustand>()
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(() => ersterSnapshot.promise, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+
+    // Auch ein UPDATE muss die Initialluecke heilen koennen, falls sein INSERT
+    // vor dem Replication-Listener lag.
+    act(() => melde({ typ: 'einheit', art: 'wert', einheit: LIVE_EINHEIT }))
+    act(() => ersterSnapshot.resolve(ANFANG))
+
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    expect(result.current.zustand.einheiten['koray|gym|2026-09-05']).toEqual([
+      LIVE_EINHEIT,
+    ])
+  })
+
+  it('schliesst die Initial-Snapshot-Luecke schon beim SUBSCRIBED-Fallback', async () => {
+    let melde!: (e: BackendEreignis) => void
+    const nachgeladenerStand: Anfangszustand = {
+      ...ANFANG,
+      gewichte: { 'koray|2026-09-05': 91.4 },
+    }
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockResolvedValueOnce(nachgeladenerStand)
+    const backend = backendMit(laden, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => melde({ typ: 'verbindung', status: 'transportbereit' }))
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte['koray|2026-09-05']).toBe(91.4)
+    })
+    // Ohne replication_ready-Systemevent ist nur der Snapshot bestaetigt,
+    // nicht die lueckenlose weitere Zustellung.
+    expect(result.current.synchronisationszustand).toBe('veraltet')
+  })
+
+  it('replayt Ereignisse waehrend des Kontrollsnapshots in Empfangsreihenfolge', async () => {
+    const kontrollSnapshot = offen<Anfangszustand>()
+    let melde!: (e: BackendEreignis) => void
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => kontrollSnapshot.promise)
+    const backend = backendMit(laden, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    act(() => {
+      melde({ typ: 'gewicht', user: 'koray', tag: '2026-09-05', kg: 91 })
+      melde({ typ: 'gewicht', user: 'koray', tag: '2026-09-05', kg: 92 })
+    })
+    act(() => kontrollSnapshot.resolve({
+      ...ANFANG,
+      gewichte: { 'koray|2026-09-05': 90 },
+    }))
+
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte['koray|2026-09-05']).toBe(92)
+    })
+    expect(result.current.synchronisationszustand).toBe('aktuell')
+  })
+
+  it('behaelt bei Kanalfehlern Daten und gleicht nach Reconnect vollstaendig ab', async () => {
+    let melde!: (e: BackendEreignis) => void
+    const ersterStand: Anfangszustand = {
+      ...ANFANG,
+      gewichte: { 'erijon|2026-09-05': 81 },
+    }
+    const neuerStand: Anfangszustand = {
+      ...ANFANG,
+      gewichte: { 'erijon|2026-09-05': 80.5 },
+    }
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ersterStand)
+      .mockResolvedValueOnce(neuerStand)
+    const backend = backendMit(laden, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => melde({
+      typ: 'verbindung',
+      status: 'veraltet',
+      grund: 'channel_error',
+    }))
+    expect(result.current.zustand.gewichte['erijon|2026-09-05']).toBe(81)
+    expect(result.current.synchronisationszustand).toBe('veraltet')
+
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte['erijon|2026-09-05']).toBe(80.5)
+    })
+    expect(result.current.synchronisationszustand).toBe('aktuell')
+  })
+
+  it('behaelt bei fehlgeschlagenem Snapshot den Stand und replayt den Eventpuffer', async () => {
+    const kontrollSnapshot = offen<Anfangszustand>()
+    let melde!: (e: BackendEreignis) => void
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce({
+        ...ANFANG,
+        gewichte: { 'koray|2026-09-05': 90 },
+      })
+      .mockImplementationOnce(() => kontrollSnapshot.promise)
+    const backend = backendMit(laden, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    act(() => melde({ typ: 'gewicht', user: 'koray', tag: '2026-09-05', kg: 92 }))
+    act(() => kontrollSnapshot.reject(new Error('netz weg')))
+
+    await waitFor(() => expect(result.current.synchronisationszustand).toBe('veraltet'))
+    expect(result.current.zustand.gewichte['koray|2026-09-05']).toBe(92)
+  })
+
+  it('wartet vor dem Resync auf lokale Mutationen und sperrt neue Writes', async () => {
+    const gewichtAntwort = offen<void>()
+    let melde!: (e: BackendEreignis) => void
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockResolvedValueOnce({
+        ...ANFANG,
+        gewichte: { 'erijon|2026-09-05': 81.2 },
+      })
+    const schreibeGewicht = vi.fn(() => gewichtAntwort.promise)
+    const schreibeWette = vi.fn(async () => {})
+    const backend = backendMit(laden, {
+      schreibeGewicht,
+      schreibeWette,
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.setzeGewicht('2026-09-05', 81.2))
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    await act(async () => Promise.resolve())
+    expect(laden).toHaveBeenCalledTimes(1)
+    expect(result.current.zustand.gewichte['erijon|2026-09-05']).toBe(81.2)
+
+    act(() => result.current.setzeWette('2026-09-01', 'kein write im abgleich'))
+    expect(schreibeWette).not.toHaveBeenCalled()
+
+    await act(async () => {
+      gewichtAntwort.resolve()
+      await gewichtAntwort.promise
+    })
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(result.current.synchronisationszustand).toBe('aktuell')
+    })
+  })
+
+  it('ueberschreibt auch nach dem Wartezeitlimit keine offene optimistische Mutation', async () => {
+    const gewichtAntwort = offen<void>()
+    let melde!: (e: BackendEreignis) => void
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockResolvedValueOnce({
+        ...ANFANG,
+        gewichte: { 'erijon|2026-09-05': 81.2 },
+      })
+    const backend = backendMit(laden, {
+      schreibeGewicht: vi.fn(() => gewichtAntwort.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    vi.useFakeTimers()
+    act(() => result.current.setzeGewicht('2026-09-05', 81.2))
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    act(() => melde({ typ: 'gewicht', user: 'erijon', tag: '2026-09-05', kg: 70 }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_001)
+    })
+
+    expect(laden).toHaveBeenCalledTimes(1)
+    expect(result.current.zustand.gewichte['erijon|2026-09-05']).toBe(81.2)
+    expect(result.current.synchronisationszustand).toBe('veraltet')
+
+    vi.useRealTimers()
+    await act(async () => {
+      gewichtAntwort.resolve()
+      await gewichtAntwort.promise
+    })
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte['erijon|2026-09-05']).toBe(81.2)
+    })
+    expect(result.current.synchronisationszustand).toBe('aktuell')
+  })
+
+  it('ignoriert spaete Snapshots und Events eines alten Backend-Laufs und raeumt ihn auf', async () => {
+    const alterSnapshot = offen<Anfangszustand>()
+    let meldeAlt!: (e: BackendEreignis) => void
+    const abmeldenAlt = vi.fn()
+    const erstesLaden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => alterSnapshot.promise)
+    const erstes = backendMit(erstesLaden, {
+      abonniere: vi.fn((cb) => {
+        meldeAlt = cb
+        return abmeldenAlt
+      }),
+    })
+    const zweiterStand: Anfangszustand = {
+      ...ANFANG,
+      me: 'koray',
+      gewichte: { 'koray|2026-09-05': 90 },
+    }
+    const zweites = backendMit(async () => zweiterStand)
+    const { result, rerender } = renderHook(
+      ({ backend }) => useTracker(backend),
+      { initialProps: { backend: erstes as Backend } }
+    )
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    act(() => meldeAlt({ typ: 'verbindung', status: 'bereit' }))
+    await waitFor(() => expect(erstesLaden).toHaveBeenCalledTimes(2))
+
+    rerender({ backend: zweites })
+    await waitFor(() => expect(result.current.me).toBe('koray'))
+    expect(abmeldenAlt).toHaveBeenCalledTimes(1)
+
+    act(() => meldeAlt({ typ: 'einheit', art: 'neu', einheit: LIVE_EINHEIT }))
+    act(() => alterSnapshot.resolve({
+      ...ANFANG,
+      gewichte: { 'erijon|2026-09-05': 70 },
+    }))
+    await act(async () => Promise.resolve())
+
+    expect(result.current.me).toBe('koray')
+    expect(result.current.zustand.gewichte).toEqual({ 'koray|2026-09-05': 90 })
+    expect(result.current.zustand.einheiten).toEqual({})
+  })
+
+  it('verwirft einen Snapshot aus einer getrennten Epoche und fuehrt genau einen Folgeabgleich aus', async () => {
+    const alterSnapshot = offen<Anfangszustand>()
+    let melde!: (e: BackendEreignis) => void
+    const endstand: Anfangszustand = {
+      ...ANFANG,
+      gewichte: { 'koray|2026-09-05': 93 },
+    }
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => alterSnapshot.promise)
+      .mockResolvedValueOnce(endstand)
+    const backend = backendMit(laden, {
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+
+    act(() => melde({ typ: 'verbindung', status: 'veraltet', grund: 'closed' }))
+    act(() => melde({ typ: 'verbindung', status: 'transportbereit' }))
+    act(() => melde({ typ: 'verbindung', status: 'bereit' }))
+    act(() => alterSnapshot.resolve({
+      ...ANFANG,
+      gewichte: { 'koray|2026-09-05': 60 },
+    }))
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(3))
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte['koray|2026-09-05']).toBe(93)
+    })
+    expect(laden).toHaveBeenCalledTimes(3)
+    expect(result.current.synchronisationszustand).toBe('aktuell')
+  })
+
+  it('drosselt einen Online-Eventsturm auf einen unmittelbaren Kontrollabgleich', async () => {
+    const kontrollSnapshot = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => kontrollSnapshot.promise)
+    const backend = backendMit(laden)
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+      window.dispatchEvent(new Event('online'))
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+
+    act(() => kontrollSnapshot.resolve(ANFANG))
+    await waitFor(() => expect(result.current.synchronisationszustand).toBe('veraltet'))
+    expect(laden).toHaveBeenCalledTimes(2)
   })
 })
 

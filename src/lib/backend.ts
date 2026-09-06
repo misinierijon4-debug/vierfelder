@@ -51,7 +51,7 @@ export type AufenthaltEreignis =
   | { typ: 'aufenthalt'; art: 'wert'; aufenthalt: Aufenthalt }
   | { typ: 'aufenthalt'; art: 'weg'; id: string }
 
-export type BackendEreignis =
+export type BackendDatenEreignis =
   | EinheitEreignis
   | WetteEreignis
   | AbrechnungEreignis
@@ -60,6 +60,25 @@ export type BackendEreignis =
   | AufenthaltEreignis
   | FachEreignis
   | NoteEreignis
+
+export type RealtimeFehlergrund =
+  | 'channel_error'
+  | 'timed_out'
+  | 'closed'
+  | 'replication_error'
+
+/**
+ * Zustand des Live-Kanals. `bereit` bedeutet, dass nicht nur der WebSocket,
+ * sondern auch die dahinterliegende Postgres-Replikation bestaetigt ist.
+ * Fehlertexte des Providers bleiben absichtlich ausserhalb des UI-Vertrags.
+ */
+export type VerbindungEreignis =
+  | { typ: 'verbindung'; status: 'verbindet' }
+  | { typ: 'verbindung'; status: 'transportbereit' }
+  | { typ: 'verbindung'; status: 'bereit' }
+  | { typ: 'verbindung'; status: 'veraltet'; grund: RealtimeFehlergrund }
+
+export type BackendEreignis = BackendDatenEreignis | VerbindungEreignis
 export type Wetten = Record<string, string>
 
 export type Anfangszustand = {
@@ -109,10 +128,11 @@ export interface Backend {
   schreibeWette(woche: string, text: string): Promise<void>
   /** archiviert die sonntagsabrechnung und gibt die kanonisch gespeicherte Zeile zurück */
   schreibeAbrechnung(a: Abrechnung): Promise<Abrechnung>
-  /** einzige veränderliche fachangabe: mündliches prüfungsfach 4 oder 5 */
-  setzePruefungsfach(fachId: string, nummer: number | null): Promise<void>
-  schreibeNote(note: Note): Promise<void>
-  loescheNote(id: string): Promise<void>
+  /** wechselt das vierte Prüfungsfach atomar und bestätigt die Ziel-ID */
+  setzePruefungsfach(fachId: string, erwartetesFachId: string): Promise<string>
+  /** idempotente Notenmutation; Erfolg bestätigt dieselbe UUID */
+  schreibeNote(note: Note): Promise<string>
+  loescheNote(id: string): Promise<string>
   /**
    * holt den verlauf einer einzelnen nacht nach. nur das nachtdetail braucht
    * ihn, deshalb kommt er nicht mit der ganzen historie mit.

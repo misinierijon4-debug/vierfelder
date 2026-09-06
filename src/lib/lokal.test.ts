@@ -142,6 +142,113 @@ describe('lokale Schlafverlaeufe', () => {
   })
 })
 
+describe('lokale Pruefungsfachwahl', () => {
+  beforeEach(() => {
+    speicher.clear()
+  })
+
+  it('wechselt das vierte Fach in einem einzigen gespeicherten Stand', async () => {
+    const backend = lokalesBackend()
+    const vorher = await backend.laden()
+    const aktuell = vorher.noten.faecher.find(
+      (fach) => fach.user === vorher.me && fach.pruefungsfach === 4
+    )!
+    const ziel = vorher.noten.faecher.find(
+      (fach) => fach.user === vorher.me && fach.kursart === 'gk' && fach.name === 'deutsch'
+    )!
+
+    await expect(backend.setzePruefungsfach(ziel.id, aktuell.id)).resolves.toBe(ziel.id)
+
+    const nachher = await backend.laden()
+    expect(nachher.noten.faecher.filter(
+      (fach) => fach.user === nachher.me && fach.pruefungsfach === 4
+    )).toEqual([expect.objectContaining({ id: ziel.id })])
+  })
+
+  it('weist einen veralteten Ausgangsstand und Sport als Ziel ab', async () => {
+    const backend = lokalesBackend()
+    const anfang = await backend.laden()
+    const ziel = anfang.noten.faecher.find(
+      (fach) => fach.user === anfang.me && fach.kursart === 'gk' && fach.name === 'deutsch'
+    )!
+    const sport = anfang.noten.faecher.find(
+      (fach) => fach.user === anfang.me && fach.name === 'sport'
+    )!
+
+    await expect(backend.setzePruefungsfach(ziel.id, 'veraltet')).rejects.toMatchObject({
+      code: '40001',
+    })
+    await expect(backend.setzePruefungsfach(sport.id, 'veraltet')).rejects.toThrow(
+      'ungueltiges pruefungsfach'
+    )
+  })
+
+  it('serialisiert Faecher und Noten zwischen lokalen Tabs ueber Web Locks', async () => {
+    const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    const namen: string[] = []
+    let kette = Promise.resolve<unknown>(undefined)
+    const locks = {
+      request<T>(name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+        namen.push(name)
+        const ergebnis = kette.then(aktion)
+        kette = ergebnis.then(() => undefined, () => undefined)
+        return ergebnis
+      },
+    }
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { locks },
+      })
+      const tabA = lokalesBackend()
+      const tabB = lokalesBackend()
+      const anfang = await tabA.laden()
+      const aktuell = anfang.noten.faecher.find(
+        (fach) => fach.user === anfang.me && fach.pruefungsfach === 4
+      )!
+      const ziele = anfang.noten.faecher.filter(
+        (fach) => fach.user === anfang.me && fach.kursart === 'gk' && !['sport', aktuell.name].includes(fach.name)
+      )
+
+      const ergebnisse = await Promise.allSettled([
+        tabA.setzePruefungsfach(ziele[0]!.id, aktuell.id),
+        tabB.setzePruefungsfach(ziele[1]!.id, aktuell.id),
+      ])
+
+      expect(ergebnisse.filter((ergebnis) => ergebnis.status === 'fulfilled')).toHaveLength(1)
+      expect(ergebnisse.filter((ergebnis) => ergebnis.status === 'rejected')).toHaveLength(1)
+      const noteA = {
+        id: 'd0000000-0000-4000-8000-000000000001', user: anfang.me,
+        fachId: ziele[0]!.id, art: 'klausur' as const, punkte: 12,
+        gewicht: 10, datum: '2026-09-06', titel: 'tab a',
+      }
+      const noteB = {
+        ...noteA,
+        id: 'd0000000-0000-4000-8000-000000000002',
+        fachId: ziele[1]!.id,
+        titel: 'tab b',
+      }
+      await Promise.all([tabA.schreibeNote(noteA), tabB.schreibeNote(noteB)])
+
+      expect(namen).toEqual([
+        'vierfelder.storage.vierfelder.faecher.v2',
+        'vierfelder.storage.vierfelder.faecher.v2',
+        'vierfelder.storage.vierfelder.noten.v2',
+        'vierfelder.storage.vierfelder.noten.v2',
+      ])
+      const nachher = await tabA.laden()
+      expect(nachher.noten.faecher.filter(
+        (fach) => fach.user === nachher.me && fach.pruefungsfach === 4
+      )).toHaveLength(1)
+      expect(nachher.noten.noten).toEqual(expect.arrayContaining([noteA, noteB]))
+    } finally {
+      if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
+      else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+})
+
 describe('lokaler Zwei-Tab-Kanal', () => {
   it('meldet Aenderungen und haelt Delete-Nachrichten fuer alte Tabs lesbar', async () => {
     const vorher = globalThis.BroadcastChannel
