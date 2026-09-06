@@ -185,8 +185,8 @@ function Bilanz({
   const meins = match.wocheIch
   const seins = match.wocheEr
   const diff = meins - seins
-  const belegIch = match.belegIch.gemessen
-  const belegEr = match.belegEr.gemessen
+  const belegIch = match.belegIch.belegt
+  const belegEr = match.belegEr.belegt
   const entscheidung = entscheideDuell(meins, seins, belegIch, belegEr)
   const sieger = entscheidung.sieger === 'ich' ? ich : entscheidung.sieger === 'er' ? er : null
 

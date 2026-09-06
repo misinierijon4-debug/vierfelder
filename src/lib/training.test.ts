@@ -15,6 +15,7 @@ import {
   hatTageswert,
   fuegeEinheitHinzu,
   istGesetzt,
+  hatMoeglicheDoppelerfassung,
   quelle,
   setzeTick,
   messungsMinuten,
@@ -154,9 +155,9 @@ describe('tick aus der messung', () => {
     expect(quelle(z, 'erijon', 'boxen', '2026-08-26')).toBe('getippt')
   })
 
-  it('lässt die messung gewinnen, wenn beides da ist', () => {
+  it('nennt den Tag gemischt, wenn Messung und manueller Eintrag nebeneinander stehen', () => {
     const z = setzeTick(mit(besuch('2026-08-26', [18, 0], 60)), 'erijon', 'gym', '2026-08-26', true)
-    expect(quelle(z, 'erijon', 'gym', '2026-08-26')).toBe('gemessen')
+    expect(quelle(z, 'erijon', 'gym', '2026-08-26')).toBe('gemischt')
     expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
   })
 
@@ -212,6 +213,69 @@ describe('mehrere besuche an einem tag', () => {
     const liste = tageseinheiten(z, 'erijon', 'gym', '2026-08-26')
     expect(liste.map((e) => e.herkunft)).toEqual(['getippt', 'gemessen'])
     expect(liste.map((e) => e.wert)).toEqual([65, 28])
+  })
+
+  it('warnt nur bei einer belegbaren zeitlichen Ueberschneidung', () => {
+    let z = mit(besuch('2026-08-26', [18, 0], 60))
+    z = fuegeEinheitHinzu(
+      z,
+      baueEinheit(
+        'erijon',
+        'gym',
+        '2026-08-26',
+        30,
+        new Date('2026-08-26T20:00:00Z'),
+        zeit('2026-08-26', 18, 30)
+      )
+    )
+
+    expect(hatMoeglicheDoppelerfassung(z, 'erijon', 'gym', '2026-08-26')).toBe(true)
+  })
+
+  it('behauptet ohne Durchfuehrungszeit oder bei nur beruehrenden Intervallen keine Doppelerfassung', () => {
+    let ohneZeit = mit(besuch('2026-08-26', [18, 0], 60))
+    ohneZeit = fuegeEinheitHinzu(
+      ohneZeit,
+      baueEinheit(
+        'erijon',
+        'gym',
+        '2026-08-26',
+        30,
+        new Date(zeit('2026-08-26', 18, 30))
+      )
+    )
+    expect(hatMoeglicheDoppelerfassung(ohneZeit, 'erijon', 'gym', '2026-08-26')).toBe(false)
+
+    let danach = mit(besuch('2026-08-26', [18, 0], 60))
+    danach = fuegeEinheitHinzu(
+      danach,
+      baueEinheit(
+        'erijon',
+        'gym',
+        '2026-08-26',
+        30,
+        new Date('2026-08-26T20:00:00Z'),
+        zeit('2026-08-26', 19, 0)
+      )
+    )
+    expect(hatMoeglicheDoppelerfassung(danach, 'erijon', 'gym', '2026-08-26')).toBe(false)
+  })
+
+  it('vergleicht Leseseiten nicht mit gemessenen Fokusminuten', () => {
+    let z = mit(fokus('2026-08-26', 'lesen', [18, 0], 60))
+    z = fuegeEinheitHinzu(
+      z,
+      baueEinheit(
+        'erijon',
+        'lesen',
+        '2026-08-26',
+        30,
+        new Date('2026-08-26T20:00:00Z'),
+        zeit('2026-08-26', 18, 30)
+      )
+    )
+
+    expect(hatMoeglicheDoppelerfassung(z, 'erijon', 'lesen', '2026-08-26')).toBe(false)
   })
 })
 

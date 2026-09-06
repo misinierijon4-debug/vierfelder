@@ -8,7 +8,11 @@ import { Bereichszeile } from './Bereichszeile'
 
 afterEach(cleanup)
 
-function renderZeile(disabled = false) {
+function renderZeile(
+  disabled = false,
+  quelle: 'getippt' | 'gemessen' | 'gemischt' = 'getippt',
+  zeigeUndo = true
+) {
   const onTap = vi.fn()
   const onUndo = vi.fn()
   const onWert = vi.fn()
@@ -27,11 +31,11 @@ function renderZeile(disabled = false) {
       einheitWert={45}
       anzahl={1}
       mehrfachMoeglich={true}
-      quelle="getippt"
-      messungMinuten={null}
+      quelle={quelle}
+      messungMinuten={quelle === 'getippt' ? null : 60}
       farbe="gold"
       farbeEr="petrol"
-      zeigeUndo={true}
+      zeigeUndo={zeigeUndo}
       disabled={disabled}
       onTap={onTap}
       onUndo={onUndo}
@@ -97,5 +101,32 @@ describe('Bereichszeile', () => {
     expect(onUndo).not.toHaveBeenCalled()
     expect(onWert).not.toHaveBeenCalled()
     expect(onNeueEinheit).not.toHaveBeenCalled()
+  })
+
+  it('laesst bei gemischter Herkunft die manuellen Eingaben erreichbar', async () => {
+    const user = userEvent.setup()
+    const { onTap, onWert, onNeueEinheit } = renderZeile(false, 'gemischt', false)
+
+    expect(screen.getByText(/gemessen \+ getippt/)).not.toBeNull()
+    const tag = screen.getByRole('button', {
+      name: /gemessen und manuell eingetragen; manuelle eintraege entfernen/,
+    })
+    await user.click(screen.getByRole('button', { name: 'lernen um 15 min erhöhen' }))
+    await user.click(screen.getByRole('button', { name: 'weitere einheit lernen eintragen' }))
+    await user.click(tag)
+
+    expect(onWert).toHaveBeenCalledWith(15)
+    expect(onNeueEinheit).toHaveBeenCalledTimes(1)
+    expect(onTap).toHaveBeenCalledTimes(1)
+  })
+
+  it('haelt nach einer gemischten Aktion neue Einheiten und Rückgängig parallel erreichbar', async () => {
+    const user = userEvent.setup()
+    const { onUndo, onNeueEinheit } = renderZeile(false, 'gemischt')
+
+    await user.click(screen.getByRole('button', { name: 'weitere einheit lernen eintragen' }))
+    await user.click(screen.getByRole('button', { name: 'rückgängig' }))
+    expect(onNeueEinheit).toHaveBeenCalledOnce()
+    expect(onUndo).toHaveBeenCalledOnce()
   })
 })

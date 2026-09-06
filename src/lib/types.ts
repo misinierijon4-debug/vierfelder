@@ -25,8 +25,16 @@ export function istMessbar(f: FeldId): f is MessbarerBereich {
   return f !== 'gewicht'
 }
 
-/** wie ein tick zustande kam. `null`, wo eine messung gar nicht möglich wäre */
+/** wie ein einzelner gespeicherter Wert oder eine einzelne Einheit zustande kam */
 export type TickQuelle = 'gemessen' | 'getippt'
+
+/**
+ * ehrliche Herkunft eines ganzen Bereichstags. Einzelne Rohdaten behalten
+ * immer ihre `TickQuelle`; `gemischt` ist nur die abgeleitete Aussage, dass an
+ * demselben Tag sowohl eine Messung als auch mindestens eine manuelle Einheit
+ * vorhanden ist.
+ */
+export type TagesQuelle = TickQuelle | 'gemischt'
 
 export type AreaDef = {
   id: AreaId

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus } from '@phosphor-icons/react'
-import type { AreaDef, TickQuelle } from '../lib/types'
+import type { AreaDef, TagesQuelle } from '../lib/types'
 import { EASE, EINGANG, TAKT } from '../lib/motion'
 import { Marke } from './Marke'
 import { Schritt } from './Schritt'
@@ -39,7 +39,7 @@ type Props = {
   /** solange die tabelle `einheiten` fehlt, bleibt es bei einer pro tag */
   mehrfachMoeglich: boolean
   /** wie der tick zustande kam. `null`, wo es nichts zu messen gibt */
-  quelle: TickQuelle | null
+  quelle: TagesQuelle | null
   /** minuten der gemessenen sitzungen des tages, wenn es welche gibt */
   messungMinuten: number | null
   farbe: string
@@ -82,12 +82,8 @@ export function Bereichszeile({
 }: Props) {
   const reduced = useReducedMotion()
 
-  /**
-   * eine messung ist nicht antippbar — wie die gewichtsmarke. es gäbe sonst
-   * einen zustand, in dem ein tap nichts tut, weil der tick schon aus der
-   * sitzung kommt.
-   */
-  const gemessen = quelle === 'gemessen'
+  const hatMessung = quelle === 'gemessen' || quelle === 'gemischt'
+  const hatManuell = quelle === 'getippt' || quelle === 'gemischt'
 
   /**
    * den wert liefert die messung nur dort, wo der bereich in minuten rechnet.
@@ -95,7 +91,7 @@ export function Bereichszeile({
    * bleiben deshalb stehen, sonst wäre eine gemessene lesestunde eine zeile,
    * in der man die seiten nicht mehr eintragen kann.
    */
-  const wertAusMessung = gemessen && area.unit === 'min'
+  const wertAusMessung = hatMessung && !hatManuell && area.unit === 'min'
 
   const links =
     !wertAusMessung && gesetzt ? 'schritte' : streak > 1 ? 'streak' : 'nichts'
@@ -103,15 +99,23 @@ export function Bereichszeile({
   // von „rückgängig" verdeckt, also genau so lange, wie man tippt. er steht
   // jetzt zwischen den schritten, die ihn ändern, und der platz rechts gehört
   // allein dem rückgängig und der messung.
-  const rechts = gemessen ? 'messung' : zeigeUndo ? 'undo' : 'nichts'
+  const rechts = hatMessung ? `messung-${quelle}-${zeigeUndo ? 'undo' : 'bereit'}` : zeigeUndo ? 'undo' : 'nichts'
 
   const kopfInhalt = (
     <>
-      <span
-        className="display min-w-0 flex-1 truncate text-[22px] font-semibold lowercase leading-none transition-colors duration-200"
-        style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
-      >
-        {area.label}
+      <span className="min-w-0 flex-1">
+        <span
+          className="display block truncate text-[22px] font-semibold lowercase leading-none transition-colors duration-200"
+          style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
+        >
+          {area.label}
+        </span>
+        {quelle === 'gemischt' && (
+          <span className="mt-0.5 block truncate text-[9px] leading-none text-kreide-52">
+            gemessen + getippt
+            {messungMinuten !== null ? ` · ${messungMinuten} min gemessen` : ''}
+          </span>
+        )}
       </span>
 
       <span className="flex items-baseline gap-1.5">
@@ -164,9 +168,9 @@ export function Bereichszeile({
         aria-busy={disabled || undefined}
         className="flex flex-col justify-center gap-1.5 py-2 pl-1 select-none"
       >
-        {gemessen ? (
+        {quelle === 'gemessen' ? (
           <div
-            aria-label={`${area.label}, heute gemessen`}
+            aria-label={`${area.label}, heute ${hatMessung ? 'gemessen' : 'offen'}`}
             className="flex w-full items-center gap-3"
           >
             {kopfInhalt}
@@ -175,8 +179,12 @@ export function Bereichszeile({
           <motion.button
             type="button"
             disabled={disabled}
-            aria-pressed={gesetzt}
-            aria-label={`${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`}
+            aria-pressed={quelle === 'gemischt' ? undefined : gesetzt}
+            aria-label={
+              quelle === 'gemischt'
+                ? `${area.label}, heute gemessen und manuell eingetragen; manuelle eintraege entfernen`
+                : `${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`
+            }
             onClick={onTap}
             whileTap={reduced || disabled ? undefined : { scale: 0.995 }}
             transition={{ duration: 0.09, ease: EASE }}
@@ -228,7 +236,9 @@ export function Bereichszeile({
                   )}
                 </span>
                 <span className="sr-only">
-                  {hatWert ? `heute ${wert} ${area.unit}` : 'heute ohne wert'}
+                  {hatWert
+                    ? `${quelle === 'gemischt' ? 'erfasste summe' : 'heute'} ${wert} ${area.unit}`
+                    : 'heute ohne wert'}
                 </span>
 
                 <Schritt
@@ -263,7 +273,7 @@ export function Bereichszeile({
 
                 {/* eine zweite runde ersetzt die erste nicht, sie kommt dazu.
                     die schritte darüber gelten dann für die neueste einheit. */}
-                {mehrfachMoeglich && !gemessen && (
+                {mehrfachMoeglich && !hatMessung && (
                   <button
                     type="button"
                     disabled={disabled}
@@ -286,7 +296,49 @@ export function Bereichszeile({
           </Wechsel>
 
           <Wechsel schluessel={rechts}>
-            {gemessen ? (
+            {quelle === 'gemischt' ? (
+              <span className="flex flex-wrap items-center justify-end gap-x-2">
+                {mehrfachMoeglich && (
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label={`weitere einheit ${area.label} eintragen`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onNeueEinheit()
+                    }}
+                    className="min-h-11 px-1 text-[11px] text-kreide-52 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
+                  >
+                    + einheit
+                  </button>
+                )}
+                {zeigeUndo && (
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onUndo()
+                    }}
+                    className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
+                  >
+                    rückgängig
+                  </button>
+                )}
+              </span>
+            ) : zeigeUndo ? (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUndo()
+                }}
+                className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
+              >
+                rückgängig
+              </button>
+            ) : hatMessung ? (
               /* beim lesen steht links weiter der seitenzähler zwischen den
                  schritten und hier die gemessene zeit: die seiten sind der wert
                  des bereichs, die minuten der beleg. keine ersetzt die andere. */
@@ -320,18 +372,6 @@ export function Bereichszeile({
                   </button>
                 )}
               </span>
-            ) : zeigeUndo ? (
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onUndo()
-                }}
-                className="min-h-11 px-1 text-[12px] text-kreide-60 underline decoration-linie-hell underline-offset-4 disabled:opacity-35"
-              >
-                rückgängig
-              </button>
             ) : null}
           </Wechsel>
         </div>

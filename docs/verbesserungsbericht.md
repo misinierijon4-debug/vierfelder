@@ -532,6 +532,24 @@ und eine ausdrückliche Freigabe erforderlich.
   die zuvor gepruefte Wiederherstellung, nicht der alte Writer auf dem neuen
   Schema.
 
+### Welle 3: gemessene, getippte und gemischte Tracker-Tage
+
+- Ein Tag mit mindestens einer Automationsmessung und mindestens einem
+  manuellen Eintrag ist jetzt ausdrücklich `gemischt`, statt insgesamt als
+  `gemessen` zu gelten. Rohquellen bleiben unverändert und auditierbar.
+- Die Duellformel bleibt unverändert: `gemessen` und `gemischt` sind je ein
+  belegter Tag; die Zahl der Rohsitzungen erzeugt keinen Zusatzpunkt. Feed,
+  Wochenstand, Tiebreak und Archiv verwenden denselben Belegbegriff.
+- Die Hauptzeile zeigt Mess- und Handanteil getrennt und hält auch während des
+  Undo-Fensters `+ einheit` erreichbar. Bei gemischter Herkunft entfernt die
+  Kopfaktion nur manuelle Einträge und behauptet keine Toggle-Semantik.
+- Es gibt keine automatische Verschmelzung oder Löschung. Nur bei einer
+  belegten Zeitüberschneidung erscheint eine vorsichtige Warnung; Lesen wird
+  nicht unsinnig von Fokusminuten in Seiten umgerechnet.
+- Gezielter Kernlauf: 3 Dateien und 67 Tests, Exit 0. Ein unabhängiger Review
+  bestätigte Formelparität und fand drei Darstellungs-/Bedienlücken; deren
+  Detailkorrekturen stehen im folgenden Accessibility-Paket.
+
 ### Welle 3: PWA-Update, Offline-Grenze und getrennte Auslieferung
 
 - Der Service Worker verwendet jetzt den Prompt-Modus. Eine neue Fassung wird

@@ -5,6 +5,7 @@ import type { Abrechnung, UserId, Zustand } from '../../lib/types'
 import { historieWochen, saisonHistorie } from '../../lib/duell'
 import type { DuellMatch } from '../../lib/duell'
 import { fromKey, isoWeek, istBilanzzeit } from '../../lib/dates'
+import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { RivalitaetsTicker } from './RivalitaetsTicker'
 
 type Props = {
@@ -64,6 +65,7 @@ export function DuellTab({
   )
   const [wetteEdit, setWetteEdit] = useState(false)
   const [wetteTemp, setWetteTemp] = useState(wette)
+  useNeustartBlocker(wetteEdit && wetteTemp !== wette)
   const abschlussMoeglich = istBilanzzeit(heute)
 
   useEffect(() => {
@@ -181,7 +183,9 @@ export function DuellTab({
                 {quote(info.quote)}
               </div>
               <div className="text-[11px] text-kreide-60">
-                {info.gesamt === 0 ? 'noch keine wertung' : `${info.gemessen} von ${info.gesamt} belegt`}
+                {info.gesamt === 0
+                  ? 'noch keine wertung'
+                  : `${info.belegt} von ${info.gesamt} belegt${info.gemischt > 0 ? ` · ${info.gemischt} gemischt` : ''}`}
               </div>
             </div>
           ))}
@@ -193,7 +197,7 @@ export function DuellTab({
           <h2 id="ticker-titel" className="text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             aktivitätsfeed
           </h2>
-          <span className="text-[11px] text-kreide-52">verifiziert oder getippt</span>
+          <span className="text-[11px] text-kreide-52">gemessen oder getippt</span>
         </div>
         <RivalitaetsTicker zustand={zustand} woche={woche} me={me} limit={5} />
       </section>

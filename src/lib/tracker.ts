@@ -8,6 +8,7 @@ import type {
   FeldId,
   Gewichte,
   Schlafnacht,
+  TagesQuelle,
   TickQuelle,
   UserId,
   Zustand,
@@ -41,13 +42,24 @@ export function istGesetzt(z: Zustand, u: UserId, f: FeldId, tag: string): boole
  * die unterscheidung überall: `null` heißt nur noch, dass der tick gar nicht
  * gesetzt ist.
  */
-export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TickQuelle | null {
-  if (!istGesetzt(z, u, f, tag)) return null
+export function quelle(z: Zustand, u: UserId, f: 'gewicht', tag: string): TickQuelle | null
+export function quelle(z: Zustand, u: UserId, f: AreaId, tag: string): TagesQuelle | null
+export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TagesQuelle | null
+export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TagesQuelle | null {
   // beim gewicht kommt die messung aus der waage über apple health und die
   // token-automation. wer die zahl in der app eintippt, hat getippt — eine
   // waage im bad macht aus einem daumen keine messung.
-  if (f === 'gewicht') return z.gewichtQuellen?.[gewichtKey(u, tag)] ?? 'getippt'
-  return gemessen(z.aufenthalte, u, f, tag) ? 'gemessen' : 'getippt'
+  if (f === 'gewicht') {
+    if (z.gewichte[gewichtKey(u, tag)] === undefined) return null
+    return z.gewichtQuellen?.[gewichtKey(u, tag)] ?? 'getippt'
+  }
+
+  const hatMessung = gemessen(z.aufenthalte, u, f, tag)
+  const hatManuelleEinheit = einheitenAn(z, u, f, tag).length > 0
+  if (hatMessung && hatManuelleEinheit) return 'gemischt'
+  if (hatMessung) return 'gemessen'
+  if (hatManuelleEinheit) return 'getippt'
+  return null
 }
 
 /** die getippten einheiten eines tages, älteste zuerst. nie undefined */
@@ -318,6 +330,42 @@ export function mitAufenthalt(aufenthalte: Aufenthalt[], neuer: Aufenthalt): Auf
   const next = [...aufenthalte]
   next[idx] = neuer
   return next
+}
+
+/**
+ * Erkennt nur eine zeitlich belegbare moegliche Doppelerfassung. Das ist
+ * absichtlich keine Reconciliation: Originale bleiben unveraendert, und ein
+ * fehlender Durchfuehrungszeitpunkt (`von`) wird nie durch die spaetere
+ * Eintragungszeit (`erfasst`) ersetzt.
+ *
+ * Nur Minutenbereiche sind vergleichbar. Beim Lesen sind manuelle Werte
+ * Seiten, die Automation misst dagegen Fokusminuten; daraus laesst sich keine
+ * doppelte reale Aktivitaet ableiten.
+ */
+export function hatMoeglicheDoppelerfassung(
+  z: Zustand,
+  u: UserId,
+  f: FeldId,
+  tag: string
+): boolean {
+  if (f === 'gewicht' || area(f).unit !== 'min') return false
+
+  const automatischeIntervalle = messungen(z.aufenthalte, u, f, tag).map((a) => ({
+    von: new Date(a.ankunft).getTime(),
+    bis: new Date(a.abgang!).getTime(),
+  }))
+  if (automatischeIntervalle.length === 0) return false
+
+  return einheitenAn(z, u, f, tag).some((e) => {
+    if (!e.von || e.wert === null || !Number.isFinite(e.wert) || e.wert <= 0) return false
+    const von = new Date(e.von).getTime()
+    const bis = von + e.wert * 60_000
+    if (!Number.isFinite(von) || !Number.isFinite(bis) || bis <= von) return false
+
+    // Gleiches Ende und gleicher Beginn beruehren sich nur; das ist keine
+    // zeitliche Ueberschneidung.
+    return automatischeIntervalle.some((a) => von < a.bis && bis > a.von)
+  })
 }
 
 /** Realtime-DELETE liefert unter RLS nur die technische Primaerschluessel-ID. */

@@ -114,8 +114,68 @@ describe('duell.ts logik & berechnungen', () => {
     const quote = belegQuote(z, 'erijon', woche)
     expect(quote.gesamt).toBe(2)
     expect(quote.gemessen).toBe(1)
+    expect(quote.gemischt).toBe(0)
     expect(quote.getippt).toBe(1)
+    expect(quote.belegt).toBe(1)
     expect(quote.quote).toBe(50)
+  })
+
+  it('weist gemischte Tage separat aus und behaelt sie in der bestehenden Belegbasis', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'gym', '2026-08-24')] = [
+      {
+        id: 'manuell',
+        user: 'erijon',
+        area: 'gym',
+        tag: '2026-08-24',
+        erfasst: '2026-08-24T12:00:00Z',
+        wert: 30,
+      },
+    ]
+    z.aufenthalte.push({
+      user: 'erijon',
+      bereich: 'gym',
+      ort: 'fitx',
+      ankunft: '2026-08-24T10:00:00Z',
+      abgang: '2026-08-24T11:00:00Z',
+    })
+
+    const quote = belegQuote(z, 'erijon', woche)
+    expect(quote).toEqual({
+      gemessen: 0,
+      gemischt: 1,
+      getippt: 0,
+      belegt: 1,
+      gesamt: 1,
+      quote: 100,
+    })
+  })
+
+  it('veraendert durch den neuen Namen weder Beleg-Tiebreak noch Wochenarchiv', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'gym', '2026-08-24')] = [
+      {
+        id: 'e-manuell', user: 'erijon', area: 'gym', tag: '2026-08-24',
+        erfasst: '2026-08-24T12:00:00Z', wert: 30,
+      },
+    ]
+    z.aufenthalte.push({
+      user: 'erijon', bereich: 'gym', ort: 'fitx',
+      ankunft: '2026-08-24T10:00:00Z', abgang: '2026-08-24T11:00:00Z',
+    })
+    z.einheiten[tickKey('koray', 'gym', '2026-08-24')] = [
+      {
+        id: 'k-manuell', user: 'koray', area: 'gym', tag: '2026-08-24',
+        erfasst: '2026-08-24T12:00:00Z', wert: 30,
+      },
+    ]
+
+    const abrechnung = abrechnungFuerWoche(z, woche, null)
+    expect(abrechnung.differenz).toBe(0)
+    expect(abrechnung.grund).toBe('beleg')
+    expect(abrechnung.sieger).toBe('erijon')
+    expect(abrechnung.belegErijon).toBe(1)
+    expect(abrechnung.belegKoray).toBe(0)
   })
 
   it('duellFronten analysiert alle 5 disziplinen', () => {
@@ -159,6 +219,23 @@ describe('duell.ts logik & berechnungen', () => {
     expect(ticker[0].userId).toBe('koray')
     expect(ticker[0].feld).toBe('lernen')
     expect(ticker[0].relativeZeit).toBe('vor 15m')
+  })
+
+  it('laesst die Quellen einzelner Ticker-Eintraege auch an einem gemischten Tag roh', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'gym', '2026-08-27')] = [
+      {
+        id: 'manuell', user: 'erijon', area: 'gym', tag: '2026-08-27',
+        erfasst: '2026-08-27T10:00:00Z', wert: 30,
+      },
+    ]
+    z.aufenthalte.push({
+      user: 'erijon', bereich: 'gym', ort: 'fitx',
+      ankunft: '2026-08-27T12:00:00Z', abgang: '2026-08-27T13:00:00Z',
+    })
+
+    const ticker = duellTickerEintraege(z, woche, new Date('2026-08-27T14:00:00Z'))
+    expect(ticker.map((e) => e.quelle).sort()).toEqual(['gemessen', 'getippt'])
   })
 
   it('duellTicker verwirft offene, zu kurze und überlappende Messungen', () => {

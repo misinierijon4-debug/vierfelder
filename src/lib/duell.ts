@@ -29,8 +29,14 @@ export type FrontInfo = {
 }
 
 export type BelegInfo = {
+  /** Tage mit ausschließlich automatischer Messung */
   gemessen: number
+  /** Tage mit automatischer Messung und mindestens einer manuellen Einheit */
+  gemischt: number
+  /** Tage mit ausschließlich manueller Einheit */
   getippt: number
+  /** bisherige Tiebreak-Basis: ausschließlich gemessen plus gemischt */
+  belegt: number
   gesamt: number
   quote: number | null
 }
@@ -131,22 +137,30 @@ export function entscheideDuell(
  */
 export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
   let gemessenAnzahl = 0
+  let gemischtAnzahl = 0
   let getipptAnzahl = 0
 
   for (const tag of woche) {
     for (const f of AREAS) {
       const q = quelle(z, u, f.id, tag)
       if (q === 'gemessen') gemessenAnzahl++
+      else if (q === 'gemischt') gemischtAnzahl++
       else if (q === 'getippt') getipptAnzahl++
     }
   }
 
-  const gesamt = gemessenAnzahl + getipptAnzahl
-  const quote = gesamt > 0 ? Math.round((gemessenAnzahl / gesamt) * 100) : null
+  // Vor dieser Unterscheidung galt ein gemischter Tag als gemessen. `belegt`
+  // erhaelt genau diese bestehende Punkte- und Tiebreak-Basis; nur die Anzeige
+  // wird ehrlicher aufgeschluesselt.
+  const belegt = gemessenAnzahl + gemischtAnzahl
+  const gesamt = belegt + getipptAnzahl
+  const quote = gesamt > 0 ? Math.round((belegt / gesamt) * 100) : null
 
   return {
     gemessen: gemessenAnzahl,
+    gemischt: gemischtAnzahl,
     getippt: getipptAnzahl,
+    belegt,
     gesamt,
     quote,
   }
@@ -163,8 +177,8 @@ export function abrechnungFuerWoche(
 ): Abrechnung {
   const punkteErijon = wocheGesamt(z, 'erijon', woche)
   const punkteKoray = wocheGesamt(z, 'koray', woche)
-  const belegErijon = belegQuote(z, 'erijon', woche).gemessen
-  const belegKoray = belegQuote(z, 'koray', woche).gemessen
+  const belegErijon = belegQuote(z, 'erijon', woche).belegt
+  const belegKoray = belegQuote(z, 'koray', woche).belegt
   const entscheidung = entscheideDuell(punkteErijon, punkteKoray, belegErijon, belegKoray)
   const wette = wetteText && wetteText.trim() ? wetteText.trim().slice(0, 160) : null
   return {
@@ -384,8 +398,8 @@ export function berechneDuell(
     wocheEr,
     restprogramm,
     er.name,
-    belegIch.gemessen,
-    belegEr.gemessen
+    belegIch.belegt,
+    belegEr.belegt
   )
 
   return {
@@ -637,8 +651,8 @@ export function saisonHistorie(
     const belegEr = belegQuote(z, er.id, wocheTage)
     const pIch = wocheGesamt(z, me, wocheTage)
     const pEr = wocheGesamt(z, er.id, wocheTage)
-    const bIch = belegIch.gemessen
-    const bEr = belegEr.gemessen
+    const bIch = belegIch.belegt
+    const bEr = belegEr.belegt
 
     if (pIch === 0 && pEr === 0) continue
 
