@@ -649,6 +649,26 @@ und eine ausdrückliche Freigabe erforderlich.
   wurde nur statisch geprüft und weder lokal gegen PostgreSQL noch in Staging
   oder Produktion angewandt.
 
+### Welle 2: bestätigte Push- und Erinnerungseinstellungen
+
+- Session-Lesefehler werden bei Push-Probe, Push-Anmeldung und
+  Erinnerungseinstellung nicht mehr als Logout oder Erfolg behandelt. Upserts
+  müssen Nutzer, Endpoint beziehungsweise minutengenaue Uhrzeit und den
+  persistierten Zustand exakt zurückliefern; ein fehlerloser RLS-Nulltreffer
+  gilt als unbestätigt.
+- Ein bereits vorhandenes Browser-Abo wird für das aktuell angemeldete Konto
+  erneut serverseitig abgeglichen. Gehört der Endpoint noch zu einer anderen
+  Sitzung oder ist der Ausgang unter RLS unklar, wird das lokale Abo beendet
+  und ein sichtbarer, wiederholbarer Fehler geliefert; ein Folgetipp erstellt
+  danach kontrolliert ein neues Abo.
+- Beim Abmelden wird zuerst die eigene Datenbankzeile gelöscht und bestätigt,
+  erst danach das Browser-Abo. Bei Netzfehler oder unklarem Nulltreffer bleibt
+  das Browser-Abo für einen Retry erhalten. Weil „bereits serverseitig weg“
+  und „unter RLS verborgen“ ohne engere RPC nicht unterscheidbar sind, nennt
+  der Fehler als sicheren manuellen Ausstieg die App-/Browser-Einstellungen.
+- Gezielter Lauf: 5 Dateien und 41 Tests, Exit 0. Ein echter Push-Browser,
+  Providerannahme, Konto-Wechsel und RLS-Test gegen Staging bleiben offen.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas

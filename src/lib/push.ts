@@ -29,6 +29,60 @@ export type Probeergebnis = {
 }
 
 /**
+ * Bei diesem Fehler bleibt das Browser-Abo absichtlich erhalten. Ein weiterer
+ * Versuch kann die Datenbankmutation bestaetigen, ohne dass die Zustelladresse
+ * schon unwiederbringlich vom Browser entfernt wurde.
+ */
+export class WiederholbarerPushFehler extends Error {
+  readonly wiederholbar = true
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'WiederholbarerPushFehler'
+  }
+}
+
+const ANMELDUNG_NICHT_PRUEFBAR =
+  'die anmeldung konnte nicht geprüft werden. bitte versuche es erneut.'
+const PUSH_ABO_UNBESTAETIGT =
+  'das push-abo konnte nicht bestätigt werden. bitte versuche es erneut.'
+const VORHANDENES_PUSH_ABO_UNBESTAETIGT =
+  'das vorhandene push-abo konnte diesem konto nicht sicher zugeordnet werden. es wurde im browser deaktiviert; bitte versuche es erneut.'
+const PUSH_ABO_NICHT_DEAKTIVIERT =
+  'das push-abo konnte weder bestätigt noch im browser deaktiviert werden. bitte prüfe die browser-einstellungen und versuche es erneut.'
+const PUSH_ABMELDUNG_UNBESTAETIGT =
+  'die push-abmeldung konnte in der datenbank nicht bestätigt werden. das browser-abo bleibt aktiv; bitte versuche es erneut oder schalte benachrichtigungen in den app- oder browser-einstellungen aus.'
+
+async function aktuelleSitzung(db: NonNullable<typeof supabase>) {
+  const { data, error } = await db.auth.getSession()
+  if (error) throw new Error(ANMELDUNG_NICHT_PRUEFBAR)
+  if (!data.session?.user.id || !data.session.access_token) {
+    throw new Error('die anmeldung ist abgelaufen. melde dich neu an.')
+  }
+  return data.session
+}
+
+async function verwerfeUnbestaetigtesAbo(
+  abo: PushSubscription,
+  warVorhanden: boolean
+): Promise<never> {
+  let deaktiviert = false
+  try {
+    deaktiviert = await abo.unsubscribe()
+  } catch {
+    // Der konkrete Browserfehler wird nicht weitergereicht: er kann den
+    // sensiblen Endpoint enthalten. Der Nutzer bekommt stattdessen den
+    // sicheren naechsten Schritt.
+  }
+  if (!deaktiviert) {
+    throw new WiederholbarerPushFehler(PUSH_ABO_NICHT_DEAKTIVIERT)
+  }
+  throw new WiederholbarerPushFehler(
+    warVorhanden ? VORHANDENES_PUSH_ABO_UNBESTAETIGT : PUSH_ABO_UNBESTAETIGT
+  )
+}
+
+/**
  * Der oeffentliche VAPID-Schluessel des Projekts.
  *
  * Er steht hier im Klartext, und das ist kein Versehen: er liegt ohnehin in
@@ -124,24 +178,39 @@ function schluesselAlsText(abo: PushSubscription, name: 'p256dh' | 'auth'): stri
  */
 export async function pushAnmelden(): Promise<PushZustand> {
   const zustand = await pushZustand()
-  if (zustand !== 'aus') return zustand
+  if (zustand !== 'aus' && zustand !== 'an') return zustand
   const db = supabase
   if (!db) return 'ohne-konto'
+  // Die Sitzung wird vor Erlaubnisdialog und Browser-Abo geprueft. Ein
+  // Auth-/Netzfehler darf keine lokale Zustelladresse ohne Besitzer erzeugen.
+  const sitzung = await aktuelleSitzung(db)
 
-  const erlaubnis = await Notification.requestPermission()
-  if (erlaubnis !== 'granted') return erlaubnis === 'denied' ? 'blockiert' : 'aus'
+  let warVorhanden = zustand === 'an'
+  let abo: PushSubscription | null = null
+  if (warVorhanden) {
+    const anmeldung = await navigator.serviceWorker.getRegistration()
+    abo = (await anmeldung?.pushManager.getSubscription()) ?? null
+    // Das Abo kann zwischen Zustandspruefung und Zugriff verschwinden. Dann
+    // gilt wieder derselbe kontrollierte Pfad wie bei einer ersten Anmeldung.
+    warVorhanden = abo !== null
+  }
 
-  // `ready` statt `getRegistration`: das abo braucht einen aktiven worker, und
-  // beim allerersten start ist der noch am installieren.
-  const anmeldung = await navigator.serviceWorker.ready
-  const abo =
-    (await anmeldung.pushManager.getSubscription()) ??
-    (await anmeldung.pushManager.subscribe({
-      // ohne das flag verweigern alle browser das abo: jede nachricht muss
-      // sichtbar werden, stille pushs gibt es im web nicht.
-      userVisibleOnly: true,
-      applicationServerKey: b64urlZuBytes(vapidSchluessel) as BufferSource,
-    }))
+  if (!abo) {
+    const erlaubnis = await Notification.requestPermission()
+    if (erlaubnis !== 'granted') return erlaubnis === 'denied' ? 'blockiert' : 'aus'
+
+    // `ready` statt `getRegistration`: das abo braucht einen aktiven worker,
+    // und beim allerersten start ist der noch am installieren.
+    const anmeldung = await navigator.serviceWorker.ready
+    abo =
+      (await anmeldung.pushManager.getSubscription()) ??
+      (await anmeldung.pushManager.subscribe({
+        // ohne das flag verweigern alle browser das abo: jede nachricht muss
+        // sichtbar werden, stille pushs gibt es im web nicht.
+        userVisibleOnly: true,
+        applicationServerKey: b64urlZuBytes(vapidSchluessel) as BufferSource,
+      }))
+  }
 
   try {
     pushDienst(abo.endpoint)
@@ -152,32 +221,61 @@ export async function pushAnmelden(): Promise<PushZustand> {
     throw new Error(PUSH_ENDPOINT_FEHLER)
   }
 
-  const { error } = await db.from('push_abos').upsert(
-    {
-      endpoint: abo.endpoint,
-      p256dh: schluesselAlsText(abo, 'p256dh'),
-      auth: schluesselAlsText(abo, 'auth'),
-      geraet: geraetName(),
-      gesehen: new Date().toISOString(),
-    },
-    { onConflict: 'endpoint' }
-  )
-  if (error) {
+  const { data: bestaetigt, error } = await db
+    .from('push_abos')
+    .upsert(
+      {
+        endpoint: abo.endpoint,
+        user_id: sitzung.user.id,
+        p256dh: schluesselAlsText(abo, 'p256dh'),
+        auth: schluesselAlsText(abo, 'auth'),
+        geraet: geraetName(),
+        gesehen: new Date().toISOString(),
+      },
+      { onConflict: 'endpoint' }
+    )
+    .select('endpoint,user_id')
+    .maybeSingle()
+  const zeile = bestaetigt as { endpoint: string; user_id: string } | null
+  if (
+    error ||
+    !zeile ||
+    zeile.endpoint !== abo.endpoint ||
+    zeile.user_id !== sitzung.user.id
+  ) {
     // das abo im browser ohne zeile in der datenbank waere ein geraet, an das
     // nie jemand sendet. lieber zurueckdrehen und den fehler zeigen.
-    await abo.unsubscribe()
-    throw new Error(error.message)
+    return verwerfeUnbestaetigtesAbo(abo, warVorhanden)
   }
 
   return 'an'
 }
 
 export async function pushAbmelden(): Promise<PushZustand> {
-  if (!supabase) return 'ohne-konto'
+  const db = supabase
+  if (!db) return 'ohne-konto'
+  const sitzung = await aktuelleSitzung(db)
   const anmeldung = await navigator.serviceWorker.getRegistration()
   const abo = await anmeldung?.pushManager.getSubscription()
   if (abo) {
-    await supabase.from('push_abos').delete().eq('endpoint', abo.endpoint)
+    const { data: bestaetigt, error } = await db
+      .from('push_abos')
+      .delete()
+      .match({ endpoint: abo.endpoint, user_id: sitzung.user.id })
+      .select('endpoint,user_id')
+      .maybeSingle()
+    const zeile = bestaetigt as { endpoint: string; user_id: string } | null
+    if (
+      error ||
+      !zeile ||
+      zeile.endpoint !== abo.endpoint ||
+      zeile.user_id !== sitzung.user.id
+    ) {
+      // Null ist kein Erfolg: RLS kann eine nicht erlaubte Mutation als
+      // fehlerlosen Nulltreffer zurueckgeben. Das Browser-Abo bleibt fuer den
+      // kontrollierten Wiederholungsversuch bewusst unangetastet.
+      throw new WiederholbarerPushFehler(PUSH_ABMELDUNG_UNBESTAETIGT)
+    }
     await abo.unsubscribe()
   }
   return 'aus'
@@ -225,11 +323,10 @@ export function deuteProbe(status: number, text: string): Probeergebnis {
 export async function pushProbe(): Promise<Probeergebnis> {
   const url = import.meta.env.VITE_SUPABASE_URL
   const schluessel = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-  if (!supabase || !url || !schluessel) throw new Error('kein konto')
+  const db = supabase
+  if (!db || !url || !schluessel) throw new Error('kein konto')
 
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  if (!token) throw new Error('die anmeldung ist abgelaufen. melde dich neu an.')
+  const token = (await aktuelleSitzung(db)).access_token
 
   const antwort = await fetch(`${url.replace(/\/+$/, '')}/functions/v1/push-test`, {
     method: 'POST',
