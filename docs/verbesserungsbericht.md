@@ -678,6 +678,18 @@ und eine ausdrückliche Freigabe erforderlich.
   Push-Test- sowie beide Reminder-Functions und `node-modules-dir=none`, jeweils
   Exit 0. Die Lockdatei ersetzt keinen separaten Deploy- oder Function-Smoke.
 
+### Welle 1: einheitliche Runtime und Abhängigkeitsprüfung
+
+- `.node-version`, PR-CI und Pages verwenden dieselbe konkrete LTS-Fassung
+  Node 22.23.2; `package.json` und Lockdatei nennen denselben Runtimevertrag.
+  Die Fassung wurde am Prüftag gegen den offiziellen Node-Releaseindex
+  verifiziert. Die lokale Abschlussumgebung läuft weiterhin auf Node 24.16.0
+  und ist daher ausdrücklich kein Beleg für den späteren CI-Lauf unter 22.23.2.
+- `npm audit` meldete für 544 aufgelöste Abhängigkeiten einschließlich
+  Entwicklungswerkzeugen 0 bekannte Advisories, Exit 0; auch der reine
+  Produktionslauf meldete 0. Verfügbare Majorupdates für Motion, TypeScript und
+  Vitest wurden ohne belegten Nutzen bewusst nicht als Massenupdate übernommen.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas
