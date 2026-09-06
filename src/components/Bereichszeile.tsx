@@ -86,6 +86,7 @@ export function Bereichszeile({
    * sitzung kommt.
    */
   const gemessen = quelle === 'gemessen'
+  const messungVorhanden = (messungMinuten ?? 0) > 0
 
   /**
    * den wert liefert die messung nur dort, wo der bereich in minuten rechnet.
@@ -108,7 +109,13 @@ export function Bereichszeile({
   // von „rückgängig" verdeckt, also genau so lange, wie man tippt. er steht
   // jetzt zwischen den schritten, die ihn ändern, und der platz rechts gehört
   // allein dem rückgängig und der messung.
-  const rechts = gemessen ? 'messung' : zeigeUndo ? 'undo' : 'nichts'
+  const rechts = messungVorhanden
+    ? gemessen
+      ? 'messung'
+      : 'messung-kurz'
+    : zeigeUndo
+      ? 'undo'
+      : 'nichts'
 
   return (
     <motion.div
@@ -278,7 +285,7 @@ export function Bereichszeile({
           </Wechsel>
 
           <Wechsel schluessel={rechts}>
-            {gemessen ? (
+            {messungVorhanden ? (
               /* beim lesen steht links weiter der seitenzähler zwischen den
                  schritten und hier die gemessene zeit: die seiten sind der wert
                  des bereichs, die minuten der beleg. keine ersetzt die andere. */
@@ -290,7 +297,8 @@ export function Bereichszeile({
                     style={{ color: 'var(--kreide-60)' }}
                   />
                   <span className="text-[12px] text-kreide-52">
-                    min · gemessen{anzahl > 1 ? ` · ${anzahl}×` : ''}
+                    min · gemessen
+                    {gemessen ? (anzahl > 1 ? ` · ${anzahl}×` : '') : ' · noch kein punkt'}
                   </span>
                 </span>
 

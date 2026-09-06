@@ -238,6 +238,7 @@ export function Tagesdetail({
                         )}
                         <span className="w-[52px] text-right text-[10px] text-kreide-52">
                           {e.herkunft}
+                          {e.herkunft === 'gemessen' && !e.zaehlt ? ' · zu kurz' : ''}
                         </span>
                       </span>
                     </>

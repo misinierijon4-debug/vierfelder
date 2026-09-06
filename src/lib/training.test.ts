@@ -6,6 +6,7 @@ import {
   gemesseneMinuten,
   messung,
   messungen,
+  sitzungen,
   tagVon,
   zaehlt,
 } from './training'
@@ -148,6 +149,21 @@ describe('tick aus der messung', () => {
     expect(quelle(z, 'erijon', 'gym', '2026-08-26')).toBeNull()
   })
 
+  it('zeigt eine kurze fokusmessung mit dauer, gibt dafuer aber keinen punkt', () => {
+    const z = mit(fokus('2026-08-26', 'lernen', [16, 10], 12))
+
+    expect(sitzungen(z.aufenthalte, 'erijon', 'lernen', '2026-08-26')).toHaveLength(1)
+    expect(messungen(z.aufenthalte, 'erijon', 'lernen', '2026-08-26')).toHaveLength(0)
+    expect(messungsMinuten(z, 'erijon', 'lernen', '2026-08-26')).toBe(12)
+    expect(tageseinheiten(z, 'erijon', 'lernen', '2026-08-26')[0]).toMatchObject({
+      wert: 12,
+      herkunft: 'gemessen',
+      zaehlt: false,
+    })
+    expect(istGesetzt(z, 'erijon', 'lernen', '2026-08-26')).toBe(false)
+    expect(wocheBereich(z, 'erijon', 'lernen', weekDays(MITTWOCH))).toBe(0)
+  })
+
   it('nennt einen antippten tick getippt', () => {
     const z = setzeTick(leer, 'erijon', 'boxen', '2026-08-26', true)
     expect(istGesetzt(z, 'erijon', 'boxen', '2026-08-26')).toBe(true)
@@ -196,9 +212,11 @@ describe('mehrere besuche an einem tag', () => {
     expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
   })
 
-  it('zählt eine zu kurze stippvisite nicht als einheit', () => {
+  it('zeigt eine zu kurze stippvisite, markiert sie aber als nicht zählend', () => {
     const z = mit(besuch('2026-08-26', [7, 0], 65), besuch('2026-08-26', [18, 30], 5))
-    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(1)
+    const liste = tageseinheiten(z, 'erijon', 'gym', '2026-08-26')
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(2)
+    expect(liste.map((e) => e.zaehlt)).toEqual([true, false])
   })
 
   it('mischt gemessene und getippte einheiten nach uhrzeit', () => {
