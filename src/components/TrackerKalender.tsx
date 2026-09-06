@@ -45,8 +45,8 @@ export function TrackerKalender({
   const person = userDef(me)
 
   const monate = useMemo(
-    () => kalenderMonate(tageMitDaten(zustand, me), heuteKey, gewaehlterTag),
-    [gewaehlterTag, heuteKey, me, zustand]
+    () => (offen ? kalenderMonate(tageMitDaten(zustand, me), heuteKey, gewaehlterTag) : []),
+    [offen, gewaehlterTag, heuteKey, me, zustand]
   )
 
   useEffect(() => {
@@ -79,6 +79,7 @@ export function TrackerKalender({
       onClose={onSchliessen}
       className="m-0 size-full max-h-none max-w-none overflow-hidden bg-grund p-0 text-kreide backdrop:bg-grund"
     >
+      {offen && (
       <div className="flex h-dvh flex-col bg-grund">
         <header
           className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-linie px-5 pb-3"
@@ -122,9 +123,9 @@ export function TrackerKalender({
 
             <div className="space-y-7 pt-5">
               {monate.map((monat) => (
-                <section key={monat.key} data-monat={monat.key} aria-labelledby={`monat-${monat.key}`}>
+                <section key={monat.key} data-monat={monat.key} aria-labelledby={`tracker-monat-${monat.key}`}>
                   <h3
-                    id={`monat-${monat.key}`}
+                    id={`tracker-monat-${monat.key}`}
                     className="text-balance text-[22px] font-bold text-kreide"
                   >
                     {MONAT.format(new Date(monat.jahr, monat.monat, 1)).toLowerCase()}
@@ -200,6 +201,7 @@ export function TrackerKalender({
           </div>
         </div>
       </div>
+      )}
     </dialog>
   )
 }

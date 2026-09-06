@@ -575,6 +575,22 @@ und eine ausdrückliche Freigabe erforderlich.
   Webartefakt. Der Worker-Smoke bestätigte Root plus fünf HTML-Assets. Ein
   echter Zwei-Build-/Zwei-Tab-Test einer installierten PWA bleibt offen.
 
+### Welle 4: Tastatur, Dialoge und bedarfsweise Kalender
+
+- Die Hauptnavigation verwendet jetzt ein echtes Tabmuster mit roving
+  `tabIndex`, Pfeiltasten sowie Home/End und verknüpft Tabs und Tabpanel über
+  stabile IDs. Tages- und Notendialoge sperren den Hintergrund, halten den
+  Tastaturfokus im Dialog, schließen per Escape und geben den Fokus zurück.
+- Raster-, Schlaf- und Detailaktionen erhalten eindeutige zugängliche Namen
+  mit Person, vollständigem Datum, Wert und Herkunft. Fehlende manuelle Werte
+  werden als fehlend benannt und nicht als null Minuten ausgegeben.
+- Tracker- und Schlafkalender berechnen und rendern ihren umfangreichen Inhalt
+  erst nach dem Öffnen. Die kompakte Hauptansicht bleibt erhalten; die
+  Kalenderdialoge sind mit eindeutigen Überschriften beschrieben.
+- Gezielter Paketlauf: 8 Dateien und 20 Tests, Exit 0. Die Browserprüfung fand
+  anschließend noch eine konkrete Fokuslücke beim zeitgesteuerten Entfernen
+  des Noten-Undo-Buttons; sie wird zusammen mit dem Notenpaket geschlossen.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas

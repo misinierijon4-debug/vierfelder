@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { CalendarBlank } from '@phosphor-icons/react'
-import { TAGKUERZEL } from '../../lib/dates'
+import { fromKey, langesDatum, TAGKUERZEL } from '../../lib/dates'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import { abendDatum, formatDauer, formatStunden } from '../../lib/schlafPhasen'
@@ -27,6 +27,15 @@ type Props = {
 /** ab hier gilt der zug als wochenwechsel und nicht als verrutschter tipp */
 const SCHWELLE = 56
 const SCHWUNG = 320
+
+function dauerGesprochen(minuten: number): string {
+  const stunden = Math.floor(minuten / 60)
+  const rest = Math.round(minuten % 60)
+  const teile: string[] = []
+  if (stunden > 0) teile.push(`${stunden} ${stunden === 1 ? 'stunde' : 'stunden'}`)
+  if (rest > 0 || teile.length === 0) teile.push(`${rest} ${rest === 1 ? 'minute' : 'minuten'}`)
+  return teile.join(' ')
+}
 
 /** aeltere wochen liegen links, neuere rechts — die neue schiebt sich von dort herein */
 const VARIANTEN = {
@@ -105,6 +114,13 @@ export function SchlafWochenVergleich({
           const erijonMin = nachUser.get('erijon')?.get(tag)?.schlafMinuten ?? 0
           const korayMin = nachUser.get('koray')?.get(tag)?.schlafMinuten ?? 0
           const hatDaten = erijonMin > 0 || korayMin > 0
+          const beschreibung = USERS.map((person) => {
+            const minuten = nachUser.get(person.id)?.get(tag)?.schlafMinuten ?? 0
+            if (!registrierte.has(person.id)) return `${person.name} noch nicht verbunden`
+            return minuten > 0
+              ? `${person.name} ${dauerGesprochen(minuten)}`
+              : `${person.name} keine Schlafdaten`
+          }).join('; ')
           const erijonHoehe = Math.min(100, (erijonMin / maxMinuten) * 100)
           const korayHoehe = Math.min(100, (korayMin / maxMinuten) * 100)
 
@@ -113,7 +129,7 @@ export function SchlafWochenVergleich({
               key={tag}
               type="button"
               aria-pressed={istGewaehlt}
-              aria-label={`${TAGKUERZEL[idx]}, ${hatDaten ? 'Schlafdaten anzeigen' : 'keine Schlafdaten'}`}
+              aria-label={`${langesDatum(fromKey(tag))}; ${beschreibung}; ${istGewaehlt ? 'ausgewählt' : 'Schlafdaten anzeigen'}`}
               onClick={() => onTagWaehlen(tag)}
               className={`relative min-w-0 px-0.5 pb-2 pt-2.5 transition-colors duration-150 focus-visible:z-10 focus-visible:outline-none ${
                 istGewaehlt ? 'bg-grund/70' : 'hover:bg-grund/35'
@@ -243,6 +259,9 @@ export function SchlafWochenVergleich({
         tabIndex={0}
         aria-label="wochenübersicht, mit den pfeiltasten links und rechts die woche wechseln"
         onKeyDown={(e) => {
+          // Pfeile auf einem Tagesknopf gehören dem Knopf bzw. dessen
+          // Browserinteraktion; nur die fokussierte Gruppenfläche blättert.
+          if (e.target !== e.currentTarget) return
           if (e.key === 'ArrowLeft') onWocheWechseln(-1)
           else if (e.key === 'ArrowRight' && kannVor) onWocheWechseln(1)
           else return

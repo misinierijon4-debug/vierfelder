@@ -1,12 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus, Trash, X } from '@phosphor-icons/react'
 import { area as areaDef, gewichtKey, user as userDef } from '../lib/types'
 import type { FeldId, UserId, Zustand } from '../lib/types'
 import { addDays, fromKey, langesDatum, toKey } from '../lib/dates'
-import { tageseinheiten, tagesWert } from '../lib/tracker'
+import {
+  hatMoeglicheDoppelerfassung,
+  quelle,
+  tageseinheiten,
+  tagesWert,
+} from '../lib/tracker'
 import { EASE } from '../lib/motion'
 import { useScrollSperre } from '../lib/scrollsperre'
+import { useDialogFokus } from '../lib/dialogFokus'
 import { Schritt } from './Schritt'
 
 const UHRZEIT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
@@ -68,6 +74,7 @@ export function Tagesdetail({
 }: Props) {
   const reduced = useReducedMotion()
   const schliessen = useRef<HTMLButtonElement>(null)
+  const dialog = useRef<HTMLElement>(null)
   const person = userDef(auswahl.user)
   const feld = auswahl.area
   const bereich = feld === 'gewicht' ? null : areaDef(feld)
@@ -85,6 +92,26 @@ export function Tagesdetail({
   const dauer = liste.reduce((s, e) => (e.einheit === einheit ? s : s + (e.wert ?? 0)), 0)
   const ohneWert = liste.some((e) => e.wert === null)
   const kg = istGewicht ? zustand.gewichte[gewichtKey(auswahl.user, auswahl.tag)] : undefined
+  const tagesQuelle = quelle(zustand, auswahl.user, auswahl.area, auswahl.tag)
+  const gemesseneWerte = liste.filter(
+    (e) => e.herkunft === 'gemessen' && e.einheit === einheit && e.wert !== null
+  )
+  const getippteWerte = liste.filter(
+    (e) => e.herkunft === 'getippt' && e.einheit === einheit && e.wert !== null
+  )
+  const gemessenerAnteil = gemesseneWerte.length > 0
+    ? gemesseneWerte.reduce((summe, e) => summe + e.wert!, 0)
+    : null
+  const getippterAnteil = getippteWerte.length > 0
+    ? getippteWerte.reduce((summe, e) => summe + e.wert!, 0)
+    : null
+  const moeglicheDoppelerfassung =
+    !istGewicht && hatMoeglicheDoppelerfassung(
+      zustand,
+      auswahl.user,
+      auswahl.area,
+      auswahl.tag
+    )
 
   const datum = fromKey(auswahl.tag)
   const vergangen = auswahl.tag < heute
@@ -104,15 +131,7 @@ export function Tagesdetail({
   const schnitt14 = Math.round(summe14 / 14)
 
   useScrollSperre(true)
-
-  useEffect(() => {
-    schliessen.current?.focus()
-    const aufTaste = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onSchliessen()
-    }
-    document.addEventListener('keydown', aufTaste)
-    return () => document.removeEventListener('keydown', aufTaste)
-  }, [onSchliessen])
+  useDialogFokus(dialog, schliessen, onSchliessen)
 
   return (
     <motion.div
@@ -126,20 +145,24 @@ export function Tagesdetail({
       {/* der hintergrund schließt: auf dem telefon ist er die größte fläche */}
       <button
         type="button"
+        tabIndex={-1}
+        aria-hidden="true"
         aria-label="tagesansicht schließen"
         onClick={onSchliessen}
         className="absolute inset-0 block bg-black/55"
       />
 
       <motion.section
+        ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby="tagesdetail-titel"
+        tabIndex={-1}
         initial={reduced ? false : { y: 18 }}
         animate={{ y: 0 }}
         exit={reduced ? undefined : { y: 18 }}
         transition={{ duration: reduced ? 0 : 0.18, ease: EASE }}
-        className="relative w-full max-w-[420px] rounded-t-[6px] border-t border-linie-hell bg-grund px-5 pt-4 pb-[calc(env(safe-area-inset-bottom)+20px)]"
+        className="relative max-h-[92dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-[6px] border-t border-linie-hell bg-grund px-5 pt-4 pb-[calc(env(safe-area-inset-bottom)+20px)]"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -187,14 +210,16 @@ export function Tagesdetail({
             <p className="text-[13px] text-kreide-52">nichts eingetragen</p>
           ) : (
             <>
-              <p className="flex items-baseline gap-1.5 text-[12px] text-kreide-52">
+              <p className="flex flex-wrap items-baseline gap-1.5 text-[12px] text-kreide-52">
                 <span className="tnum text-[15px] font-semibold text-kreide">{liste.length}</span>
-                {liste.length === 1 ? 'einheit' : 'einheiten'}
+                {tagesQuelle === 'gemischt'
+                  ? liste.length === 1 ? 'eintrag' : 'einträge'
+                  : liste.length === 1 ? 'einheit' : 'einheiten'}
                 {gesamt > 0 && (
                   <>
                     <span aria-hidden>·</span>
                     <span className="tnum text-[15px] font-semibold text-kreide">{gesamt}</span>
-                    {einheit} gesamt
+                    {einheit} erfasste summe
                   </>
                 )}
                 {dauer > 0 && (
@@ -207,15 +232,43 @@ export function Tagesdetail({
               </p>
 
               <p className="mt-2 text-[10px] text-kreide-52">
-                <span className="tnum">{gemessene}</span> gemessen ·{' '}
-                <span className="tnum">{getippte}</span> getippt · Ø 14 tage:{' '}
+                <span className="tnum">{gemessene}</span>{' '}
+                {tagesQuelle === 'gemischt' ? 'messquellen' : 'gemessen'} ·{' '}
+                <span className="tnum">{getippte}</span>{' '}
+                {tagesQuelle === 'gemischt' ? 'manuelle einträge' : 'getippt'} · quelle:{' '}
+                {tagesQuelle} ·{' '}
+                Ø 14 tage (erfasst):{' '}
                 <span className="tnum">{schnitt14}</span> {einheit}
               </p>
+
+              {tagesQuelle === 'gemischt' && (
+                <div className="mt-2.5 border-l-2 border-linie-hell pl-2.5 text-[10px] text-kreide-60">
+                  <p>
+                    {bereich.unit === 'min'
+                      ? `${gemessenerAnteil === null ? 'messung ohne wert' : `${gemessenerAnteil} min gemessen`} + ${getippterAnteil === null ? 'manuell ohne wert' : `${getippterAnteil} min getippt`}`
+                      : `${getippterAnteil === null ? 'manuell ohne wert' : `${getippterAnteil} ${einheit} getippt`} + ${dauer > 0 ? `${dauer} min gemessen` : 'messung ohne dauer'}`}
+                  </p>
+                  {moeglicheDoppelerfassung ? (
+                    <p role="status" className="mt-1">
+                      mögliche doppelerfassung: mindestens eine getippte minuten-einheit
+                      überschneidet sich zeitlich mit einer messung. nichts wurde automatisch
+                      zusammengeführt.
+                    </p>
+                  ) : (
+                    <p className="mt-1">
+                      gemessene und getippte anteile bleiben getrennt; ohne sichere
+                      zeitüberschneidung wird nichts zusammengeführt.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <ul className="mt-3 divide-y divide-linie border-t border-linie">
                 {liste.map((e, i) => {
                   const zeit = uhrzeit(e.von ?? e.erfasst)
                   const aktuellerWert = e.wert ?? 0
+                  const wertName = e.wert === null ? 'ohne wert' : `${e.wert} ${e.einheit}`
+                  const einheitName = `${person.name}, ${label}, ${langesDatum(datum)}, eintrag ${i + 1}, ${wertName}${zeit ? ` um ${zeit} uhr` : ', ohne uhrzeit'}`
                   const zeile = (
                     <>
                       <span className="flex min-w-0 items-baseline gap-2">
@@ -246,16 +299,16 @@ export function Tagesdetail({
                     bearbeitbar && e.herkunft === 'getippt' ? (
                       <li key={e.id} className="py-2">
                         <span className="flex items-baseline justify-between gap-3">{zeile}</span>
-                        <span className="mt-1.5 flex items-center gap-1.5">
+                        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <Schritt
-                            label={`${label} um ${schritt} ${einheit} verringern`}
+                            label={`${einheitName} um ${schritt} ${einheit} verringern`}
                             disabled={aktuellerWert <= 0}
                             onClick={() => onWertSetzen?.(e.id, aktuellerWert - schritt)}
                           >
                             <Minus size={11} weight="bold" />
                           </Schritt>
                           <Schritt
-                            label={`${label} um ${schritt} ${einheit} erhöhen`}
+                            label={`${einheitName} um ${schritt} ${einheit} erhöhen`}
                             onClick={() => onWertSetzen?.(e.id, aktuellerWert + schritt)}
                           >
                             <Plus size={11} weight="bold" />
@@ -263,7 +316,7 @@ export function Tagesdetail({
                           {zeitEditierbar ? (
                             <input
                               type="time"
-                              aria-label={`${label}, uhrzeit der einheit`}
+                              aria-label={`${einheitName}, uhrzeit ändern`}
                               value={zeitWert(e.von ?? null)}
                               onChange={(ev) => {
                                 const eingabe = ev.target.value
@@ -286,7 +339,7 @@ export function Tagesdetail({
                           )}
                           <button
                             type="button"
-                            aria-label="einheit löschen"
+                            aria-label={`${einheitName} löschen`}
                             onClick={() => onLoeschen?.(e.id)}
                             className="flex size-11 shrink-0 items-center justify-center rounded-[2px] border border-linie text-kreide-60"
                           >

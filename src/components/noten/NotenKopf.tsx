@@ -11,7 +11,7 @@ export function NotenKopf({ stand, me }: { stand: Notenstand; me: UserId }) {
   const personenfarbe = user(me).farbe
   return (
     <section aria-labelledby="noten-kopf" className="border-b border-linie pb-4">
-      <h1 id="noten-kopf" className="sr-only">noten</h1>
+      <h2 id="noten-kopf" className="sr-only">noten</h2>
       <div className="grid grid-cols-2 gap-6">
         <div>
           <p className="text-[11px] text-kreide-52">fachschnitt</p>

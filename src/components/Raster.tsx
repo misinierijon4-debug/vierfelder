@@ -1,8 +1,16 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { FELDER, USERS, area as areaDef } from '../lib/types'
-import type { Ereignis, FeldId, UserId, Zustand } from '../lib/types'
-import { TAGKUERZEL } from '../lib/dates'
-import { anzahlEinheiten, istGesetzt, quelle, tagesWert, wocheBereich } from '../lib/tracker'
+import { FELDER, USERS, area as areaDef, gewichtKey } from '../lib/types'
+import type { Ereignis, FeldId, TagesQuelle, UserId, Zustand } from '../lib/types'
+import { fromKey, langesDatum, TAGKUERZEL } from '../lib/dates'
+import {
+  anzahlEinheiten,
+  hatTageswert,
+  istGesetzt,
+  messungsMinuten,
+  quelle,
+  tagesWert,
+  wocheBereich,
+} from '../lib/tracker'
 import { EASE, STEMPEL, TAKT } from '../lib/motion'
 
 /* rastergeometrie an einer stelle, damit das heute-band exakt unter der spalte liegt */
@@ -194,17 +202,31 @@ function Zeile({
     <>
       {woche.map((tag, i) => {
         const anzahl = anzahlEinheiten(zustand, user, area, tag)
+        const herkunft = quelle(zustand, user, area, tag)
         const minuten =
           area !== 'gewicht' && areaDef(area).unit === 'min'
             ? tagesWert(zustand, user, area, tag)
             : undefined
+        const wertBeschreibung = area === 'gewicht'
+          ? zustand.gewichte[gewichtKey(user, tag)] !== undefined
+            ? `${zustand.gewichte[gewichtKey(user, tag)]} kilogramm`
+            : 'ohne wert'
+          : [
+              hatTageswert(zustand, user, area, tag)
+                ? `erfasste summe ${tagesWert(zustand, user, area, tag)} ${areaDef(area).unit}`
+                : 'ohne eingetragenen wert',
+              areaDef(area).unit !== 'min' && messungsMinuten(zustand, user, area, tag) > 0
+                ? `${messungsMinuten(zustand, user, area, tag)} minuten gemessen`
+                : null,
+            ].filter(Boolean).join('; ')
         return (
           <Zelle
             key={tag}
             gefuellt={istGesetzt(zustand, user, area, tag)}
             // halb heißt: gesetzt, aber nur behauptet. seit die fokus-modi auch
             // lernen und lesen belegen, gilt das in allen vier bereichen.
-            halb={quelle(zustand, user, area, tag) === 'getippt'}
+            halb={herkunft === 'getippt'}
+            herkunft={herkunft}
             anzahl={anzahl}
             minuten={minuten}
             farbe={farbe}
@@ -213,7 +235,8 @@ function Zeile({
             animiert={treffer && treffer.tag === tag ? treffer : null}
             sweep={sweep}
             sweepIndex={i}
-            label={`${name}, ${areaLabel}, ${tag}`}
+            label={`${name}, ${areaLabel}, ${langesDatum(fromKey(tag))}`}
+            wertBeschreibung={wertBeschreibung}
             lage={lage}
             onOeffne={() => onZelle(user, area, tag)}
           />
@@ -238,6 +261,7 @@ function Zeile({
 function Zelle({
   gefuellt,
   halb,
+  herkunft,
   anzahl,
   minuten,
   farbe,
@@ -247,11 +271,13 @@ function Zelle({
   sweep,
   sweepIndex,
   label,
+  wertBeschreibung,
   lage,
   onOeffne,
 }: {
   gefuellt: boolean
   halb: boolean
+  herkunft: TagesQuelle | null
   /** wie viele einheiten an diesem tag. ab zwei steht die zahl in der zelle */
   anzahl: number
   /** summe der minuten des tages, nur in minuten-bereichen bei mehreren einheiten */
@@ -264,6 +290,7 @@ function Zelle({
   sweepIndex: number
   lage: 'oben' | 'unten'
   label: string
+  wertBeschreibung: string
   onOeffne: () => void
 }) {
   const reduced = useReducedMotion()
@@ -361,7 +388,7 @@ function Zelle({
       data-tag={label}
       aria-label={`${label}${
         gefuellt ? (anzahl > 1 ? `, ${anzahl} einheiten` : ', erledigt') : ', offen'
-      }, tagesansicht öffnen`}
+      }${gefuellt ? `, ${herkunft === 'gemischt' ? 'gemessen und getippt' : herkunft}, ${wertBeschreibung}` : ''}, tagesansicht öffnen`}
       onClick={onOeffne}
       /*
        * 22px bleiben 22px: der treffbereich wächst über das pseudoelement, das
