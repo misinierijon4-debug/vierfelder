@@ -30,6 +30,15 @@ export default defineConfig({
     port: 5199,
     strictPort: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@supabase')) return 'supabase'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { CalendarBlank } from '@phosphor-icons/react'
 import { AREAS, other, user as userDef } from './lib/types'
@@ -30,9 +30,9 @@ import type { Tagesauswahl } from './components/Tagesdetail'
 import { TrackerKalender } from './components/TrackerKalender'
 import { Anmeldung } from './components/Anmeldung'
 import { TabLeiste } from './components/TabLeiste'
-import { SchlafTab } from './components/schlaf/SchlafTab'
-import { DuellTab } from './components/duell/DuellTab'
-import { NotenTab } from './components/noten/NotenTab'
+const SchlafTab = lazy(() => import('./components/schlaf/SchlafTab').then((m) => ({ default: m.SchlafTab })))
+const DuellTab = lazy(() => import('./components/duell/DuellTab').then((m) => ({ default: m.DuellTab })))
+const NotenTab = lazy(() => import('./components/noten/NotenTab').then((m) => ({ default: m.NotenTab })))
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
@@ -45,6 +45,11 @@ const UNDO_MS = 5000
 export function App() {
   const { status, session } = useSession()
   const [wechselNr, setWechselNr] = useState(0)
+  const istDemo = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const p = new URLSearchParams(window.location.search)
+    return p.has('prototyp') || p.has('demo')
+  }, [])
 
   /**
    * am konto festmachen, nicht am session-objekt: getSession() und
@@ -54,13 +59,13 @@ export function App() {
   const kontoId = session?.user.id ?? null
 
   const backend = useMemo<Backend | null>(() => {
-    if (!hatSupabase) return lokalesBackend()
+    if (!hatSupabase || istDemo) return lokalesBackend()
     return kontoId ? supabaseBackend(kontoId) : null
     // wechselNr erzwingt beim nutzerwechsel im prototyp ein neues laden
-  }, [kontoId, wechselNr])
+  }, [kontoId, wechselNr, istDemo])
 
-  if (hatSupabase && status === 'laden') return <div className="min-h-[100dvh] bg-grund" />
-  if (hatSupabase && !session) return <Anmeldung />
+  if (!istDemo && hatSupabase && status === 'laden') return <div className="min-h-[100dvh] bg-grund" />
+  if (!istDemo && hatSupabase && !session) return <Anmeldung />
   if (!backend) return <div className="min-h-[100dvh] bg-grund" />
 
   return <Tracker backend={backend} onWechsel={() => setWechselNr((n) => n + 1)} />
@@ -136,6 +141,17 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
       window.clearInterval(timer)
       document.removeEventListener('visibilitychange', pruefe)
     }
+  }, [])
+
+  // nach dem ersten render die uebrigen tabs im leerlauf vorladen
+  useEffect(() => {
+    const vorladen = () => {
+      import('./components/duell/DuellTab')
+      import('./components/schlaf/SchlafTab')
+      import('./components/noten/NotenTab')
+    }
+    const timer = setTimeout(vorladen, 100)
+    return () => clearTimeout(timer)
   }, [])
 
   // rückgängig steht fünf sekunden in der zeile, die du zuletzt angefasst hast
@@ -218,6 +234,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
         </div>
 
         {/* Tab-Inhalte */}
+        <Suspense fallback={<div className="min-h-[200px]" />}>
         <AnimatePresence mode="wait">
           {aktiverTab === 'tracker' ? (
             <motion.div
@@ -384,6 +401,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             </motion.div>
           )}
         </AnimatePresence>
+        </Suspense>
 
         <Benachrichtigungen />
 

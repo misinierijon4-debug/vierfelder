@@ -49,8 +49,8 @@ export function SchlafKalender({
   }, [ansichtUser, naechte])
 
   const monate = useMemo(
-    () => kalenderMonate([...nachTag.keys()], heuteKey, gewaehlterTag),
-    [gewaehlterTag, heuteKey, nachTag]
+    () => (offen ? kalenderMonate([...nachTag.keys()], heuteKey, gewaehlterTag) : []),
+    [offen, gewaehlterTag, heuteKey, nachTag]
   )
 
   useEffect(() => {
@@ -83,6 +83,7 @@ export function SchlafKalender({
       onClose={onSchliessen}
       className="m-0 size-full max-h-none max-w-none overflow-hidden bg-grund p-0 text-kreide backdrop:bg-grund"
     >
+      {offen && (
       <div className="flex h-dvh flex-col bg-grund">
         <header
           className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-linie px-5 pb-3"
@@ -197,6 +198,7 @@ export function SchlafKalender({
           </div>
         </div>
       </div>
+      )}
     </dialog>
   )
 }
