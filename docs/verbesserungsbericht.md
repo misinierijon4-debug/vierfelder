@@ -486,6 +486,52 @@ und eine ausdrückliche Freigabe erforderlich.
   2.112.4. SQL-Quelltests und Handler-Smokes ersetzen weder Staging-Cron noch
   echte negative Aufrufe gegen die bereitgestellten Functions.
 
+### Welle 2: crash-tolerantes Erinnerungsversandbuch
+
+- Das bisherige reine INSERT-Versandbuch konnte nach einem Function-Abbruch
+  dauerhaft haengen bleiben. Eine explizite Zustandsmaschine trennt nun
+  `bereit`, `sendet`, `wiederholen`, `gesendet`, `fehlgeschlagen` und
+  `unbestaetigt`. Jede Claim-, Start- und Abschlussaenderung wird mit einer
+  UUID-Lease gezaeunt und muss genau eine Zeile bestaetigen.
+- Nur explizit abgelehnte HTTP-Antworten 408, 425 und 429 duerfen nach fuenf
+  Minuten erneut versucht werden, insgesamt hoechstens viermal. Ein
+  Netzwerkabbruch, eine geworfene Transportausnahme oder 5xx ist bei einem
+  nicht-idempotenten Push-POST fachlich mehrdeutig und bleibt
+  `unbestaetigt`, statt eine moegliche zweite Nachricht zu erzeugen. Web Push
+  kann dadurch weiterhin keine Ende-zu-Ende-Genau-einmal-Zustellung
+  versprechen.
+- Bestaetigt mindestens ein Geraet die Providerannahme, bleibt die bestehende
+  Pro-Person-Semantik erhalten; Fehler weiterer Geraete erzeugen keinen
+  Doppelversand. Tote oder unzulaessige Abos werden nur als entfernt gezaehlt,
+  wenn die Datenbank die geloeschten Endpunkte zurueckliefert. Providertexte
+  und Endpunkte werden weder im Versandbuch gespeichert noch ausgegeben.
+- Alte Zeilen mit `gesendet` werden verlustfrei auf `gesendet` uebernommen.
+  Alte Zeilen ohne Bestaetigung sind nicht sicher von einem abgebrochenen
+  Versand zu unterscheiden und werden deshalb als `legacy_unbestaetigt`
+  archiviert, nie blind erneut gesendet. Der letzte rein lesende Live-Check vor
+  der Umsetzung fand neun Zeilen, alle neun bereits mit `gesendet`; dieser
+  Zeitpunktbeleg muss vor einem Rollout wiederholt werden.
+- Die vier exponierten RPCs laufen als `SECURITY INVOKER` mit leerem Suchpfad;
+  EXECUTE ist fuer `public`, `anon` und `authenticated` entzogen und nur fuer
+  `service_role` erlaubt. Der Secret-Key-geschuetzte Scheduler ist damit der
+  einzige vorgesehene Aufrufer.
+- Gezielter Eigenlauf nach dem unabhaengigen Retry-Review: 2 Dateien und 38
+  Tests, Exit 0. Deno 2.9.6 prueft beide
+  Reminder-Einstiegspunkte. Eine echte PostgreSQL-Ausfuehrung, konkurrierende
+  RPC-Transaktionen und ein Staging-Crash zwischen Claim, Start, Provider und
+  Abschluss sind weiterhin offen; SQL-Quelltests beweisen diese Eigenschaften
+  nicht. Die Migration ist vorbereitet, aber nicht angewandt.
+- Alte und neue Writer sind waehrend dieses Vertragswechsels absichtlich nicht
+  miteinander kompatibel: Der alte INSERT kennt weder Zustand noch Lease, der
+  neue Handler benoetigt die vier RPCs. Deshalb muessen beim spaeteren
+  Staging-/Produktionsrollout beide Reminder-Cronjobs zuerst pausiert werden.
+  Danach folgen Migration, Deploy beider Functions, negative Auth- und
+  Zustands-Smokes und erst dann die Reaktivierung. Eine "Migration oder
+  Function zuerst"-Liveausrollung ohne Pause kann Erinnerungen im Zeitfenster
+  auslassen und ist nicht freigegeben. Der Rueckweg ist ein Forward-Fix oder
+  die zuvor gepruefte Wiederherstellung, nicht der alte Writer auf dem neuen
+  Schema.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas
