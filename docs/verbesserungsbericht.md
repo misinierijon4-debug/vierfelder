@@ -446,6 +446,46 @@ und eine ausdrückliche Freigabe erforderlich.
   ausgerollt werden; umgekehrt fehlt der Handler-RPC und endet fail-closed mit
   500.
 
+### Welle 2: Scheduler nur mit benanntem Secret-Key
+
+- Die beiden privilegierten Erinnerungs-Functions akzeptieren nicht mehr den
+  oeffentlichen anon-/publishable-Key. `@supabase/server` 1.5.3 prueft jetzt
+  ausschliesslich den Dashboard-Secret-Key mit dem Namen `automations`; erst
+  danach erhaelt die Fachlogik den administrativen Datenbank-Client. Der
+  Gateway-JWT-Check ist fuer diesen dokumentierten Service-to-Service-Weg
+  deaktiviert, die eigene Secret-Pruefung dagegen zwingend.
+- CORS ist fuer die reinen Serverendpunkte abgeschaltet. Eine OPTIONS-Anfrage,
+  ein fehlender Key und ein publishable Key erreichen deshalb die Fachlogik
+  nicht und enden im lokalen Wrapper-Lauf mit 401. Nur der passende Test-Key
+  erreicht den Handler; ohne VAPID-Konfiguration endet er dort erwartbar mit
+  500, bevor Daten gelesen oder Pushes gesendet werden.
+- Die neue Scheduler-Migration entfernt die Legacy-`Authorization`-Header und
+  liest nur `vierfelder_automations_secret_key` aus Vault. Eine private
+  `SECURITY DEFINER`-Funktion mit leerem Suchpfad erlaubt nur die zwei bekannten
+  Function-Namen und prueft bei jedem Lauf die feste Projekt-URL
+  `ogxwazageufvalkocywh.supabase.co`. Damit kann ein falscher Vault-URL-Wert den
+  Secret-Key nicht an ein fremdes Projekt weiterleiten.
+- Fehlende Secrets blockieren keinen reproduzierbaren Datenbank-Reset: Die
+  Jobs werden angelegt, der spaetere Cron-Lauf bricht aber vor jedem HTTP-
+  Request fail-closed ab. Vor Staging muss der benannte Dashboard-Key erstellt
+  und derselbe Wert im Vault hinterlegt werden. Function plus
+  `verify_jwt=false` muessen gemeinsam ausgerollt werden; danach folgt erst die
+  Cron-Migration. Keiner dieser Schritte wurde produktiv ausgefuehrt.
+- Grundlage sind die am 6. September 2026 gelesene offizielle
+  [Function-Authentifizierung](https://supabase.com/docs/guides/functions/auth),
+  die [Scheduler-Anleitung](https://supabase.com/docs/guides/functions/schedule-functions)
+  und der aktuelle Supabase-Changelog. Darin steht kein zusaetzlicher
+  Scheduler-spezifischer Breaking Change; direkte Aenderungen an `cron.job`
+  bleiben unzulaessig, daher verwendet die Migration nur `cron.schedule` und
+  `cron.unschedule`.
+- Gezielter Schlusslauf: 2 Dateien und 6 Tests, Exit 0. `npm run check`: Exit 0,
+  33 Dateien und 470 Tests; TypeScript, Webbuild und Artefaktpruefung bestehen.
+  JavaScript: 764.841 Byte roh beziehungsweise 219.089 Byte gzip; gesamtes
+  `dist`: 1.111.405 Byte. Deno 2.9.0 prueft beide geaenderten Functions, Exit 0;
+  der Modulgraph enthaelt exakt `@supabase/server` 1.5.3 und `supabase-js`
+  2.112.4. SQL-Quelltests und Handler-Smokes ersetzen weder Staging-Cron noch
+  echte negative Aufrufe gegen die bereitgestellten Functions.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas

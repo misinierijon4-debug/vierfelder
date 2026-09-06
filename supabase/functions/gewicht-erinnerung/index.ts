@@ -1,4 +1,5 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
+import { withSupabase } from 'npm:@supabase/server@1.5.3'
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.112.4'
 import { istFaellig, lokaleMinute } from '../_shared/erinnerung.ts'
 import { versende } from '../_shared/versand.ts'
 import type { VapidSchluessel } from '../_shared/webpush.ts'
@@ -27,26 +28,18 @@ type Einstellung = {
   gewicht_zeit: string
 }
 
-Deno.serve(async (request) => {
+export async function behandleGewichtserinnerung(request: Request, db: SupabaseClient) {
   if (request.method !== 'POST') return antwort(405, { error: 'nur POST' })
 
-  const url = Deno.env.get('SUPABASE_URL')
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const schluessel: VapidSchluessel = {
     oeffentlich: Deno.env.get('VAPID_PUBLIC_KEY') ?? '',
     privat: Deno.env.get('VAPID_PRIVATE_KEY') ?? '',
     kontakt: Deno.env.get('VAPID_KONTAKT') ?? '',
   }
-  if (!url || !serviceKey) {
-    return antwort(500, { error: 'server ist nicht vollständig konfiguriert' })
-  }
   if (!schluessel.oeffentlich || !schluessel.privat || !schluessel.kontakt) {
     return antwort(500, { error: 'vapid-schlüssel fehlen' })
   }
 
-  const db = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
   const ort = lokaleMinute(new Date())
   const { data, error } = await db
     .from('erinnerungs_einstellungen')
@@ -70,7 +63,9 @@ Deno.serve(async (request) => {
     .in('user_id', ids)
   if (gewichtFehler) return antwort(500, { error: 'gewichtstatus konnte nicht gelesen werden' })
 
-  const erledigt = new Set((gewogen ?? []).map((zeile) => zeile.user_id as string))
+  const erledigt = new Set(
+    ((gewogen ?? []) as Array<{ user_id: string }>).map((zeile) => zeile.user_id)
+  )
   const offen = faellige.filter((e) => !erledigt.has(e.user_id)).map((e) => e.user_id)
 
   const zahlen = await versende(
@@ -97,4 +92,12 @@ Deno.serve(async (request) => {
     geprueft: faellige.length,
     ...zahlen,
   })
-})
+}
+
+export default {
+  fetch: withSupabase(
+    { auth: 'secret:automations', cors: 'disabled' },
+    (request, context) =>
+      behandleGewichtserinnerung(request, context.supabaseAdmin as SupabaseClient)
+  ),
+}
