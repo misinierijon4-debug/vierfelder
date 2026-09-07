@@ -5,6 +5,7 @@ import { StrictMode, useEffect } from 'react'
 import type { PropsWithChildren } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Anfangszustand, Backend, BackendEreignis } from './backend'
+import { lokalesBackend } from './lokal'
 import { hatNeustartBlocker } from './pwaBlocker'
 import { phasenLadeKey } from './schlafLaden'
 import { useTracker } from './store'
@@ -14,6 +15,8 @@ import type { Einheit, Fach, Note, Phase, Schlafnacht } from './types'
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
+  localStorage.clear()
 })
 
 const ANFANG: Anfangszustand = {
@@ -98,6 +101,31 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     abonniere: vi.fn(() => () => {}),
     ...overrides,
   }
+}
+
+function lokaleMehrtabsOhneBroadcast(): ReturnType<typeof vi.fn> {
+  const request = vi.fn(async <T,>(
+    name: string,
+    optionen: LockOptions,
+    callback: (lock: Lock | null) => T | PromiseLike<T>
+  ): Promise<T> => callback({ name, mode: optionen.mode ?? 'exclusive' } as Lock))
+  const testNavigator = Object.create(navigator) as Navigator
+  Object.defineProperty(testNavigator, 'locks', {
+    configurable: true,
+    value: { request } as unknown as LockManager,
+  })
+  vi.stubGlobal('navigator', testNavigator)
+  vi.stubGlobal('BroadcastChannel', undefined)
+  return request
+}
+
+function speichereLokaleNotenbasis(noten: Note[] = []) {
+  localStorage.setItem('vierfelder.me.v2', 'erijon')
+  localStorage.setItem(
+    'vierfelder.faecher.v2',
+    JSON.stringify([FACH_ALT, FACH_NEU, FACH_DRITTES])
+  )
+  localStorage.setItem('vierfelder.noten.v2', JSON.stringify(noten))
 }
 
 const ABRECHNUNG = {
@@ -629,6 +657,108 @@ describe('useTracker atomare Notenmutationen', () => {
       noten: { ...anfangMitFaecher.noten, noten: [NOTE_REMOTE] },
     }))
     await waitFor(() => expect(result.current.notenstand.noten).toEqual([NOTE_REMOTE]))
+  })
+
+  it('laedt eine lokal gespeicherte Note nach verlorener Bestaetigung auch ohne Broadcast', async () => {
+    const sperren = lokaleMehrtabsOhneBroadcast()
+    speichereLokaleNotenbasis()
+    const speicher = lokalesBackend()
+    const laden = vi.fn(() => speicher.laden())
+    const backend: Backend = {
+      ...speicher,
+      laden,
+      schreibeNote: vi.fn(async (note) => {
+        await speicher.schreibeNote(note)
+        return 'nicht-die-bestaetigte-id'
+      }),
+    }
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    let angelegt: Note | null = null
+    act(() => {
+      angelegt = result.current.noteHinzu(FACH_ALT.id, 13, 'klausur', '2026-09-07')
+    })
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(result.current.notenstand.noten).toEqual([
+        expect.objectContaining({ id: angelegt!.id, punkte: 13 }),
+      ])
+    })
+    expect(result.current.fehler).toBe('note nicht gespeichert. stand wird abgeglichen.')
+    expect(sperren).toHaveBeenCalled()
+  })
+
+  it('uebernimmt nach konkurrierendem lokalen Noten-Delete den kanonischen Leerstand', async () => {
+    const sperren = lokaleMehrtabsOhneBroadcast()
+    speichereLokaleNotenbasis([NOTE_REMOTE])
+    const ersterTab = lokalesBackend()
+    const zweiterTab = lokalesBackend()
+    const laden = vi.spyOn(ersterTab, 'laden')
+    const { result } = renderHook(() => useTracker(ersterTab))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    await act(async () => {
+      await zweiterTab.loescheNote(NOTE_REMOTE.id)
+    })
+    expect(result.current.notenstand.noten).toEqual([NOTE_REMOTE])
+
+    act(() => result.current.noteLoeschen(NOTE_REMOTE.id))
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.notenstand.noten).toEqual([]))
+    expect(result.current.fehler).toBe('löschung nicht gespeichert. stand wird abgeglichen.')
+    expect(sperren.mock.calls.some(([name]) => name === 'vierfelder.storage.vierfelder.noten.v2'))
+      .toBe(true)
+  })
+
+  it('ersetzt nach lokaler Noten-ID-Kollision den alten Optimistic-Wert kanonisch', async () => {
+    lokaleMehrtabsOhneBroadcast()
+    speichereLokaleNotenbasis()
+    const ersterTab = lokalesBackend()
+    const zweiterTab = lokalesBackend()
+    const laden = vi.spyOn(ersterTab, 'laden')
+    const kanonisch: Note = { ...NOTE_REMOTE, punkte: 14, titel: 'anderer tab' }
+    const { result } = renderHook(() => useTracker(ersterTab))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    await act(async () => {
+      await zweiterTab.schreibeNote(kanonisch)
+    })
+    act(() => {
+      expect(result.current.noteWiederherstellen(NOTE_REMOTE)).toBe(true)
+    })
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.notenstand.noten).toEqual([kanonisch]))
+    expect(result.current.fehler)
+      .toBe('wiederherstellung nicht gespeichert. stand wird abgeglichen.')
+  })
+
+  it('uebernimmt bei lokalem Pruefungsfach-CAS-Konflikt den Gewinner ohne Broadcast', async () => {
+    const sperren = lokaleMehrtabsOhneBroadcast()
+    speichereLokaleNotenbasis()
+    const ersterTab = lokalesBackend()
+    const zweiterTab = lokalesBackend()
+    const laden = vi.spyOn(ersterTab, 'laden')
+    const { result } = renderHook(() => useTracker(ersterTab))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    await act(async () => {
+      await zweiterTab.setzePruefungsfach(FACH_DRITTES.id, FACH_ALT.id)
+    })
+    act(() => result.current.setzePruefungsfach(FACH_NEU.id))
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(result.current.notenstand.faecher.filter((fach) => fach.pruefungsfach === 4))
+        .toEqual([expect.objectContaining({ id: FACH_DRITTES.id })])
+    })
+    expect(result.current.fehler)
+      .toBe('prüfungsfach wurde in einem anderen tab geändert. stand wird abgeglichen.')
+    expect(sperren.mock.calls.some(([name]) => name === 'vierfelder.storage.vierfelder.faecher.v2'))
+      .toBe(true)
   })
 
   it('ignoriert Sport als viertes Pruefungsfach', async () => {

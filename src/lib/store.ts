@@ -1510,26 +1510,20 @@ export function useTracker(backend: Backend) {
             throw new Error('pruefungsfachwechsel wurde nicht bestaetigt')
           }
         }).catch((e: unknown) => {
-          if (!darfSchreiben()) return
-          if (backend.art === 'lokal') {
-            const zurueck = faecherRef.current.map((aktuell) => {
-              const alt = vorher.find((vorheriges) => vorheriges.id === aktuell.id)
-              return alt ? { ...aktuell, pruefungsfach: alt.pruefungsfach } : aktuell
-            })
-            faecherRef.current = zurueck
-            setFaecher(zurueck)
-          } else {
-            abgleichAnfordernRef.current(true)
-          }
-          setFehler(
-            (e as { code?: string } | null)?.code === '40001'
+          const konflikt = (e as { code?: string } | null)?.code === '40001'
+          behandleMutationsfehler(
+            () => {},
+            konflikt
+              ? 'prüfungsfach wurde in einem anderen tab geändert. stand wird abgeglichen.'
+              : 'prüfungsfach nicht gespeichert. stand wird abgeglichen.',
+            konflikt
               ? 'prüfungsfach wurde auf einem anderen gerät geändert. stand wird abgeglichen.'
               : 'prüfungsfach nicht bestätigt. stand wird abgeglichen.'
           )
         })
       )
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, verfolgeMutation]
   )
 
   const noteHinzu = useCallback(
@@ -1555,20 +1549,16 @@ export function useTracker(backend: Backend) {
         nacheinander([note.id], () => backend.schreibeNote(note).then((bestaetigt) => {
           if (bestaetigt !== note.id) throw new Error('note wurde nicht bestaetigt')
         })).catch(() => {
-          if (!darfSchreiben()) return
-          if (backend.art === 'lokal') {
-            const zurueck = notenRef.current.filter((aktuell) => aktuell.id !== note.id)
-            notenRef.current = zurueck
-            setNoten(zurueck)
-          } else {
-            abgleichAnfordernRef.current(true)
-          }
-          setFehler('note nicht bestätigt. stand wird abgeglichen.')
+          behandleMutationsfehler(
+            () => {},
+            'note nicht gespeichert. stand wird abgeglichen.',
+            'note nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
       return note
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, verfolgeMutation]
   )
 
   const noteLoeschen = useCallback(
@@ -1584,22 +1574,16 @@ export function useTracker(backend: Backend) {
         nacheinander([id], () => backend.loescheNote(id).then((bestaetigt) => {
           if (bestaetigt !== id) throw new Error('notenloeschung wurde nicht bestaetigt')
         })).catch(() => {
-          if (!darfSchreiben()) return
-          if (backend.art === 'lokal') {
-            if (!notenRef.current.some((aktuell) => aktuell.id === note.id)) {
-              const zurueck = [...notenRef.current, note]
-              notenRef.current = zurueck
-              setNoten(zurueck)
-            }
-          } else {
-            abgleichAnfordernRef.current(true)
-          }
-          setFehler('löschung nicht bestätigt. stand wird abgeglichen.')
+          behandleMutationsfehler(
+            () => {},
+            'löschung nicht gespeichert. stand wird abgeglichen.',
+            'löschung nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
       return note
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, verfolgeMutation]
   )
 
   const noteWiederherstellen = useCallback(
@@ -1616,20 +1600,16 @@ export function useTracker(backend: Backend) {
         nacheinander([note.id], () => backend.schreibeNote(note).then((bestaetigt) => {
           if (bestaetigt !== note.id) throw new Error('note wurde nicht bestaetigt')
         })).catch(() => {
-          if (!darfSchreiben()) return
-          if (backend.art === 'lokal') {
-            const zurueck = notenRef.current.filter((aktuell) => aktuell.id !== note.id)
-            notenRef.current = zurueck
-            setNoten(zurueck)
-          } else {
-            abgleichAnfordernRef.current(true)
-          }
-          setFehler('wiederherstellung nicht bestätigt. stand wird abgeglichen.')
+          behandleMutationsfehler(
+            () => {},
+            'wiederherstellung nicht gespeichert. stand wird abgeglichen.',
+            'wiederherstellung nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
       return true
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, verfolgeMutation]
   )
 
   // eine stabile identität: sonst wäre jeder render ein neuer zustand und
