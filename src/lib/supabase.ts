@@ -719,6 +719,70 @@ export async function schreibeUndBestaetigeEinheit(
   return zeile.id
 }
 
+const MAX_EINHEITEN_WIEDERHERSTELLUNG = 64
+
+function validiereEinheitenWiederherstellungsBatch(einheiten: readonly Einheit[]): void {
+  if (einheiten.length > MAX_EINHEITEN_WIEDERHERSTELLUNG) {
+    throw new Error('höchstens 64 einheiten können wiederhergestellt werden')
+  }
+  const erste = einheiten[0]
+  if (!erste) return
+
+  const ids = new Set<string>()
+  for (const einheit of einheiten) {
+    const kanonischeId = einheit.id.toLowerCase()
+    if (
+      !UUID_MUSTER.test(einheit.id)
+      || einheit.id !== kanonischeId
+      || einheit.user !== erste.user
+      || einheit.area !== erste.area
+      || einheit.tag !== erste.tag
+      || ids.has(kanonischeId)
+    ) {
+      throw new Error(
+        'einheiten-wiederherstellung braucht eindeutige UUIDs aus genau einem eigenen Tag'
+      )
+    }
+    ids.add(kanonischeId)
+  }
+}
+
+/**
+ * Eine RPC ist zugleich Insert und exakter Postcheck. Nur die vollständig und
+ * in Eingabereihenfolge bestätigte UUID-Liste gilt als Erfolg.
+ */
+export async function stelleUndBestaetigeEinheitenWiederHer(
+  db: NonNullable<typeof supabase>,
+  einheiten: readonly Einheit[]
+): Promise<string[]> {
+  validiereEinheitenWiederherstellungsBatch(einheiten)
+  if (einheiten.length === 0) return []
+
+  const ids = einheiten.map((einheit) => einheit.id)
+  const p_einheiten = einheiten.map((einheit) => ({
+    id: einheit.id,
+    bereich: einheit.area,
+    tag: einheit.tag,
+    wert: einheit.wert,
+    erfasst: einheit.erfasst,
+    von: einheit.von ?? null,
+  }))
+  const { data, error } = await db.rpc('stelle_einheiten_wieder_her', { p_einheiten })
+  if (error) throw error
+  if (
+    !Array.isArray(data)
+    || data.length !== ids.length
+    || data.some((id, index) => (
+      typeof id !== 'string'
+      || !UUID_MUSTER.test(id)
+      || id !== ids[index]
+    ))
+  ) {
+    throw mutationNichtBestaetigt('einheiten-wiederherstellung wurde nicht exakt bestätigt')
+  }
+  return data as string[]
+}
+
 export async function aktualisiereUndBestaetigeEinheit(
   db: NonNullable<typeof supabase>,
   id: string,
@@ -1630,6 +1694,18 @@ export function supabaseBackend(
         ...(einheitVonVerfuegbar ? { von: e.von ?? null } : {}),
       }
       await schreibeUndBestaetigeEinheit(db, zeile)
+    },
+
+    async stelleEinheitenWiederHer(einheiten) {
+      if (einheiten.length === 0) return
+      if (altbestand || !einheitVonVerfuegbar) {
+        throw new Error('atomare einheiten-wiederherstellung ist in diesem schema nicht verfügbar')
+      }
+      const eigenerUser = personen.get(eigeneId)
+      if (!eigenerUser || einheiten.some((einheit) => einheit.user !== eigenerUser)) {
+        throw new Error('nur eigene einheiten können wiederhergestellt werden')
+      }
+      await stelleUndBestaetigeEinheitenWiederHer(db, einheiten)
     },
 
     async schreibeEinheitVon(e, von) {

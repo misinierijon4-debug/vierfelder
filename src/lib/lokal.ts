@@ -210,6 +210,52 @@ function sichere(einheiten: Einheit[]) {
   localStorage.setItem(EINHEITEN_KEY, JSON.stringify(einheiten))
 }
 
+const MAX_EINHEITEN_WIEDERHERSTELLUNG = 64
+
+function ungueltigeEinheitenWiederherstellung(message: string): Error {
+  return Object.assign(new Error(message), { code: '22023' })
+}
+
+function gleicheEinheit(a: Einheit, b: Einheit): boolean {
+  return a.id === b.id
+    && a.user === b.user
+    && a.area === b.area
+    && a.tag === b.tag
+    && a.wert === b.wert
+    && a.erfasst === b.erfasst
+    && (a.von ?? null) === (b.von ?? null)
+}
+
+function validiereEinheitenWiederherstellung(
+  einheiten: readonly Einheit[],
+  eigenerUser: UserId
+): void {
+  if (einheiten.length > MAX_EINHEITEN_WIEDERHERSTELLUNG) {
+    throw ungueltigeEinheitenWiederherstellung('höchstens 64 einheiten können wiederhergestellt werden')
+  }
+  const erste = einheiten[0]
+  if (!erste) return
+  if (erste.user !== eigenerUser) {
+    throw ungueltigeEinheitenWiederherstellung('nur eigene einheiten können wiederhergestellt werden')
+  }
+
+  const ids = new Set<string>()
+  for (const einheit of einheiten) {
+    if (
+      !einheit.id
+      || einheit.user !== erste.user
+      || einheit.area !== erste.area
+      || einheit.tag !== erste.tag
+      || ids.has(einheit.id)
+    ) {
+      throw ungueltigeEinheitenWiederherstellung(
+        'einheiten-wiederherstellung braucht eindeutige IDs aus genau einem eigenen Tag'
+      )
+    }
+    ids.add(einheit.id)
+  }
+}
+
 // vier pruefungen je person: die drei lk schriftlich, dazu genau ein
 // muendlicher gk — bei erijon mathe, bei koray englisch
 const START_FAECHER: Fach[] = [
@@ -605,6 +651,46 @@ export function lokalesBackend(): Backend {
         alle.push(e)
         sichere(alle)
         sende({ typ: 'einheit', art: 'neu', einheit: e })
+      })
+    },
+
+    async stelleEinheitenWiederHer(einheiten: readonly Einheit[]) {
+      validiereEinheitenWiederherstellung(einheiten, me)
+      if (einheiten.length === 0) return
+
+      return mitLokalerSperre(EINHEITEN_KEY, () => {
+        const alle = alleEinheiten()
+        const gesucht = new Set(einheiten.map((einheit) => einheit.id))
+        const vorhandene = new Map<string, Einheit>()
+
+        for (const einheit of alle) {
+          if (!gesucht.has(einheit.id)) continue
+          if (vorhandene.has(einheit.id)) {
+            throw Object.assign(new Error('einheiten-speicher enthält eine doppelte ID'), {
+              code: '40001',
+            })
+          }
+          vorhandene.set(einheit.id, einheit)
+        }
+
+        const fehlende: Einheit[] = []
+        for (const einheit of einheiten) {
+          const vorhanden = vorhandene.get(einheit.id)
+          if (!vorhanden) {
+            fehlende.push(einheit)
+          } else if (!gleicheEinheit(vorhanden, einheit)) {
+            throw Object.assign(new Error('einheiten-wiederherstellung kollidiert mit anderem Inhalt'), {
+              code: '40001',
+            })
+          }
+        }
+
+        // Alle Kollisionen sind geprüft, bevor der eine dauerhafte Schreibzug
+        // beginnt. Schlägt setItem fehl, wird deshalb keine Teilmenge sichtbar.
+        if (fehlende.length > 0) sichere([...alle, ...fehlende])
+        for (const einheit of einheiten) {
+          sende({ typ: 'einheit', art: 'neu', einheit })
+        }
       })
     },
 

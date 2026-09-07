@@ -1059,9 +1059,14 @@ export function useTracker(backend: Backend) {
       setFehler(null)
 
       void verfolgeMutation(() =>
-        Promise.all(
-          aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
+        nacheinander(
+          aktion.einheiten.map((e) => e.id),
+          () => backend.stelleEinheitenWiederHer(aktion.einheiten)
         ).catch(() => {
+          // Eine verlorene RPC-Antwort ist vom echten Rollback nicht zu
+          // unterscheiden. Die identischen IDs machen einen erneuten Undo
+          // sicher; eine inzwischen neuere Benutzeraktion bleibt vorrangig.
+          if (letzteAktion.current === null) letzteAktion.current = aktion
           behandleMutationsfehler(
             () => {
               let zurueck = einheitenRef.current

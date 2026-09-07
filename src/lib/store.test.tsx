@@ -77,6 +77,7 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     art: 'supabase',
     laden,
     schreibeEinheit: vi.fn(async () => {}),
+    stelleEinheitenWiederHer: vi.fn(async () => {}),
     schreibeEinheitWert: vi.fn(async () => {}),
     schreibeEinheitVon: vi.fn(async () => {}),
     loescheEinheit: vi.fn(async () => {}),
@@ -644,6 +645,89 @@ describe('useTracker atomare Notenmutationen', () => {
     expect(setzePruefungsfach).not.toHaveBeenCalled()
     expect(result.current.notenstand.faecher.find((fach) => fach.id === sport.id)?.pruefungsfach)
       .toBeNull()
+  })
+})
+
+describe('useTracker atomare Mehrfach-Undo-Wiederherstellung', () => {
+  const einheiten: Einheit[] = [
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      user: 'erijon',
+      area: 'gym',
+      tag: '2026-09-06',
+      wert: 45,
+      erfasst: '2026-09-06T15:00:00.000Z',
+      von: null,
+    },
+    {
+      id: '22222222-2222-4222-8222-222222222222',
+      user: 'erijon',
+      area: 'gym',
+      tag: '2026-09-06',
+      wert: 30,
+      erfasst: '2026-09-06T18:00:00.000Z',
+      von: '2026-09-06T17:30:00.000Z',
+    },
+  ]
+  const anfang: Anfangszustand = {
+    ...ANFANG,
+    einheiten: { 'erijon|gym|2026-09-06': einheiten },
+  }
+
+  it('wartet die Tagloeschung ab und sendet danach genau einen verfolgten Batch', async () => {
+    const loeschen = offen<void>()
+    const wiederherstellen = offen<void>()
+    const loescheTag = vi.fn<Backend['loescheTag']>(() => loeschen.promise)
+    const stelleEinheitenWiederHer = vi.fn<Backend['stelleEinheitenWiederHer']>(
+      () => wiederherstellen.promise
+    )
+    const backend = backendMit(async () => anfang, { loescheTag, stelleEinheitenWiederHer })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.toggle('gym', '2026-09-06'))
+    await waitFor(() => expect(loescheTag).toHaveBeenCalledOnce())
+    act(() => result.current.rueckgaengig('gym', '2026-09-06'))
+    expect(stelleEinheitenWiederHer).not.toHaveBeenCalled()
+
+    await act(async () => {
+      loeschen.resolve()
+      await loeschen.promise
+    })
+    await waitFor(() => expect(stelleEinheitenWiederHer).toHaveBeenCalledOnce())
+    expect(stelleEinheitenWiederHer).toHaveBeenCalledWith(einheiten)
+    expect(backend.schreibeEinheit).not.toHaveBeenCalled()
+    expect(hatNeustartBlocker()).toBe(true)
+
+    await act(async () => {
+      wiederherstellen.resolve()
+      await wiederherstellen.promise
+    })
+    await waitFor(() => expect(hatNeustartBlocker()).toBe(false))
+  })
+
+  it('bewahrt den idempotenten Undo nach einer verlorenen Antwort fuer einen Retry', async () => {
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(anfang)
+      .mockResolvedValue(ANFANG)
+    const stelleEinheitenWiederHer = vi.fn<Backend['stelleEinheitenWiederHer']>()
+      .mockRejectedValueOnce(new Error('antwort verloren'))
+      .mockResolvedValueOnce()
+    const backend = backendMit(laden, { stelleEinheitenWiederHer })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.toggle('gym', '2026-09-06'))
+    await waitFor(() => expect(backend.loescheTag).toHaveBeenCalledOnce())
+    act(() => result.current.rueckgaengig('gym', '2026-09-06'))
+
+    await waitFor(() => expect(stelleEinheitenWiederHer).toHaveBeenCalledOnce())
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.zustand.einheiten).toEqual({}))
+
+    act(() => result.current.rueckgaengig('gym', '2026-09-06'))
+    await waitFor(() => expect(stelleEinheitenWiederHer).toHaveBeenCalledTimes(2))
+    expect(stelleEinheitenWiederHer.mock.calls).toEqual([[einheiten], [einheiten]])
   })
 })
 

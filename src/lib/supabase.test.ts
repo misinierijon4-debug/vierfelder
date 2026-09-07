@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Abrechnung, Note, Phase } from './types'
+import type { Abrechnung, Einheit, Note, Phase } from './types'
 import {
   REALTIME_KANAL_OPTIONEN,
   UnbestaetigteMutation,
@@ -24,6 +24,7 @@ import {
   schreibeUndBestaetigeAltEintrag,
   schreibeUndBestaetigeAltWert,
   schreibeUndBestaetigeEinheit,
+  stelleUndBestaetigeEinheitenWiederHer,
   schreibeUndBestaetigeGewicht,
   schreibeUndBestaetigeNote,
   schreibeUndBestaetigeWette,
@@ -315,6 +316,26 @@ const EINHEIT_ZEILE = {
   erfasst: '2026-09-06T18:00:00.000Z',
   von: null,
 }
+const EINHEITEN_UNDO: Einheit[] = [
+  {
+    id: EINHEIT_ZEILE.id,
+    user: 'erijon',
+    area: EINHEIT_ZEILE.bereich,
+    tag: EINHEIT_ZEILE.tag,
+    wert: EINHEIT_ZEILE.wert,
+    erfasst: EINHEIT_ZEILE.erfasst,
+    von: EINHEIT_ZEILE.von,
+  },
+  {
+    id: '55555555-5555-4555-8555-555555555555',
+    user: 'erijon',
+    area: EINHEIT_ZEILE.bereich,
+    tag: EINHEIT_ZEILE.tag,
+    wert: 30,
+    erfasst: '2026-09-06T20:00:00.000Z',
+    von: '2026-09-06T19:30:00.000Z',
+  },
+]
 
 function einheitSchreibDb(kanonisch: unknown) {
   const upsert = vi.fn(async () => ({ error: null }))
@@ -397,6 +418,49 @@ describe('bestaetigte Tracker-Mutationen', () => {
       kollision.db as unknown as Parameters<typeof schreibeUndBestaetigeEinheit>[0],
       EINHEIT_ZEILE
     )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('sendet genau eine Restore-RPC ohne user_id und bestaetigt die geordnete UUID-Liste', async () => {
+    const ids = EINHEITEN_UNDO.map((einheit) => einheit.id)
+    const rpc = vi.fn(async () => ({ data: ids, error: null }))
+
+    await expect(stelleUndBestaetigeEinheitenWiederHer(
+      { rpc } as unknown as Parameters<typeof stelleUndBestaetigeEinheitenWiederHer>[0],
+      EINHEITEN_UNDO
+    )).resolves.toEqual(ids)
+    expect(rpc).toHaveBeenCalledOnce()
+    expect(rpc).toHaveBeenCalledWith('stelle_einheiten_wieder_her', {
+      p_einheiten: EINHEITEN_UNDO.map((einheit) => ({
+        id: einheit.id,
+        bereich: einheit.area,
+        tag: einheit.tag,
+        wert: einheit.wert,
+        erfasst: einheit.erfasst,
+        von: einheit.von ?? null,
+      })),
+    })
+  })
+
+  it.each([
+    ['null', null],
+    ['Teilmenge', [EINHEITEN_UNDO[0]!.id]],
+    ['falsche Reihenfolge', [...EINHEITEN_UNDO].reverse().map((einheit) => einheit.id)],
+  ])('lehnt eine %s-RPC-Bestaetigung ab', async (_fall, data) => {
+    const rpc = vi.fn(async () => ({ data, error: null }))
+    await expect(stelleUndBestaetigeEinheitenWiederHer(
+      { rpc } as unknown as Parameters<typeof stelleUndBestaetigeEinheitenWiederHer>[0],
+      EINHEITEN_UNDO
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+    expect(rpc).toHaveBeenCalledOnce()
+  })
+
+  it('behandelt einen leeren Restore als No-op ohne RPC', async () => {
+    const rpc = vi.fn()
+    await expect(stelleUndBestaetigeEinheitenWiederHer(
+      { rpc } as unknown as Parameters<typeof stelleUndBestaetigeEinheitenWiederHer>[0],
+      []
+    )).resolves.toEqual([])
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('filtert Updates atomar auf den alten Nicht-Null- oder Nullwert', async () => {

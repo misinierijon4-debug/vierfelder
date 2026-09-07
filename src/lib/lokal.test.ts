@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BackendEreignis } from './backend'
 import { lokalesBackend } from './lokal'
 import { tickKey } from './types'
+import type { Einheit } from './types'
 
 /** localStorage gibt es im knoten nicht, und mehr als das braucht der prototyp nicht */
 class Speicher {
@@ -501,6 +502,95 @@ describe('lokale Pruefungsfachwahl', () => {
       setItem.mockRestore()
       if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
       else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+})
+
+describe('lokale atomare Einheiten-Wiederherstellung', () => {
+  const key = 'vierfelder.einheiten.v1'
+  const erste: Einheit = {
+    id: '11111111-1111-4111-8111-111111111111',
+    user: 'erijon',
+    area: 'gym',
+    tag: '2026-09-06',
+    wert: 45,
+    erfasst: '2026-09-06T15:00:00.000Z',
+    von: null,
+  }
+  const zweite: Einheit = {
+    ...erste,
+    id: '22222222-2222-4222-8222-222222222222',
+    wert: 30,
+    erfasst: '2026-09-06T18:00:00.000Z',
+    von: '2026-09-06T17:30:00.000Z',
+  }
+
+  beforeEach(() => {
+    speicher.clear()
+  })
+
+  it('laesst bei einem dauerhaften Speicherfehler keine Teilmenge zurueck', async () => {
+    const vorher: Einheit = {
+      ...erste,
+      id: '33333333-3333-4333-8333-333333333333',
+      tag: '2026-09-05',
+    }
+    speicher.setItem(key, JSON.stringify([vorher]))
+    const setItem = vi.spyOn(speicher, 'setItem').mockImplementationOnce(() => {
+      throw new Error('speicher voll')
+    })
+
+    try {
+      await expect(
+        lokalesBackend().stelleEinheitenWiederHer([erste, zweite])
+      ).rejects.toThrow('speicher voll')
+      expect(JSON.parse(speicher.getItem(key)!)).toEqual([vorher])
+      expect(setItem).toHaveBeenCalledOnce()
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
+  it('prueft jede Kollision vor dem einzigen Schreibzug', async () => {
+    const kollidierend = { ...zweite, wert: 99 }
+    speicher.setItem(key, JSON.stringify([kollidierend]))
+    const setItem = vi.spyOn(speicher, 'setItem')
+
+    try {
+      await expect(
+        lokalesBackend().stelleEinheitenWiederHer([erste, zweite])
+      ).rejects.toMatchObject({ code: '40001' })
+      expect(JSON.parse(speicher.getItem(key)!)).toEqual([kollidierend])
+      expect(setItem).not.toHaveBeenCalled()
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
+  it('bestaetigt den identischen Retry ohne zweite Speicher-Schreibung', async () => {
+    const backend = lokalesBackend()
+    const setItem = vi.spyOn(speicher, 'setItem')
+
+    try {
+      await backend.stelleEinheitenWiederHer([erste, zweite])
+      await backend.stelleEinheitenWiederHer([erste, zweite])
+      expect(setItem).toHaveBeenCalledOnce()
+      expect(JSON.parse(speicher.getItem(key)!)).toEqual([erste, zweite])
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
+  it('heilt eine bereits vorhandene exakte Teilmenge mit genau einer Schreibung', async () => {
+    speicher.setItem(key, JSON.stringify([erste]))
+    const setItem = vi.spyOn(speicher, 'setItem')
+
+    try {
+      await lokalesBackend().stelleEinheitenWiederHer([erste, zweite])
+      expect(setItem).toHaveBeenCalledOnce()
+      expect(JSON.parse(speicher.getItem(key)!)).toEqual([erste, zweite])
+    } finally {
+      setItem.mockRestore()
     }
   })
 })

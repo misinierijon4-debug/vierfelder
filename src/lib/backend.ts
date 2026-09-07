@@ -164,6 +164,8 @@ export interface Backend {
   laden(): Promise<Anfangszustand>
   /** legt eine durchführung an. die id kommt vom client und macht das wiederholbar */
   schreibeEinheit(e: Einheit): Promise<void>
+  /** stellt bis zu 64 geloeschte durchfuehrungen atomar und idempotent wieder her */
+  stelleEinheitenWiederHer(einheiten: readonly Einheit[]): Promise<void>
   /** ändert die minuten oder seiten einer einheit */
   schreibeEinheitWert(e: Einheit, wert: number | null): Promise<void>
   /** ändert die erfasste durchführungszeit einer einheit. null löscht sie */
