@@ -6,7 +6,9 @@ Arbeitsbranch `codex/ganzprojekt-verbesserung`; es ist kein Produktionsfreigabep
 ## Ausgangszustand und Baseline
 
 - Lokaler `main`: `ae9d97c`, sauber und vier Commits hinter `origin/main`.
-- Aktuelle Basis: `origin/main` bei `0a8301d`; neue Arbeitsbranch direkt davon erstellt.
+- Startbasis: `origin/main` bei `0a8301d`; neue Arbeitsbranch direkt davon erstellt.
+  Beim finalen Pflicht-Fetch rückte `origin/main` auf `55f48e2` vor. Dieser
+  Zuwachs wurde geprüft und als Merge `7919264` in die Arbeitsbranch integriert.
 - Installation: `npm ci`, Exit 0, 405 Pakete, circa 5 Minuten.
 - Tests: `npm test`, Exit 0, 17 Dateien und 292 Tests, Vitest-Laufzeit 3,56 s.
 - TypeScript: `npx tsc -b`, Exit 0, 15,29 s.
@@ -65,6 +67,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P1 | Gemeinsame Wetten waren Last-Write-Wins und Delete/Undo nicht versioniert | ein veralteter Client kann den Einsatz des Partners still überschreiben | Expected-Version-CAS, Tombstone, zwei schnelle Clients | lokal behoben; Migration/Staging offen |
 | P1 | Mehrfach-Undo restaurierte Einheiten über unabhängige Requests | Teilfehler kann nur einen Teil des gelöschten Tags dauerhaft wiederherstellen | ein atomarer, idempotenter Batch samt Konfliktfall | lokal behoben; Migration/Staging offen |
 | P1 | Lokale Broadcast-Payloads konnten verspätet eintreffen | ein alter Zwei-Tab-Event dreht einen neueren sichtbaren Wert zurück | verzögertes Event vor/während Snapshot | behoben durch kanonische Invalidierung |
+| P1 | Kurze abgeschlossene Automationen verschwanden vollständig, weil sie noch keinen Punkt auslösen | eine echte Messung wirkt wie nie erfolgt | Kurzsitzung in Zeile, Tagesdetail, Kalender und Wochenpunkt | behoben; sichtbar als `zu kurz`/`noch kein punkt`, weiterhin kein Punkt |
 | P1 | Sonntag 18 Uhr ist zugleich als finales Archiv und als weiter beschreibbarer Trackingtag modelliert | Aktivitaeten nach 18 Uhr koennen dauerhaft aus dem Archiv fehlen | Produktentscheidung plus DB-/Zeitgrenztests | Freigabeentscheidung offen; Empfehlung Montag 00:00 Europe/Berlin |
 
 ## Remote-Branches
@@ -83,6 +86,11 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
   Live-Abgleich beide Migrationen, `schlaf-erinnerung` v1 und die refaktorierte
   `gewicht-erinnerung` v2 bestätigt hat. Die Commits sind patch-id-identisch;
   der neun Commits zurückliegende Featurebranch selbst wurde nicht gemergt.
+- `55f48e2`: beim finalen Remote-Abgleich neu auf `origin/main` gefunden und
+  vollständig integriert. Kurze, abgeschlossene Automationen bleiben sichtbar,
+  tragen aber explizit `zu kurz` beziehungsweise `noch kein punkt`; die
+  gemischte Herkunft und die vorsichtige Doppelerfassungswarnung dieser Branch
+  bleiben erhalten.
 - Die übrigen Remote-Spitzen sind Vorfahren von `origin/main` oder fachlich
   veraltet; daraus ist kein Sammelmerge vorgesehen.
 
@@ -795,10 +803,10 @@ und eine ausdrückliche Freigabe erforderlich.
   startet Chrome mit frischem Profil bei 430 × 932 und prüft zehn echte
   Interaktionen. Fehlende Ziele brechen den Lauf ab; der Benchmark kann damit
   keine Produktivdaten schreiben.
-- Finaler Lauf: DOMContentLoaded 124 ms, Load 126 ms, FCP 440 ms;
-  durchschnittliche Interaktion 125 ms, Maximum 290 ms, keine Long Tasks.
-  Initiales Sites-JavaScript: 578.823 Byte roh / 172.394 Byte gzip, gesamtes
-  JavaScript 584.476 / 174.593 Byte; PWA-Precache 608,98 KiB. Das ist ein
+- Finaler Lauf: DOMContentLoaded 124 ms, Load 126 ms, FCP 452 ms;
+  durchschnittliche Interaktion 133 ms, Maximum 322 ms, keine Long Tasks.
+  Initiales Sites-JavaScript: 579.110 Byte roh / 172.506 Byte gzip, gesamtes
+  JavaScript 584.763 / 174.705 Byte; PWA-Precache 609,26 KiB. Das ist ein
   einzelner reproduzierbarer Maschinenlauf und keine universelle
   Nutzerlatenzbehauptung.
 - Versuchsweise Tab-Aufteilung senkte das initiale gzip um rund 21 KiB, machte
@@ -807,11 +815,11 @@ und eine ausdrückliche Freigabe erforderlich.
   wurden bedarfsweise Kalendererzeugung, kleinere lokale Fontimporte,
   getrennte Buildziele und ein Budget für initiales sowie gesamtes JavaScript.
 - Der Supabase-Webbuild ist wegen der Sicherheits-, Status- und
-  Datenintegritätslogik gegenüber der Baseline nicht kleiner: final 811.141
-  Byte roh / 231.182 Byte gzip initial, 816.794 / 233.381 Byte gesamt;
-  PWA-Precache 835,85 KiB. Das bisherige 225-KiB-Initialbudget schlug dadurch
-  um 783 Byte fehl. Es wurde offen auf 227 KiB angehoben; gegenüber dem finalen
-  Wert bleiben 1.266 Byte Reserve, während das 230-KiB-Gesamtbudget unverändert
+  Datenintegritätslogik gegenüber der Baseline nicht kleiner: final 811.423
+  Byte roh / 231.300 Byte gzip initial, 817.076 / 233.499 Byte gesamt;
+  PWA-Precache 836,13 KiB. Das bisherige 225-KiB-Initialbudget schlug dadurch
+  um 900 Byte fehl. Es wurde offen auf 227 KiB angehoben; gegenüber dem finalen
+  Wert bleiben 1.148 Byte Reserve, während das 230-KiB-Gesamtbudget unverändert
   bleibt. Das ist Sicherheits-/Funktionszuwachs, kein pauschaler
   Performancegewinn.
 - Ein umfangreicher CDP-Zusatz für Slow- und Offline-Start bestand zwar drei
@@ -832,7 +840,7 @@ und eine ausdrückliche Freigabe erforderlich.
   trennt Prüfung, Staging, Backup/Restore, Migration, Function-Deployment,
   Pages und Rollback.
 - Finaler lokaler Stand unter der festgelegten Runtime: `node@22.23.2` führte
-  Vitest mit Exit 0, 61 Dateien und 723 Tests sowie TypeScript mit Exit 0 aus.
+  Vitest mit Exit 0, 61 Dateien und 725 Tests sowie TypeScript mit Exit 0 aus.
   `npm run build:web` Exit 0; `npm run check:dist` Exit 0;
   `npm run benchmark:core` Exit 0. Deno 2.9.6 prüfte alle fünf Edge Functions
   mit eingefrorenem Lockfile, Exit 0. Beide `npm audit`-Läufe meldeten null
