@@ -40,15 +40,18 @@ export function SchlafTab({
   // aus welcher richtung die neue woche hereinkommt: −1 von links, 1 von rechts
   const [richtung, setRichtung] = useState<-1 | 1>(1)
 
-  // Starte standardmäßig mit der letzten Nacht der Woche, für die Daten vorliegen,
-  // oder mit heute
-  const [gewaehlterTag, setGewaehlterTag] = useState<string>(() => {
-    const umgekehrt = [...woche].reverse()
-    const letzteMitDaten = umgekehrt.find((tag) =>
-      naechte.some((n) => abendDatum(n.einschlafzeit) === tag && n.schlafMinuten > 0)
-    )
-    return letzteMitDaten ?? (woche.includes(heuteKey) ? heuteKey : woche[0]!)
-  })
+  // Ohne manuelle Auswahl immer die neueste erfasste eigene Nacht zeigen,
+  // auch ueber die Wochengrenze und nach einem spaeteren Health-Import.
+  const [manuellerTag, setGewaehlterTag] = useState<string | null>(null)
+  const letzterErfassterTag = useMemo(() => {
+    const tage = naechte
+      .filter((nacht) => nacht.user === ansichtUser && nacht.schlafMinuten > 0)
+      .map((nacht) => abendDatum(nacht.einschlafzeit))
+      .filter((tag) => tag <= heuteKey)
+      .sort()
+    return tage.at(-1) ?? heuteKey
+  }, [naechte, ansichtUser, heuteKey])
+  const gewaehlterTag = manuellerTag ?? letzterErfassterTag
 
   const sichtbareWoche = useMemo(() => weekDays(fromKey(gewaehlterTag)), [gewaehlterTag])
   const wochenTitel = istSelbeWoche(sichtbareWoche, woche)
