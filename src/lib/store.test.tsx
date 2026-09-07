@@ -575,7 +575,7 @@ describe('useTracker atomare Notenmutationen', () => {
 })
 
 describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
-  it('behaelt im lokalen Backend den entitaetsbezogenen Rollback', async () => {
+  it('laedt nach lokalem Schreibfehler den kanonischen Speicher statt eines alten React-Snapshots', async () => {
     const laden = vi.fn(async () => ANFANG)
     const backend = backendMit(laden, {
       art: 'lokal',
@@ -589,8 +589,8 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
     act(() => result.current.einheitHinzu('lernen', '2026-09-06'))
 
     await waitFor(() => expect(result.current.fehler).toBe('nicht gespeichert. tippe nochmal.'))
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
     expect(result.current.zustand.einheiten).toEqual({})
-    expect(laden).toHaveBeenCalledTimes(1)
   })
 
   it('rollt ein Realtime-Ereignis bei unbestaetigtem Tracker-Insert nicht zurueck', async () => {
@@ -792,6 +792,106 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
     expect(result.current.zustand.gewichte['erijon|2026-09-06']).toBe(81.3)
     expect(result.current.wetten['2026-09-07']).toBe('letztes neues')
     expect(result.current.fehler).toBeNull()
+  })
+
+  it('faellt nach zwei lokalen Wertfehlern auf den bestaetigten Speicherstand zurueck', async () => {
+    const einheit: Einheit = {
+      id: 'beide-fehler', user: 'erijon', area: 'lernen', tag: '2026-09-06',
+      wert: 60, erfasst: null,
+    }
+    const kanonisch = {
+      ...ANFANG,
+      einheiten: { 'erijon|lernen|2026-09-06': [einheit] },
+    }
+    const laden = vi.fn(async () => kanonisch)
+    const schreibeEinheitWert = vi.fn<Backend['schreibeEinheitWert']>()
+      .mockRejectedValueOnce(new Error('erster write fehlgeschlagen'))
+      .mockRejectedValueOnce(new Error('zweiter write fehlgeschlagen'))
+    const backend = backendMit(laden, { art: 'lokal', schreibeEinheitWert })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.wertSetzen(einheit.id, 61)
+      result.current.wertSetzen(einheit.id, 62)
+    })
+
+    await waitFor(() => expect(schreibeEinheitWert).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(laden.mock.calls.length).toBeGreaterThanOrEqual(2))
+    await waitFor(() => {
+      expect(Object.values(result.current.zustand.einheiten).flat()[0]?.wert).toBe(60)
+    })
+  })
+
+  it('uebernimmt nach gleichem fehlgeschlagenem und danach erfolgreichem Wert den kanonischen Erfolg', async () => {
+    const einheit: Einheit = {
+      id: 'gleich-dann-erfolg', user: 'erijon', area: 'lernen', tag: '2026-09-06',
+      wert: 60, erfasst: null,
+    }
+    let kanonisch: Anfangszustand = {
+      ...ANFANG,
+      einheiten: { 'erijon|lernen|2026-09-06': [einheit] },
+    }
+    const laden = vi.fn(async () => kanonisch)
+    const schreibeEinheitWert = vi.fn<Backend['schreibeEinheitWert']>()
+      .mockRejectedValueOnce(new Error('erster write fehlgeschlagen'))
+      .mockImplementationOnce(async (_alt, wert) => {
+        kanonisch = {
+          ...kanonisch,
+          einheiten: {
+            'erijon|lernen|2026-09-06': [{ ...einheit, wert }],
+          },
+        }
+      })
+    const backend = backendMit(laden, { art: 'lokal', schreibeEinheitWert })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.wertSetzen(einheit.id, 61)
+      result.current.wertSetzen(einheit.id, 61)
+    })
+
+    await waitFor(() => expect(schreibeEinheitWert).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(laden.mock.calls.length).toBeGreaterThanOrEqual(2))
+    await waitFor(() => {
+      expect(Object.values(result.current.zustand.einheiten).flat()[0]?.wert).toBe(61)
+    })
+  })
+
+  it('setzt auch Gewicht und Wette nach zwei lokalen Fehlern auf die bestaetigte Basis', async () => {
+    const kanonisch: Anfangszustand = {
+      ...ANFANG,
+      gewichte: { 'erijon|2026-09-06': 80 },
+      wetten: { '2026-09-07': 'alt' },
+    }
+    const laden = vi.fn(async () => kanonisch)
+    const schreibeGewicht = vi.fn<Backend['schreibeGewicht']>()
+      .mockRejectedValue(new Error('gewicht fehlgeschlagen'))
+    const schreibeWette = vi.fn<Backend['schreibeWette']>()
+      .mockRejectedValue(new Error('wette fehlgeschlagen'))
+    const backend = backendMit(laden, {
+      art: 'lokal',
+      schreibeGewicht,
+      schreibeWette,
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzeGewicht('2026-09-06', 81.2)
+      result.current.setzeGewicht('2026-09-06', 81.3)
+      result.current.setzeWette('2026-09-07', 'neu eins')
+      result.current.setzeWette('2026-09-07', 'neu zwei')
+    })
+
+    await waitFor(() => expect(schreibeGewicht).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(schreibeWette).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(laden.mock.calls.length).toBeGreaterThanOrEqual(2))
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte['erijon|2026-09-06']).toBe(80)
+      expect(result.current.wetten['2026-09-07']).toBe('alt')
+    })
   })
 })
 

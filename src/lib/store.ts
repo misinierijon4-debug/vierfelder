@@ -307,21 +307,20 @@ export function useTracker(backend: Backend) {
   }, [backendLauf])
 
   const behandleMutationsfehler = useCallback((
-    lokalZurueck: () => void,
+    _lokalZurueck: () => void,
     lokalText: string,
     abgleichText: string
   ) => {
     if (!darfSchreiben()) return
-    if (backend.art === 'lokal') {
-      lokalZurueck()
-      setFehler(lokalText)
-      return
-    }
-    // Sowohl eine explizite Nullzeilen-Bestaetigung als auch ein verlorener
-    // Transportausgang sind fuer den Browser unbekannt. Ein alter Snapshot
-    // darf dann kein zwischenzeitliches Realtime-Ereignis zurueckrollen.
+    // Auch im lokalen Mehrtabbetrieb ist ein vor der Mutation aufgenommener
+    // React-Snapshot keine sichere Rollback-Basis: schnell aufeinanderfolgende
+    // Writes koennen ihn bereits ueberholt haben. Nach Ruhe der gesamten
+    // Schreibkette wird deshalb in beiden Backends der kanonische Bestand neu
+    // geladen. So kann weder ein alter Optimistic-Wert einen neueren Erfolg
+    // verdecken noch ein Teilfehler auf einen ebenfalls unbestaetigten Wert
+    // zurueckrollen.
     abgleichAnfordernRef.current(true)
-    setFehler(abgleichText)
+    setFehler(backend.art === 'lokal' ? lokalText : abgleichText)
   }, [backend.art, darfSchreiben])
 
   const nacheinander = useCallback((ids: string[], schreibe: () => Promise<void>) => {
@@ -698,7 +697,7 @@ export function useTracker(backend: Backend) {
     }
 
     starteAbgleich = (stark: boolean) => {
-      if (!nochAktuell() || backend.art !== 'supabase') return
+      if (!nochAktuell()) return
       if (!initialGeladen) {
         nachInitialNoetig = true
         nachInitialStark ||= stark
