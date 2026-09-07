@@ -267,8 +267,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
         {/* Tab-Navigation */}
         <TabLeiste aktiverTab={aktiverTab} onTabWechsel={setAktiverTab} />
 
-        {/* fester platz, damit eine fehlermeldung nichts verschiebt */}
-        <div className="flex h-5 items-start">
+        {/* mindestens eine zeile freihalten; lange statusmeldungen duerfen bei
+            grosser schrift umbrechen, statt abgeschnitten zu werden. */}
+        <div className="flex min-h-5 items-start">
           <AnimatePresence mode="wait" initial={false}>
             {fehler ? (
               <motion.p
@@ -313,7 +314,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
             {nachholStatus === 'fehler' && (
               <button
                 type="button"
-                className="min-h-7 shrink-0 underline underline-offset-2"
+                className="min-h-11 shrink-0 px-1 underline underline-offset-2"
                 onClick={() => holeWocheNach(nachholWoche)}
               >
                 erneut
