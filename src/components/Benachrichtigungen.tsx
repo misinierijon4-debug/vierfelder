@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { BellRinging, BellSlash } from '@phosphor-icons/react'
 import {
@@ -15,7 +15,8 @@ import {
   setzeGewichtErinnerungszeit,
 } from '../lib/erinnerung'
 import { blockiereNeustart } from '../lib/pwaBlocker'
-import { AktivitaetsErinnerungen } from './AktivitaetsErinnerungen'
+const AktivitaetsErinnerungen = lazy(() => import('./AktivitaetsErinnerungen')
+  .then(modul => ({ default: modul.AktivitaetsErinnerungen })))
 
 /**
  * Der Schalter fuer Benachrichtigungen.
@@ -118,7 +119,7 @@ export function Benachrichtigungen() {
         onAus={fuehreAus}
       />
 
-      {zustand === 'an' && <AktivitaetsErinnerungen />}
+      {zustand === 'an' && <Suspense fallback={null}><AktivitaetsErinnerungen /></Suspense>}
 
       <AnimatePresence initial={false}>
         {meldung && (

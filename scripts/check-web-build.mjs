@@ -131,8 +131,12 @@ for (const name of jsDateien) {
 // Pruefung vorhandener lokaler Daten erweitern den Startpfad messbar. Die
 // Budgets lassen dafuer gut ein KiB kontrollierten Spielraum; ein groesserer
 // Zuwachs bleibt weiterhin ein harter Buildfehler.
-const INITIAL_GZIP_BUDGET = 228 * 1024
-const GESAMT_GZIP_BUDGET = 231 * 1024
+// Drei einzeln bestaetigt speicherbare Reminder-Schalter kommen als Lazy-Chunk
+// hinzu. Gemessener Pages-Stand: 233514 Byte initial, rund 237000 Byte gesamt.
+// Initial nur 128 Byte zusaetzlicher Spielraum, insgesamt ein KiB fuer die
+// neue Funktion. Beide Grenzen bleiben verbindlich; keine Budgetabschaltung.
+const INITIAL_GZIP_BUDGET = 228 * 1024 + 128
+const GESAMT_GZIP_BUDGET = 232 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`

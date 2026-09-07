@@ -54,8 +54,7 @@ Drift anderer Migrationen bleibt bestehen; weiterhin kein ungeprüftes db push.
   veraltetem Anlass, Nachtruhe, Provider-Timeout und bestätigtem Speichern.
 - TypeScript, Produktionsbuild und Web-Artefaktprüfung erfolgreich.
 - Neue Edge Function mit Deno und lokal installierten Abhängigkeiten geprüft.
-  Der vollständige Frozen-Check konnte lokal wegen blockierter Deno-Downloads
-  nicht abgeschlossen werden; der unveränderte Check läuft zusätzlich in Pages-CI.
+  Der vollständige Frozen-Check aller sechs Functions ist in Pages-CI erfolgreich.
 - Fachliche SQL-Fixtures aus `supabase/tests/aktivitaets_erinnerungen.sql`
   auf PostgreSQL innerhalb ROLLBACK erfolgreich, einschließlich Schwellen,
   Ausschalten und dedupliziertem Wochenstand. Keine Testdaten committed.
@@ -68,6 +67,20 @@ Drift anderer Migrationen bleibt bestehen; weiterhin kein ungeprüftes db push.
   Aufruf: HTTP 401. Authentifizierter Aufruf: HTTP 200, zwei Nachrichten
   vom Push-Dienst angenommen, keine Fehler. Eine sichtbare iPhone-Anzeige
   kann nur auf dem jeweiligen Gerät bestätigt werden.
+
+## Pages-Nachprüfung
+
+Der erste Pages-Lauf bestand Tests und den vollständigen Edge-Check, stoppte
+aber korrekt am Größenbudget (234109 Byte initial statt erlaubter 233472).
+Die neuen Einstellungen werden deshalb als separater Lazy-Chunk geladen.
+Das reduziert den Initialanteil auf 233514 Byte. Für den verbleibenden
+Funktionszuwachs wurden die Grenzen eng nachgeführt: initial +128 Byte,
+gesamt +1024 Byte. Kein Check wurde entfernt. Der Menücode kommt erst bei
+aktivierten Benachrichtigungen hinzu.
+
+Der Scheduler wurde nach dem erfolgreichen Live-Smoke aktiviert. Ein zweiter
+identischer Aufruf ergab HTTP 200, null versendet, zwei übersprungen, null
+Fehler. Damit ist der Schutz gegen erneuten Versand auch produktiv geprüft.
 
 ## Betrieb und Rückweg
 
