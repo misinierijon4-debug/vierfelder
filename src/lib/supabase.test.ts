@@ -373,21 +373,15 @@ describe('bestaetigte Tracker-Mutationen', () => {
     )).rejects.toBeInstanceOf(UnbestaetigteMutation)
   })
 
-  it('unterscheidet bestaetigte, idempotent bereits erfolgte und RLS-Null-Loeschung', async () => {
-    const loeschDb = (loeschzeile: unknown, bestand: unknown = null) => {
+  it('bestaetigt nur die exakte DELETE-Zeile und erhaelt Null- und Fehlerpfade', async () => {
+    const loeschDb = (loeschzeile: unknown, error: unknown = null) => {
       const loeschen = {
         match: vi.fn(() => loeschen),
         select: vi.fn(() => loeschen),
-        maybeSingle: vi.fn(async () => ({ data: loeschzeile, error: null })),
-      }
-      const lesen = {
-        eq: vi.fn(() => lesen),
-        maybeSingle: vi.fn(async () => ({ data: bestand, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: loeschzeile, error })),
       }
       return {
-        from: vi.fn()
-          .mockReturnValueOnce({ delete: vi.fn(() => loeschen) })
-          .mockReturnValueOnce({ select: vi.fn(() => lesen) }),
+        from: vi.fn(() => ({ delete: vi.fn(() => loeschen) })),
       }
     }
     await expect(loescheUndBestaetigeEinheit(
@@ -395,46 +389,70 @@ describe('bestaetigte Tracker-Mutationen', () => {
       EINHEIT_ZEILE.id,
       ERIJON_ID
     )).resolves.toBe(EINHEIT_ZEILE.id)
+    const rlsNulltreffer = loeschDb(null)
     await expect(loescheUndBestaetigeEinheit(
-      loeschDb(null, null) as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
-      EINHEIT_ZEILE.id,
-      ERIJON_ID
-    )).resolves.toBe(EINHEIT_ZEILE.id)
-    await expect(loescheUndBestaetigeEinheit(
-      loeschDb(null, { id: EINHEIT_ZEILE.id, user_id: ERIJON_ID }) as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
+      rlsNulltreffer as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
       EINHEIT_ZEILE.id,
       ERIJON_ID
     )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+    expect(rlsNulltreffer.from).toHaveBeenCalledOnce()
+
+    const datenbankfehler = { code: '42501' }
+    await expect(loescheUndBestaetigeEinheit(
+      loeschDb(null, datenbankfehler) as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID
+    )).rejects.toBe(datenbankfehler)
   })
 
-  it('meldet einen echten Teilfehler der Mehrfachloeschung und akzeptiert den fertigen Retry', async () => {
+  it('bestaetigt Mehrfachloeschungen nur mit allen erwarteten DELETE-IDs', async () => {
     const ids = [EINHEIT_ZEILE.id, '55555555-5555-4555-8555-555555555555']
-    const mehrfachDb = (verblieben: unknown[]) => {
+    const mehrfachDb = (geloescht: unknown, error: unknown = null) => {
       const loeschen = {
         eq: vi.fn(() => loeschen),
         in: vi.fn(() => loeschen),
-        select: vi.fn(async () => ({ data: [{ id: ids[0] }], error: null })),
-      }
-      const lesen = {
-        eq: vi.fn(() => lesen),
-        in: vi.fn(async () => ({ data: verblieben, error: null })),
+        select: vi.fn(async () => ({ data: geloescht, error })),
       }
       return {
-        from: vi.fn()
-          .mockReturnValueOnce({ delete: vi.fn(() => loeschen) })
-          .mockReturnValueOnce({ select: vi.fn(() => lesen) }),
+        from: vi.fn(() => ({ delete: vi.fn(() => loeschen) })),
       }
     }
     await expect(loescheUndBestaetigeEinheiten(
-      mehrfachDb([{ id: ids[1] }]) as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
-      ids,
-      ERIJON_ID
-    )).rejects.toThrow('nur teilweise bestaetigt')
-    await expect(loescheUndBestaetigeEinheiten(
-      mehrfachDb([]) as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      mehrfachDb(ids.map((id) => ({ id }))) as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
       ids,
       ERIJON_ID
     )).resolves.toEqual(ids)
+
+    const teiltreffer = mehrfachDb([{ id: ids[0] }])
+    await expect(loescheUndBestaetigeEinheiten(
+      teiltreffer as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      ids,
+      ERIJON_ID
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+    expect(teiltreffer.from).toHaveBeenCalledOnce()
+
+    const nulltreffer = mehrfachDb(null)
+    await expect(loescheUndBestaetigeEinheiten(
+      nulltreffer as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      ids,
+      ERIJON_ID
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+    expect(nulltreffer.from).toHaveBeenCalledOnce()
+
+    const leererTreffer = mehrfachDb([])
+    await expect(loescheUndBestaetigeEinheiten(
+      leererTreffer as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      ids,
+      ERIJON_ID
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+    expect(leererTreffer.from).toHaveBeenCalledOnce()
+
+    const datenbankfehler = { code: '42501' }
+    await expect(loescheUndBestaetigeEinheiten(
+      mehrfachDb(null, datenbankfehler) as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      ids,
+      ERIJON_ID
+    )).rejects.toBe(datenbankfehler)
   })
 })
 
@@ -658,7 +676,7 @@ describe('bestaetigte Notenmutationen', () => {
         NOTE.id,
         EIGENE_ID
       )
-    ).rejects.toThrow('nicht bestaetigt')
+    ).rejects.toBeInstanceOf(UnbestaetigteMutation)
   })
 
   it('akzeptiert beim Loeschen nur die exakt zurueckgegebene ID', async () => {

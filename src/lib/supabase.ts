@@ -650,18 +650,10 @@ async function loescheUndBestaetigeNatuerlicheZeile(
     throw mutationNichtBestaetigt(`${name}-loeschung lieferte eine fremde zeile`)
   }
   if (hatExakteFelder(loeschung.data, treffer)) return
-
-  // Ein Retry nach verlorener Erfolgsantwort sieht keine DELETE-Zeile mehr.
-  // Nur ein kanonischer Read darf dann bestaetigen, dass der Zielzustand
-  // tatsaechlich bereits erreicht ist. Sichtbar verbliebene Zeilen sind RLS-
-  // Nulltreffer oder Konkurrenz und daher kein Erfolg.
-  let pruefung = db.from(tabelle).select(spalten)
-  for (const [feld, wert] of Object.entries(treffer)) pruefung = pruefung.eq(feld, wert)
-  const bestand = await pruefung.maybeSingle()
-  if (bestand.error) throw bestand.error
-  if (bestand.data !== null) {
-    throw mutationNichtBestaetigt(`${name}-loeschung wurde nicht bestaetigt`)
-  }
+  // Ein nachgeschalteter SELECT unter derselben RLS kann eine verbliebene
+  // Zielzeile ebenfalls verbergen. Nur die vom DELETE selbst zurueckgegebene
+  // exakte Zeile bestaetigt deshalb die Mutation.
+  throw mutationNichtBestaetigt(`${name}-loeschung wurde nicht bestaetigt`)
 }
 
 export async function loescheUndBestaetigeEinheit(
@@ -712,25 +704,11 @@ export async function loescheUndBestaetigeEinheiten(
     bestaetigt.add(id)
   }
   if (bestaetigt.size === erwartet.size) return eindeutig
-
-  const bestand = await db
-    .from('einheiten')
-    .select('id')
-    .eq('user_id', eigeneId)
-    .in('id', eindeutig)
-  if (bestand.error) throw bestand.error
-  if (!Array.isArray(bestand.data)) {
-    throw mutationNichtBestaetigt('tagloeschung konnte den restbestand nicht pruefen')
-  }
-  const verblieben = bestand.data
-    .map((zeile) => zeile?.id)
-    .filter((id): id is string => typeof id === 'string' && erwartet.has(id))
-  if (verblieben.length > 0) {
-    throw mutationNichtBestaetigt(
-      `tagloeschung nur teilweise bestaetigt; ${verblieben.length} zeilen verbleiben`
-    )
-  }
-  return eindeutig
+  // Auch ein leerer Kontroll-SELECT waere unter derselben RLS kein Beleg fuer
+  // den Zielzustand. Fehlende DELETE-IDs bleiben daher abgleichpflichtig.
+  throw mutationNichtBestaetigt(
+    `tagloeschung nur teilweise bestaetigt; ${erwartet.size - bestaetigt.size} ids fehlen`
+  )
 }
 
 type AltEintragPayload = { user_id: string; bereich: AreaId; tag: string }
@@ -924,7 +902,7 @@ export async function loescheUndBestaetigeNote(
     .maybeSingle()
   if (bestaetigung.error) throw bestaetigung.error
   if (bestaetigung.data?.id !== id) {
-    throw new Error('notenloeschung wurde nicht bestaetigt')
+    throw mutationNichtBestaetigt('notenloeschung wurde nicht bestaetigt')
   }
   return id
 }
