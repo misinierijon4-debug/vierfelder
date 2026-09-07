@@ -47,6 +47,7 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | `App.tsx`/`store.ts`: Mutationen bleiben während des initialen Ladens aktiv | doppelte Einträge oder leeres Sonntagsarchiv | verzögertes Backend, keine Mutation vor `bereit` | behoben |
 | P0 | `Bereichszeile.tsx`: Tastenereignis eines Kindbuttons erreicht den Zeilen-Toggle | Plus/Minus kann den ganzen Tag löschen | Komponenten-/Browser-Tastaturtest | behoben |
 | P0 | `noten.ts`: weniger als 300 Punkte werden als 4,0 ausgegeben | nicht bestanden wirkt wie bestandene Abiturnote | Grenztests 299/300 und Blockhürden | behoben |
+| P0 | Vorhandenes beschädigtes oder falsch geformtes `vierfelder.*`-JSON fiel still auf leere Defaults zurück | eine folgende Mutation konnte rettbare lokale Daten überschreiben | malformed JSON, falsche Form, Lesefehler, danach null Writes | behoben; vollständiger schreibfreier Preflight und Mutationssperre |
 | P0 | Schlafprojektion berechnet Nachbarsegmente nicht mehr gemeinsam | Bettzeit, Effizienz und Score können trotz Rohdaten fehlen | DB-Test N-1/N/N+1 | blockiert durch Migrationsdrift |
 | P0 | Löschen einer Schlaf-Quellnacht löscht Projektion nicht | sensible Gesundheitsdaten bleiben sichtbar | DB- und Zwei-Client-Delete-Test | lokal behoben; Migration/Staging offen |
 | P0 | Duellhistorie zählt vier Trackerbereiche, der Live-Stand fünf Felder inkl. Gewicht | vergangene Sieger/Punkte können falsch sein | Gewicht-only-Woche und Archivtest | behoben |
@@ -68,6 +69,8 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P1 | Mehrfach-Undo restaurierte Einheiten über unabhängige Requests | Teilfehler kann nur einen Teil des gelöschten Tags dauerhaft wiederherstellen | ein atomarer, idempotenter Batch samt Konfliktfall | lokal behoben; Migration/Staging offen |
 | P1 | Lokale Broadcast-Payloads konnten verspätet eintreffen | ein alter Zwei-Tab-Event dreht einen neueren sichtbaren Wert zurück | verzögertes Event vor/während Snapshot | behoben durch kanonische Invalidierung |
 | P1 | Kurze abgeschlossene Automationen verschwanden vollständig, weil sie noch keinen Punkt auslösen | eine echte Messung wirkt wie nie erfolgt | Kurzsitzung in Zeile, Tagesdetail, Kalender und Wochenpunkt | behoben; sichtbar als `zu kurz`/`noch kein punkt`, weiterhin kein Punkt |
+| P1 | Offene Automationen waren bis zum Abgang vollständig unsichtbar | laufender Fokus/Standort wirkt wie ausgefallen; vergessene Läufe bleiben unbemerkt | offen vor/nach Schwelle, Zukunft, ungültig, über 12 Stunden | behoben als `läuft seit …` oder konkrete Warnung; nie vorzeitig gezählt |
+| P1 | Lokale Noten- und Prüfungsfachkonflikte rollten ohne BroadcastChannel auf React-Snapshots zurück | verlierender Tab konnte dauerhaft einen Phantom-/Altstand zeigen | reale lokale Mehrtab-CAS-/Delete-/ID-Kollisionstests ohne Broadcast | behoben durch starken kanonischen Reload |
 | P1 | Sonntag 18 Uhr ist zugleich als finales Archiv und als weiter beschreibbarer Trackingtag modelliert | Aktivitaeten nach 18 Uhr koennen dauerhaft aus dem Archiv fehlen | Produktentscheidung plus DB-/Zeitgrenztests | Freigabeentscheidung offen; Empfehlung Montag 00:00 Europe/Berlin |
 
 ## Remote-Branches
@@ -803,10 +806,10 @@ und eine ausdrückliche Freigabe erforderlich.
   startet Chrome mit frischem Profil bei 430 × 932 und prüft zehn echte
   Interaktionen. Fehlende Ziele brechen den Lauf ab; der Benchmark kann damit
   keine Produktivdaten schreiben.
-- Finaler Lauf: DOMContentLoaded 124 ms, Load 126 ms, FCP 452 ms;
-  durchschnittliche Interaktion 133 ms, Maximum 322 ms, keine Long Tasks.
-  Initiales Sites-JavaScript: 579.110 Byte roh / 172.506 Byte gzip, gesamtes
-  JavaScript 584.763 / 174.705 Byte; PWA-Precache 609,26 KiB. Das ist ein
+- Finaler Lauf: DOMContentLoaded 154 ms, Load 157 ms, FCP 532 ms;
+  durchschnittliche Interaktion 147 ms, Maximum 404 ms, keine Long Tasks.
+  Initiales Sites-JavaScript: 584.998 Byte roh / 174.336 Byte gzip, gesamtes
+  JavaScript 590.651 / 176.535 Byte; PWA-Precache 615,01 KiB. Das ist ein
   einzelner reproduzierbarer Maschinenlauf und keine universelle
   Nutzerlatenzbehauptung.
 - Versuchsweise Tab-Aufteilung senkte das initiale gzip um rund 21 KiB, machte
@@ -815,13 +818,13 @@ und eine ausdrückliche Freigabe erforderlich.
   wurden bedarfsweise Kalendererzeugung, kleinere lokale Fontimporte,
   getrennte Buildziele und ein Budget für initiales sowie gesamtes JavaScript.
 - Der Supabase-Webbuild ist wegen der Sicherheits-, Status- und
-  Datenintegritätslogik gegenüber der Baseline nicht kleiner: final 811.423
-  Byte roh / 231.300 Byte gzip initial, 817.076 / 233.499 Byte gesamt;
-  PWA-Precache 836,13 KiB. Das bisherige 225-KiB-Initialbudget schlug dadurch
-  um 900 Byte fehl. Es wurde offen auf 227 KiB angehoben; gegenüber dem finalen
-  Wert bleiben 1.148 Byte Reserve, während das 230-KiB-Gesamtbudget unverändert
-  bleibt. Das ist Sicherheits-/Funktionszuwachs, kein pauschaler
-  Performancegewinn.
+  Datenintegritätslogik gegenüber der Baseline nicht kleiner: final 817.313
+  Byte roh / 233.135 Byte gzip initial, 822.966 / 235.334 Byte gesamt;
+  PWA-Precache 841,88 KiB. Das ursprüngliche 225-KiB-Initialbudget würde damit
+  um 2.735 Byte verfehlt. Nach der fail-closed-Prüfung aller lokalen Daten
+  stehen die Budgets offen bei 228 KiB initial und 231 KiB gesamt; es bleiben
+  337 beziehungsweise 1.210 Byte Reserve. Das ist Sicherheits-/Funktionszuwachs,
+  kein pauschaler Performancegewinn.
 - Ein umfangreicher CDP-Zusatz für Slow- und Offline-Start bestand zwar drei
   lokale Läufe, wurde nach unabhängigem Review dennoch vollständig verworfen:
   derselbe Browserprozess war kein echter Neustart, Subresources konnten noch
@@ -840,7 +843,7 @@ und eine ausdrückliche Freigabe erforderlich.
   trennt Prüfung, Staging, Backup/Restore, Migration, Function-Deployment,
   Pages und Rollback.
 - Finaler lokaler Stand unter der festgelegten Runtime: `node@22.23.2` führte
-  Vitest mit Exit 0, 61 Dateien und 725 Tests sowie TypeScript mit Exit 0 aus.
+  Vitest mit Exit 0, 61 Dateien und 737 Tests sowie TypeScript mit Exit 0 aus.
   `npm run build:web` Exit 0; `npm run check:dist` Exit 0;
   `npm run benchmark:core` Exit 0. Deno 2.9.6 prüfte alle fünf Edge Functions
   mit eingefrorenem Lockfile, Exit 0. Beide `npm audit`-Läufe meldeten null
@@ -848,6 +851,14 @@ und eine ausdrückliche Freigabe erforderlich.
 - Ein echter PostgreSQL-/RLS-/Parallelitätslauf ist damit ausdrücklich nicht
   ersetzt: Docker/Podman fehlen, keine Migration wurde angewandt und keine
   Staging- oder Produktionsdaten wurden verändert.
+- Der bestätigte Schlafprojektions-P0 ist nicht mit einem scheinbar kleinen
+  Trigger-Patch kaschiert worden: Projektion und Score v3 verwenden heute nur
+  die einzelne Quellzeile, obwohl N−1/N/N+1 gebündelt werden müssen. Eine
+  sichere Forward-Migration benötigt Score v4 bei unveränderter Punkteformel,
+  Statement-Trigger mit Transition Tables, Neuaufbau der betroffenen Nachbarn
+  und 13 Folgenächte, Rekursionsschutz und nutzerweise Serialisierung. Ohne
+  echten PostgreSQL-/Staging-Nachweis für Insert/Update/Delete, Bulk,
+  Parallelität, DST, InBed/Awake und RLS bleibt dieser P0 extern blockiert.
 
 ## Offene Prüfungen
 
