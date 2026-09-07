@@ -8,13 +8,13 @@ dieselbe Person und Nacht.
 
 ## Einmalig in Supabase einrichten
 
-1. Migration und Function veröffentlichen:
-
-   ```powershell
-   npx supabase link --project-ref ogxwazageufvalkocywh
-   npx supabase db push
-   npx supabase functions deploy schlaf-import --no-verify-jwt
-   ```
+1. Migration und Function nach dem
+   [Release- und Migrationsrunbook](docs/release-und-migrationen.md)
+   bereitstellen. Die lokale und produktive Migrationshistorie ist noch nicht
+   vollständig reconciliiert; ein blindes `db push` aus einer
+   Kurzbefehlsanleitung ist daher nicht zulässig. Vor Produktion gehören
+   frischer lokaler Reset, Staging, Backup samt Restore-Probe, Invarianten,
+   Rollenmatrix, Advisors und ausdrückliche Freigabe dazu.
 
 2. Für jede Person ein eigenes zufälliges Token erzeugen. Beispiel in PowerShell:
 
@@ -22,7 +22,9 @@ dieselbe Person und Nacht.
    [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
    ```
 
-3. Das Token im Supabase SQL Editor der Person zuordnen:
+3. Das Token im Supabase SQL Editor der Person zuordnen. Das ist eine
+   produktive Zugangsdatenänderung und wird nur nach verifizierter Person,
+   sicherer Übergabe und ausdrücklicher Freigabe ausgeführt:
 
    ```sql
    select set_schlaf_import_token('erijon', 'HIER_DAS_TOKEN_VON_ERIJON');
@@ -30,8 +32,9 @@ dieselbe Person und Nacht.
    ```
 
    Das Klartext-Token steht danach nur noch auf dem jeweiligen iPhone. In der
-   Datenbank liegt sein SHA-256-Hash. Ein neues Token für dieselbe Person ersetzt
-   das alte.
+   Datenbank liegt sein SHA-256-Hash. Ein neues Token für dieselbe Person
+   ersetzt das alte sofort; deshalb werden Rotation und Umstellung beider
+   Kurzbefehle als ein kontrollierter Vorgang geplant.
 
 ## Kurzbefehl bauen
 
@@ -137,9 +140,11 @@ durch dieselbe Schutzschicht in `record_sleep_night`:
 - höchstens **512 KiB** Nutzlast,
 - höchstens **30 Aufrufe je 15 Minuten** und Person.
 
-Wer darüber liegt, bekommt HTTP 422, 413 oder 429 und es wird nichts
-gespeichert. Die tägliche Automation kommt an keine dieser Grenzen; sie fangen
-einen Kurzbefehl ab, der in einer Schleife hängt.
+Bei der Edge Function erscheinen diese Ablehnungen als HTTP 422, 413 oder 429
+und es wird nichts gespeichert. Beim direkten PostgREST-RPC gelten dieselben
+Datenbankgrenzen, Status und Antwortform können aber anders aussehen. Die
+tägliche Automation kommt an keine dieser Grenzen; sie fangen einen
+Kurzbefehl ab, der in einer Schleife hängt.
 
 ## Der Nachtwert kommt aus der Datenbank
 
@@ -193,7 +198,7 @@ zählen einmal, Wachzeit innerhalb der Episode wird abgezogen.
 
 Die Identität kommt ausschließlich aus dem Token gegen die Tabelle `schlaf_import_tokens`. Ohne gültiges Token schreibt die Funktion nichts. Die Rückgabe ist ein JSON-Objekt mit `ok`, `nacht`, `schlaf_minuten`, `nachtwert` und weiteren Details.
 
-### Auf iOS getesteter RPC-Aufbau
+### Historisch auf iOS getesteter RPC-Aufbau
 
 Für den direkten RPC-Aufruf keine Hilfsvariable `Segmente`, keine separate
 `Liste` und kein zusätzliches Payload-Wörterbuch nach der Wiederholung anlegen.
@@ -225,9 +230,11 @@ In `Inhalte von URL abrufen`:
 - `p_target_hours`: Feldtyp **Zahl**, Wert `9`
 - `p_token`: Feldtyp **Text**, persönliches Import-Token
 
-Ein erfolgreicher Test liefert unter anderem `"ok": true`. Die getestete
-Automation läuft täglich um 11:00 Uhr mit `Sofort ausführen`; die
-Ausführungsbenachrichtigung ist ausgeschaltet.
+Ein erfolgreicher Test liefert unter anderem `"ok": true`. Der dokumentierte
+damalige Test nutzte täglich 11:00 Uhr mit `Sofort ausführen` und
+ausgeschalteter Ausführungsbenachrichtigung. Das ist kein aktueller Geräte-
+oder Produktionsnachweis; jeder Release prüft den Aufbau auf beiden
+betroffenen iPhones erneut.
 
 ## Wenn keine Daten ankommen
 
@@ -237,11 +244,12 @@ Das iPhone meldete „Kurzbefehl ausgeführt", in Supabase kam nichts an. Der
 erste Verdacht — die Health-Abfrage liefert bei gesperrtem Gerät nichts —
 war falsch. Das Protokoll sagt etwas anderes und etwas Deutlicheres.
 
-Jede Anfrage an das Projekt steht in `edge_logs`, mit der Kennung des
-Absenders. Ein Kurzbefehl meldet sich dort als `BackgroundShortcutRunner`.
-Am 02.09. zwischen 02:00 und 16:00 Ortszeit waren es **426 Anfragen, davon
-keine einzige aus einem Kurzbefehl** — nur Browser, der Cron und die
-Verwaltungs-API.
+Der damalige Supabase Logs Explorer zeigte die Kennung des Absenders; ein
+Kurzbefehl meldete sich als `BackgroundShortcutRunner`. Am 02.09. zwischen
+02:00 und 16:00 Ortszeit wurden dort **426 Anfragen, davon keine einzige aus
+einem Kurzbefehl** beobachtet — nur Browser, Cron und Verwaltungs-API. Das ist
+ein datierter Diagnosebefund, kein aktueller Betriebsstatus und keine
+allgemeine SQL-Tabelle namens `edge_logs`.
 
 Der letzte automatische Lauf war am **31.08. um 11:00:18** Ortszeit. Seitdem
 hat die Automation kein einziges Mal gesendet:
@@ -301,14 +309,15 @@ order by l.gemeldet desc
 limit 20;
 ```
 
-Am nächsten Morgen um 11:00 steht dort die Antwort:
+Am nächsten Morgen geben die Zeilen einen Hinweis, aber keinen lückenlosen
+Beweis: auch die Diagnose selbst ist ein Netzwerk-RPC und kann ausfallen.
 
-| Was steht da | Was es heißt |
+| Was steht da | Belastbarer Stand und mögliche Ursache |
 |---|---|
-| gar nichts | Die Automation hat den Kurzbefehl nie gestartet. Der Fehler liegt in der Automation, nicht im Kurzbefehl. |
-| nur `start` | Die Health-Abfrage bricht ab oder hängt. |
-| `gefunden` mit `anzahl` 0 | Health liefert keine Segmente. |
-| `gefunden` mit `anzahl` > 0 | Der Aufbau des Aufrufs oder das Netz scheitert. |
+| gar nichts | Kein Diagnoseschritt wurde bestätigt: Automation, erster Diagnoseaufruf oder Netz können ausgefallen sein. |
+| nur `start` | Der Beginn wurde bestätigt; Health-Abfrage oder zweiter Diagnoseaufruf kann danach ausgefallen sein. |
+| `gefunden` mit `anzahl` 0 | Die Health-Abfrage wurde bestätigt und lieferte zu diesem Zeitpunkt keine Segmente. |
+| `gefunden` mit `anzahl` > 0 | Die Health-Abfrage wurde bestätigt; ein späterer Aufbau-, Netz- oder Importfehler bleibt möglich. |
 
 Zeigt die Tabelle gar nichts, ist die Automation selbst zu prüfen: ist sie
 noch eingeschaltet, steht sie auf `Sofort ausführen`, und zeigt sie unter
@@ -317,24 +326,20 @@ Stromsparmodus schiebt Tageszeit-Automationen ebenfalls auf.
 
 ### Und wenn doch etwas ankommt
 
-Steht in `edge_logs` eine Zeile mit Status 4xx, hat die Nutzlast ein Problem
-und der Statuscode sagt welches — 422, 413 oder 429 sind die Grenzen aus dem
-Abschnitt oben.
-
-```sql
-select timestamp, event_message
-from edge_logs
-where event_message like '%record_sleep_night%'
-order by timestamp desc
-limit 10;
-```
-
-(Im Supabase-Studio unter *Logs → Edge Logs*.)
+Im Supabase-Studio unter *Logs → Edge Functions* beziehungsweise im aktuellen
+Logs Explorer zeigt ein 4xx-Status, dass die Anfrage abgelehnt wurde. 422, 413
+und 429 gehören zu den Grenzen aus dem Abschnitt oben. `edge_logs` ist keine
+normale Tabelle, auf die sich diese Anleitung mit einer SQL-Abfrage verlassen
+darf. Bei der Suche keine vollständige URL mit Legacy-Token kopieren oder
+teilen; Token, Gesundheitsdaten und Gerätekennungen werden vor jedem Export
+redigiert.
 
 ### Die App meldet sich von selbst
 
-Unabhängig davon schickt die Edge Function `schlaf-erinnerung` seit dem
-02.09.2026 eine Push-Nachricht „schlaf von heute nacht fehlt.", wenn zur
-persönlichen Uhrzeit (Standard 11:30, eine halbe Stunde nach der Automation)
-keine Zeile für die vergangene Nacht in `schlafnaechte` steht. Ein stiller
-Ausfall bleibt so nicht bis zum Abend unbemerkt.
+Unabhängig davon enthält der aktuelle Branch die Edge Function
+`schlaf-erinnerung`. Sie soll zur persönlichen Uhrzeit (Standard 11:30, eine
+halbe Stunde nach der Automation) eine Push-Nachricht „schlaf von heute nacht
+fehlt.“ senden, wenn keine Quellnacht vorhanden ist. Migration,
+Scheduler-Secret, Function-Deployment und echte Zustellung müssen in der
+konkreten Umgebung gemeinsam belegt werden; der Quellcode allein behauptet
+keinen laufenden produktiven Reminder.

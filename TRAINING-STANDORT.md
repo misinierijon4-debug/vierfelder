@@ -15,13 +15,12 @@ das ist der Grund, warum eine Messung mehr wert ist als ein Tick.
 
 ## Supabase
 
-Die Migration ist am 28.08.2026 auf `ogxwazageufvalkocywh` eingespielt. Bei
-einem neuen Projekt:
-
-```powershell
-npx supabase link --project-ref ogxwazageufvalkocywh
-npx supabase db push
-```
+Der historische Betriebsstand vermerkt die erste Standortmigration am
+28.08.2026 für `ogxwazageufvalkocywh`. Das ist kein Beleg für die gesamte
+heutige Migrationskette. Für Neuaufbau, Staging oder Produktion gilt
+ausschließlich das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md); ein
+ungeprüftes `db push` aus dieser Anleitung ist ausdrücklich nicht zulässig.
 
 Eine Edge Function braucht es nicht, und ein neues Token auch nicht: die
 Funktion prüft dasselbe Import-Token, das der Schlaf-Kurzbefehl schon benutzt
@@ -116,12 +115,11 @@ order by a.ankunft desc;
 ```
 
 Ein Testlauf von einer Minute steht in der Tabelle, setzt aber keinen Tick — er
-liegt unter der Schwelle von 20 Minuten. Das ist richtig so; die Zeile im SQL
-ist der Beleg, dass die Kette funktioniert. Testzeilen kann man wegräumen:
-
-```sql
-delete from aufenthalte where abgang - ankunft < interval '5 minutes';
-```
+liegt unter der Schwelle von 20 Minuten. Das ist richtig so; die konkrete Zeile
+im SQL ist der Beleg, dass die Kette funktioniert. Testdaten werden nur in
+einer entbehrlichen Staging-Umgebung und über vorher notierte IDs entfernt.
+Eine pauschale Löschung aller kurzen Aufenthalte in Produktion könnte echte
+Diagnosedaten treffen und gehört nicht in eine kopierbare Anleitung.
 
 Kommt stattdessen `kein gueltiges import-token`, stimmt `p_token` nicht oder das
 Feld wurde nicht als **Text** angelegt.
@@ -140,9 +138,11 @@ Feld wurde nicht als **Text** angelegt.
   ist das der Preis dafür, nichts tun zu müssen. Ein Antippen kostet drei
   Sekunden und zählt genauso.
 
-## Was nicht damit geht
+## Was der Standort nicht misst
 
-Boxen zuhause, lernen und lesen. Kein Standort und kein Gerät weiß, ob du
-gelesen hast — dort bleibt der Tick eine Behauptung, und deshalb zeigt die App
-bei lernen und lesen auch keinen Unterschied an. Eine Unterscheidung, die nichts
-unterscheiden kann, wäre kein Urteil, sondern Rauschen.
+Der Standort belegt Anwesenheit, nicht Training. Boxen zuhause, Lernen und
+Lesen haben außerdem keinen verlässlichen Ort. Dafür kann eine bewusst ein- und
+ausgeschaltete Fokus-Automation eine Dauer liefern; sie steht in
+[FOKUS-KURZBEFEHL.md](FOKUS-KURZBEFEHL.md). Manuelle Einträge bleiben möglich
+und werden als getippt beziehungsweise zusammen mit einer Messung als gemischt
+angezeigt. Keine dieser Quellen beweist die Qualität der Tätigkeit.

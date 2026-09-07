@@ -2,11 +2,13 @@
 
 Web Push für zweikampf: die App darf aufs Handy melden, auch wenn sie zu ist.
 
-Gebaut ist bisher **der Weg**, nicht die Erinnerungen. Ein Schalter unten in der
-App meldet das Gerät an, ein Knopf daneben schickt eine Probe durch die ganze
-Kette. Was danach kommt — „heute noch nicht gewogen“ und die Ideen aus
-[IDEEN.md](IDEEN.md) — braucht nur noch einen Zeitplan auf dem Server, keine
-Zeile mehr auf dem Handy.
+Ein Schalter unten in der App meldet das Gerät an, ein Knopf daneben schickt
+eine Probe durch die ganze Kette. Zusätzlich sind im Repository zwei konkrete
+Erinnerungen gebaut: fehlendes Tagesgewicht und fehlender Schlafimport. Ob sie
+in einer Umgebung tatsächlich laufen, ist erst belegt, wenn Migration,
+Scheduler-Authentifizierung, Function-Version und eine echte Zustellung dort
+gemeinsam geprüft wurden. Weitere Nachrichten bleiben Kandidaten in
+[IDEEN.md](IDEEN.md).
 
 Der Grund für diese Reihenfolge: Push hat fünf Stellen, an denen es klemmen
 kann — Erlaubnis, Abo, VAPID-Schlüssel, Verschlüsselung, Service Worker. Ein
@@ -35,10 +37,10 @@ und Uhrzeit.
 node scripts/vapid.mjs
 ```
 
-Das Paar wird **einmal** erzeugt und danach nie wieder angefasst: der
-öffentliche Schlüssel steckt in jedem Abo, das ein Handy angelegt hat. Ein neues
-Paar macht alle bestehenden Abos ungültig, und jeder müsste die
-Benachrichtigungen von Hand neu einschalten.
+Das Paar wird nach der Einrichtung stabil gehalten: der öffentliche Schlüssel
+steckt in jedem Abo, das ein Handy angelegt hat. Eine notwendige Rotation ist
+ein eigener Release mit erneuter Anmeldung aller Geräte; ein stiller Austausch
+würde die bestehenden Abos ungültig machen.
 
 ### 2. Den öffentlichen Schlüssel in den Code
 
@@ -51,36 +53,41 @@ Der Gewinn ist, dass ein Build ohne gesetzte Variable keine App ausliefert, in
 der die Benachrichtigungen wortlos fehlen. Wer trotzdem eine Variable will —
 etwa für ein zweites Projekt —, setzt `VITE_VAPID_PUBLIC_KEY`; die geht vor.
 
-### 3. Tabelle und Function nach Supabase
+### 3. Datenbank, Secrets und Functions freigeben
 
-```powershell
-npx supabase link --project-ref ogxwazageufvalkocywh
-npx supabase db push
-npx supabase secrets set `
-  VAPID_PUBLIC_KEY=<der öffentliche schlüssel> `
-  VAPID_PRIVATE_KEY=<der private schlüssel> `
-  VAPID_KONTAKT=mailto:<eure adresse>
-npx supabase functions deploy push-test
-```
+Migrationen und Function-Deployments werden nicht aus dieser Einzelanleitung
+gestartet. Die lokale und produktive Migrationshistorie ist noch nicht sicher
+abgeglichen. Es gilt ausschließlich das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md): History
+reconciliieren, lokale Datenbank neu aufbauen, Backup samt Restore proben,
+Invarianten und Rollen in Staging testen, Advisors prüfen und erst nach
+Freigabe produktiv ausführen.
 
-Tabelle und Function stehen im Projekt `ogxwazageufvalkocywh` bereits. Offen
-sind nur die drei Secrets — ohne sie antwortet die Function mit
-„vapid-schlüssel fehlen". Sie lassen sich auch im Dashboard setzen, unter
-*Edge Functions → Secrets*.
+Die drei benötigten Function-Secrets heißen `VAPID_PUBLIC_KEY`,
+`VAPID_PRIVATE_KEY` und `VAPID_KONTAKT`. Ohne sie antwortet `push-test`
+fail-closed mit „vapid-schlüssel fehlen“. Sie lassen sich im Dashboard unter
+*Edge Functions → Secrets* kontrolliert setzen. Der private Schlüssel geht
+**nur** in die Secrets der Function, nie in einen `VITE_*`-Wert, den Build oder
+das Repository.
+
+Die beiden Reminder haben zusätzlich den dedizierten Supabase-API-Secret-Key
+`automations`. Sein `sb_secret_...`-Wert wird im Dashboard als eigener API-Key
+angelegt und liegt — unter `vierfelder_automations_secret_key` — zusätzlich im
+Vault für `pg_cron`. Er gehört
+weder in `VITE_*` noch in diese Anleitung, einen anon-/Publishable Key oder ein
+Nutzer-JWT. Fehlt oder passt er nicht, müssen Scheduler und Function
+fail-closed bleiben. Anlage, Vault-Eintrag und Rotation sind produktive
+Freigabeschritte im Release-Runbook.
 
 `VAPID_KONTAKT` ist die Adresse, an die sich ein Push-Dienst wendet, wenn etwas
 mit den Nachrichten nicht stimmt. `mailto:` oder `https:`, sonst weisen manche
 Dienste die Nachricht ab.
 
-Der private Schlüssel geht **nur** in die Secrets der Function. Nicht in den
-Build, nicht ins Repository.
-
 Anders als `fokus` und `schlaf-import` läuft `push-test` **mit** JWT-Prüfung
-(also ohne `--no-verify-jwt`). Das Gateway prüft das Login-Token, und die
-Zeilenrechte von `push_abos` sorgen danach dafür, dass die Function nur die
-Geräte des aufrufenden Kontos sieht. Eine zweite Anfrage an den Auth-Dienst ist
-absichtlich nicht nötig: sie wäre nur ein weiterer Ausfallpunkt, ohne die
-Autorisierung zu verstärken.
+(also ohne `--no-verify-jwt`). Der Handler validiert die Sitzung zusätzlich
+über den Auth-Dienst, verlangt eine Zeile in `profile`, liest über RLS nur die
+Abos dieses Kontos und reserviert höchstens eine Probe pro Minute. Keine dieser
+Schranken ersetzt die anderen.
 
 ### 4. Auf jedem Handy einschalten
 
@@ -98,31 +105,43 @@ Autorisierung zu verstärken.
 | „muss auf dem home-bildschirm liegen“ | Safari-Tab statt installierter App |
 | „dieser browser kann keine benachrichtigungen“ | zu alt, oder Push abgeschaltet |
 | „abgelehnt“ | Erlaubnis verweigert — nur in den Geräte-Einstellungen zurückzunehmen |
-| „kein gerät erreicht“ | Abo steht in der Datenbank, der Push-Dienst kennt es nicht mehr: aus und wieder ein |
+| „für dieses konto ist kein gerät angemeldet“ | in der Datenbank wurde für dieses Konto kein Abo gefunden: am Gerät einschalten |
 | „ohne anmeldung aufgerufen“ | die App hat kein Token mitgeschickt: einmal ab- und wieder anmelden |
 | „vapid-schlüssel fehlen“ | die drei Secrets der Function sind nicht gesetzt |
 | „server antwortet N, aber kein json: …“ | etwas zwischen App und Function hat mit einer Fehlerseite geantwortet — der Anfang steht dahinter |
-| „push-dienst antwortet nicht in 15 s“ | Apple oder Google hat den Push nicht angenommen; die Function bricht ab, statt bis zur Laufzeitgrenze zu hängen |
+| „server antwortet 502“ | kein Versand wurde sicher als erfolgreich bestätigt; die gerätespezifische Ursache steht nur in den Function-Logs |
 
 **Läuft auf dem Telefon überhaupt die neue Fassung?** Unten rechts in der
-Fusszeile steht die Bauzeit. Steht dort eine alte Uhrzeit, hält der Service
-Worker die alte App fest: App vom Home-Bildschirm löschen, in Safari neu laden,
-wieder hinzufügen.
+Fußzeile steht der aus `HEAD` abgeleitete Commit-Zeitstempel, nicht die
+Commit-SHA. Er ist ein nützlicher Hinweis; den exakten Stand belegen Workflow
+und ausgeliefertes Artefakt. Die App prüft auf eine neue Worker-Version und
+bietet ihre Aktivierung an; offene Eingaben und laufende Mutationen blockieren
+den Wechsel. Löschen und neu installieren ist erst die letzte
+Diagnosemaßnahme, weil dabei gerätespezifischer App-Zustand verloren gehen
+kann.
 
-**Wie weit kam die Probe?** Seit Version 4 schreibt die Function jeden Schritt
-in die Logs des Projekts (*Edge Functions → push-test → Logs*): wie viele Geräte
-gefunden wurden, welcher Status je Gerät kam, und was am Ende gesendet wurde.
+**Wie weit kam die Probe?** Die Function schreibt in die Projektlogs, wie viele
+Geräte für das angemeldete Konto gefunden wurden, welcher Status je
+nummeriertem Gerät kam und was am Ende gesendet oder entfernt wurde. Endpunkte,
+Schlüssel und Provider-Antworttexte dürfen dabei nicht erscheinen.
 
-Bis Version 4 prüfte die Function das bereits vom Gateway geprüfte Token noch
-einmal über `getUser()`. Antwortete dieser zusätzliche Auth-Aufruf mit einer
-HTML-Fehlerseite, erschien unten in der App nur „Unexpected token '<'“. Seit
-Version 5 entfällt dieser doppelte Aufruf; JWT-Prüfung und Zeilenrechte bleiben
-unverändert aktiv.
+Ein dort protokollierter 15-Sekunden-Timeout bedeutet nur, dass rechtzeitig
+keine Providerantwort ankam. Ob der Provider den Push nicht annahm oder seine
+Antwort verloren ging, bleibt unbestätigt und darf keinen automatischen
+zweiten Versand auslösen.
 
-Kommt die Probe trotz grüner Rückmeldung nicht an, liegt es am Service Worker.
-Auf dem iPhone hilft: App vom Home-Bildschirm löschen, Safari neu laden, wieder
-hinzufügen. Am Rechner zeigen die Entwicklerwerkzeuge unter *Application →
-Service Workers*, ob `push-sw.js` mitgeladen wurde.
+Die Sitzung wird trotz Gateway-Prüfung serverseitig über `getUser()` validiert.
+Ein vorübergehender Auth-Ausfall ist deshalb ein eigener 502-Fehler und darf
+nicht als abgelaufene Anmeldung oder erfolgreicher Versand erscheinen.
+
+Kommt die Probe trotz Providerannahme nicht sichtbar an, bleiben Service
+Worker, iOS-Mitteilungseinstellungen, Gerätezustand und spätere Zustellung als
+getrennte Kandidaten. Zuerst App schließen, neu öffnen, Einstellungen prüfen
+und den angebotenen Updatewechsel abschließen. Am Rechner zeigen die
+Entwicklerwerkzeuge unter *Application → Service Workers*, ob `push-sw.js`
+mitgeladen wurde. Löschen und neu installieren kommt erst danach und nur mit
+dem Bewusstsein infrage, dass lokaler Prototyp- und Gerätezustand verloren
+gehen kann.
 
 ## Wie es innen läuft
 
@@ -150,8 +169,9 @@ Die Teile im Repository:
 | `supabase/migrations/20260902090000_push_abos.sql` | die Adressen der Geräte |
 | `supabase/functions/_shared/pushEndpoint.ts` | enge Provider-Allowlist gegen fremde Netzwerkziele |
 | `supabase/functions/_shared/webpush.ts` | Verschlüsselung und VAPID, ohne Bibliothek |
-| `supabase/functions/_shared/versand.ts` | gemeinsamer, idempotenter Versand für Erinnerungen |
+| `supabase/functions/_shared/versand.ts` | gemeinsamer, zustands- und Fencing-geschützter Versandweg für Erinnerungen |
 | `supabase/functions/push-test/index.ts` | die Probenachricht |
+| `supabase/functions/gewicht-erinnerung/index.ts` | meldet ein fehlendes Tagesgewicht |
 | `supabase/functions/schlaf-erinnerung/index.ts` | meldet einen fehlenden Nachtimport |
 | `public/push-sw.js` | zeigt an, was ankommt |
 | `src/lib/push.ts` | an-, abmelden, Zustand |
@@ -183,7 +203,7 @@ Inserts aber erst eine spätere Forward-Fix-Migration. Wegen der divergenten
 produktiven Migrationshistorie darf dieser Datenbankteil nicht ungeprüft live
 angewandt werden.
 
-## Die erste echte Erinnerung
+## Die zwei gebauten Erinnerungen
 
 „heute noch nicht gewogen.“ ist der schmale erste Schnitt durch die ganze
 Kette:
@@ -195,10 +215,23 @@ Kette:
 3. `erinnerungs_einstellungen` hält je Person die Uhrzeit, anfangs 20:00;
 4. `erinnerungs_versand` erlaubt je Person, Art und Tag genau eine Nachricht.
 
-Die Function reserviert die Tagesnachricht vor dem Senden. Parallele oder
-wiederholte Cron-Aufrufe laufen dadurch am selben Primärschlüssel ins Leere.
-Hat die Person heute schon gewogen, wird gar nicht erst reserviert. Die
-Uhrzeit lässt sich in der Fußzeile neben dem Push-Schalter ändern.
+Der gemeinsame Versandweg führt jede Tagesnachricht durch die Zustände
+reserviert, gestartet und bestätigt. Ein Fencing-Token schützt die Übergänge.
+Nur ausdrücklich vorübergehende HTTP-Ablehnungen werden begrenzt erneut
+versucht; bei verlorenem Antwortweg oder 5xx bleibt der Ausgang
+`unbestätigt`, weil ein zweiter nicht-idempotenter Push eine Doppelmeldung
+erzeugen könnte. Hat die Person heute schon gewogen, wird gar nicht erst
+reserviert. Die Uhrzeit lässt sich in der Fußzeile neben dem Push-Schalter
+ändern.
 
-Weitere Nachrichten bleiben bewusst in [IDEEN.md](IDEEN.md), bis diese eine
-eine Woche lang zuverlässig und ohne zu nerven gelaufen ist.
+`schlaf-erinnerung` benutzt denselben Versandvertrag, prüft aber, ob die
+Quellnacht zur persönlichen Morgenzeit fehlt. Keine der beiden Functions darf
+einen fehlenden Datensatz mit einem erfolgreichen Import verwechseln.
+
+Weitere Nachrichten bleiben bewusst in [IDEEN.md](IDEEN.md), bis beide
+bestehenden Erinnerungen mindestens eine Woche lang zuverlässig und ohne zu
+nerven gelaufen sind.
+
+Dieser Wochenlauf ist eine echte Betriebsprüfung und im Repository nicht
+automatisch belegt. Scheduler und beide Reminder werden nur in der im
+Release-Runbook beschriebenen Reihenfolge aktiviert.

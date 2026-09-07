@@ -1,6 +1,9 @@
 # zweikampf
 
-Wochentracker für zwei: lernen, gym, boxen, lesen. Ein Tick pro Bereich und Tag, geteiltes Wochenraster, sonntags Bilanz, montags von vorn.
+Wochentracker für zwei: lernen, gym, boxen, lesen und das tägliche Gewicht.
+Mehrere Durchführungen bleiben einzeln erhalten; für die Wochenwertung zählt
+jedes der fünf Felder höchstens einmal pro Tag. Das gemeinsame Raster beginnt
+montags neu, abgeschlossene Wochen bleiben als Archiv nachvollziehbar.
 
 Ein Kalenderknopf über dem Raster öffnet die Historie: ein Tag darin führt zu seiner Woche, und
 das Raster zeigt sie statt der laufenden. „Zurück zu heute" holt einen wieder ab.
@@ -17,7 +20,7 @@ alles andere ist getippt. Anleitung in [GEWICHT-KURZBEFEHL.md](GEWICHT-KURZBEFEH
 
 Gym und Boxen haken sich selbst ab: eine Standort-Automation auf dem iPhone meldet Ankunft und
 Abgang am Trainingsort, ab 20 Minuten setzt sich der Tick. Das Raster zeigt, wie ein Haken
-entstanden ist — voll heißt gemessen, blass heißt getippt. Anleitung in
+entstanden ist — gemessen, getippt oder gemischt, wenn beide Quellen am selben Tag vorkommen. Anleitung in
 [TRAINING-STANDORT.md](TRAINING-STANDORT.md).
 
 Lernen und Lesen haben keinen Ort, aber einen Fokus. Drei Fokus-Modi — lernen, lesen, training —
@@ -27,23 +30,30 @@ Trainingseinheit. Damit gilt die Unterscheidung zwischen gemessen und
 getippt in allen vier Bereichen. Anleitung in [FOKUS-KURZBEFEHL.md](FOKUS-KURZBEFEHL.md).
 
 Die App darf aufs Handy melden. Ein Schalter unten meldet das Gerät an, ein Knopf
-daneben schickt eine Probe durch die ganze Kette — verschlüsselt im Browser des
-Empfängers, unterwegs nur Bytes. Gebaut ist bisher der Weg, nicht die
-Erinnerungen: auf dem iPhone geht das nur, wenn die App auf dem Home-Bildschirm
-liegt. Einrichtung in [BENACHRICHTIGUNGEN.md](BENACHRICHTIGUNGEN.md), die
-gesammelten Nachrichten in [IDEEN.md](IDEEN.md).
+daneben schickt eine Probe durch die ganze Kette. Gewicht- und
+Schlafimport-Erinnerung sind im Repository implementiert; ob Migration,
+Scheduler, Secrets und Functions in einer konkreten Supabase-Umgebung
+tatsächlich aktiv sind, muss getrennt belegt werden. Auf dem iPhone geht Web
+Push nur aus der installierten Home-Bildschirm-App. Einrichtung in
+[BENACHRICHTIGUNGEN.md](BENACHRICHTIGUNGEN.md), weitere Kandidaten in
+[IDEEN.md](IDEEN.md).
 
 Design und Begründungen stehen in [DESIGN.md](DESIGN.md).
 
-Der Tab `noten` hält das laufende Halbjahr in Notenpunkten von 0 bis 15 fest.
+Der Tab `noten` hält den aktuellen, noch nicht nach Schulhalbjahren getrennten
+Datenstand in Notenpunkten von 0 bis 15 fest.
 Die Fächer und jeweils drei Leistungsfächer stammen aus den Stundenplänen von
 Erijon und Koray; ein Tipp auf eine der 16 Punktzahlen trägt ohne
 Speichern-Knopf ein. Fachschnitte, direkter Vergleich und die ausdrücklich als
-Hochrechnung bezeichnete Abiprognose funktionieren auch im Prototyp-Modus.
-Die MSS-Rechnung ist gegen die offizielle RLP-Fassung für Abitur 2027 geprüft:
-36 Kurse, zwei der drei Leistungsfächer doppelt, Block I mit `40/44`, Block II
-je nach vier oder fünf Prüfungsfächern fünf- oder vierfach und die amtliche
-Punktetabelle für die Abiturnote.
+Hochrechnung bezeichnete Abiprognose funktionieren auch im Prototyp-Modus. Sie
+ist keine Zeugnis- oder Zulassungsberechnung: Mangels Halbjahresdaten setzt sie
+den aktuellen Fachschnitt für die späteren Einbringungen und Prüfungen ein.
+Die verwendeten MSS-Konstanten folgen der offiziellen RLP-Fassung für Abitur
+2027: 36 Kurse, zwei der drei Leistungsfächer doppelt, Block I mit `40/44`,
+Block II aus genau drei schriftlichen LK und einem mündlichen GK, jedes
+Ergebnis fünffach, sowie die amtliche Punktetabelle. Quellen,
+Hochrechnungsgrenzen und aktuelle Datenverträge stehen in
+[NOTEN-PLAN.md](NOTEN-PLAN.md#aktueller-vertrag).
 
 ## Der Name und das Zeichen
 
@@ -88,12 +98,31 @@ Läuft auf `http://localhost:5199`.
 
 ```bash
 npm run typecheck   # TypeScript ohne Build
-npm test            # Fachlogik; aktuelle Zahl steht im jeweiligen Lauf
-npm run build:web   # Typecheck + Web/PWA
-npm run build:pages # Produktionskonfiguration + Web/PWA + Artefaktprüfung
-npm run build:sites # Web/PWA + separater Sites-Worker
-npm run check       # lokaler Gesamtcheck ohne Deployment
+npm test            # Vitest; aktuelle Zahl steht im jeweiligen Lauf
+npm run check:edge  # Deno-Check der produktiven Edge Functions
+npm run check:web   # Tests + Web/PWA + Artefaktprüfung
+npm run check       # check:web + check:edge, ohne Deployment
+npm run build:web   # TypeScript + Web/PWA
+npm run build:pages # strenge Pages-Konfiguration + Web/PWA + Artefaktprüfung
+npm run build:sites # Root-Prototyp + separater Sites-Worker
+npm run benchmark:core # Sites-Prototyp bauen + 430x932-Core-Flow in Chrome messen
 ```
+
+`npm run build` ist nur der Alias für `build:web`; es erzeugt keinen
+Sites-Worker und validiert keine Pages-Umgebungswerte.
+`benchmark:core` schreibt ausschließlich in den frisch gebauten lokalen
+Prototyp und prüft zehn Kerninteraktionen; es ist kein physischer Geräte- oder
+Produktionsbeleg.
+
+Die lokale und die CI-Laufzeit ist über [`.node-version`](.node-version) auf
+Node `22.23.2` festgelegt. `npm run check:edge` benötigt zusätzlich Deno; die
+CI-Version steht in den Workflows. Der Edge-Check verwendet
+[`supabase/functions/deno.lock`](supabase/functions/deno.lock) im Frozen-Modus:
+Importänderungen müssen den Lockfile bewusst und reviewbar aktualisieren.
+`npm run check` umfasst noch keinen echten PostgreSQL-/RLS-Lauf, keinen
+Browser-E2E-Test und keine physische Geräteprüfung. Die genaue Beweisgrenze der
+Umgebungen steht im
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md).
 
 ## Supabase
 
@@ -101,9 +130,10 @@ Projekt `vierfelder` (der technische Name blieb bei der Umbenennung stehen, sieh
 
 **Wichtig:** `supabase/schema.sql` ist derzeit ein historischer Grundstands-Snapshot,
 nicht die alleinige Schemaautorität. Die produktive Migrationshistorie und die lokalen
-Dateinamen weichen nachweislich voneinander ab. Bis zur dokumentierten Reconciliation in
-[docs/verbesserungsbericht.md](docs/verbesserungsbericht.md) darf deshalb weder ein normaler
-`db push` noch eine produktive Migration aus diesem Checkout ausgeführt werden.
+Dateinamen weichen nachweislich voneinander ab. Bis zur dokumentierten Reconciliation darf
+deshalb weder ein normaler `db push` noch eine produktive Migration aus diesem Checkout
+ausgeführt werden. Der einzige operative Ablauf ist das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md).
 
 Der Schlaf liegt seit dem 01.09.2026 in zwei Schichten: `schlafnaechte` hält die Rohsegmente und ist für niemanden außer der Importfunktion lesbar, `schlaf_updates` hält die Kennzahlen samt fertig gerechnetem Nachtwert. Die App liest ausschließlich `schlafnaechte_ansicht` darüber — Kennzahlen und Phasen, keine Rohdaten. Der Nachtwert entsteht in einem Trigger, damit Edge Function und Kurzbefehl nicht zwei verschiedene Zahlen für dieselbe Nacht speichern können; Grenzen und Rechnung stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
 
@@ -111,25 +141,44 @@ Die Tabelle `einheiten` hält eine Zeile je Durchführung (`supabase/migrations/
 Sie ist die Quelle des Hakens — mindestens eine Einheit heißt erledigt —, liegt offen für beide
 Konten und wird über Realtime verteilt. Die `id` erzeugt der Client, damit ein wiederholter
 Schreibversuch keine zweite Einheit anlegt. `eintraege` und `werte` bleiben als Altbestand
-stehen: die Migration übernimmt sie verlustfrei und erfindet dabei keine Minuten. **Die
-Migration gehört vor den Deploy** — fehlt die Tabelle noch, läuft die App im Altbestandsmodus
-weiter (eine Einheit pro Tag, kein `+ einheit`), statt leer auszusehen.
+stehen: die Migration übernimmt sie verlustfrei und erfindet dabei keine Minuten. Fehlt die
+Tabelle in einer Umgebung noch, läuft die App im Altbestandsmodus weiter (eine Einheit pro
+Tag, kein `+ einheit`), statt leer auszusehen. Die sichere Reihenfolge von Datenbank,
+Functions und Webbuild steht ausschließlich im Release-Runbook.
+
+Ein Undo eines gelöschten Tags stellt alle zugehörigen Einheiten als einen
+atomaren, idempotenten Batch wieder her. Lokal geschieht das unter einem Web
+Lock mit höchstens einem Speicherschreibzug; im Supabase-Modus über die RPC
+`stelle_einheiten_wieder_her`. Ein fehlender RPC-Vertrag fällt nicht auf
+Einzelinserts zurück. Migration und echte Parallelitäts-/RLS-Prüfung in
+Staging bleiben davon getrennte Freigabeschritte.
 
 Die Tabelle `gewicht` liegt wie `eintraege` offen für beide Konten — der Vergleich ist der
 Zweck. Änderungen werden über Realtime verteilt. Es gibt keine zweite Zeile in `eintraege`: der Wochentick
 fürs Wiegen wird aus dem Gewichtseintrag abgeleitet, damit es keinen Tick ohne Messung gibt.
 
-`faecher` und `noten` kommen aus `supabase/migrations/20260901181045_noten.sql`.
-Beide Konten dürfen beide Stände lesen; anlegen, ändern und löschen darf jedes
-nur beim eigenen Profil. Die UUID entsteht im Client, und Realtime hält den
-Notentab auf dem zweiten Gerät aktuell.
+Der gemeinsame Wetteinsatz wird mit Expected-Version-CAS geändert. Ein
+Entfernen bleibt als Tombstone mit servergenerierter Version, Autor und
+Zeitpunkt auditierbar; nach einem Wochenabschluss ist die Wette unveränderlich.
+Direkte Tabellenwrites werden in der vorbereiteten Forward-Migration entzogen.
+
+`faecher` und `noten` beginnen in
+`supabase/migrations/20260901181045_noten.sql`; spätere Forward-Migrationen
+stellen auf die echten Begriffe `lk`, `gk`, `klausur`, `epo` und `hue` um,
+entfernen das erfundene Erdkunde-Fach und begrenzen die Auswahl auf drei LK
+plus einen mündlichen GK. Beide Konten dürfen beide Stände lesen. Noten darf
+jedes Profil nur für sich anlegen oder löschen; der Wechsel des vierten
+Prüfungsfachs ist als atomare RPC vorbereitet. Migration und Staging-Beleg sind
+davon getrennte Freigabeschritte.
 
 Die Schlafintegration nutzt eine Edge Function mit einem eigenen, pro Person
 gehashten Import-Token. Migration, Function und die vollständige iPhone-Anleitung
 stehen in [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md).
 
-Die Edge Function `fokus` ist der Aufruf-Link der Fokus-Automationen:
-`/fokus?t=TOKEN&b=lernen&e=an`. Sie schreibt nichts selbst, sondern ruft
+Die Edge Function `fokus` ist der schmale Aufrufweg der Fokus-Automationen.
+Der aktuelle Aufbau sendet das Import-Token im Header und lässt in der URL nur
+Bereich und Ereignis, etwa `/fokus?b=lernen&e=an`. Die Function schreibt
+nichts selbst, sondern ruft
 `record_aufenthalt` auf — dieselbe Funktion wie die Standort-Kurzbefehle. Ihr
 Zweck ist allein, dass ein Kurzbefehl aus einer Aktion und einer Zeile besteht:
 ein fertiger Kurzbefehl lässt sich nicht weitergeben, weil iOS nur von Apple
@@ -150,18 +199,76 @@ Angelegt am 26.08.2026. Konten anlegen und Passwörter setzen läuft über das D
 die App hat dafür keine Maske — auch nicht zum Ändern. Wer ein neues Passwort braucht,
 bekommt es unter Authentication → Users.
 
-1. Dashboard → Authentication → Add user → Create new user.
-   Zwei Konten anlegen, bei beiden **Auto Confirm User** anhaken — sonst lehnt die Anmeldung mit „email not confirmed" ab.
-2. Danach einmal im SQL Editor, mit den echten E-Mail-Adressen:
+Der folgende Block ist ein kontrollierter Provisionierungsweg für einen
+Neuaufbau oder eine Wiederherstellung, kein in Produktion regelmäßig zu
+wiederholender Setup-Schritt. Remote-Auth-Einstellungen, Nutzeranlage,
+Profiländerungen und Passwortvergabe benötigen ein verifiziertes Ziel und eine
+ausdrückliche Freigabe.
+
+1. Vorher im Dashboard prüfen, dass öffentliche Registrierung und anonyme
+   Anmeldung deaktiviert sind. `supabase/config.toml` beschreibt diesen
+   Sollzustand, verändert aber keine laufende Remote-Konfiguration. Der letzte
+   dokumentierte Read-only-Audit fand Remote-E-Mail-Signup noch aktiviert;
+   bis zum freigegebenen Abschalten und erneuten Negativtest bleibt das ein
+   Produktions-Releaseblocker.
+2. Dashboard → Authentication → Add user → Create new user. Genau die zwei
+   vereinbarten Konten anlegen, bei beiden **Auto Confirm User** anhaken — sonst
+   lehnt die Anmeldung mit „email not confirmed" ab.
+3. Danach die beiden Zuordnungen im SQL Editor ausdrücklich einzeln anlegen.
+   Es gibt bewusst keinen `else`-Zweig: eine unbekannte E-Mail darf niemals zu
+   Koray werden.
 
 ```sql
-insert into profile (id, person)
-select id,
-       case when email = 'DEINE@mail' then 'erijon' else 'koray' end
-from auth.users;
+begin;
+
+insert into public.profile (id, person)
+select id, 'erijon'
+from auth.users
+where lower(email) = lower('ERIJONS_ECHTE_EMAIL')
+on conflict (id) do update set person = excluded.person;
+
+insert into public.profile (id, person)
+select id, 'koray'
+from auth.users
+where lower(email) = lower('KORAYS_ECHTE_EMAIL')
+on conflict (id) do update set person = excluded.person;
+
+do $$
+begin
+  if (select count(*) from auth.users) <> 2
+     or (select count(*) from public.profile where person in ('erijon', 'koray')) <> 2
+     or not exists (
+       select 1
+       from auth.users u join public.profile p on p.id = u.id
+       where lower(u.email) = lower('ERIJONS_ECHTE_EMAIL') and p.person = 'erijon'
+     )
+     or not exists (
+       select 1
+       from auth.users u join public.profile p on p.id = u.id
+       where lower(u.email) = lower('KORAYS_ECHTE_EMAIL') and p.person = 'koray'
+     )
+     or exists (
+       select 1 from auth.users u
+       left join public.profile p on p.id = u.id
+       where p.id is null
+     )
+  then
+    raise exception 'erwartet werden genau zwei zugeordnete auth-nutzer';
+  end if;
+end
+$$;
+
+commit;
 ```
 
-3. App neu laden, anmelden.
+4. Die Zuordnung lesend prüfen, erst dann App neu laden und anmelden:
+
+```sql
+select u.id, u.email, p.person
+from auth.users u
+left join public.profile p on p.id = u.id
+order by u.email;
+```
 
 Ohne Zeile in `profile` meldet die App: „kein profil für dieses konto".
 
@@ -177,9 +284,17 @@ eine andere Key-Klasse oder ein `sb_secret_` in einer `VITE_*`-Variable brechen 
 statt still den Prototypmodus auszuliefern.
 
 Auf dem kostenlosen Plan muss das Repository öffentlich sein. Die Seite ist damit für jeden
-erreichbar, der die URL kennt — die Daten nicht, die liegen hinter Anmeldung und RLS.
-URL und Publishable Key stehen im gebauten JavaScript; das ist so vorgesehen, beide sind
-öffentliche Schlüssel.
+erreichbar, der die URL kennt. Die Anwendungsdaten sollen hinter Anmeldung,
+Zwei-Personen-Mitgliedschaft und RLS liegen. Weil der letzte Read-only-Audit
+offene E-Mail-Registrierung und noch nicht migrierte Policies fand, ist dieser
+Zielvertrag produktiv noch nicht vollständig belegt; Details stehen in der
+[Rollenmatrix](docs/architektur-und-datenschutz.md#rollen--und-datenschutzmatrix).
+URL und Publishable Key stehen im gebauten JavaScript; das ist so vorgesehen,
+beide sind öffentliche Werte und ersetzen keine Autorisierung.
+
+Der Sites-Build ist eine getrennte, ausdrücklich lokale/prototypische Vorschau
+am Root-Pfad. Ein erfolgreicher Sites-Worker ist weder ein Pages-Deploy noch ein
+Supabase-Nachweis.
 
 ## Aufbau
 
@@ -199,7 +314,17 @@ src/components/        kopf, bereichszeile, marke, schritt, raster, tagesdetail,
                        gewichtsdiagramm, zahl, anmeldung
 ```
 
+Die vollständige Browser→Store→Backend→Datenbank→Realtime-Karte, der
+Offline-/PWA-Vertrag und die Rollen-/Datenschutzmatrix stehen in
+[docs/architektur-und-datenschutz.md](docs/architektur-und-datenschutz.md).
+
 Das Supabase-Backend läuft nur, wenn `VITE_SUPABASE_URL` und
 `VITE_SUPABASE_PUBLISHABLE_KEY` gesetzt sind. Ohne beide Werte startet die lokale App im
 ausdrücklich gekennzeichneten Prototypmodus; ein Pages-Produktionsbuild lässt diesen Fallback
 nicht zu.
+
+Im Supabase-Modus bedeutet eine installierte, offline startende PWA nicht, dass
+neue Einträge offline sicher vorgemerkt werden. Die Oberfläche ist gecacht;
+bekannte Mutationen werden ohne sichere Warteschlange gesperrt. Eine neue
+App-Version wartet auf ausdrückliche Aktivierung und darf offene Eingaben nicht
+unangekündigt neu laden.

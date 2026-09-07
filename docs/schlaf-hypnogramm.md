@@ -2,21 +2,29 @@
 
 ## Ziel
 
-Der Verlauf im Nachtdetail zeigt die Schlafphasen als Kurve statt als
-Streifenbalken — dieselben Daten, aber lesbar wie in Sleep Cycle: Die Breite
-bleibt die Uhr, die Hoehe ist die Schlaftiefe.
+Der Verlauf im Nachtdetail zeigt vorhandene Schlafphasen als Kurve statt als
+Streifenbalken. Die Breite bleibt die Uhr, die Höhe ordnet die gemeldeten
+Stadien. Die Darstellung ist eine eigene Visualisierung; sie behauptet nicht,
+den proprietären Algorithmus von Sleep Cycle nachzubauen.
 
 ## Annahmen und Grenzen
 
-- Die Phasen kommen unveraendert aus `schlafnaechte_ansicht`. Es wird nichts
-  geglaettet, zusammengefasst oder ergaenzt; nur direkt aneinander grenzende
-  Stuecke gleicher Hoehe (`kern` und `unspez`) werden zu einer Linie vereint.
+- Quelle und Minuten-Summen kommen unverändert aus
+  `schlafnaechte_ansicht`. Die Zeichnung transformiert diese Daten bewusst:
+  direkt angrenzende Stücke gleicher Höhe werden verbunden, Lücken visuell
+  überbrückt, sehr kurze Stadien in der Kurve beruhigt und Übergänge monoton
+  geglättet. Keine dieser Darstellungsregeln erzeugt gemessene Phasenminuten;
+  die Zahlen neben der Kurve bleiben die Summen aus der Ansicht.
 - Die Achse beginnt und endet an den gemessenen Zeiten dieser einen Nacht,
   nicht an einem gerundeten Raster. Die beiden Eckzeiten stehen als Uhrzeit,
   dazwischen stehen volle Stunden.
-- Wo Health nichts gemeldet hat, laeuft die Kurve geradlinig zum naechsten
-  gemessenen Punkt weiter. Sie reisst nicht ab.
-- Nächte ohne Stadien behalten den bisherigen Leerzustand.
+- Wo Health nichts gemeldet hat, läuft die gezeichnete Kurve derzeit
+  geradlinig zum nächsten bekannten Punkt. Diese Brücke ist reine visuelle
+  Interpolation, kein gemessenes Stadium und keine Grundlage der
+  Phasenminuten. Dass sie im UI noch nicht zusätzlich als Schätzung beschriftet
+  ist, bleibt eine offene Datenwahrheits- und Accessibility-Prüfung.
+- Nächte, für die Health keine Stadien liefert, behalten einen eigenen
+  Leerzustand. Ein Fehler beim Nachladen ist davon getrennt und bietet Retry.
 - Unter fuenf Minuten am Stueck ist kein Abschnitt der Nacht: Wach steht dann
   als Punkt auf der Wachhoehe statt als Ausschlag und zaehlt nicht in der
   Anzahl neben `wach`, ein Stadium geht in seinen Nachbarn auf. Die Minuten je

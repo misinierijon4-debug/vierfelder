@@ -1,8 +1,49 @@
-# Plan: der Tab `noten`
+# Noten: aktueller Vertrag und archivierter Bauplan
 
-Stand 01.09.2026. Dieser Plan ist die Bauanleitung für einen fünften Bereich
-neben `tracker`, `duell` und `schlaf`. Er ist **noch nicht umgesetzt** — im
-Repository steht bisher keine Zeile davon.
+Der Notentab ist umgesetzt. Dieses Dokument begann am 01.09.2026 als Bauplan;
+die damaligen Abschnitte 1 bis 10 bleiben darunter als Entscheidungsprotokoll
+erhalten, sind aber **keine aktuelle Migrations- oder API-Anleitung**. Alte
+Begriffe und Codebeispiele wie `lf`, `gf`, `muendlich`, frei einstellbare
+Gewichte oder eine Migration `20260901180000_noten.sql` dürfen nicht kopiert
+werden.
+
+## Aktueller Vertrag
+
+- Kanonische Typen sind `lk`, `gk`, `klausur`, `epo` und `hue`; eine Epo zählt
+  im mündlichen Topf doppelt, eine HÜ und eine Klausur einfach. LK werden 50/50,
+  GK 33/67 aus Klausur und mündlichem Topf gebildet.
+- Die echten Fächer stehen in den Migrationen und in `src/lib/lokal.ts`.
+  Erijon: Bio, Englisch, Geschichte als LK sowie Mathe, Deutsch, Sozialkunde,
+  Ethik, Sport, Informatik und Bildende Kunst als GK. Koray: Deutsch, Physik,
+  Geschichte als LK sowie Mathe, Englisch, Sozialkunde, Katholische Religion,
+  Französisch, Sport und Bildende Kunst als GK. Es gibt Sozialkunde, keine
+  erfundene Erdkunde.
+- Das Prüfungsprofil besteht aus genau drei schriftlichen LK und einem
+  mündlichen GK. Sport ist kein zulässiges viertes Prüfungsfach. Die fachliche
+  Grundlage ist die
+  [MSS-Broschüre Rheinland-Pfalz, Stand Februar 2025](https://bildung.rlp.de/fileadmin/user_upload/gymnasium.bildung.rlp.de/Downloads/MSS_Webseite_Stand_Februar_2025.pdf).
+- Noten sind unveränderliche Einträge: anlegen oder löschen, nicht nachträglich
+  überschreiben. Die UUID entsteht im Client; ein sichtbares Undo stellt
+  dieselbe Note mit derselben UUID wieder her.
+- `20260906190050_noten_atomare_pruefungswahl.sql` bereitet den atomaren,
+  erwartungsbasierten Wechsel des vierten Prüfungsfachs und die zusammengesetzte
+  Eigentümer-FK zwischen Note und Fach vor. Solange diese Migration nicht in
+  einer echten PostgreSQL-/RLS-Matrix in Staging bewiesen und freigegeben ist,
+  ist sie kein produktiver Fakt.
+- Es gibt noch kein Halbjahr-/Schuljahrmodell. Die Prognose rechnet den
+  vollständigen aktuellen Fachstand ausdrücklich als Hochrechnung hoch. Fehlt
+  ein Fachwert oder eine prüfbare Hürde ist verletzt, zeigt sie keine
+  scheinbar belastbare Abiturnote.
+- Fachlogik steht in `src/lib/noten.ts`, Verträge in `src/lib/types.ts`, die
+  Oberfläche in `src/components/noten/`. Migrationen beginnen bei
+  `20260901181045_noten.sql`; spätere Forward-Migrationen sind in zeitlicher
+  Reihenfolge mitzulesen.
+
+Für jede Datenbankausführung gilt das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md). Die folgenden
+historischen SQL- und TypeScript-Blöcke dienen nur der Nachvollziehbarkeit.
+
+## Archivierter Entwurfsstand vom 01.09.2026
 
 ## 1. Wozu
 

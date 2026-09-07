@@ -11,13 +11,25 @@ Nachtdetail.
 
 - Der Kalender zeigt immer die aktuell im Nachtdetail gewaehlte Person.
 - Eine Nacht wird nach dem Abend benannt, an dem sie begonnen hat.
-- Farbige Ringe verwenden den bereits vorhandenen Qualitaetswert; leere Ringe
-  bedeuten, dass fuer diesen Tag keine Schlafdaten vorliegen.
+- Farbige Ringe verwenden einen geladenen Nachtwert. Fehlt bei einer vorhandenen
+  Nacht noch der serverseitige Wert, leitet die Oberfläche vorsichtig einen
+  Ersatz nur aus der Schlafdauer ab, markiert ihn sichtbar mit `~` und nennt
+  ihn im zugänglichen Namen „geschätzt“. Das betrifft insbesondere
+  Prototyp-/Legacy-Daten und darf nicht wie ein Server- oder Health-Nachtwert
+  erscheinen. Ein leerer Ring bedeutet, dass im erfolgreich geladenen Bestand
+  keine Nacht für diesen Tag vorliegt. Ein Ladefehler darf nicht als leerer Tag
+  erscheinen; er bleibt ein eigener Fehlerzustand mit Retry.
 - Zukuenftige Tage sind nicht auswaehlbar.
 - Import, Bearbeitung, Benachrichtigungen und ein roter Statuspunkt gehoeren
   nicht zu dieser Funktion.
-- Die gesamte vorhandene Historie wird angezeigt, mindestens der aktuelle und
-  der vorherige Monat.
+- Angezeigt wird die vom Backend geladene Kernhistorie, mindestens der aktuelle
+  und der vorherige Monat. Der Supabase-Adapter liest diese Historie in
+  1.000er-Seiten, prüft den exakten Count, den stabilen Sortierschlüssel und
+  Duplikate und endet oberhalb von 100.000 Zeilen bewusst mit einem Fehler.
+  Dieser Vertrag ist lokal mit einem Adapter-Doppel geprüft; ein echter
+  PostgREST-Lauf mit mehr als 1.000 Nächten und konkurrierenden Live-Schreibungen
+  bleibt ein eigener Staging-Nachweis. Phasen werden unabhängig davon nur für
+  ein 56-Tage-Fenster vorgeladen und für ältere Nächte bei Auswahl nachgeladen.
 
 ## Ablauf
 

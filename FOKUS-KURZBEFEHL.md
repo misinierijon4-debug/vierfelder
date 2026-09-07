@@ -29,15 +29,12 @@ Ruhe da. Der Tracker fährt nur mit.
 
 ## Einmalig in Supabase
 
-**Beides ist am 31.08.2026 auf `ogxwazageufvalkocywh` eingespielt** — die
-Migration `20260831210000_fokus.sql` und die Edge Function `fokus` (Version 1,
-`verify_jwt` aus). Am Rechner ist nichts mehr zu tun. Bei einem neuen Projekt:
-
-```powershell
-npx supabase link --project-ref ogxwazageufvalkocywh
-npx supabase db push
-npx supabase functions deploy fokus --no-verify-jwt
-```
+Der historische Betriebsstand vermerkt Migration `20260831210000_fokus.sql`
+und eine frühe Function-Fassung am 31.08.2026. Der aktuelle Branch enthält
+zusätzliche Sicherheitsänderungen; daraus folgt nicht, dass genau diese
+Fassung bereits produktiv läuft. Migration und Function werden nur über das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md) in einer
+konkret benannten Umgebung geprüft und veröffentlicht.
 
 Die Migration erlaubt der Tabelle `aufenthalte` alle vier Bereiche statt nur
 `gym` und `boxen`. Die Function `fokus` macht aus dem Melden einen einzigen
@@ -58,7 +55,7 @@ dazu: **kein Zeitplan.** Ein Fokus, der sich montags um 18 Uhr von selbst
 einschaltet, setzt einen Tick für einen Abend, an dem niemand gelernt hat. Der
 Fokus muss von Hand kommen, sonst misst er sich selbst.
 
-## Die sechs Kurzbefehle: eine Aktion, eine URL
+## Die sechs Kurzbefehle: POST und Token im Header
 
 Ein fertiger Kurzbefehl lässt sich nicht weitergeben — iOS nimmt nur Dateien
 an, die Apple signiert hat, und signieren kann nur ein Apple-Gerät. Also ist
@@ -67,22 +64,24 @@ kann:
 
 1. In **Kurzbefehle** einen neuen anlegen, Name `lernen an`.
 2. Genau eine Aktion: **Inhalte von URL abrufen**.
-3. Die URL aus der Tabelle einsetzen, `DEIN-TOKEN` durch das eigene ersetzen.
+3. Die URL aus der Tabelle einsetzen.
+4. Methode `POST` wählen, keinen Haupttext anlegen.
+5. Einen Header `x-import-token` mit dem persönlichen Import-Token hinzufügen.
 
-Das war alles. Keine Methode umstellen, keine Header, keine JSON-Felder — und
-damit auch nicht die Falle, dass iOS ein Feld als Boolean anlegt und statt des
-Tokens ein `true` schickt.
+Damit steht das Token nicht in URL, Browserhistorie oder gewöhnlichen
+Request-Logs. Der Header bleibt trotzdem ein Geheimnis: keine Screenshots und
+keinen fertigen Kurzbefehl weitergeben.
 
 | Kurzbefehl | URL |
 |---|---|
-| lernen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lernen&e=an` |
-| lernen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lernen&e=aus` |
-| lesen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lesen&e=an` |
-| lesen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=lesen&e=aus` |
-| training an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=boxen&e=an` |
-| training aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?t=DEIN-TOKEN&b=boxen&e=aus` |
+| lernen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lernen&e=an` |
+| lernen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lernen&e=aus` |
+| lesen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lesen&e=an` |
+| lesen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lesen&e=aus` |
+| training an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=boxen&e=an` |
+| training aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=boxen&e=aus` |
 
-`b` ist der Bereich, `e` das Ereignis (`an` oder `aus`), `t` das Token. Ein
+`b` ist der Bereich, `e` das Ereignis (`an` oder `aus`). Ein
 `o=...` für den Namen der Quelle ist möglich, aber nicht nötig: ohne Angabe
 heißt sie `fokus lernen`, `fokus lesen`, `fokus boxen`.
 
@@ -91,15 +90,13 @@ Standort ab. Was dort fehlt, ist das Training ohne Adresse — Boxen zuhause,
 Laufen, Hof. Wer stattdessen ein Gym ohne Standort-Automation hat, ändert in
 den zwei URLs `b=boxen` auf `b=gym`. Ein Buchstabe, keine Migration.
 
-**Das Token steht in der URL.** Behandle die sechs Kurzbefehle wie ein
-Passwort: keine Screenshots, nicht weiterschicken. Das heutige Import-Token ist
-nicht auf Fokus begrenzt. Es legitimiert auch Schlafimport und
-Kurzbefehl-Diagnose, im vorbereiteten nächsten Datenbankstand zusätzlich den
-Gewichtsimport. Wer es kennt, kann in diesen Bereichen Daten für dich schreiben;
-lesen oder löschen kann er darüber nicht. Weil die URL in Function-Logs
-auftauchen kann, ist diese GET-Variante nur ein abwärtskompatibler Altweg. Die
-Umstellung auf getrennte, widerrufbare Zweck-Tokens im POST-Body ist als
-Sicherheitsmigration offen und benötigt anschließend neue iPhone-Kurzbefehle.
+**Das heutige Import-Token ist noch nicht auf Fokus begrenzt.** Es legitimiert
+auch Schlafimport, Kurzbefehl-Diagnose und Gewichtsimport. Wer es kennt, kann in
+diesen Bereichen Daten für die gebundene Person schreiben; lesen oder löschen
+kann er darüber nicht. Getrennte, widerrufbare Zweck- und Gerätetokens bleiben
+eine offene Sicherheitsmigration. Eine spätere Rotation ist ein produktiver,
+freigabepflichtiger Schritt und darf erst erfolgen, wenn beide iPhones auf dem
+neuen Weg geprüft sind.
 
 Eine Zeitangabe wird nicht mitgeschickt: es gilt der Moment des Aufrufs, und
 das ist genau der Moment, in dem der Fokus umschaltet.
@@ -120,10 +117,10 @@ Zwei Automationen je Fokus, also sechs. Danach nie wieder.
 
 ## Testen
 
-Die URL von `lernen an` in Safari öffnen — das ist derselbe Aufruf, den der
-Kurzbefehl macht. Die Antwort muss `"ok": true` und `"neu": true` enthalten.
-Dann die von `lernen aus`: die Antwort enthält zusätzlich `dauer_minuten`.
-In Supabase nachsehen:
+Den Kurzbefehl `lernen an` von Hand ausführen. Die Antwort muss `"ok": true`
+und `"neu": true` enthalten. Dann `lernen aus` ausführen: die Antwort enthält
+zusätzlich `dauer_minuten`. Ein Safari-Aufruf der URL ist kein gleichwertiger
+Test, weil dabei Methode und Token-Header fehlen. In Supabase lesend prüfen:
 
 ```sql
 select p.person, a.bereich, a.ort,
@@ -135,17 +132,20 @@ order by a.ankunft desc;
 ```
 
 Ein Testlauf von einer Minute steht in der Tabelle, setzt aber keinen Tick — er
-liegt unter der Schwelle (20 Minuten, beim Lesen 10). Wegräumen:
+liegt unter der Schwelle (20 Minuten, beim Lesen 10). Testdaten werden nur in
+einer entbehrlichen Staging-Umgebung und anhand vorher notierter IDs entfernt;
+eine pauschale Löschung kurzer Produktivaufenthalte ist nicht Teil des Tests.
 
-```sql
-delete from aufenthalte where abgang - ankunft < interval '5 minutes';
-```
-
-Kommt `kein gueltiges import-token`, stimmt `t` nicht. Kommt `p_bereich muss
-lernen, gym, boxen oder lesen sein`, ist die Migration noch nicht eingespielt.
-Kommt gar nichts oder ein 404, fehlt `npx supabase functions deploy fokus
---no-verify-jwt`. Kommt `401 Invalid JWT`, wurde beim Deploy `--no-verify-jwt`
-vergessen.
+`import-token fehlt oder hat eine ungültige länge` weist auf einen fehlenden
+oder falsch kopierten Header; `import-token ist ungültig` auf ein nicht zur
+Datenbank passendes Token. Bei `b muss lernen, gym, boxen, lesen sein` stimmt
+die URL nicht; `fokus-eingabe ist ungültig` kann zusätzlich auf einen älteren,
+nicht passenden RPC-Vertrag hinweisen. `kein passender offener fokus vorhanden`
+beim Ausschalten bedeutet, dass kein bestätigter Beginn gefunden wurde. Kommt
+gar nichts oder ein 404, stimmen Function-Deployment oder Projekt-URL nicht.
+Ein `401 Invalid JWT` weist auf eine nicht zum dokumentierten Importvertrag
+passende Gateway-Konfiguration hin. Das wird im Staging-Schritt des
+Release-Runbooks eingegrenzt, nicht durch einen spontanen Produktionsdeploy.
 
 ## Was von allein passiert, und was nicht
 
@@ -183,26 +183,13 @@ Handy im Gym liegen lässt. Technik kann Lügen teuer machen, nicht unmöglich.
 20 Minuten Fokus kosten ungefähr so viel wie 20 Minuten lernen; der Unterschied
 ist, dass man in der Zeit auch hätte lernen können.
 
-## Sicherer Übergang: Token aus der URL nehmen
+## Übergang von alten GET-URLs
 
-Nach Deployment der vorbereiteten Function wird jeder Kurzbefehl einzeln auf
-**Inhalte von URL abrufen** umgestellt. Methode `POST`, kein Haupttext, ein
-Header `x-import-token` mit dem persönlichen Import-Token. In der URL stehen
-nur noch Bereich und Ereignis:
-
-| Kurzbefehl | URL |
-|---|---|
-| lernen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lernen&e=an` |
-| lernen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lernen&e=aus` |
-| lesen an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lesen&e=an` |
-| lesen aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=lesen&e=aus` |
-| training an | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=boxen&e=an` |
-| training aus | `https://ogxwazageufvalkocywh.functions.supabase.co/fokus?b=boxen&e=aus` |
-
-Der POST-Weg lehnt `t` und `token` in der URL ausdrücklich ab. Die alten GET-
-URLs bleiben zunächst erreichbar und antworten zusätzlich mit
-`"veraltet": true`. Erst wenn alle sechs Kurzbefehle auf beiden iPhones über
-POST erfolgreich geprüft sind, darf das gemeinsame Token rotiert und GET in
-einem späteren Release abgeschaltet werden. Der direkte RPC-Weg aus älteren
-Fassungen dieser Anleitung bleibt technisch kompatibel, ist aber für den
-Neuaufbau nicht mehr nötig.
+Alte Kurzbefehle mit `?t=TOKEN` sind nur ein abwärtskompatibler Altweg und
+antworten mit `"veraltet": true`. Jeder dieser Kurzbefehle wird einzeln auf den
+oben beschriebenen POST-Header umgestellt und manuell geprüft. Erst wenn alle
+sechs Kurzbefehle auf beiden iPhones erfolgreich über POST gelaufen sind, darf
+das gemeinsame Token im kontrollierten Release rotiert werden. GET wird erst
+in einem späteren, separat geprüften Release abgeschaltet. Der direkte RPC-Weg
+aus älteren Fassungen bleibt technisch kompatibel, ist aber für einen Neubau
+nicht der empfohlene Fokuspfad.

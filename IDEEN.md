@@ -1,62 +1,104 @@
-# IDEEN: Zukünftige Erweiterungen (für später)
+# IDEEN: Kandidaten, keine automatische To-do-Liste
 
-Diese Ideen wurden bewusst nicht in Version 1 eingebaut, um den Kern scharf zu halten (Eintragen unter 3 Sekunden, abends, mühelos).
+Der Kern bleibt schnelles Eintragen, echte Herkunft und der Vergleich zwischen
+genau Erijon und Koray. Eine Idee wird erst gebaut, wenn Nutzen, Datenwahrheit,
+Datenschutz, Zustände, Migration, Tests und mobile Bedienung zusammen gelöst
+sind.
 
-1. **Export & Backup:** Manueller JSON-Export und Import fuer Datenumzug ohne Cloud-Konto.
-2. **Wochenrückblick im Raster:** Swipe nach links/rechts im Wochenraster, um vergangene Wochen anzusehen.
-3. **Monats-Heatmap:** Kompakte Stempel-Jahresuebersicht im gleichen Stempellook.
-4. **Haptisches Feedback:** Web Vibration API (`navigator.vibrate(15)`) beim Abhaken auf Android.
-5. **Siri / Shortcuts Webhook / URL-Scheme:** `zweikampf://done/lernen` fuer Home-Screen Widget Schnellaktionen.
-6. **Realtime fuers Gewicht:** `gewicht` steht bewusst nicht in `supabase_realtime`. Wiegen
-   passiert einmal morgens, niemand sitzt daneben und wartet. Falls der veraltete Wochenstand
-   doch stoert: Tabelle in die Publication aufnehmen und `abonniere` erweitern.
-7. **Zielgewicht:** eine waagerechte Marke im Diagramm und der Abstand dorthin. Bewusst weg
-   gelassen, damit das Diagramm den Verlauf zeigt und kein Urteil.
+## Bereits umgesetzt, nicht mehr offen
 
-## Benachrichtigungen: die Sammlung
+- Vergangene Wochen sind über den Kalender erreichbar.
+- Gewicht wird über Realtime zwischen Clients abgeglichen.
+- Der Repository-Stand enthält eine Gewichtserinnerung und eine Erinnerung an
+  einen fehlenden Schlafimport.
 
-Der Weg dorthin steht (siehe [BENACHRICHTIGUNGEN.md](BENACHRICHTIGUNGEN.md)),
-die Nachrichten selbst noch nicht. Alle folgen demselben Muster: der Server
-schaut zu einer festen Uhrzeit nach, was fehlt, und schickt einen Satz.
+„Im Repository umgesetzt“ bedeutet bei serverseitigen Erinnerungen nicht
+„produktiv aktiv“. Migration, Scheduler-Secret, Function-Deployment und echte
+Zustellung brauchen den getrennten Nachweis aus dem
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md).
 
-**Erinnerungen — abends, wenn etwas offen ist**
+## Sinnvolle nächste Kandidaten
 
-* ✓ 20:00 — „heute noch nicht gewogen.“ — als erste echte Erinnerung gebaut;
-  die Uhrzeit ist pro Person einstellbar.
-* 20:00 — „heute noch nicht gelesen?“
-* 20:30 — „2 von 5 heute. was geht noch?“
-* 08:00 — „waage. zehn sekunden.“ (wiegen gehoert in den morgen, nicht in den abend)
-* sonntag 18:00 — „letzter tag. dir fehlen noch 3 haken.“
+### Sicherer Export und Restore
 
-**Duell — der staerkste Hebel bei zwei Leuten**
+Ein manueller, versionierter Export kann Gerätewechsel und Backups erleichtern.
+Ein nackter JSON-Download reicht dafür nicht. Vor einer Umsetzung braucht es:
 
-* „koray hat gym abgehakt. du liegst 2 zurueck.“
-* „erijon hat dich ueberholt. 12 zu 11.“
-* sonntag 21:00 — „woche vorbei: du 28, koray 25.“
-* „die wette laeuft in 24 stunden ab.“
+- einen klaren Umfang je Datenklasse und Person;
+- ausdrückliche Warnung, dass Gewicht, Schlaf, Orte und Noten sensibel sind;
+- Schema- und Exportversion;
+- Validierung und Vorschau vor jedem Import;
+- Duplikat- und Konfliktstrategie mit stabilen IDs;
+- keine stillen Überschreibungen oder erfundenen Standardwerte;
+- verschlüsselten beziehungsweise bewusst gewählten Speicherort;
+- Roundtrip- und Altversions-Tests sowie eine Restore-Probe.
 
-**Lob statt Druck.** Ohne das schaltet man Push nach einer Woche ab.
+Der lokale Prototyp besitzt derzeit keinen solchen Backupweg. Löschen des
+Browserspeichers bleibt dort ohne vorherigen Export endgültig.
 
-* „5 tage am stueck gelesen.“
-* „neue bestwoche: 31 haken.“
-* „erste woche, in der du jeden tag auf der waage standest.“
+### Laufende Automation ehrlich anzeigen
 
-**Was sich selbst meldet**
+Eine offene Standort- oder Fokussitzung kann „läuft seit …“ zeigen. Sie darf
+vor Mindestdauer oder vor einem bestätigten Abgang noch keinen fertigen Tick
+und keine fertigen Minuten behaupten. Verwaiste Sitzungen brauchen einen klaren
+Fehlerzustand statt stiller Bereinigung.
 
-* „training erkannt: 47 minuten. haken gesetzt.“ (aus der Standort-Automation)
-* „fokus lernen lief 18 minuten. zwei fehlen zum haken.“
-* „der schlafimport von heute nacht fehlt.“
+### Fehlenden Schlafimport verständlicher machen
 
-**Schlaf und Noten**
+Neben Push wären Importstatus und Zeitpunkt des letzten erfolgreichen Imports
+in der App nützlich. Dabei sind mindestens `noch nicht gelaufen`, `keine
+Health-Daten`, `Abruf fehlgeschlagen`, `unvollständig` und `erfolgreich`
+auseinanderzuhalten. Rohsegmente und Token-Hashes bleiben unsichtbar.
 
-* „nur 5h 20min. heute frueher ins bett.“
-* „bettzeit in 30 minuten, wenn du auf 8 stunden willst.“
-* „neue note: mathe 12 punkte. schnitt jetzt 11,4.“
+### Monats- und historische Vergleiche
 
-Drei Regeln, die beim Bauen gelten sollten:
+Eine kompakte Monatsübersicht kann echte Muster zeigen, wenn sie nicht dieselbe
+Wochenzahl ein drittes Mal darstellt. Vorher müssen Historien paginiert und mit
+mehr als 1.000 Datensätzen getestet sein. Abgeschlossene Wochen lesen ihre
+unveränderliche Archivzeile; Legacy-Nachberechnungen bleiben gekennzeichnet.
 
-1. **Nie zweimal dasselbe.** Gleicher `tag` im Paket ersetzt die aeltere
-   Mitteilung, statt sich danebenzulegen.
-2. **Nichts nach 22 Uhr**, ausser die Nachricht handelt vom Schlafengehen.
-3. **Keine Erinnerung an etwas, das schon erledigt ist.** Der Server rechnet
-   vor dem Senden, nicht beim Planen.
+### Kleine Komfortideen
+
+- Haptisches Feedback auf unterstützten Android-Geräten, immer optional und
+  unter Beachtung von Reduced Motion.
+- Schnellaktion über einen sicheren, authentifizierten Weg; kein dauerhaftes
+  Import-Token in URL, Widget oder Log.
+- Zielgewicht nur nach gemeinsamer Produktentscheidung. Es wäre ein Urteil in
+  einer sensiblen Datenansicht, nicht bloß eine zusätzliche Linie.
+
+## Benachrichtigungskandidaten
+
+Die Transportkette und zwei schmale Reminder sind gebaut. Weitere Nachrichten
+kommen erst nach einer störungsfreien Beobachtungsphase der bestehenden
+Erinnerungen und mit eigener Abschaltmöglichkeit.
+
+Mögliche Kandidaten:
+
+- „heute noch nicht gelesen?“
+- „2 von 5 heute. was geht noch?“
+- sonntag 18:00: „letzter tag. dir fehlen noch 3 haken.“
+- „koray hat gym abgehakt. du liegst 2 zurück.“
+- „erijon hat dich überholt. 12 zu 11.“
+- sonntag 21:00: „woche vorbei: du 28, koray 25.“
+- „die wette läuft in 24 stunden ab.“
+- „training erkannt: 47 minuten. haken gesetzt.“
+- „fokus lernen lief 18 minuten. zwei fehlen zum haken.“
+
+Keine automatische Nachricht behauptet Motivation, Gesundheit oder
+Kausalität. Eine Note oder kurze Nacht ist ein Messwert, kein Anlass für
+Panik-, Lob- oder Beschämungssprache.
+
+## Regeln für jede neue Nachricht
+
+1. Kein Doppelversand. Ein unklarer Provider-Ausgang wird nicht automatisch
+   wiederholt.
+2. Standardmäßig nichts nach 22 Uhr; Schlafenszeit-Nachrichten brauchen eine
+   eigene, ausdrücklich gewählte Regel.
+3. Unmittelbar vor dem Reservieren und Senden wird erneut geprüft, ob der Anlass
+   noch besteht.
+4. Autor, Zeitpunkt, Datenquelle und Empfänger müssen serverseitig eindeutig
+   sein.
+5. Jeder Reminder ist einzeln abschaltbar; keine Nachricht setzt einen Tick
+   oder verändert Fachlogik.
+6. Endpunkte, Tokens, Gesundheitsdaten, Noten und Orte erscheinen nicht in
+   Antworten oder Logs.

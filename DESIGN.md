@@ -1,6 +1,26 @@
-# zweikampf — Designplan (zur Freigabe)
+# zweikampf — Designentscheidungen und Änderungsprotokoll
 
-Stand: 26.08.2026. Kein Code, bis das hier freigegeben ist.
+Die Abschnitte 0 bis 13 waren der am 26.08.2026 freigegebene Ausgangsplan; die
+Nachträge dokumentieren die anschließenden Produktentscheidungen. Aussagen wie
+„noch nicht gebaut“ oder frühe Tabellen- und Komponentenlisten sind deshalb
+historische Momentaufnahmen, keine Beschreibung des aktuellen Branches.
+
+Der heute zu schützende Kern bleibt:
+
+- dunkle, flache Anzeigetafel statt generischer Karten-App;
+- Erijon in Gold, Koray in Petrol;
+- kleine Radien, Haarlinien, keine dekorativen Schatten oder Verläufe;
+- Archivo für markante Zahlen, Hanken Grotesk für Interface-Texte;
+- eine zentrale Safe-Area-Hülle und Mobile First um 390 Pixel;
+- Herkunft, Ladezustand und Fehler als Text, nicht nur als Farbe oder
+  Deckkraft;
+- keine erfundenen Daten, Kurse oder Gesundheitswerte.
+
+Die aktuelle technische Struktur, Datenmodi, Offline-/PWA-Grenzen und
+Rollenmatrix stehen im [README](README.md) und in
+[docs/architektur-und-datenschutz.md](docs/architektur-und-datenschutz.md).
+Release- oder Migrationsbefehle gehören ausschließlich in das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md).
 
 ## 0. Ausgangslage im Repo
 

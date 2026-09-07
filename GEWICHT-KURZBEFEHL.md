@@ -5,9 +5,15 @@ der App, mit dem Daumen. Ab jetzt gilt dieselbe Regel wie bei gym und boxen:
 
 **Gemessen ist, was die Automation schreibt. Alles andere ist getippt.**
 
-Die Waage synchronisiert nach Apple Health, eine Health-Automation schickt die
-Zahl an die Datenbank. Wer keine Waage hat, tippt weiter in der App — das ist
-kein Nachteil im Duell, siehe unten.
+Die Waage synchronisiert nach Apple Health, ein Kurzbefehl liest den neuesten
+Gewichtseintrag des heutigen Tages und schickt ihn an die Datenbank. Wer keine
+Waage hat, tippt weiter in der App — das ist kein Nachteil im Duell, siehe
+unten.
+
+`gemessen` bezeichnet dabei die technische Herkunft über den persönlichen
+Importweg, nicht eine kryptografische Bestätigung durch Apple Health oder die
+Waage. Ein Inhaber des Import-Tokens könnte denselben RPC mit einem frei
+gewählten Wert aufrufen. Genau deshalb zählt Gewicht nicht in die Belegquote.
 
 ## Was das für die Belegquote heißt
 
@@ -25,12 +31,11 @@ eine gemessene Zahl trägt den Haken, eine getippte nicht.
 ## Supabase
 
 Die Migration liegt in `supabase/migrations/20260902220000_gewicht_quelle.sql`.
-Einspielen:
-
-```powershell
-npx supabase link --project-ref ogxwazageufvalkocywh
-npx supabase db push
-```
+Sie wird nicht aus dieser Einzelanleitung eingespielt. Wegen der noch nicht
+vollständig reconciliierten Migrationshistorie gilt ausschließlich das
+[Release- und Migrationsrunbook](docs/release-und-migrationen.md) mit lokalem
+Reset, Staging, Backup/Restore-Probe, Invarianten, Rollenmatrix, Advisors und
+ausdrücklicher Produktionsfreigabe.
 
 Eine Edge Function braucht es nicht, und ein neues Token auch nicht: die
 Funktion prüft dasselbe Import-Token wie der Schlaf-Kurzbefehl und die
@@ -44,23 +49,29 @@ Messung mehr wert ist als eine Eingabe.
 
 ## Der Kurzbefehl
 
-Ein Kurzbefehl, eine Aktion. Keine Variablen, kein Text zerlegen.
+Der Netzaufruf selbst bleibt klein. Davor wird aber ausdrücklich geprüft, dass
+Health einen Gewichtswert von **heute** liefert. Ein älterer letzter Wert darf
+nicht als neue Messung für den heutigen Tag gespeichert werden.
 
 1. In **Kurzbefehle** einen neuen Kurzbefehl anlegen und ihn `gewicht senden`
    nennen.
-2. Genau eine Aktion hinzufügen: **Inhalte von URL abrufen**.
-3. Auf den Pfeil tippen, um die Details aufzuklappen, und ausfüllen:
+2. **Health-Messungen suchen** hinzufügen: Typ `Gewicht`, Datum ist heute,
+   nach Datum absteigend, Limit 1.
+3. Mit **Wenn** prüfen, ob ein Ergebnis vorhanden ist. Ohne heutigen Wert endet
+   der Kurzbefehl ohne Netzaufruf.
+4. Für das gefundene Ergebnis den Gewichtswert abrufen.
+5. **Inhalte von URL abrufen** hinzufügen und ausfüllen:
    - URL: `https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_gewicht`
    - Methode: `POST`
    - Header hinzufügen — `Content-Type` mit dem Wert `application/json`
    - Header hinzufügen — `apikey` mit dem Publishable Key des Projekts
    - Haupttext anfordern: `JSON`
-4. Im JSON zwei Felder anlegen, **beide vom Typ Text**:
+6. Im JSON zwei Felder anlegen, **beide vom Typ Text**:
 
    | Schlüssel | Wert |
    |---|---|
    | `p_token` | dein persönliches Import-Token |
-   | `p_kg` | die Gewichtsvariable aus der Automation |
+   | `p_kg` | der Gewichtswert des heutigen Health-Ergebnisses |
 
 Der Typ **Text** ist wichtig. iOS legt neue Felder gern als Boolean an, und dann
 kommt statt des Tokens ein `true` an. Aus demselben Grund parst die Funktion die
@@ -71,13 +82,25 @@ Waage am frühen Morgen gehört zu diesem Morgen.
 
 ## Die Automation
 
-1. In **Kurzbefehle** → **Automation** → **+** → **Gesundheit**.
-2. Als Auslöser **Gewicht** wählen, „Wird aktualisiert".
-3. **Sofort ausführen**, Rückfrage aus.
-4. Als Aktion: die Gesundheitsdaten des Tages abrufen (Gewicht, neuester
-   Eintrag) und den Wert als `p_kg` an den Kurzbefehl oben übergeben.
+Apple dokumentiert für persönliche Kurzbefehls-Automationen Ereignis-, Reise-,
+Kommunikations-, Transaktions- und Einstellungs-Auslöser; ein neuer
+Health-Gewichtseintrag ist dort kein allgemeiner Trigger. Deshalb wird hier
+keine nicht vorhandene „Gesundheit → Gewicht aktualisiert“-Automation
+versprochen. Siehe [Apple: persönliche Automationen](https://support.apple.com/guide/shortcuts/intro-to-personal-automation-apd690170742/ios)
+und [Apple: Ereignisauslöser](https://support.apple.com/guide/shortcuts/event-triggers-apd932ff833f/ios).
 
-Danach steht die Zahl morgens von allein in der App, mit Haken.
+Der belastbare Standard ist eine **Tageszeit** nach der üblichen Wiegezeit:
+
+1. In **Kurzbefehle** → **Automation** → **+** → **Tageszeit**.
+2. Eine Zeit wählen, zu der die Waage gewöhnlich bereits mit Health
+   synchronisiert hat.
+3. `gewicht senden` ausführen lassen, **Sofort ausführen**, Rückfrage aus.
+4. Den ersten Lauf entsperrt beobachten und in App sowie Datenbank prüfen.
+
+War an diesem Tag noch keine Health-Messung vorhanden, schreibt der Kurzbefehl
+nichts. Spätes Wiegen wird nicht erfunden; der Kurzbefehl kann dann von Hand
+gestartet oder eine zweite, spätere Tageszeit eingerichtet werden. Erst ein
+echter Lauf auf jedem verwendeten iPhone ist ein Gerätebeleg.
 
 ## Wenn die Waage ausfällt
 

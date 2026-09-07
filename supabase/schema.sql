@@ -1,12 +1,15 @@
--- zweikampf: schema für genau zwei konten.
--- ausführen im supabase sql editor, sobald das projekt steht.
+-- zweikampf: historische grundlage fuer genau zwei konten.
+-- NICHT als einzelnes produktionsskript oder direkt im SQL Editor ausfuehren.
 --
 -- dieses skript baut den stand bis zum 31.08.2026 auf. alles danach — die
 -- einheiten, der fokus, die duell-wetten, das schlaf-lesemodell und score v2 —
 -- steht in supabase/migrations/ und wird in dateinamen-reihenfolge darüber
--- gelegt (`npx supabase db push`). ein teil der policies hier wird dabei durch
--- schärfere ersetzt; wer das produktive schema sucht, findet es in der summe
--- aus beidem, nicht in dieser datei allein.
+-- gelegt. Ein Teil der Policies hier wird dabei durch schaerfere ersetzt; wer
+-- das produktive Schema sucht, findet es in der Summe aus beidem, nicht in
+-- dieser Datei allein. Wegen des bestaetigten Remote-History-Drifts ist auch
+-- ein unbesehenes `supabase db push` gesperrt. Der kontrollierte Ablauf mit
+-- History-Abgleich, Staging, Backup und Restore-Probe steht in
+-- docs/release-und-migrationen.md.
 
 -- ordnet ein konto einer der beiden personen zu. die farbe hängt an der person,
 -- nicht am konto, deshalb steht hier der schlüssel und kein freitext.
@@ -447,10 +450,8 @@ from profile p
 where p.id = f.user_id
   and ((p.person = 'erijon' and f.name = 'mathe') or (p.person = 'koray' and f.name = 'englisch'));
 --
--- nach dem anlegen der beiden konten (dashboard > authentication > add user,
--- bei beiden "auto confirm user" anhaken) einmal ausführen:
---
---   insert into profile (id, person)
---   select id,
---          case when email = 'DEINE@mail' then 'erijon' else 'koray' end
---   from auth.users;
+-- Konten werden nicht ueber einen catch-all-Fall aus E-Mail-Adressen abgeleitet:
+-- jede der beiden Identitaeten muss explizit und fail-closed zugeordnet werden.
+-- Der kontrollierte, transaktionale Provisionierungsblock samt Nachpruefung
+-- steht im README unter "Supabase einrichten". Unbekannte Auth-Nutzer erhalten
+-- kein Profil.

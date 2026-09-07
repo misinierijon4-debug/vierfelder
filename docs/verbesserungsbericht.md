@@ -1,6 +1,6 @@
 # Verbesserungsbericht
 
-Stand: 6. September 2026. Dieses Journal beschreibt den nachweisbaren Stand der
+Stand: 7. September 2026. Dieses Journal beschreibt den nachweisbaren Stand der
 Arbeitsbranch `codex/ganzprojekt-verbesserung`; es ist kein Produktionsfreigabeprotokoll.
 
 ## Ausgangszustand und Baseline
@@ -51,16 +51,21 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 | P0 | Wochenabschluss wird aus Clientzustand archiviert | konkurrierende/stale Clients können unveränderlich falsch abschließen | atomare RPC-Paralleltests | lokal behoben; Migration/Staging offen |
 | P0 | Push-Versand akzeptiert jedes gespeicherte HTTPS-Ziel und folgt Redirects | serverseitige Request-Forgery und Datenabfluss in Logs/Antworten | Provider-Allowlist, Redirect-, IP- und Log-Negativtests | lokal behoben; Deploy offen |
 | P0 | offene Registrierung + unprofilierte Push-Schreibrechte | fremde Konten können Provider-Endpunkte speichern und die Probe missbrauchen | Mitglieder-, RLS- und Rate-Limit-Matrix | lokal behoben; Migration, Live-Signup und Staging offen |
-| P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | offen |
+| P0 | Reminder-Function besitzt keine privilegierte Aufruferprüfung | jeder gültige JWT kann Serverversand anstoßen | anon/user/server-Matrix | lokal behoben; Migration, Deploy und Staging offen |
 | P0 | `fokus` fällt bei fehlendem anon-Key auf Service Role zurück | öffentlich erreichbarer Importweg erhält unnötige Vollrechte | Fehlkonfigurations- und Key-Auswahltests | lokal behoben; Deploy offen |
 | P1 | Fokus-GET trägt ein bereichsübergreifend gültiges Token in URL/Logs | Token-Leak erlaubt Schreibzugriff auf mehrere Importwege | POST-Header, Zweck-/Gerätetoken und Rotation | POST lokal fertig; Migration/iPhones offen |
-| P1 | gemessene und manuelle Einheiten werden als vollständig gemessen summiert | falsche Dauer und Belegquote | Mischquellen-/Überlappungstests | offen; Belegregel braucht Produktentscheidung |
+| P1 | gemessene und manuelle Einheiten werden als vollständig gemessen summiert | falsche Dauer und Belegquote | Mischquellen-/Überlappungstests | behoben als `gemischt`; keine vermutete Auto-Verschmelzung |
 | P1 | Schlafphasenfehler werden verschluckt | Fehler erscheint endlos als Laden oder fälschlich als Health-Leerzustand | idle/loading/empty/error/retry | behoben |
-| P1 | Realtime-DELETE erwartet unter RLS Vollzeilen; Status und Reconnect-Resync fehlen | gelöschte oder verpasste Daten bleiben lokal | PK-only-Delete und Zwei-Client-Reconnect | PK-Delete lokal behoben; Reconnect offen |
-| P1 | Historienabfragen sind nicht paginiert | ab 1.000 Zeilen stille Trunkierung | 1.001+-Datensatz-Test | offen |
-| P1 | Prüfungsfachwechsel besteht aus zwei Updates | bei Teilfehler fehlt das vierte Fach | transaktionale RPC | blockiert durch Migrationsdrift |
-| P1 | PWA `autoUpdate` kann offene Eingaben neu laden | Entwürfe gehen verloren | Zwei-Build-SW-Test mit offenem Formular | offen |
-| P1 | Tabs und Dialoge sind tastaturseitig unvollständig | Fokus entkommt; Navigation ist unklar | Komponenten- und Browser-A11y-Tests | offen |
+| P1 | Realtime-DELETE erwartet unter RLS Vollzeilen; Status und Reconnect-Resync fehlen | gelöschte oder verpasste Daten bleiben lokal | PK-only-Delete und Zwei-Client-Reconnect | lokal behoben; echte Zwei-Client-/Staging-Unterbrechung offen |
+| P1 | Historienabfragen sind nicht paginiert | ab 1.000 Zeilen stille Trunkierung | 1.001+-Datensatz-Test | lokal behoben; echtes PostgREST/Staging offen |
+| P1 | Prüfungsfachwechsel besteht aus zwei Updates | bei Teilfehler fehlt das vierte Fach | transaktionale RPC | lokal behoben; Migration/Staging offen |
+| P1 | PWA `autoUpdate` kann offene Eingaben neu laden | Entwürfe gehen verloren | Zwei-Build-SW-Test mit offenem Formular | lokal behoben; installierte PWA und zwei Tabs offen |
+| P1 | Tabs und Dialoge sind tastaturseitig unvollständig | Fokus entkommt; Navigation ist unklar | Komponenten- und Browser-A11y-Tests | lokal und im Desktop-Browser behoben; physische Assistenztechnik offen |
+| P1 | Lokaler Backendzustand war an eine Instanz, die Fusszeile aber an den globalen Tab-Schluessel gebunden | Tab A konnte Koray anzeigen und weiter als Erijon schreiben | localStorage nach Instanzerzeugung wechseln | behoben |
+| P1 | Gemeinsame Wetten waren Last-Write-Wins und Delete/Undo nicht versioniert | ein veralteter Client kann den Einsatz des Partners still überschreiben | Expected-Version-CAS, Tombstone, zwei schnelle Clients | lokal behoben; Migration/Staging offen |
+| P1 | Mehrfach-Undo restaurierte Einheiten über unabhängige Requests | Teilfehler kann nur einen Teil des gelöschten Tags dauerhaft wiederherstellen | ein atomarer, idempotenter Batch samt Konfliktfall | lokal behoben; Migration/Staging offen |
+| P1 | Lokale Broadcast-Payloads konnten verspätet eintreffen | ein alter Zwei-Tab-Event dreht einen neueren sichtbaren Wert zurück | verzögertes Event vor/während Snapshot | behoben durch kanonische Invalidierung |
+| P1 | Sonntag 18 Uhr ist zugleich als finales Archiv und als weiter beschreibbarer Trackingtag modelliert | Aktivitaeten nach 18 Uhr koennen dauerhaft aus dem Archiv fehlen | Produktentscheidung plus DB-/Zeitgrenztests | Freigabeentscheidung offen; Empfehlung Montag 00:00 Europe/Berlin |
 
 ## Remote-Branches
 
@@ -69,8 +74,11 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
   und löscht permanente Fehler. Testideen werden für eine neue Implementierung
   verwendet.
 - `2b6be46`: nicht pauschal übernommen. Bedarfsweises Kalender-Rendering und
-  gezieltes Code-Splitting sind Kandidaten; Produktions-Demobypass und sofortiges
-  Komplett-Prefetch werden verworfen.
+  die kleinere Schriftladung wurden auf der aktuellen Basis selektiv neu
+  umgesetzt. Tab-Lazy-Splitting wurde nach einem vollständigen Gegenversuch
+  wieder verworfen: rund 21 KiB weniger initiales Sites-JavaScript standen
+  ersten Tabwechseln von 531 bis 547 ms statt 213 bis 236 ms gegenüber.
+  Produktions-Demobypass und sofortiges Komplett-Prefetch bleiben verworfen.
 - `c5d9858`/`08f3844`: selektiv als `b219144`/`04a7a89` übernommen, nachdem der
   Live-Abgleich beide Migrationen, `schlaf-erinnerung` v1 und die refaktorierte
   `gewicht-erinnerung` v2 bestätigt hat. Die Commits sind patch-id-identisch;
@@ -80,8 +88,9 @@ Realtime-Deduplizierung gemeinsam geschützt werden.
 
 ## Produktions- und Migrationsgrenzen
 
-Der lesende Live-Abgleich meldet 29 produktive und mit den drei neuen
-Forward-Fixes 31 lokale Migrationen; nur 15 Versionsnummern stimmen überein.
+Der lesende Live-Abgleich meldete am 7. September 2026 29 produktive und der
+finale Branch enthält 37 lokale Migrationen; nur 15 Versionsnummern stimmen
+überein.
 `gewicht.quelle` und `record_gewicht` stehen lokal in einer Migration, existieren
 produktiv aber noch nicht. Deshalb werden derzeit keine Migration, kein Reset,
 keine Tokenrotation und keine produktive Änderung ausgeführt. Vor einem späteren
@@ -714,6 +723,119 @@ und eine ausdrückliche Freigabe erforderlich.
   Legacy-Fallbacks. Ein echter PostgREST-/Staging-Lauf mit mehr als 1.000
   Datensätzen und konkurrierenden Inserts bleibt offen.
 
+### Welle 3: bestätigte Mutationen und lokaler Mehrtabbestand
+
+- Gewicht, Wette, einzelne sowie gebündelte Tracker-Löschungen bestätigen
+  nicht nur `error === null`, sondern die tatsächlich zurückgegebenen
+  Schlüssel. Ein leerer Kontroll-SELECT unter derselben RLS gilt ausdrücklich
+  nicht als Löschbeleg, weil er eine weiterhin vorhandene, aber unsichtbare
+  Zeile nicht unterscheiden kann.
+- Lokale Tracker-, Gewichts-, Wett-, Fächer-, Noten- und Archivänderungen
+  halten den gesamten Read-Modify-Write-Zyklus unter einem Web Lock. Eine
+  Backendinstanz bindet ihre Person beim Erzeugen; ein späterer Wechsel im
+  anderen Tab kann deshalb weder Schreibidentität noch Fusszeile umdeuten.
+- Einheitenwert und Durchführungszeit verwenden den geladenen Altwert als
+  Compare-and-set-Bedingung. Zwei Clients mit demselben veralteten Ausgangswert
+  können nicht mehr beide konkurrierende Updates bestätigt bekommen; schnelle
+  eigene Folgen bleiben durch die vorhandene ID-Schreibkette geordnet.
+- Nach lokalen Schreibfehlern rollt der Store nicht mehr auf einen womöglich
+  selbst nur optimistischen React-Zwischenstand zurück. Er wartet sämtliche
+  Mutationen ab und lädt dann `localStorage` über das Backend als kanonische
+  Basis neu. Getestet sind zwei Folgefehler sowie „gleicher Zielwert: erster
+  Fehler, zweiter Erfolg“ für Tracker und entsprechende Folgen für Gewicht und
+  Wette.
+- Die drei im Abschlussreview gefundenen Restpunkte sind geschlossen. Wetten
+  tragen eine servergenerierte bigint-Version, Autor, Serverzeit und einen
+  versionierten Tombstone; Set/Delete/Undo verwenden Expected-Version-CAS und
+  denselben Wochenlock wie der Abschluss. Die frühere Delete-Migration bleibt
+  unter ihrer bereits vergebenen Versionsnummer unverändert, der CAS folgt als
+  neue Forward-Migration.
+- Der lokale Wetten-Metastand verankert zusätzlich den zugehörigen Inhalt. Ein
+  noch offener alter Tab, der nur `vierfelder.wetten.v1` kennt, wird als neue
+  Legacy-Revision importiert und kann danach nicht mit einer alten Version
+  überschrieben werden.
+- Ein Mehrfach-Undo ist ein einzelner Backend-Aufruf. Lokal validiert und
+  schreibt er unter einem Web Lock höchstens einmal; die Supabase-RPC prüft
+  0 bis 64 Einheiten streng, fügt ohne Überschreiben ein und rollt bei einem
+  unexakten Postcheck die gesamte Transaktion zurück. Identische UUIDs machen
+  einen verlorenen Antwortweg idempotent wiederholbar.
+- Lokale BroadcastChannel-Nachrichten sind nur noch Invalidierungen. Der Store
+  lädt den unter Web Locks kanonischen Bestand und spielt keine möglicherweise
+  verspätete Nutzlast mehr ein; frühe Events erzwingen nach dem ersten Snapshot
+  einen zweiten Load.
+
+### Welle 4: mobile Bedienung, Reflow und Accessibility
+
+- Sekundäre Aktionen, Dialogknöpfe und Navigation besitzen verlässliche
+  44-Pixel-Trefferflächen, sichtbare Fokusmarkierungen und Zustände, die nicht
+  nur durch Farbe oder Deckkraft vermittelt werden. Reduced Motion schaltet
+  Bewegungsübergänge ab; Statuszeilen reservieren auch bei grosser Schrift
+  genug Höhe.
+- Gewicht und Noten validieren inline. Plausible ungewöhnliche
+  Gewichtssprünge werden gewarnt, nicht blockiert. Ein gemeinsamer Wetteinsatz
+  lässt sich entfernen und für kurze Zeit wiederherstellen; die Mutation ist
+  durch den versionierten CAS-Vertrag gegen veraltete Clients geschützt.
+- Geprüfte Desktop-Emulationen: 320 × 568, 360 × 800, 375 × 812, 390 × 844,
+  430 × 932 sowie Querformat 568 × 320 und 844 × 390. Nach einem zusätzlichen
+  Reflow-Fix wurde 195 × 422 erneut visuell geprüft: Dokument und zentrale
+  Hülle waren jeweils exakt 195 beziehungsweise 155 CSS-Pixel breit, die Tabs
+  brachen in zwei Zweierreihen um und der Schlafring stapelte ohne Abschneiden.
+  In der Browserkonsole lagen dabei keine Warnungen oder Fehler vor.
+- Diese Kontrollen sind Browseremulation. Physisches iPhone, Softwaretastatur,
+  VoiceOver/TalkBack/NVDA, Dynamic Type und installierte PWA bleiben als eigene
+  manuelle Abnahme offen.
+
+### Welle 5: messbarer Kernfluss und bewusst verworfene Optimierung
+
+- Der wiederholbare Core-Flow baut zuerst zwingend den lokalen Sites-Prototyp,
+  startet Chrome mit frischem Profil bei 430 × 932 und prüft zehn echte
+  Interaktionen. Fehlende Ziele brechen den Lauf ab; der Benchmark kann damit
+  keine Produktivdaten schreiben.
+- Finaler Lauf: DOMContentLoaded 111 ms, Load 113 ms, FCP 428 ms;
+  durchschnittliche Interaktion 130 ms, Maximum 297 ms, keine Long Tasks.
+  Initiales Sites-JavaScript: 578.823 Byte roh / 172.394 Byte gzip, gesamtes
+  JavaScript 584.476 / 174.593 Byte; PWA-Precache 608,98 KiB. Das ist ein
+  einzelner reproduzierbarer Maschinenlauf und keine universelle
+  Nutzerlatenzbehauptung.
+- Versuchsweise Tab-Aufteilung senkte das initiale gzip um rund 21 KiB, machte
+  die ersten fachlichen Tabwechsel auf derselben Maschine aber rund 300 ms
+  langsamer. Der komplette Lazy-Diff wurde deshalb verworfen. Beibehalten
+  wurden bedarfsweise Kalendererzeugung, kleinere lokale Fontimporte,
+  getrennte Buildziele und ein Budget für initiales sowie gesamtes JavaScript.
+- Der Supabase-Webbuild ist wegen der Sicherheits-, Status- und
+  Datenintegritätslogik gegenüber der Baseline nicht kleiner: final 811.141
+  Byte roh / 231.183 Byte gzip initial, 816.794 / 233.382 Byte gesamt;
+  PWA-Precache 835,85 KiB. Das bisherige 225-KiB-Initialbudget schlug dadurch
+  um 783 Byte fehl. Es wurde offen auf 227 KiB angehoben; gegenüber dem finalen
+  Wert bleiben 1.265 Byte Reserve, während das 230-KiB-Gesamtbudget unverändert
+  bleibt. Das ist Sicherheits-/Funktionszuwachs, kein pauschaler
+  Performancegewinn.
+- Ein umfangreicher CDP-Zusatz für Slow- und Offline-Start bestand zwar drei
+  lokale Läufe, wurde nach unabhängigem Review dennoch vollständig verworfen:
+  derselbe Browserprozess war kein echter Neustart, Subresources konnten noch
+  aus dem HTTP-Cache stammen und die konfigurierte Bandbreite war nicht direkt
+  belegt. Kein daraus stammender Wert zählt im Abschluss als PWA-Nachweis.
+
+### Welle 6: Dokumentation und finaler Prüfstand
+
+- README, Design-/Ideenstand, Benachrichtigungen und alle iPhone-Kurzbefehle
+  unterscheiden jetzt Quellcode, historische Beobachtung, Staging und
+  produktiven Nachweis. Kopierbare Anleitungen enthalten kein blindes
+  `db push`, keinen catch-all-Profilimport und keinen Secret-Key in `VITE_*`.
+- `docs/architektur-und-datenschutz.md` dokumentiert Datenfluss, Datenmodi,
+  Rollen-/RLS-Zielmatrix, lokale Schlüssel, PWA-/Offline-Grenze sowie fehlende
+  Export-, Lösch- und Aufbewahrungswege. `docs/release-und-migrationen.md`
+  trennt Prüfung, Staging, Backup/Restore, Migration, Function-Deployment,
+  Pages und Rollback.
+- Finaler lokaler Stand: `npm test` Exit 0, 61 Dateien und 722 Tests;
+  `npm run typecheck` Exit 0; `npm run build:web` Exit 0; `npm run check:dist`
+  Exit 0; `npm run benchmark:core` Exit 0. Deno 2.9.6 prüfte alle fünf Edge
+  Functions mit eingefrorenem Lockfile, Exit 0. Beide `npm audit`-Läufe
+  meldeten null bekannte Schwachstellen, Exit 0.
+- Ein echter PostgreSQL-/RLS-/Parallelitätslauf ist damit ausdrücklich nicht
+  ersetzt: Docker/Podman fehlen, keine Migration wurde angewandt und keine
+  Staging- oder Produktionsdaten wurden verändert.
+
 ## Offene Prüfungen
 
 - physisches iPhone, installierte PWA, Dynamic Type und echte Safe Areas
@@ -722,3 +844,5 @@ und eine ausdrückliche Freigabe erforderlich.
 - Staging-Migration, Backup und Restore-Probe
 - zuverlässiger Lighthouse-Lauf
 - öffentliche Preview, Push, PR, Merge und Produktion
+- Produktentscheidung: endgültiger Wochenabschluss Sonntag 18:00 oder empfohlen
+  erst Montag 00:00 Uhr Europe/Berlin; bis dahin bleibt die Zeitgrenze fachlich offen
