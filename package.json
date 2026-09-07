@@ -14,7 +14,7 @@
     "build:pages": "node scripts/validate-pages-env.mjs && npm run build:web && npm run check:dist",
     "build:sites": "npm run typecheck && vite build --mode sites && npm run check:dist && node scripts/build-sites-worker.mjs && node scripts/check-sites-worker.mjs",
     "check:dist": "node scripts/check-web-build.mjs",
-    "check:edge": "deno check --lock=supabase/functions/deno.lock --frozen-lockfile --node-modules-dir=none supabase/functions/fokus/index.ts supabase/functions/schlaf-import/index.ts supabase/functions/push-test/index.ts supabase/functions/gewicht-erinnerung/index.ts supabase/functions/schlaf-erinnerung/index.ts",
+    "check:edge": "deno check --no-config --lock=supabase/functions/deno.lock --frozen-lockfile --node-modules-dir=none supabase/functions/fokus/index.ts supabase/functions/schlaf-import/index.ts supabase/functions/push-test/index.ts supabase/functions/gewicht-erinnerung/index.ts supabase/functions/schlaf-erinnerung/index.ts",
     "check:web": "npm test && npm run build:web && npm run check:dist",
     "check:all": "npm run check:web && npm run check:edge",
     "check": "npm run check:all",
@@ -41,11 +41,12 @@
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react-swc": "^4.3.3",
+    "deno": "2.9.6",
+    "jsdom": "30.0.1",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.9.3",
     "vite": "^8.2.2",
     "vite-plugin-pwa": "^1.0.3",
-    "vitest": "^4.1.11",
-    "jsdom": "30.0.1"
+    "vitest": "^4.1.11"
   }
 }

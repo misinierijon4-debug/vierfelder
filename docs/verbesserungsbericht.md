@@ -884,8 +884,10 @@ und eine ausdrückliche Freigabe erforderlich.
   Content-Types. Manifest und Service Worker tragen `Cache-Control: max-age=600`.
 - Die dabei gemeldete Node-20-Deprecation der GitHub Actions wurde anschließend
   durch den Wechsel auf die aktuellen Node-24-Releases von Checkout, Setup Node,
-  Upload Pages Artifact und Deploy Pages beseitigt. Alle fremden Actions sind
-  nun auf die vollständigen, am Release-Tag verifizierten Commit-SHAs gepinnt.
+  Upload Pages Artifact und Deploy Pages beseitigt. Alle verbleibenden fremden
+  Actions sind auf die vollständigen, am Release-Tag verifizierten Commit-SHAs
+  gepinnt. Deno 2.9.6 wird als exakte, offizielle NPM-Dev-Abhängigkeit durch
+  `npm ci` installiert; damit entfällt die noch Node 20 nutzende Setup-Deno-Action.
 - Die Supabase-Prüfung blieb bis hierhin lesend. Das Projekt ist aktiv und hat
   zwei Profile. Es existiert keine Development-Branch. Die produktive
   Migrationstabelle enthält 29 Einträge, während das Repository 37 Dateien
