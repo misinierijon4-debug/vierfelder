@@ -48,8 +48,8 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
             className="space-y-2"
           >
             {/* OBERE ZEILE: TITEL & KW */}
-            <div className="flex items-baseline justify-between">
-              <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-y-2">
+              <div className="min-w-0">
                 <h1 className="display text-[16px] font-bold lowercase leading-none">
                   zweikampf
                 </h1>
@@ -59,7 +59,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
               </div>
 
               {/* HEUTE-SCORE BADGE */}
-              <div className="flex items-center gap-2 rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[11px]">
+              <div className="flex items-center gap-2 rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[11px] max-[239px]:w-full max-[239px]:justify-between">
                 <span className="text-kreide-52">heute</span>
                 <span className="tnum font-bold" style={{ color: ich.farbe }}>
                   {match.heuteIch}
@@ -72,10 +72,10 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
             </div>
 
             {/* HEAD-TO-HEAD SCOREBOARD */}
-            <div className="flex items-end justify-between gap-4">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-4 max-[239px]:gap-1">
               {/* ERIJON / ICH */}
-              <div>
-                <div className="flex items-center gap-1.5 text-[11px] leading-none text-kreide-52">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] leading-none text-kreide-52 max-[239px]:flex-col max-[239px]:items-start max-[239px]:gap-0.5">
                   <span className="size-1.5 rounded-full" style={{ background: ich.farbe }} aria-hidden="true" />
                   <span>{ich.name}</span>
                   <span className="text-[10px] text-kreide-60">({match.heuteIch}/5)</span>
@@ -106,8 +106,8 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
               </div>
 
               {/* KORAY / ER */}
-              <div className="text-right">
-                <div className="flex items-center justify-end gap-1.5 text-[11px] leading-none text-kreide-52">
+              <div className="min-w-0 text-right">
+                <div className="flex items-center justify-end gap-1.5 text-[11px] leading-none text-kreide-52 max-[239px]:flex-col-reverse max-[239px]:items-end max-[239px]:gap-0.5">
                   <span className="text-[10px] text-kreide-60">({match.heuteEr}/5)</span>
                   <span>{er.name}</span>
                   <span className="size-1.5 rounded-full" style={{ background: er.farbe }} aria-hidden="true" />

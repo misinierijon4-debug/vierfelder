@@ -32,4 +32,28 @@ describe('Kopf Icons', () => {
     expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
+
+  it('stapelt Badge und Personenkopf im extrem schmalen Reflow', () => {
+    const heute = new Date(2026, 8, 7, 12)
+    const woche = weekDays(heute)
+    const match = berechneDuell(ZUSTAND, woche, woche[0]!, 'erijon')
+    render(
+      <Kopf
+        heute={heute}
+        woche={woche}
+        zustand={ZUSTAND}
+        me="erijon"
+        match={match}
+        bilanzzeit={false}
+      />
+    )
+
+    const badge = screen.getByText('heute').parentElement
+    const wochenmitte = screen.getByText('woche').parentElement
+    expect(badge).toHaveClass('max-[239px]:w-full', 'max-[239px]:justify-between')
+    expect(wochenmitte?.parentElement).toHaveClass(
+      'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',
+      'max-[239px]:gap-1'
+    )
+  })
 })
