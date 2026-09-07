@@ -803,7 +803,8 @@ export function useTracker(backend: Backend) {
 
         if (backend.art === 'lokal') {
           setSynchronisationszustand('aktuell')
-        } else if (nachInitialNoetig) {
+        }
+        if (nachInitialNoetig) {
           const stark = nachInitialStark
           nachInitialNoetig = false
           nachInitialStark = false
@@ -828,6 +829,15 @@ export function useTracker(backend: Backend) {
     const abmelden = backend.abonniere((e) => {
       if (!nochAktuell()) return
       if (e.typ !== 'verbindung') {
+        if (backend.art === 'lokal') {
+          // BroadcastChannel garantiert zwischen mehreren Absendern keine
+          // kanonische Gesamtordnung. Seine Payload ist lokal deshalb nur ein
+          // Wecksignal: der unter Web Locks gespeicherte Bestand entscheidet.
+          // Wichtig: nicht puffern oder replayen, sonst koennte genau die
+          // verspaetete Payload den frischen Snapshot wieder ueberschreiben.
+          starteAbgleich(true)
+          return
+        }
         if (!initialGeladen) {
           frueheEreignisse.push(e)
         } else if (puffer !== null) {

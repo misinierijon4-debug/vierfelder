@@ -1121,6 +1121,97 @@ describe('useTracker PWA-Neustartschutz', () => {
 })
 
 describe('useTracker Realtime-Lifecycle', () => {
+  it('laedt nach einem fruehen lokalen Ereignis kanonisch neu statt dessen Payload zu replayen', async () => {
+    const ersterSnapshot = offen<Anfangszustand>()
+    const key = 'koray|gym|2026-09-05'
+    const vorDemEreignis = { ...LIVE_EINHEIT, wert: 50 }
+    const verspaetetePayload = { ...LIVE_EINHEIT, wert: 60 }
+    const kanonischeEinheit = { ...LIVE_EINHEIT, wert: 70 }
+    const laden = vi.fn<Backend['laden']>()
+      .mockImplementationOnce(() => ersterSnapshot.promise)
+      .mockResolvedValueOnce({
+        ...ANFANG,
+        einheiten: { [key]: [kanonischeEinheit] },
+      })
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(laden, {
+      art: 'lokal',
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+
+    act(() => melde({
+      typ: 'einheit',
+      art: 'wert',
+      einheit: verspaetetePayload,
+    }))
+    act(() => ersterSnapshot.resolve({
+      ...ANFANG,
+      einheiten: { [key]: [vorDemEreignis] },
+    }))
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(result.current.zustand.einheiten[key]).toEqual([kanonischeEinheit])
+    })
+    expect(result.current.zustand.einheiten[key]?.[0]?.wert).not.toBe(verspaetetePayload.wert)
+  })
+
+  it('behandelt verspaetete lokale Gewichts- und Einheiten-Payloads nur als Invalidierung', async () => {
+    const kontrollSnapshot = offen<Anfangszustand>()
+    const einheitKey = 'koray|gym|2026-09-05'
+    const gewichtKey = 'koray|2026-09-05'
+    const kanonischeEinheit = { ...LIVE_EINHEIT, wert: 70 }
+    const kanonischerStand: Anfangszustand = {
+      ...ANFANG,
+      einheiten: { [einheitKey]: [kanonischeEinheit] },
+      gewichte: { [gewichtKey]: 92 },
+    }
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(kanonischerStand)
+      .mockImplementationOnce(() => kontrollSnapshot.promise)
+      .mockResolvedValueOnce(kanonischerStand)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(laden, {
+      art: 'lokal',
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => melde({
+      typ: 'gewicht',
+      user: 'koray',
+      tag: '2026-09-05',
+      kg: 80,
+    }))
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    expect(result.current.zustand.gewichte[gewichtKey]).toBe(92)
+
+    act(() => melde({
+      typ: 'einheit',
+      art: 'wert',
+      einheit: { ...LIVE_EINHEIT, wert: 60 },
+    }))
+    expect(result.current.zustand.einheiten[einheitKey]).toEqual([kanonischeEinheit])
+
+    act(() => kontrollSnapshot.resolve(kanonischerStand))
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(3))
+    await waitFor(() => {
+      expect(result.current.zustand.gewichte[gewichtKey]).toBe(92)
+      expect(result.current.zustand.einheiten[einheitKey]).toEqual([kanonischeEinheit])
+      expect(result.current.synchronisationszustand).toBe('aktuell')
+    })
+    expect(laden).toHaveBeenCalledTimes(3)
+  })
+
   it('puffert Ereignisse, die vor dem ersten Snapshot eintreffen', async () => {
     const ersterSnapshot = offen<Anfangszustand>()
     let melde!: (e: BackendEreignis) => void
