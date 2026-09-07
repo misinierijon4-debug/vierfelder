@@ -795,8 +795,8 @@ und eine ausdrückliche Freigabe erforderlich.
   startet Chrome mit frischem Profil bei 430 × 932 und prüft zehn echte
   Interaktionen. Fehlende Ziele brechen den Lauf ab; der Benchmark kann damit
   keine Produktivdaten schreiben.
-- Finaler Lauf: DOMContentLoaded 111 ms, Load 113 ms, FCP 428 ms;
-  durchschnittliche Interaktion 130 ms, Maximum 297 ms, keine Long Tasks.
+- Finaler Lauf: DOMContentLoaded 124 ms, Load 126 ms, FCP 440 ms;
+  durchschnittliche Interaktion 125 ms, Maximum 290 ms, keine Long Tasks.
   Initiales Sites-JavaScript: 578.823 Byte roh / 172.394 Byte gzip, gesamtes
   JavaScript 584.476 / 174.593 Byte; PWA-Precache 608,98 KiB. Das ist ein
   einzelner reproduzierbarer Maschinenlauf und keine universelle
