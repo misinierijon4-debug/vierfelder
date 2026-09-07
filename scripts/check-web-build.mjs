@@ -127,11 +127,12 @@ for (const name of jsDateien) {
 // Ein Split ist nur dann ein Gewinn, wenn der Browser zum Start tatsaechlich
 // weniger laden muss. Deshalb wird der HTML-Einstieg strenger begrenzt als die
 // Summe aller spaeter bedarfsweise geladenen Tabs.
-// Versionierte gemeinsame Wette und atomarer Mehrfach-Undo erweitern den
-// Startpfad messbar. 227 KiB lassen dafuer knapp zwei KiB kontrollierten
-// Spielraum; ein groesserer Zuwachs bleibt weiterhin ein harter Buildfehler.
-const INITIAL_GZIP_BUDGET = 227 * 1024
-const GESAMT_GZIP_BUDGET = 230 * 1024
+// Versionierte gemeinsame Wette, atomarer Mehrfach-Undo und die fail-closed-
+// Pruefung vorhandener lokaler Daten erweitern den Startpfad messbar. Die
+// Budgets lassen dafuer gut ein KiB kontrollierten Spielraum; ein groesserer
+// Zuwachs bleibt weiterhin ein harter Buildfehler.
+const INITIAL_GZIP_BUDGET = 228 * 1024
+const GESAMT_GZIP_BUDGET = 231 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
