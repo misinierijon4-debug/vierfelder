@@ -692,8 +692,12 @@ und eine ausdrückliche Freigabe erforderlich.
 - `.node-version`, PR-CI und Pages verwenden dieselbe konkrete LTS-Fassung
   Node 22.23.2; `package.json` und Lockdatei nennen denselben Runtimevertrag.
   Die Fassung wurde am Prüftag gegen den offiziellen Node-Releaseindex
-  verifiziert. Die lokale Abschlussumgebung läuft weiterhin auf Node 24.16.0
-  und ist daher ausdrücklich kein Beleg für den späteren CI-Lauf unter 22.23.2.
+  verifiziert. Die globale lokale Runtime ist zwar Node 24.16.0, die finale
+  Suite und der TypeScript-Lauf wurden deshalb zusätzlich explizit mit
+  Node 22.23.2 ausgeführt. Dabei wurde eine zuvor von Node 24 bereitgestellte
+  experimentelle Web-Lock-API als unbeabsichtigte Testabhängigkeit entdeckt:
+  Der Testaufbau besitzt nun einen deterministischen seriellen Lock und prüft
+  den fail-closed-Fall ohne Web Locks separat.
 - `npm audit` meldete für 544 aufgelöste Abhängigkeiten einschließlich
   Entwicklungswerkzeugen 0 bekannte Advisories, Exit 0; auch der reine
   Produktionslauf meldete 0. Verfügbare Majorupdates für Motion, TypeScript und
@@ -827,11 +831,12 @@ und eine ausdrückliche Freigabe erforderlich.
   Export-, Lösch- und Aufbewahrungswege. `docs/release-und-migrationen.md`
   trennt Prüfung, Staging, Backup/Restore, Migration, Function-Deployment,
   Pages und Rollback.
-- Finaler lokaler Stand: `npm test` Exit 0, 61 Dateien und 722 Tests;
-  `npm run typecheck` Exit 0; `npm run build:web` Exit 0; `npm run check:dist`
-  Exit 0; `npm run benchmark:core` Exit 0. Deno 2.9.6 prüfte alle fünf Edge
-  Functions mit eingefrorenem Lockfile, Exit 0. Beide `npm audit`-Läufe
-  meldeten null bekannte Schwachstellen, Exit 0.
+- Finaler lokaler Stand unter der festgelegten Runtime: `node@22.23.2` führte
+  Vitest mit Exit 0, 61 Dateien und 723 Tests sowie TypeScript mit Exit 0 aus.
+  `npm run build:web` Exit 0; `npm run check:dist` Exit 0;
+  `npm run benchmark:core` Exit 0. Deno 2.9.6 prüfte alle fünf Edge Functions
+  mit eingefrorenem Lockfile, Exit 0. Beide `npm audit`-Läufe meldeten null
+  bekannte Schwachstellen, Exit 0.
 - Ein echter PostgreSQL-/RLS-/Parallelitätslauf ist damit ausdrücklich nicht
   ersetzt: Docker/Podman fehlen, keine Migration wurde angewandt und keine
   Staging- oder Produktionsdaten wurden verändert.
