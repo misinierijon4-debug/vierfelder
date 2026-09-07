@@ -17,8 +17,8 @@ const MIME = {
   '.webmanifest': 'application/manifest+json',
 };
 
-function startStaticServer(dir, port) {
-  return new Promise((resolve) => {
+function startStaticServer(dir) {
+  return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       try {
         let urlPath = req.url.split('?')[0];
@@ -39,7 +39,83 @@ function startStaticServer(dir, port) {
         res.end('Not found');
       }
     });
-    server.listen(port, () => resolve(server));
+    const onError = (error) => reject(error);
+    server.once('error', onError);
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', onError);
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Der lokale Benchmark-Server hat keinen TCP-Port erhalten'));
+        return;
+      }
+      resolve({ server, port: address.port });
+    });
+  });
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function readDevToolsPort(tempDir, chrome, timeoutMs = 10_000) {
+  const activePortFile = join(tempDir, 'DevToolsActivePort');
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    if (chrome.spawnError) throw chrome.spawnError;
+    if (chrome.exitCode !== null || chrome.signalCode !== null) {
+      throw new Error('Chrome wurde beendet, bevor DevToolsActivePort bereit war');
+    }
+    try {
+      const [portLine, browserPath] = readFileSync(activePortFile, 'utf8').trim().split(/\r?\n/);
+      const port = Number(portLine);
+      if (
+        Number.isInteger(port)
+        && port > 0
+        && port <= 65_535
+        && /^\/devtools\/browser\/[A-Za-z0-9-]+$/.test(browserPath || '')
+      ) return port;
+      lastError = new Error('DevToolsActivePort ist noch unvollstaendig oder ungueltig');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') lastError = error;
+    }
+    await wait(100);
+  }
+
+  throw new Error(
+    `Chrome hat keinen gueltigen DevTools-Port bereitgestellt${lastError ? `: ${lastError.message}` : ''}`,
+  );
+}
+
+async function stopChrome(chrome) {
+  if (!chrome || chrome.spawnError || chrome.exitCode !== null || chrome.signalCode !== null) return;
+
+  const waitForExit = (timeoutMs) => {
+    if (chrome.exitCode !== null || chrome.signalCode !== null) return true;
+    return new Promise((resolve) => {
+      const finish = (exited) => {
+        clearTimeout(timer);
+        chrome.off('exit', onExit);
+        resolve(exited);
+      };
+      const onExit = () => finish(true);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      chrome.once('exit', onExit);
+    });
+  };
+
+  chrome.kill();
+  if (await waitForExit(5_000)) return;
+  chrome.kill('SIGKILL');
+  if (!await waitForExit(2_000)) {
+    throw new Error('Chrome konnte fuer das Benchmark-Cleanup nicht beendet werden');
+  }
+}
+
+function stopStaticServer(server) {
+  if (!server?.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
   });
 }
 
@@ -89,49 +165,56 @@ class CDP {
 }
 
 async function run() {
-  const PORT = 5198;
   const distDir = join(process.cwd(), 'dist');
   if (!existsSync(distDir)) {
     console.error('dist directory does not exist! Run build first.');
     process.exit(1);
   }
 
-  const server = await startStaticServer(distDir, PORT);
-
-  const tempDir = mkdtempSync(join(tmpdir(), 'chrome-bench-'));
-  const chromePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-  if (!existsSync(chromePath)) {
-    throw new Error(`Chrome wurde nicht gefunden: ${chromePath}`);
-  }
-  const chrome = spawn(chromePath, [
-    '--headless=new',
-    '--remote-debugging-port=9222',
-    '--user-data-dir=' + tempDir,
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-extensions',
-    '--window-size=430,932',
-    'about:blank'
-  ], { stdio: 'ignore' });
+  const { server, port } = await startStaticServer(distDir);
+  let tempDir = null;
+  let chrome = null;
+  let cdp = null;
+  let runError = null;
 
   try {
-    let versionData = null;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 200));
-      try {
-        const res = await fetch('http://127.0.0.1:9222/json/version');
-        if (res.ok) {
-          versionData = await res.json();
-          break;
-        }
-      } catch (e) {}
+    tempDir = mkdtempSync(join(tmpdir(), 'chrome-bench-'));
+    const chromePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    if (!existsSync(chromePath)) {
+      throw new Error(`Chrome wurde nicht gefunden: ${chromePath}`);
     }
+    chrome = spawn(chromePath, [
+      '--headless=new',
+      '--remote-debugging-port=0',
+      '--user-data-dir=' + tempDir,
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-extensions',
+      '--window-size=430,932',
+      'about:blank'
+    ], { stdio: 'ignore' });
+    chrome.spawnError = null;
+    chrome.once('error', (error) => {
+      chrome.spawnError = error;
+    });
 
-    if (!versionData) throw new Error('Could not connect to Chrome CDP');
+    // Port 0 verhindert Kollisionen. Die einzige Quelle fuer den tatsaechlich
+    // gestarteten Debug-Port ist das Profil dieser konkreten Chrome-Instanz.
+    const debugPort = await readDevToolsPort(tempDir, chrome);
 
-    const newTabRes = await fetch('http://127.0.0.1:9222/json/new?about:blank', { method: 'PUT' });
+    const newTabRes = await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: 'PUT' });
+    if (!newTabRes.ok) {
+      throw new Error(`Chrome-CDP-Tab konnte nicht erstellt werden: HTTP ${newTabRes.status}`);
+    }
     const tabData = await newTabRes.json();
-    const cdp = new CDP(tabData.webSocketDebuggerUrl);
+    if (typeof tabData.webSocketDebuggerUrl !== 'string') {
+      throw new Error('Chrome-CDP-Tab enthaelt keine WebSocket-URL');
+    }
+    const tabWebSocket = new URL(tabData.webSocketDebuggerUrl);
+    if (Number(tabWebSocket.port) !== debugPort || !tabWebSocket.pathname.startsWith('/devtools/page/')) {
+      throw new Error('Chrome-CDP-Tab gehoert nicht zum gestarteten Debug-Port');
+    }
+    cdp = new CDP(tabData.webSocketDebuggerUrl);
     await cdp.connect();
 
     await cdp.send('Page.enable');
@@ -140,7 +223,7 @@ async function run() {
 
     // `benchmark:core` baut zuvor bewusst im Sites-Prototypmodus. So kann
     // dieser schreibende Core-Flow niemals versehentlich Produktivdaten treffen.
-    const appUrl = 'http://127.0.0.1:' + PORT + '/';
+    const appUrl = 'http://127.0.0.1:' + port + '/';
     await cdp.send('Page.navigate', { url: appUrl });
 
     // Wait for initial render
@@ -385,12 +468,28 @@ async function run() {
     };
 
     console.log('BENCHMARK_RESULT:' + JSON.stringify(report, null, 2));
-
-    await cdp.close();
+  } catch (error) {
+    runError = error;
+    throw error;
   } finally {
-    chrome.kill();
-    server.close();
-    try { rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
+    const cleanupErrors = [];
+    if (cdp) {
+      try { await cdp.close(); } catch (error) { cleanupErrors.push(error); }
+    }
+    try { await stopChrome(chrome); } catch (error) { cleanupErrors.push(error); }
+    try { await stopStaticServer(server); } catch (error) { cleanupErrors.push(error); }
+    if (tempDir) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    if (cleanupErrors.length) {
+      const cleanupError = new AggregateError(cleanupErrors, 'Benchmark-Cleanup unvollstaendig');
+      if (runError) console.error(cleanupError);
+      else throw cleanupError;
+    }
   }
 }
 
