@@ -808,10 +808,10 @@ und eine ausdrückliche Freigabe erforderlich.
   getrennte Buildziele und ein Budget für initiales sowie gesamtes JavaScript.
 - Der Supabase-Webbuild ist wegen der Sicherheits-, Status- und
   Datenintegritätslogik gegenüber der Baseline nicht kleiner: final 811.141
-  Byte roh / 231.183 Byte gzip initial, 816.794 / 233.382 Byte gesamt;
+  Byte roh / 231.182 Byte gzip initial, 816.794 / 233.381 Byte gesamt;
   PWA-Precache 835,85 KiB. Das bisherige 225-KiB-Initialbudget schlug dadurch
   um 783 Byte fehl. Es wurde offen auf 227 KiB angehoben; gegenüber dem finalen
-  Wert bleiben 1.265 Byte Reserve, während das 230-KiB-Gesamtbudget unverändert
+  Wert bleiben 1.266 Byte Reserve, während das 230-KiB-Gesamtbudget unverändert
   bleibt. Das ist Sicherheits-/Funktionszuwachs, kein pauschaler
   Performancegewinn.
 - Ein umfangreicher CDP-Zusatz für Slow- und Offline-Start bestand zwar drei
