@@ -17,7 +17,7 @@ type Props = {
 
 /**
  * Das Duell der Woche. Jede Zeile ist eine gemessene Größe, der Sieger steht
- * in seiner Farbe. Bei zu kleinem Unterschied bleibt beides grau — sonst
+ * in seiner Farbe und ist unterstrichen. Bei zu kleinem Unterschied bleibt beides grau — sonst
  * wechselt die Farbe bei jeder Minute Rauschen.
  */
 export function SchlafRhythmus({ naechte, registrierte, woche }: Props) {
@@ -61,8 +61,8 @@ export function SchlafRhythmus({ naechte, registrierte, woche }: Props) {
       </h2>
 
       <div className="mt-3 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
-        <div className="grid grid-cols-[1fr_72px_72px] items-baseline gap-x-2 border-b border-linie px-3 py-2.5">
-          <span className="text-[10px] text-kreide-52">
+        <div className="grid grid-cols-2 items-baseline gap-x-2 gap-y-1 border-b border-linie px-3 py-2.5 min-[240px]:grid-cols-[minmax(0,1fr)_72px_72px]">
+          <span className="col-span-2 text-[10px] text-kreide-52 min-[240px]:col-span-1">
             {a!.naechte + b!.naechte === 0 ? 'noch keine nacht' : 'nächte'}
           </span>
           {USERS.map((u, i) => (
@@ -76,15 +76,18 @@ export function SchlafRhythmus({ naechte, registrierte, woche }: Props) {
         <dl className="divide-y divide-linie">
           {zeilen.map((z) => (
             <Fragment key={z.id}>
-              <div className="grid grid-cols-[1fr_72px_72px] items-baseline gap-x-2 px-3 py-2.5">
-                <dt className="truncate text-[11px] text-kreide-52">{z.label}</dt>
+              <div className="grid grid-cols-2 items-baseline gap-x-2 gap-y-1 px-3 py-2.5 min-[240px]:grid-cols-[minmax(0,1fr)_72px_72px]">
+                <dt className="col-span-2 break-words text-[11px] text-kreide-52 min-[240px]:col-span-1 min-[240px]:truncate">{z.label}</dt>
                 {USERS.map((u) => (
                   <dd
                     key={u.id}
-                    className="tnum text-right text-[13px] font-semibold transition-colors duration-200"
+                    className={`tnum min-w-0 break-words text-right text-[13px] font-semibold transition-colors duration-200 ${
+                      z.sieger === u.id ? 'underline decoration-2 underline-offset-2' : ''
+                    }`}
                     style={{ color: z.sieger === u.id ? u.farbe : 'var(--kreide-52)' }}
                   >
                     {z.text[u.id]}
+                    {z.sieger === u.id && <span className="sr-only">, besserer wert</span>}
                   </dd>
                 ))}
               </div>

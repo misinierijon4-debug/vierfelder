@@ -82,7 +82,7 @@ export function TrackerKalender({
       {offen && (
       <div className="flex h-dvh flex-col bg-grund">
         <header
-          className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-linie px-5 pb-3"
+          className="vollbild-safe-x grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-linie pb-3"
           style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
         >
           <button
@@ -99,14 +99,14 @@ export function TrackerKalender({
           </h2>
 
           <div className="flex min-w-0 items-center justify-end gap-1.5 text-[11px] text-kreide-52">
-            <span className="size-2 shrink-0 rounded-[1px]" style={{ backgroundColor: person.farbe }} />
+            <span className="size-2 shrink-0 rounded-[1px]" style={{ backgroundColor: person.farbe }} aria-hidden="true" />
             <span className="truncate">{person.name}</span>
           </div>
         </header>
 
         <div
           ref={scrollRef}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4"
+          className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain pt-4"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
         >
           <div className="mx-auto w-full max-w-[420px]">

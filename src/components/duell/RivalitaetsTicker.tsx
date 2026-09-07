@@ -34,8 +34,8 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
     const istIch = top.userId === me
 
     return (
-      <div className="mb-2 flex min-h-11 items-center justify-between gap-2 rounded-[2px] border border-linie bg-flaeche/60 px-2.5 py-1 text-[11px] text-kreide-60">
-        <div className="flex min-w-0 items-center gap-1.5 truncate">
+      <div className="mb-2 flex min-h-11 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-[2px] border border-linie bg-flaeche/60 px-2.5 py-1 text-[11px] text-kreide-60 min-[260px]:flex-nowrap">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           <span
             className="inline-block size-1.5 rounded-full"
             style={{ background: u.farbe }}
@@ -45,11 +45,11 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
             {istIch ? 'du' : u.name}
           </span>
           <span>·</span>
-          <span className="text-kreide">{top.feld}</span>
-          {top.zusatz && <span className="tnum text-kreide-52">({top.zusatz})</span>}
+          <span className="min-w-0 break-words text-kreide">{top.feld}</span>
+          {top.zusatz && <span className="tnum min-w-0 break-words text-kreide-52">({top.zusatz})</span>}
           {top.quelle === 'gemessen' && (
             <span className="inline-flex items-center gap-0.5 rounded-[1px] bg-linie px-1 py-0.5 text-[9px] font-semibold text-kreide">
-              <ShieldCheck size={10} weight="bold" />
+              <ShieldCheck size={10} weight="bold" aria-hidden="true" />
               gemessen
             </span>
           )}
@@ -67,7 +67,7 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
         return (
           <div
             key={e.id}
-            className="flex min-h-12 items-center justify-between gap-2 bg-flaeche/35 px-3 py-2 text-[12px]"
+            className="flex min-h-12 flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-flaeche/35 px-3 py-2 text-[12px] min-[260px]:flex-nowrap"
           >
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span
@@ -78,15 +78,15 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
               <span className="font-semibold" style={{ color: u.farbe }}>
                 {istIch ? 'du' : u.name}
               </span>
-              <span className="text-kreide font-medium">{e.feld}</span>
+              <span className="min-w-0 break-words text-kreide font-medium">{e.feld}</span>
               {e.zusatz && (
-                <span className="tnum text-[11px] text-kreide-52">
+                <span className="tnum min-w-0 break-words text-[11px] text-kreide-52">
                   {e.zusatz}
                 </span>
               )}
               {e.quelle === 'gemessen' ? (
                 <span className="inline-flex items-center gap-1 rounded-[2px] border border-linie-hell bg-linie/40 px-1.5 py-0.5 text-[10px] font-semibold text-kreide">
-                  <ShieldCheck size={12} weight="fill" className="text-kreide" />
+                  <ShieldCheck size={12} weight="fill" className="text-kreide" aria-hidden="true" />
                   verifiziert
                 </span>
               ) : (

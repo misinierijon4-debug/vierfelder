@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import '@testing-library/jest-dom/vitest'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { berechneDuell } from '../../lib/duell'
 import { weekDays } from '../../lib/dates'
@@ -31,7 +34,8 @@ function zeige(
   heute: Date,
   zustand: Zustand,
   abrechnungen: Abrechnung[] = [],
-  abschlussStatus: 'idle' | 'speichern' | 'fehler' | 'gespeichert' = 'idle'
+  abschlussStatus: 'idle' | 'speichern' | 'fehler' | 'gespeichert' = 'idle',
+  wette = ''
 ) {
   const woche = weekDays(heute)
   return render(
@@ -41,7 +45,7 @@ function zeige(
       me="erijon"
       heute={heute}
       match={berechneDuell(zustand, woche, woche[0]!, 'erijon')}
-      wette=""
+      wette={wette}
       onWette={vi.fn()}
       onZumTracker={vi.fn()}
       abrechnung={abrechnungen.find((a) => a.woche === woche[0]) ?? null}
@@ -88,5 +92,61 @@ describe('DuellTab Archive und Abschlussstatus', () => {
 
     expect(screen.getByRole('status').textContent).toContain('abschluss nicht gespeichert')
     expect((screen.getByRole('button', { name: 'erneut versuchen' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('bricht auch einen langen Wetteinsatz ohne Leerzeichen um', () => {
+    const wette = 'abendessen'.repeat(16)
+    zeige(new Date(2026, 7, 24, 12), leer(), [], 'idle', wette)
+
+    expect(screen.getByText(wette)).toHaveClass('break-words', '[overflow-wrap:anywhere]')
+  })
+
+  it('laesst Fronten im engen Reflow auf mehrere Zeilen umbrechen', () => {
+    zeige(new Date(2026, 7, 24, 12), leer())
+
+    const front = screen.getAllByRole('button', { name: /Zum Tracker$/ })[0]!
+    expect(front).toHaveClass('flex-wrap')
+  })
+
+  it('entfernt einen laufenden Einsatz explizit und bietet sichtbares Undo', async () => {
+    const user = userEvent.setup()
+    const onWette = vi.fn()
+    const heute = new Date(2026, 7, 24, 12)
+    const woche = weekDays(heute)
+    const zustand = leer()
+
+    function Szenario() {
+      const [wette, setWette] = useState('verlierer kocht')
+      return (
+        <DuellTab
+          zustand={zustand}
+          woche={woche}
+          me="erijon"
+          heute={heute}
+          match={berechneDuell(zustand, woche, woche[0]!, 'erijon')}
+          wette={wette}
+          onWette={(text) => {
+            onWette(text)
+            setWette(text)
+          }}
+          onZumTracker={vi.fn()}
+          abrechnung={null}
+          abrechnungen={[]}
+          abschlussStatus="idle"
+          onAbschluss={vi.fn()}
+        />
+      )
+    }
+
+    render(<Szenario />)
+    await user.click(screen.getByRole('button', { name: /ändern/i }))
+    await user.click(screen.getByRole('button', { name: 'einsatz entfernen' }))
+
+    expect(onWette).toHaveBeenLastCalledWith('')
+    expect(screen.getByText('einsatz entfernt').closest('[role="status"]')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'rückgängig' }))
+
+    expect(onWette).toHaveBeenLastCalledWith('verlierer kocht')
+    expect(screen.getByText('verlierer kocht')).toBeVisible()
   })
 })

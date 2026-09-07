@@ -41,7 +41,7 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
       aria-label="hauptbereiche"
       role="tablist"
       aria-orientation="horizontal"
-      className="relative mb-3 flex w-full rounded-[2px] border border-linie bg-flaeche p-1"
+      className="relative mb-3 flex w-full rounded-[2px] border border-linie bg-flaeche p-1 max-[239px]:grid max-[239px]:grid-cols-2"
     >
       {TABS.map((tab, index) => {
         const istAktiv = aktiverTab === tab.id

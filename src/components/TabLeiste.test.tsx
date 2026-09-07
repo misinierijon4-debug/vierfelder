@@ -22,8 +22,10 @@ describe('hauptbereich-tabs', () => {
   it('verknuepft alle tabs mit genau einem panel und nur der aktive ist im tablauf', () => {
     render(<TestLeiste />)
     const tabs = screen.getAllByRole('tab')
+    const leiste = screen.getByRole('tablist', { name: 'hauptbereiche' })
 
     expect(tabs).toHaveLength(4)
+    expect(leiste.className).toContain('max-[239px]:grid-cols-2')
     expect(tabs.filter((tab) => tab.tabIndex === 0)).toEqual([
       screen.getByRole('tab', { name: 'tracker' }),
     ])

@@ -65,6 +65,7 @@ export function DuellTab({
   )
   const [wetteEdit, setWetteEdit] = useState(false)
   const [wetteTemp, setWetteTemp] = useState(wette)
+  const [wetteUndo, setWetteUndo] = useState<string | null>(null)
   useNeustartBlocker(wetteEdit && wetteTemp !== wette)
   const abschlussMoeglich = istBilanzzeit(heute)
 
@@ -72,11 +73,30 @@ export function DuellTab({
     if (!wetteEdit) setWetteTemp(wette)
   }, [wette, wetteEdit])
 
+  useEffect(() => {
+    if (!wetteUndo) return
+    const timer = window.setTimeout(() => setWetteUndo(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [wetteUndo])
+
   const speichereWette = () => {
     const sauber = wetteTemp.trim()
     if (!sauber) return
     onWette(sauber)
     setWetteEdit(false)
+  }
+
+  const loescheWette = () => {
+    if (!wette) return
+    setWetteUndo(wette)
+    onWette('')
+    setWetteEdit(false)
+  }
+
+  const stelleWetteWiederHer = () => {
+    if (!wetteUndo) return
+    onWette(wetteUndo)
+    setWetteUndo(null)
   }
 
   const quote = (wert: number | null) => (wert === null ? '—' : `${wert}%`)
@@ -115,7 +135,7 @@ export function DuellTab({
                 key={front.id}
                 type="button"
                 onClick={onZumTracker}
-                className="group flex min-h-12 w-full items-center justify-between gap-3 bg-flaeche/35 px-3 text-left transition-colors hover:bg-flaeche focus-visible:bg-flaeche"
+                className="group flex min-h-12 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-flaeche/35 px-3 py-2 text-left transition-colors hover:bg-flaeche focus-visible:bg-flaeche"
                 aria-label={`${front.label}: ${front.ichPunkte} zu ${front.erPunkte}, ${status}. Zum Tracker`}
               >
                 <span className="text-[13px] font-bold text-kreide">{front.label}</span>
@@ -135,7 +155,7 @@ export function DuellTab({
       </section>
 
       <section aria-labelledby="rest-titel" className="mt-5 border-t border-linie pt-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id="rest-titel" className="text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             rechner
           </h2>
@@ -166,7 +186,7 @@ export function DuellTab({
       </section>
 
       <section aria-labelledby="beleg-titel" className="mt-5 border-t border-linie pt-3">
-        <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id="beleg-titel" className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             <ShieldCheck size={15} weight="fill" aria-hidden="true" /> belegquote
           </h2>
@@ -193,7 +213,7 @@ export function DuellTab({
       </section>
 
       <section aria-labelledby="ticker-titel" className="mt-5 border-t border-linie pt-3">
-        <div className="mb-2 flex min-h-8 items-center justify-between">
+        <div className="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id="ticker-titel" className="text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             aktivitätsfeed
           </h2>
@@ -203,7 +223,7 @@ export function DuellTab({
       </section>
 
       <section aria-labelledby="bilanz-titel" className="mt-5 border-t border-linie pt-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id="bilanz-titel" className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             <Trophy size={15} weight="fill" aria-hidden="true" /> ewige bilanz
           </h2>
@@ -214,7 +234,7 @@ export function DuellTab({
           )}
         </div>
         {abrechnung ? (
-          <div className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-[2px] border border-linie bg-flaeche px-3 text-[12px]">
+          <div className="mt-3 flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[2px] border border-linie bg-flaeche px-3 py-2 text-[12px]">
             <span className="text-kreide-60">
               kw <span className="tnum">{abrechnungKw}</span> abgerechnet
               {archivHinweis && (
@@ -265,7 +285,7 @@ export function DuellTab({
         ) : (
           <div className="divide-y divide-linie">
             {historie.letzteWochen.slice(0, 4).map((w) => (
-              <div key={w.wocheKey} className="flex min-h-11 items-center justify-between text-[12px]">
+              <div key={w.wocheKey} className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1 text-[12px]">
                 <span className="text-kreide-52">
                   <span className="tnum block">kw {w.kw}</span>
                   <span className="block text-[10px]">
@@ -350,10 +370,31 @@ export function DuellTab({
                 gemeinsam speichern
               </button>
             </div>
+            {wette && (
+              <button
+                type="button"
+                onClick={loescheWette}
+                className="min-h-11 w-full rounded-[2px] border border-linie-hell text-[12px] font-semibold text-kreide"
+              >
+                einsatz entfernen
+              </button>
+            )}
           </div>
         ) : (
-          <p className="border-y border-linie bg-flaeche/35 px-3 py-3 text-[13px] font-semibold leading-5 text-kreide">
+          <p className="break-words border-y border-linie bg-flaeche/35 px-3 py-3 text-[13px] font-semibold leading-5 text-kreide [overflow-wrap:anywhere]">
             {wette || 'noch kein einsatz vereinbart.'}
+          </p>
+        )}
+        {wetteUndo && !wetteEdit && !wette && (
+          <p role="status" aria-live="polite" className="mt-2 flex min-h-11 flex-wrap items-center justify-between gap-2 text-[11px] text-kreide-60">
+            <span>einsatz entfernt</span>
+            <button
+              type="button"
+              onClick={stelleWetteWiederHer}
+              className="min-h-11 px-2 font-semibold text-kreide underline underline-offset-4"
+            >
+              rückgängig
+            </button>
           </p>
         )}
       </section>

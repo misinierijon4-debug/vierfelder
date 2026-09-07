@@ -76,7 +76,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
               {/* ERIJON / ICH */}
               <div>
                 <div className="flex items-center gap-1.5 text-[11px] leading-none text-kreide-52">
-                  <span className="size-1.5 rounded-full" style={{ background: ich.farbe }} />
+                  <span className="size-1.5 rounded-full" style={{ background: ich.farbe }} aria-hidden="true" />
                   <span>{ich.name}</span>
                   <span className="text-[10px] text-kreide-60">({match.heuteIch}/5)</span>
                 </div>
@@ -110,7 +110,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
                 <div className="flex items-center justify-end gap-1.5 text-[11px] leading-none text-kreide-52">
                   <span className="text-[10px] text-kreide-60">({match.heuteEr}/5)</span>
                   <span>{er.name}</span>
-                  <span className="size-1.5 rounded-full" style={{ background: er.farbe }} />
+                  <span className="size-1.5 rounded-full" style={{ background: er.farbe }} aria-hidden="true" />
                 </div>
                 <div className="mt-1 flex h-[38px] items-end justify-end">
                   {match.wocheEr > 0 ? (
@@ -194,7 +194,12 @@ function Bilanz({
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
         <div className="flex items-center gap-1.5">
-          <Trophy size={16} weight="fill" style={{ color: sieger ? sieger.farbe : 'var(--kreide)' }} />
+          <Trophy
+            size={16}
+            weight="fill"
+            style={{ color: sieger ? sieger.farbe : 'var(--kreide)' }}
+            aria-hidden="true"
+          />
           <h1 className="display text-[16px] font-bold lowercase leading-none">
             {sieger ? `sieger: ${sieger.name}` : 'woche unentschieden'}
           </h1>

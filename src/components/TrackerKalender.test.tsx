@@ -97,6 +97,10 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
 
     await user.click(oeffnen)
     expect(kalenderMonateSpion).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('heading', { name: 'kalender' }).closest('header')).toHaveClass(
+      'vollbild-safe-x'
+    )
+    expect(container.querySelector('.overflow-y-auto')).toHaveClass('vollbild-safe-x')
     expect(
       screen.getByRole('button', { name: /^Samstag, 5\. September 2026,/ })
     ).toBeInTheDocument()

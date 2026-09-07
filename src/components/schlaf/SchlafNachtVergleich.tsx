@@ -197,8 +197,8 @@ export function SchlafNachtVergleich({
       </h2>
 
       <div className="mt-3 overflow-hidden rounded-[2px] border border-linie bg-flaeche">
-        <div className="grid grid-cols-[1fr_62px_62px_62px] items-baseline gap-x-2 border-b border-linie px-3 py-2.5">
-          <span className="text-[10px] text-kreide-52">am selben abend</span>
+        <div className="grid grid-cols-3 items-baseline gap-x-2 gap-y-1 border-b border-linie px-3 py-2.5 min-[260px]:grid-cols-[minmax(0,1fr)_62px_62px_62px]">
+          <span className="col-span-3 text-[10px] text-kreide-52 min-[260px]:col-span-1">am selben abend</span>
           {USERS.map((user) => (
             <span key={user.id} className="text-right text-[11px] font-medium" style={{ color: user.farbe }}>
               {user.name}
@@ -224,19 +224,22 @@ export function SchlafNachtVergleich({
             return (
               <div
                 key={zeile.id}
-                className="grid grid-cols-[1fr_62px_62px_62px] items-baseline gap-x-2 px-3 py-2.5"
+                className="grid grid-cols-3 items-baseline gap-x-2 gap-y-1 px-3 py-2.5 min-[260px]:grid-cols-[minmax(0,1fr)_62px_62px_62px]"
               >
-                <dt className="truncate text-[11px] text-kreide-52">{zeile.label}</dt>
+                <dt className="col-span-3 break-words text-[11px] text-kreide-52 min-[260px]:col-span-1 min-[260px]:truncate">{zeile.label}</dt>
                 {USERS.map((user, index) => (
                   <dd
                     key={user.id}
-                    className="tnum text-right text-[13px] font-semibold transition-colors duration-200"
+                    className={`tnum min-w-0 break-words text-right text-[13px] font-semibold transition-colors duration-200 ${
+                      sieger === user.id ? 'underline decoration-2 underline-offset-2' : ''
+                    }`}
                     style={{ color: sieger === user.id ? user.farbe : 'var(--kreide-52)' }}
                   >
                     {zeile.text(bild.analysen[index]!)}
+                    {sieger === user.id && <span className="sr-only">, besserer wert</span>}
                   </dd>
                 ))}
-                <dd className="tnum text-right text-[11px] text-kreide-52">
+                <dd className="tnum min-w-0 break-words text-right text-[11px] text-kreide-52">
                   {deltaText(wa, wb, zeile.delta)}
                 </dd>
               </div>
@@ -321,7 +324,7 @@ export function SchlafNachtVergleich({
                     <button
                       type="button"
                       onClick={() => onVerlaufErneut(nacht.user, nacht.nacht)}
-                      className="shrink-0 text-[10px] font-semibold text-kreide underline decoration-linie-hell underline-offset-4 focus-visible:outline-none"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center px-1 text-[10px] font-semibold text-kreide underline decoration-linie-hell underline-offset-4 focus-visible:outline-none"
                     >
                       erneut
                     </button>

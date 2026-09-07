@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { cleanup, render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AREAS } from '../lib/types'
@@ -72,6 +73,15 @@ describe('Bereichszeile', () => {
     const plus = screen.getByRole('button', { name: 'lernen um 15 min erhöhen' })
 
     expect(plus.parentElement?.closest('[role="button"]')).toBeNull()
+  })
+
+  it('gibt der primaeren Tagesaktion eine 44-Pixel-Trefferhoehe', () => {
+    renderZeile()
+
+    expect(screen.getByRole('button', { name: 'lernen, heute eingetragen' })).toHaveClass(
+      'min-h-11',
+      'flex-wrap'
+    )
   })
 
   it.each([

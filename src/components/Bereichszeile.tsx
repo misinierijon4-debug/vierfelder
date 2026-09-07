@@ -103,7 +103,7 @@ export function Bereichszeile({
 
   const kopfInhalt = (
     <>
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 basis-full min-[260px]:flex-1 min-[260px]:basis-auto">
         <span
           className="display block truncate text-[22px] font-semibold lowercase leading-none transition-colors duration-200"
           style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
@@ -118,7 +118,7 @@ export function Bereichszeile({
         )}
       </span>
 
-      <span className="flex items-baseline gap-1.5">
+      <span className="ml-auto flex items-baseline gap-1.5 min-[260px]:ml-0">
         {wocheIch > 0 ? (
           <Zahl
             value={wocheIch}
@@ -171,7 +171,7 @@ export function Bereichszeile({
         {quelle === 'gemessen' ? (
           <div
             aria-label={`${area.label}, heute ${hatMessung ? 'gemessen' : 'offen'}`}
-            className="flex w-full items-center gap-3"
+            className="flex min-h-11 w-full flex-wrap items-center gap-2 min-[260px]:flex-nowrap min-[360px]:gap-3"
           >
             {kopfInhalt}
           </div>
@@ -188,17 +188,17 @@ export function Bereichszeile({
             onClick={onTap}
             whileTap={reduced || disabled ? undefined : { scale: 0.995 }}
             transition={{ duration: 0.09, ease: EASE }}
-            className="flex w-full cursor-pointer items-center gap-3 text-left disabled:cursor-default"
+            className="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-2 text-left disabled:cursor-default min-[260px]:flex-nowrap min-[360px]:gap-3"
           >
             {kopfInhalt}
           </motion.button>
         )}
 
         {/* zweite zeile: feste touchhoehe, egal was drinsteht */}
-        <div className="flex min-h-11 items-center justify-between">
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-2 gap-y-1 min-[260px]:flex-nowrap">
           <Wechsel schluessel={links}>
             {!wertAusMessung && gesetzt ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex w-full flex-wrap items-center gap-1.5 min-[260px]:w-auto min-[260px]:flex-nowrap">
                 {/* die uhrzeit der jüngsten einheit steht fest neben den
                     schritten. der slot bleibt 24px breit, ob sie da ist oder
                     nicht, damit nichts unter dem daumen wegrutscht. */}
@@ -211,7 +211,7 @@ export function Bereichszeile({
                   disabled={disabled || einheitWert <= 0}
                   onClick={() => onWert(-area.step)}
                 >
-                  <Minus size={11} weight="bold" />
+                  <Minus size={11} weight="bold" aria-hidden="true" />
                 </Schritt>
 
                 {/* der tageswert steht zwischen den knöpfen, die ihn ändern:
@@ -246,7 +246,7 @@ export function Bereichszeile({
                   disabled={disabled}
                   onClick={() => onWert(area.step)}
                 >
-                  <Plus size={11} weight="bold" />
+                  <Plus size={11} weight="bold" aria-hidden="true" />
                 </Schritt>
 
                 {/* die zahl ist die summe des tages, die schritte gelten der
@@ -342,7 +342,7 @@ export function Bereichszeile({
               /* beim lesen steht links weiter der seitenzähler zwischen den
                  schritten und hier die gemessene zeit: die seiten sind der wert
                  des bereichs, die minuten der beleg. keine ersetzt die andere. */
-              <span className="flex items-center gap-3">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 min-[260px]:flex-nowrap">
                 <span className="flex items-baseline gap-1.5">
                   <Zahl
                     value={messungMinuten ?? 0}

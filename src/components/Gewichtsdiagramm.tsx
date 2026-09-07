@@ -24,10 +24,10 @@ const UNTEN = 24
 const PLOT_BREITE = BREITE - LINKS - RECHTS
 const PLOT_HOEHE = HOEHE - OBEN - UNTEN
 
-const FENSTER: { wert: Gewichtsfenster; label: string }[] = [
-  { wert: 30, label: '30' },
-  { wert: 90, label: '90' },
-  { wert: 'alles', label: 'alles' },
+const FENSTER: { wert: Gewichtsfenster; label: string; ariaLabel: string }[] = [
+  { wert: 30, label: '30', ariaLabel: 'letzte 30 tage' },
+  { wert: 90, label: '90', ariaLabel: 'letzte 90 tage' },
+  { wert: 'alles', label: 'alles', ariaLabel: 'gesamter zeitraum' },
 ]
 
 type Props = {
@@ -75,8 +75,8 @@ export function Gewichtsdiagramm({ gewichte, heute }: Props) {
       transition={{ duration: reduced ? 0 : 0.28, ease: EASE }}
       className="mt-3"
     >
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex items-center gap-1">
           <h2 id="gewicht-titel" className="sr-only">
             gewichtsverlauf
           </h2>
@@ -84,9 +84,14 @@ export function Gewichtsdiagramm({ gewichte, heute }: Props) {
             <button
               key={f.label}
               type="button"
+              aria-label={f.ariaLabel}
               aria-pressed={gewaehlt === f.wert}
               onClick={() => setGewaehlt(f.wert)}
-              className="text-[12px] transition-colors duration-200"
+              className={`flex min-h-11 min-w-11 items-center justify-center px-1 text-[12px] transition-colors duration-200 ${
+                gewaehlt === f.wert
+                  ? 'font-bold underline decoration-2 underline-offset-4'
+                  : ''
+              }`}
               style={{ color: gewaehlt === f.wert ? 'var(--kreide)' : 'var(--kreide-52)' }}
             >
               {f.label}

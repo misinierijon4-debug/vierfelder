@@ -145,12 +145,14 @@ export function SchlafNachtDetail({
             className="mt-3.5"
           >
             <div className="overflow-hidden rounded-[2px] border border-linie bg-flaeche">
-              <div className="flex items-center gap-4 px-4 py-4">
-                <Ring
-                  anteil={analyse.qualitaet / 100}
-                  farbe={person.farbe}
-                  label={analyse.nachtwert === null ? 'geschätzt' : 'nachtwert'}
-                />
+              <div className="flex items-center gap-4 px-4 py-4 max-[239px]:flex-col max-[239px]:items-stretch max-[239px]:px-3">
+                <div className="shrink-0 max-[239px]:self-center">
+                  <Ring
+                    anteil={analyse.qualitaet / 100}
+                    farbe={person.farbe}
+                    label={analyse.nachtwert === null ? 'geschätzt' : 'nachtwert'}
+                  />
+                </div>
 
                 <div className="min-w-0 flex-1">
                   <span className="text-[10px] text-kreide-52">schlafzeit</span>
