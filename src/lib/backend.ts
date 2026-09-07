@@ -124,7 +124,7 @@ export interface Backend {
   loescheTag(einheiten: Einheit[]): Promise<void>
   /** kilogramm für einen tag. `kg <= 0` löscht den eintrag */
   schreibeGewicht(tag: string, kg: number): Promise<void>
-  /** gemeinsamer Einsatz, Schluessel ist der lokale Montag der Woche */
+  /** gemeinsamer Einsatz, leer entfernt ihn; Schluessel ist der lokale Montag */
   schreibeWette(woche: string, text: string): Promise<void>
   /** archiviert die sonntagsabrechnung und gibt die kanonisch gespeicherte Zeile zurück */
   schreibeAbrechnung(a: Abrechnung): Promise<Abrechnung>

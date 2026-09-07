@@ -102,6 +102,15 @@ describe('altbestand aus dem alten format', () => {
     expect(bestaetigt).toEqual(basis)
     expect(abrechnungen.find((a) => a.woche === basis.woche)).toMatchObject({ sieger: 'erijon', differenz: 2 })
   })
+
+  it('entfernt einen laufenden Wetteinsatz, ohne ein Wochenarchiv zu veraendern', async () => {
+    const backend = lokalesBackend()
+    await backend.schreibeWette('2026-08-31', 'verlierer kocht')
+    await backend.schreibeWette('2026-08-31', '')
+
+    const stand = await backend.laden()
+    expect(stand.wetten).not.toHaveProperty('2026-08-31')
+  })
 })
 
 describe('lokale Schlafverlaeufe', () => {
@@ -232,6 +241,7 @@ describe('lokale Pruefungsfachwahl', () => {
       await Promise.all([tabA.schreibeNote(noteA), tabB.schreibeNote(noteB)])
 
       expect(namen).toEqual([
+        'vierfelder.storage.vierfelder.einheiten.v1',
         'vierfelder.storage.vierfelder.faecher.v2',
         'vierfelder.storage.vierfelder.faecher.v2',
         'vierfelder.storage.vierfelder.noten.v2',
@@ -243,6 +253,129 @@ describe('lokale Pruefungsfachwahl', () => {
       )).toHaveLength(1)
       expect(nachher.noten.noten).toEqual(expect.arrayContaining([noteA, noteB]))
     } finally {
+      if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
+      else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
+  it('verliert bei parallelen lokalen Tabs keine Einheiten und bindet Gewichte an die Backend-Person', async () => {
+    const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    let kette = Promise.resolve<unknown>(undefined)
+    const locks = {
+      request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+        const ergebnis = kette.then(aktion)
+        kette = ergebnis.then(() => undefined, () => undefined)
+        return ergebnis
+      },
+    }
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { locks },
+      })
+      speicher.setItem('vierfelder.me.v2', 'erijon')
+      const tabA = lokalesBackend()
+      speicher.setItem('vierfelder.me.v2', 'koray')
+      const tabB = lokalesBackend()
+      const einheitA = {
+        id: 'tab-a', user: 'erijon' as const, area: 'gym' as const,
+        tag: '2026-09-06', wert: 50, erfasst: null,
+      }
+      const einheitB = {
+        id: 'tab-b', user: 'koray' as const, area: 'boxen' as const,
+        tag: '2026-09-06', wert: 40, erfasst: null,
+      }
+
+      await Promise.all([
+        tabA.schreibeEinheit(einheitA),
+        tabB.schreibeEinheit(einheitB),
+        tabA.schreibeGewicht('2026-09-06', 81.2),
+        tabB.schreibeGewicht('2026-09-06', 90.4),
+      ])
+
+      const standA = await tabA.laden()
+      const standB = await tabB.laden()
+      expect(standA.me).toBe('erijon')
+      expect(standB.me).toBe('koray')
+      expect(Object.values(standA.einheiten).flat()).toEqual(
+        expect.arrayContaining([einheitA, einheitB])
+      )
+      expect(standA.gewichte).toMatchObject({
+        'erijon|2026-09-06': 81.2,
+        'koray|2026-09-06': 90.4,
+      })
+    } finally {
+      if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
+      else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
+  it('entscheidet konkurrierende gleiche IDs und Wochen unter derselben Sperre deterministisch', async () => {
+    const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    let kette = Promise.resolve<unknown>(undefined)
+    const locks = {
+      request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+        const ergebnis = kette.then(aktion)
+        kette = ergebnis.then(() => undefined, () => undefined)
+        return ergebnis
+      },
+    }
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { locks },
+      })
+      const tabA = lokalesBackend()
+      const tabB = lokalesBackend()
+      const zuerst = {
+        id: 'gleich', user: 'erijon' as const, area: 'gym' as const,
+        tag: '2026-09-06', wert: 50, erfasst: null,
+      }
+
+      await Promise.all([
+        tabA.schreibeEinheit(zuerst),
+        tabB.schreibeEinheit({ ...zuerst, wert: 99 }),
+      ])
+      await Promise.all([
+        tabA.schreibeWette('2026-09-07', 'zuerst'),
+        tabB.schreibeWette('2026-09-07', 'danach'),
+      ])
+
+      const stand = await tabA.laden()
+      expect(Object.values(stand.einheiten).flat().filter((e) => e.id === 'gleich')).toEqual([zuerst])
+      expect(stand.wetten['2026-09-07']).toBe('danach')
+    } finally {
+      if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
+      else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
+  it('meldet einen lokalen Speicherfehler, statt eine erfolgreiche Wette vorzutäuschen', async () => {
+    const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    const locks = {
+      request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+        return Promise.resolve(aktion())
+      },
+    }
+    const setItem = vi.spyOn(speicher, 'setItem')
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { locks },
+      })
+      setItem.mockImplementationOnce(() => {
+        throw new Error('speicher voll')
+      })
+
+      await expect(lokalesBackend().schreibeWette('2026-09-07', 'abendessen')).rejects.toThrow(
+        'speicher voll'
+      )
+      expect(speicher.getItem('vierfelder.wetten.v1')).toBeNull()
+    } finally {
+      setItem.mockRestore()
       if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
       else Reflect.deleteProperty(globalThis, 'navigator')
     }

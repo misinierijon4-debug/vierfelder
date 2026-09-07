@@ -357,6 +357,56 @@ type AbrechnungZeile = {
   punkte_koray?: number | null
 }
 
+export class UnbestaetigteMutation extends Error {
+  readonly code = 'UNBESTAETIGTE_MUTATION'
+  readonly abgleichNoetig = true
+  readonly ursache: unknown
+
+  constructor(message: string, ursache?: unknown) {
+    super(message)
+    this.name = 'UnbestaetigteMutation'
+    this.ursache = ursache
+  }
+}
+
+export function istUnbestaetigteMutation(error: unknown): error is UnbestaetigteMutation {
+  if (error instanceof UnbestaetigteMutation) return true
+  if (!error || typeof error !== 'object') return false
+  const wert = error as { code?: unknown; abgleichNoetig?: unknown }
+  return wert.code === 'UNBESTAETIGTE_MUTATION' && wert.abgleichNoetig === true
+}
+
+function mutationNichtBestaetigt(message: string, ursache?: unknown): UnbestaetigteMutation {
+  return new UnbestaetigteMutation(message, ursache)
+}
+
+function gleicherZeitpunkt(ist: unknown, soll: unknown): boolean {
+  if (ist === null || soll === null) return ist === soll
+  if (typeof ist !== 'string' || typeof soll !== 'string') return false
+  const istZeit = Date.parse(ist)
+  const sollZeit = Date.parse(soll)
+  return Number.isFinite(istZeit) && Number.isFinite(sollZeit) && istZeit === sollZeit
+}
+
+function hatExakteFelder(
+  zeile: unknown,
+  erwartet: Record<string, unknown>,
+  optionen: { zahlen?: string[]; zeitpunkte?: string[] } = {}
+): boolean {
+  if (!zeile || typeof zeile !== 'object' || Array.isArray(zeile)) return false
+  const ist = zeile as Record<string, unknown>
+  const zahlen = new Set(optionen.zahlen ?? [])
+  const zeitpunkte = new Set(optionen.zeitpunkte ?? [])
+  return Object.entries(erwartet).every(([feld, soll]) => {
+    if (zeitpunkte.has(feld)) return gleicherZeitpunkt(ist[feld], soll)
+    if (zahlen.has(feld)) {
+      if (soll === null) return ist[feld] === null
+      return Number.isFinite(Number(ist[feld])) && Number(ist[feld]) === Number(soll)
+    }
+    return ist[feld] === soll
+  })
+}
+
 /** RLS-DELETE liefert bei UUID-Tabellen nur `old.id`, nicht die Vollzeile. */
 export function realtimeTextId(alt: unknown): string | null {
   if (!alt || typeof alt !== 'object' || Array.isArray(alt)) return null
@@ -527,6 +577,279 @@ type NoteZeile = {
   titel: string
 }
 
+/** Ein UUID-Retry darf nur dieselbe bereits kanonische Einheit bestaetigen. */
+export async function schreibeUndBestaetigeEinheit(
+  db: NonNullable<typeof supabase>,
+  zeile: EinheitZeile
+): Promise<string> {
+  const { error } = await db
+    .from('einheiten')
+    .upsert(zeile, { onConflict: 'id', ignoreDuplicates: true })
+  if (error) throw error
+
+  const spalten = 'von' in zeile
+    ? 'id,user_id,bereich,tag,wert,erfasst,von'
+    : 'id,user_id,bereich,tag,wert,erfasst'
+  const bestaetigung = await db
+    .from('einheiten')
+    .select(spalten)
+    .eq('id', zeile.id)
+    .eq('user_id', zeile.user_id)
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!hatExakteFelder(bestaetigung.data, zeile, {
+    zahlen: ['wert'],
+    zeitpunkte: ['erfasst', 'von'],
+  })) {
+    throw mutationNichtBestaetigt('einheit wurde nicht eindeutig bestaetigt')
+  }
+  return zeile.id
+}
+
+export async function aktualisiereUndBestaetigeEinheit(
+  db: NonNullable<typeof supabase>,
+  id: string,
+  eigeneId: string,
+  aenderung: { wert: number | null } | { von: string | null }
+): Promise<string> {
+  const feld = 'wert' in aenderung ? 'wert' : 'von'
+  const soll = feld === 'wert'
+    ? (aenderung as { wert: number | null }).wert
+    : (aenderung as { von: string | null }).von
+  const bestaetigung = await db
+    .from('einheiten')
+    .update(aenderung)
+    .match({ id, user_id: eigeneId })
+    .select(`id,user_id,${feld}`)
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!hatExakteFelder(bestaetigung.data, { id, user_id: eigeneId, [feld]: soll }, {
+    zahlen: feld === 'wert' ? ['wert'] : [],
+    zeitpunkte: feld === 'von' ? ['von'] : [],
+  })) {
+    throw mutationNichtBestaetigt(`einheit-${feld} wurde nicht bestaetigt`)
+  }
+  return id
+}
+
+async function loescheUndBestaetigeNatuerlicheZeile(
+  db: NonNullable<typeof supabase>,
+  tabelle: string,
+  treffer: Record<string, unknown>,
+  spalten: string,
+  name: string
+): Promise<void> {
+  const loeschung = await db
+    .from(tabelle)
+    .delete()
+    .match(treffer)
+    .select(spalten)
+    .maybeSingle()
+  if (loeschung.error) throw loeschung.error
+  if (loeschung.data !== null && !hatExakteFelder(loeschung.data, treffer)) {
+    throw mutationNichtBestaetigt(`${name}-loeschung lieferte eine fremde zeile`)
+  }
+  if (hatExakteFelder(loeschung.data, treffer)) return
+
+  // Ein Retry nach verlorener Erfolgsantwort sieht keine DELETE-Zeile mehr.
+  // Nur ein kanonischer Read darf dann bestaetigen, dass der Zielzustand
+  // tatsaechlich bereits erreicht ist. Sichtbar verbliebene Zeilen sind RLS-
+  // Nulltreffer oder Konkurrenz und daher kein Erfolg.
+  let pruefung = db.from(tabelle).select(spalten)
+  for (const [feld, wert] of Object.entries(treffer)) pruefung = pruefung.eq(feld, wert)
+  const bestand = await pruefung.maybeSingle()
+  if (bestand.error) throw bestand.error
+  if (bestand.data !== null) {
+    throw mutationNichtBestaetigt(`${name}-loeschung wurde nicht bestaetigt`)
+  }
+}
+
+export async function loescheUndBestaetigeEinheit(
+  db: NonNullable<typeof supabase>,
+  id: string,
+  eigeneId: string
+): Promise<string> {
+  await loescheUndBestaetigeNatuerlicheZeile(
+    db,
+    'einheiten',
+    { id, user_id: eigeneId },
+    'id,user_id',
+    'einheit'
+  )
+  return id
+}
+
+export async function loescheUndBestaetigeEinheiten(
+  db: NonNullable<typeof supabase>,
+  ids: string[],
+  eigeneId: string
+): Promise<string[]> {
+  const eindeutig = [...new Set(ids)]
+  if (eindeutig.length !== ids.length || eindeutig.some((id) => !id)) {
+    throw mutationNichtBestaetigt('tagloeschung enthaelt ungueltige einheiten-ids')
+  }
+  if (eindeutig.length === 0) return []
+
+  const loeschung = await db
+    .from('einheiten')
+    .delete()
+    .eq('user_id', eigeneId)
+    .in('id', eindeutig)
+    .select('id')
+  if (loeschung.error) throw loeschung.error
+  if (!Array.isArray(loeschung.data)) {
+    throw mutationNichtBestaetigt('tagloeschung lieferte keine bestaetigten ids')
+  }
+  const erwartet = new Set(eindeutig)
+  const bestaetigt = new Set<string>()
+  for (const zeile of loeschung.data) {
+    const id = zeile && typeof zeile === 'object' && typeof zeile.id === 'string'
+      ? zeile.id
+      : null
+    if (!id || !erwartet.has(id) || bestaetigt.has(id)) {
+      throw mutationNichtBestaetigt('tagloeschung lieferte ungueltige ids')
+    }
+    bestaetigt.add(id)
+  }
+  if (bestaetigt.size === erwartet.size) return eindeutig
+
+  const bestand = await db
+    .from('einheiten')
+    .select('id')
+    .eq('user_id', eigeneId)
+    .in('id', eindeutig)
+  if (bestand.error) throw bestand.error
+  if (!Array.isArray(bestand.data)) {
+    throw mutationNichtBestaetigt('tagloeschung konnte den restbestand nicht pruefen')
+  }
+  const verblieben = bestand.data
+    .map((zeile) => zeile?.id)
+    .filter((id): id is string => typeof id === 'string' && erwartet.has(id))
+  if (verblieben.length > 0) {
+    throw mutationNichtBestaetigt(
+      `tagloeschung nur teilweise bestaetigt; ${verblieben.length} zeilen verbleiben`
+    )
+  }
+  return eindeutig
+}
+
+type AltEintragPayload = { user_id: string; bereich: AreaId; tag: string }
+type AltWertPayload = AltEintragPayload & { wert: number }
+
+export async function schreibeUndBestaetigeAltEintrag(
+  db: NonNullable<typeof supabase>,
+  payload: AltEintragPayload
+): Promise<void> {
+  const bestaetigung = await db
+    .from('eintraege')
+    .upsert(payload, { onConflict: 'user_id,bereich,tag' })
+    .select('user_id,bereich,tag')
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!hatExakteFelder(bestaetigung.data, payload)) {
+    throw mutationNichtBestaetigt('legacy-eintrag wurde nicht bestaetigt')
+  }
+}
+
+export async function schreibeUndBestaetigeAltWert(
+  db: NonNullable<typeof supabase>,
+  payload: AltWertPayload
+): Promise<void> {
+  const bestaetigung = await db
+    .from('werte')
+    .upsert(payload, { onConflict: 'user_id,bereich,tag' })
+    .select('user_id,bereich,tag,wert')
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!hatExakteFelder(bestaetigung.data, payload, { zahlen: ['wert'] })) {
+    throw mutationNichtBestaetigt('legacy-wert wurde nicht bestaetigt')
+  }
+}
+
+export async function loescheUndBestaetigeAltEintrag(
+  db: NonNullable<typeof supabase>,
+  payload: AltEintragPayload
+): Promise<void> {
+  return loescheUndBestaetigeNatuerlicheZeile(
+    db,
+    'eintraege',
+    payload,
+    'user_id,bereich,tag',
+    'legacy-eintrag'
+  )
+}
+
+export async function loescheUndBestaetigeAltWert(
+  db: NonNullable<typeof supabase>,
+  payload: AltEintragPayload
+): Promise<void> {
+  return loescheUndBestaetigeNatuerlicheZeile(
+    db,
+    'werte',
+    payload,
+    'user_id,bereich,tag',
+    'legacy-wert'
+  )
+}
+
+export async function schreibeUndBestaetigeGewicht(
+  db: NonNullable<typeof supabase>,
+  payload: { user_id: string; tag: string; kg: number; quelle?: 'getippt' }
+): Promise<void> {
+  const spalten = 'quelle' in payload ? 'user_id,tag,kg,quelle' : 'user_id,tag,kg'
+  const bestaetigung = await db
+    .from('gewicht')
+    .upsert(payload, { onConflict: 'user_id,tag' })
+    .select(spalten)
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!hatExakteFelder(bestaetigung.data, payload, { zahlen: ['kg'] })) {
+    throw mutationNichtBestaetigt('gewicht wurde nicht bestaetigt')
+  }
+}
+
+export async function loescheUndBestaetigeGewicht(
+  db: NonNullable<typeof supabase>,
+  eigeneId: string,
+  tag: string
+): Promise<void> {
+  return loescheUndBestaetigeNatuerlicheZeile(
+    db,
+    'gewicht',
+    { user_id: eigeneId, tag },
+    'user_id,tag',
+    'gewicht'
+  )
+}
+
+export async function schreibeUndBestaetigeWette(
+  db: NonNullable<typeof supabase>,
+  payload: { woche: string; text: string; updated_by: string; updated_at: string }
+): Promise<void> {
+  const bestaetigung = await db
+    .from('duell_wetten')
+    .upsert(payload, { onConflict: 'woche' })
+    .select('woche,text,updated_by,updated_at')
+    .maybeSingle()
+  if (bestaetigung.error) throw bestaetigung.error
+  if (!hatExakteFelder(bestaetigung.data, payload, { zeitpunkte: ['updated_at'] })) {
+    throw mutationNichtBestaetigt('wetteinsatz wurde nicht bestaetigt')
+  }
+}
+
+export async function loescheUndBestaetigeWette(
+  db: NonNullable<typeof supabase>,
+  woche: string
+): Promise<void> {
+  return loescheUndBestaetigeNatuerlicheZeile(
+    db,
+    'duell_wetten',
+    { woche },
+    'woche',
+    'wetteinsatz'
+  )
+}
+
 export async function wechsleUndBestaetigePruefungsfach(
   db: NonNullable<typeof supabase>,
   fachId: string,
@@ -688,6 +1011,7 @@ export function supabaseBackend(
    */
   let altbestand = false
   let einheitVonVerfuegbar = false
+  let gewichtQuelleVerfuegbar = false
   let wettenVerfuegbar = false
   let abrechnungVerfuegbar = false
   let notenVerfuegbar = false
@@ -952,6 +1276,7 @@ export function supabaseBackend(
       // getippt, statt dass die ganze abfrage scheitert.
       let gewichtMitQuelle: LadeAntwort<GewichtZeile> = gewichtZeilen
       if (gewichtZeilen.error && istFehlendeVonSpalte(fehlercode(gewichtZeilen.error))) {
+        gewichtQuelleVerfuegbar = false
         gewichtMitQuelle = await versucheAlleSeiten<GewichtZeile>(
           () => db
             .from('gewicht')
@@ -961,6 +1286,8 @@ export function supabaseBackend(
             .order('user_id', { ascending: true }),
           { name: 'gewicht', schluessel: (gewicht) => `${gewicht.user_id}|${gewicht.tag}` }
         )
+      } else {
+        gewichtQuelleVerfuegbar = !gewichtZeilen.error
       }
       // Vor der serverautoritativen Migration fehlen die beiden
       // Provenienzspalten. Alte Archive bleiben lesbar und werden im Mapper
@@ -1130,14 +1457,21 @@ export function supabaseBackend(
 
     async schreibeEinheit(e) {
       if (altbestand) {
-        const { error } = await db
-          .from('eintraege')
-          .upsert(
-            { user_id: eigeneId, bereich: e.area, tag: e.tag },
-            { onConflict: 'user_id,bereich,tag' }
-          )
-        if (error) throw error
-        if (e.wert !== null) await this.schreibeEinheitWert(e, e.wert)
+        await schreibeUndBestaetigeAltEintrag(db, {
+          user_id: eigeneId,
+          bereich: e.area,
+          tag: e.tag,
+        })
+        if (e.wert !== null) {
+          try {
+            await this.schreibeEinheitWert(e, e.wert)
+          } catch (error) {
+            throw mutationNichtBestaetigt(
+              'legacy-einheit nur teilweise geschrieben; abgleich erforderlich',
+              error
+            )
+          }
+        }
         return
       }
 
@@ -1152,53 +1486,39 @@ export function supabaseBackend(
         erfasst: e.erfasst,
         ...(einheitVonVerfuegbar ? { von: e.von ?? null } : {}),
       }
-      const { error } = await db.from('einheiten').upsert(
-        zeile,
-        { onConflict: 'id', ignoreDuplicates: true }
-      )
-      if (error) throw error
+      await schreibeUndBestaetigeEinheit(db, zeile)
     },
 
     async schreibeEinheitVon(e, von) {
       if (!einheitVonVerfuegbar) throw new Error('durchführungszeit fehlt noch')
-      const { error } = await db
-        .from('einheiten')
-        .update({ von })
-        .match({ id: e.id, user_id: eigeneId })
-      if (error) throw error
+      await aktualisiereUndBestaetigeEinheit(db, e.id, eigeneId, { von })
     },
 
     async schreibeEinheitWert(e, wert) {
       if (altbestand) {
         if (wert === null || wert <= 0) {
-          const { error } = await db
-            .from('werte')
-            .delete()
-            .match({ user_id: eigeneId, bereich: e.area, tag: e.tag })
-          if (error) throw error
+          await loescheUndBestaetigeAltWert(db, {
+            user_id: eigeneId,
+            bereich: e.area,
+            tag: e.tag,
+          })
           return
         }
-        const { error } = await db
-          .from('werte')
-          .upsert(
-            { user_id: eigeneId, bereich: e.area, tag: e.tag, wert },
-            { onConflict: 'user_id,bereich,tag' }
-          )
-        if (error) throw error
+        await schreibeUndBestaetigeAltWert(db, {
+          user_id: eigeneId,
+          bereich: e.area,
+          tag: e.tag,
+          wert,
+        })
         return
       }
 
-      const { error } = await db
-        .from('einheiten')
-        .update({ wert })
-        .match({ id: e.id, user_id: eigeneId })
-      if (error) throw error
+      await aktualisiereUndBestaetigeEinheit(db, e.id, eigeneId, { wert })
     },
 
     async loescheEinheit(e) {
       if (altbestand) return this.loescheTag([e])
-      const { error } = await db.from('einheiten').delete().match({ id: e.id, user_id: eigeneId })
-      if (error) throw error
+      await loescheUndBestaetigeEinheit(db, e.id, eigeneId)
     },
 
     async loescheTag(einheiten) {
@@ -1207,40 +1527,49 @@ export function supabaseBackend(
 
       if (altbestand) {
         const treffer = { user_id: eigeneId, bereich: erste.area, tag: erste.tag }
-        const eintrag = await db.from('eintraege').delete().match(treffer)
-        if (eintrag.error) throw eintrag.error
-        const wert = await db.from('werte').delete().match(treffer)
-        if (wert.error) throw wert.error
+        // Erst den privaten Wert entfernen. Scheitert danach der Tick, bleibt
+        // ein ehrlicher Tick ohne Wert statt eines unsichtbaren verwaisten
+        // Werts, der bei spaeterem Neuanlegen wieder auftauchen koennte.
+        await loescheUndBestaetigeAltWert(db, treffer)
+        try {
+          await loescheUndBestaetigeAltEintrag(db, treffer)
+        } catch (error) {
+          throw mutationNichtBestaetigt(
+            'legacy-tag nur teilweise geloescht; abgleich erforderlich',
+            error
+          )
+        }
         return
       }
 
-      const { error } = await db
-        .from('einheiten')
-        .delete()
-        .eq('user_id', eigeneId)
-        .in('id', einheiten.map((e) => e.id))
-      if (error) throw error
+      await loescheUndBestaetigeEinheiten(db, einheiten.map((e) => e.id), eigeneId)
     },
 
     async schreibeGewicht(tag, kg) {
       if (kg <= 0) {
-        const { error } = await db.from('gewicht').delete().match({ user_id: eigeneId, tag })
-        if (error) throw error
+        await loescheUndBestaetigeGewicht(db, eigeneId, tag)
       } else {
-        const { error } = await db
-          .from('gewicht')
-          .upsert({ user_id: eigeneId, tag, kg }, { onConflict: 'user_id,tag' })
-        if (error) throw error
+        await schreibeUndBestaetigeGewicht(db, {
+          user_id: eigeneId,
+          tag,
+          kg,
+          ...(gewichtQuelleVerfuegbar ? { quelle: 'getippt' as const } : {}),
+        })
       }
     },
 
     async schreibeWette(woche, text) {
       if (!wettenVerfuegbar) throw new Error('duell_wetten fehlt noch')
-      const { error } = await db.from('duell_wetten').upsert(
-        { woche, text, updated_by: eigeneId, updated_at: new Date().toISOString() },
-        { onConflict: 'woche' }
-      )
-      if (error) throw error
+      if (!text) {
+        await loescheUndBestaetigeWette(db, woche)
+        return
+      }
+      await schreibeUndBestaetigeWette(db, {
+        woche,
+        text,
+        updated_by: eigeneId,
+        updated_at: new Date().toISOString(),
+      })
     },
 
     async schreibeAbrechnung(a) {

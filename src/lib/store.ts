@@ -77,6 +77,14 @@ type VerlaufAnfrage = {
   controller: AbortController
 }
 
+function einheitMitId(einheiten: Einheiten, id: string): Einheit | undefined {
+  for (const liste of Object.values(einheiten)) {
+    const einheit = liste.find((e) => e.id === id)
+    if (einheit) return einheit
+  }
+  return undefined
+}
+
 function istAbbruch(e: unknown): boolean {
   return (e as { name?: string } | null)?.name === 'AbortError'
 }
@@ -297,6 +305,24 @@ export function useTracker(backend: Backend) {
     laufendeMutationen.current.add(verfolgt)
     return verfolgt
   }, [backendLauf])
+
+  const behandleMutationsfehler = useCallback((
+    lokalZurueck: () => void,
+    lokalText: string,
+    abgleichText: string
+  ) => {
+    if (!darfSchreiben()) return
+    if (backend.art === 'lokal') {
+      lokalZurueck()
+      setFehler(lokalText)
+      return
+    }
+    // Sowohl eine explizite Nullzeilen-Bestaetigung als auch ein verlorener
+    // Transportausgang sind fuer den Browser unbekannt. Ein alter Snapshot
+    // darf dann kein zwischenzeitliches Realtime-Ereignis zurueckrollen.
+    abgleichAnfordernRef.current(true)
+    setFehler(abgleichText)
+  }, [backend.art, darfSchreiben])
 
   const nacheinander = useCallback((ids: string[], schreibe: () => Promise<void>) => {
     const laufende = ids.map((id) => kette.current.get(id)).filter(Boolean)
@@ -863,15 +889,17 @@ export function useTracker(backend: Backend) {
 
       void verfolgeMutation(() =>
         nacheinander([einheit.id], () => backend.schreibeEinheit(einheit)).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          behandleMutationsfehler(
+            () => uebernimm(ohneEinheit(einheitenRef.current, einheit.id)),
+            'nicht gespeichert. tippe nochmal.',
+            'einheit nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
 
       return einheit
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** nimmt eine einzelne durchführung zurück */
@@ -894,13 +922,15 @@ export function useTracker(backend: Backend) {
 
       void verfolgeMutation(() =>
         nacheinander([einheit.id], () => backend.loescheEinheit(einheit)).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          behandleMutationsfehler(
+            () => uebernimm(fuegeHinzu(einheitenRef.current, einheit)),
+            'nicht gespeichert. tippe nochmal.',
+            'löschung nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** der an/aus-schalter: an legt die erste einheit an, aus räumt den tag */
@@ -926,16 +956,22 @@ export function useTracker(backend: Backend) {
           vorhandene.map((e) => e.id),
           () => backend.loescheTag(vorhandene)
         ).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          behandleMutationsfehler(
+            () => {
+              let zurueck = einheitenRef.current
+              for (const einheit of vorhandene) zurueck = fuegeHinzu(zurueck, einheit)
+              uebernimm(zurueck)
+            },
+            'nicht gespeichert. tippe nochmal.',
+            'taglöschung nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
     [
       backend,
+      behandleMutationsfehler,
       darfMutationStarten,
-      darfSchreiben,
       einheitHinzu,
       nacheinander,
       uebernimm,
@@ -976,16 +1012,24 @@ export function useTracker(backend: Backend) {
         Promise.all(
           aktion.einheiten.map((e) => nacheinander([e.id], () => backend.schreibeEinheit(e)))
         ).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          behandleMutationsfehler(
+            () => {
+              let zurueck = einheitenRef.current
+              for (const einheit of aktion.einheiten) {
+                zurueck = ohneEinheit(zurueck, einheit.id)
+              }
+              uebernimm(zurueck)
+            },
+            'nicht gespeichert. tippe nochmal.',
+            'wiederherstellung nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
     [
       backend,
+      behandleMutationsfehler,
       darfMutationStarten,
-      darfSchreiben,
       einheitWeg,
       nacheinander,
       toggle,
@@ -1008,13 +1052,16 @@ export function useTracker(backend: Backend) {
       setFehler(null)
       void verfolgeMutation(() =>
         nacheinander([id], () => backend.schreibeEinheitWert(einheit, sauber)).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          if (einheitMitId(einheitenRef.current, id)?.wert !== sauber) return
+          behandleMutationsfehler(
+            () => uebernimm(mitWert(einheitenRef.current, id, einheit.wert)),
+            'nicht gespeichert. tippe nochmal.',
+            'wert nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** setzt die durchführungszeit einer einzelnen einheit. null löscht sie */
@@ -1030,13 +1077,16 @@ export function useTracker(backend: Backend) {
       setFehler(null)
       void verfolgeMutation(() =>
         nacheinander([id], () => backend.schreibeEinheitVon(einheit, von)).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          if ((einheitMitId(einheitenRef.current, id)?.von ?? null) !== von) return
+          behandleMutationsfehler(
+            () => uebernimm(mitVon(einheitenRef.current, id, einheit.von ?? null)),
+            'nicht gespeichert. tippe nochmal.',
+            'zeitpunkt nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
-    [backend, darfMutationStarten, darfSchreiben, nacheinander, uebernimm, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, uebernimm, verfolgeMutation]
   )
 
   /** archiviert erst nach kanonischer Backend-Bestaetigung; die erste Zeile gewinnt */
@@ -1105,9 +1155,12 @@ export function useTracker(backend: Backend) {
         // auf eine zeile geht, die es sonst noch nicht gäbe.
         void verfolgeMutation(() =>
           nacheinander([neue.id], () => backend.schreibeEinheitWert(neue, erster)).catch(() => {
-            if (!darfSchreiben()) return
-            uebernimm(nachAnlegen)
-            setFehler('nicht gespeichert. tippe nochmal.')
+            if (einheitMitId(einheitenRef.current, neue.id)?.wert !== erster) return
+            behandleMutationsfehler(
+              () => uebernimm(mitWert(einheitenRef.current, neue.id, neue.wert)),
+              'nicht gespeichert. tippe nochmal.',
+              'wert nicht bestätigt. stand wird abgeglichen.'
+            )
           })
         )
         return
@@ -1119,16 +1172,19 @@ export function useTracker(backend: Backend) {
 
       void verfolgeMutation(() =>
         nacheinander([letzte.id], () => backend.schreibeEinheitWert(letzte, sauber)).catch(() => {
-          if (!darfSchreiben()) return
-          uebernimm(vorher)
-          setFehler('nicht gespeichert. tippe nochmal.')
+          if (einheitMitId(einheitenRef.current, letzte.id)?.wert !== sauber) return
+          behandleMutationsfehler(
+            () => uebernimm(mitWert(einheitenRef.current, letzte.id, letzte.wert)),
+            'nicht gespeichert. tippe nochmal.',
+            'wert nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
     [
       backend,
+      behandleMutationsfehler,
       darfMutationStarten,
-      darfSchreiben,
       einheitHinzu,
       nacheinander,
       uebernimm,
@@ -1158,17 +1214,35 @@ export function useTracker(backend: Backend) {
       merkeGewichtQuelle(u, tag, sauber <= 0 ? null : 'getippt')
 
       void verfolgeMutation(() =>
-        backend.schreibeGewicht(tag, sauber).catch(() => {
-          if (!darfSchreiben()) return
-          gewichteRef.current = vorher
-          setGewichte(vorher)
-          gewichtQuellenRef.current = vorherQuellen
-          setGewichtQuellen(vorherQuellen)
-          setFehler('nicht gespeichert. tippe nochmal.')
+        nacheinander([`gewicht|${key}`], () => backend.schreibeGewicht(tag, sauber)).catch(() => {
+          const istNochDieseAenderung = sauber <= 0
+            ? !Object.hasOwn(gewichteRef.current, key)
+            : gewichteRef.current[key] === sauber
+          const quelleIstNochDieseAenderung = sauber <= 0
+            ? !Object.hasOwn(gewichtQuellenRef.current, key)
+            : gewichtQuellenRef.current[key] === undefined
+          if (!istNochDieseAenderung || !quelleIstNochDieseAenderung) return
+          behandleMutationsfehler(
+            () => {
+              const zurueck = { ...gewichteRef.current }
+              if (Object.hasOwn(vorher, key)) zurueck[key] = vorher[key]
+              else delete zurueck[key]
+              gewichteRef.current = zurueck
+              setGewichte(zurueck)
+
+              const quellenZurueck = { ...gewichtQuellenRef.current }
+              if (Object.hasOwn(vorherQuellen, key)) quellenZurueck[key] = vorherQuellen[key]
+              else delete quellenZurueck[key]
+              gewichtQuellenRef.current = quellenZurueck
+              setGewichtQuellen(quellenZurueck)
+            },
+            'nicht gespeichert. tippe nochmal.',
+            'gewicht nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
-    [backend, darfMutationStarten, darfSchreiben, merkeGewichtQuelle, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, merkeGewichtQuelle, nacheinander, verfolgeMutation]
   )
 
   /**
@@ -1282,22 +1356,35 @@ export function useTracker(backend: Backend) {
     (woche: string, text: string) => {
       if (!darfMutationStarten()) return
       const sauber = text.trim().replace(/\s+/g, ' ').slice(0, 160)
-      if (!sauber) return
       const vorher = wettenRef.current
-      const next = { ...vorher, [woche]: sauber }
+      if (!sauber && !Object.hasOwn(vorher, woche)) return
+      const next = { ...vorher }
+      if (sauber) next[woche] = sauber
+      else delete next[woche]
       wettenRef.current = next
       setWetten(next)
       setFehler(null)
       void verfolgeMutation(() =>
-        backend.schreibeWette(woche, sauber).catch(() => {
-          if (!darfSchreiben()) return
-          wettenRef.current = vorher
-          setWetten(vorher)
-          setFehler('wetteinsatz nicht gespeichert. versuch es nochmal.')
+        nacheinander([`wette|${woche}`], () => backend.schreibeWette(woche, sauber)).catch(() => {
+          const istNochDieseAenderung = sauber
+            ? wettenRef.current[woche] === sauber
+            : !Object.hasOwn(wettenRef.current, woche)
+          if (!istNochDieseAenderung) return
+          behandleMutationsfehler(
+            () => {
+              const zurueck = { ...wettenRef.current }
+              if (Object.hasOwn(vorher, woche)) zurueck[woche] = vorher[woche]
+              else delete zurueck[woche]
+              wettenRef.current = zurueck
+              setWetten(zurueck)
+            },
+            'wetteinsatz nicht gespeichert. versuch es nochmal.',
+            'wetteinsatz nicht bestätigt. stand wird abgeglichen.'
+          )
         })
       )
     },
-    [backend, darfMutationStarten, darfSchreiben, verfolgeMutation]
+    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, verfolgeMutation]
   )
 
   /**

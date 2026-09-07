@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Abrechnung, Note, Phase } from './types'
 import {
   REALTIME_KANAL_OPTIONEN,
+  UnbestaetigteMutation,
+  aktualisiereUndBestaetigeEinheit,
   entferneRealtimeKanal,
   finalisiereUndBestaetigeAbrechnung,
   istFehlendeVonSpalte,
@@ -14,7 +16,16 @@ import {
   realtimeSystemEreignis,
   realtimeTextId,
   loescheUndBestaetigeNote,
+  loescheUndBestaetigeEinheit,
+  loescheUndBestaetigeEinheiten,
+  loescheUndBestaetigeGewicht,
+  loescheUndBestaetigeWette,
+  schreibeUndBestaetigeAltEintrag,
+  schreibeUndBestaetigeAltWert,
+  schreibeUndBestaetigeEinheit,
+  schreibeUndBestaetigeGewicht,
   schreibeUndBestaetigeNote,
+  schreibeUndBestaetigeWette,
   supabaseBackend,
   validiereDuellprofile,
   wechsleUndBestaetigePruefungsfach,
@@ -291,6 +302,229 @@ describe('Supabase-Startreihenfolge und Serverfilter', () => {
       userFilter: null,
       eigenerFilter: ERIJON_ID,
     })
+  })
+})
+
+const EINHEIT_ZEILE = {
+  id: '44444444-4444-4444-8444-444444444444',
+  user_id: ERIJON_ID,
+  bereich: 'lernen' as const,
+  tag: '2026-09-06',
+  wert: 45,
+  erfasst: '2026-09-06T18:00:00.000Z',
+  von: null,
+}
+
+function einheitSchreibDb(kanonisch: unknown) {
+  const upsert = vi.fn(async () => ({ error: null }))
+  const lesen = {
+    eq: vi.fn(() => lesen),
+    maybeSingle: vi.fn(async () => ({ data: kanonisch, error: null })),
+  }
+  return {
+    db: {
+      from: vi.fn()
+        .mockReturnValueOnce({ upsert })
+        .mockReturnValueOnce({ select: vi.fn(() => lesen) }),
+    },
+    upsert,
+  }
+}
+
+describe('bestaetigte Tracker-Mutationen', () => {
+  it('bestaetigt den exakten Einheit-Retry und lehnt eine UUID-Kollision ab', async () => {
+    const exakt = einheitSchreibDb(EINHEIT_ZEILE)
+    await expect(schreibeUndBestaetigeEinheit(
+      exakt.db as unknown as Parameters<typeof schreibeUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    expect(exakt.upsert).toHaveBeenCalledWith(EINHEIT_ZEILE, {
+      onConflict: 'id',
+      ignoreDuplicates: true,
+    })
+
+    const kollision = einheitSchreibDb({ ...EINHEIT_ZEILE, wert: 5 })
+    await expect(schreibeUndBestaetigeEinheit(
+      kollision.db as unknown as Parameters<typeof schreibeUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('akzeptiert Updates nur mit exakt zurueckgegebenem Wert oder Zeitpunkt', async () => {
+    const updateDb = (data: unknown) => {
+      const kette = {
+        match: vi.fn(() => kette),
+        select: vi.fn(() => kette),
+        maybeSingle: vi.fn(async () => ({ data, error: null })),
+      }
+      return { from: vi.fn(() => ({ update: vi.fn(() => kette) })) }
+    }
+    await expect(aktualisiereUndBestaetigeEinheit(
+      updateDb({ id: EINHEIT_ZEILE.id, user_id: ERIJON_ID, wert: 61 }) as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID,
+      { wert: 61 }
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    await expect(aktualisiereUndBestaetigeEinheit(
+      updateDb(null) as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID,
+      { von: '2026-09-06T18:10:00.000Z' }
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('unterscheidet bestaetigte, idempotent bereits erfolgte und RLS-Null-Loeschung', async () => {
+    const loeschDb = (loeschzeile: unknown, bestand: unknown = null) => {
+      const loeschen = {
+        match: vi.fn(() => loeschen),
+        select: vi.fn(() => loeschen),
+        maybeSingle: vi.fn(async () => ({ data: loeschzeile, error: null })),
+      }
+      const lesen = {
+        eq: vi.fn(() => lesen),
+        maybeSingle: vi.fn(async () => ({ data: bestand, error: null })),
+      }
+      return {
+        from: vi.fn()
+          .mockReturnValueOnce({ delete: vi.fn(() => loeschen) })
+          .mockReturnValueOnce({ select: vi.fn(() => lesen) }),
+      }
+    }
+    await expect(loescheUndBestaetigeEinheit(
+      loeschDb({ id: EINHEIT_ZEILE.id, user_id: ERIJON_ID }) as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    await expect(loescheUndBestaetigeEinheit(
+      loeschDb(null, null) as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    await expect(loescheUndBestaetigeEinheit(
+      loeschDb(null, { id: EINHEIT_ZEILE.id, user_id: ERIJON_ID }) as unknown as Parameters<typeof loescheUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('meldet einen echten Teilfehler der Mehrfachloeschung und akzeptiert den fertigen Retry', async () => {
+    const ids = [EINHEIT_ZEILE.id, '55555555-5555-4555-8555-555555555555']
+    const mehrfachDb = (verblieben: unknown[]) => {
+      const loeschen = {
+        eq: vi.fn(() => loeschen),
+        in: vi.fn(() => loeschen),
+        select: vi.fn(async () => ({ data: [{ id: ids[0] }], error: null })),
+      }
+      const lesen = {
+        eq: vi.fn(() => lesen),
+        in: vi.fn(async () => ({ data: verblieben, error: null })),
+      }
+      return {
+        from: vi.fn()
+          .mockReturnValueOnce({ delete: vi.fn(() => loeschen) })
+          .mockReturnValueOnce({ select: vi.fn(() => lesen) }),
+      }
+    }
+    await expect(loescheUndBestaetigeEinheiten(
+      mehrfachDb([{ id: ids[1] }]) as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      ids,
+      ERIJON_ID
+    )).rejects.toThrow('nur teilweise bestaetigt')
+    await expect(loescheUndBestaetigeEinheiten(
+      mehrfachDb([]) as unknown as Parameters<typeof loescheUndBestaetigeEinheiten>[0],
+      ids,
+      ERIJON_ID
+    )).resolves.toEqual(ids)
+  })
+})
+
+function direktBestaetigteUpsertDb(data: unknown) {
+  const kette = {
+    select: vi.fn(() => kette),
+    maybeSingle: vi.fn(async () => ({ data, error: null })),
+  }
+  return { from: vi.fn(() => ({ upsert: vi.fn(() => kette) })) }
+}
+
+describe('bestaetigte Legacy-, Gewichts- und Wettmutationen', () => {
+  it('bestaetigt Legacy-Eintrag und -Wert samt numerischem PostgREST-Wert', async () => {
+    const eintrag = { user_id: ERIJON_ID, bereich: 'lesen' as const, tag: '2026-09-06' }
+    await expect(schreibeUndBestaetigeAltEintrag(
+      direktBestaetigteUpsertDb(eintrag) as unknown as Parameters<typeof schreibeUndBestaetigeAltEintrag>[0],
+      eintrag
+    )).resolves.toBeUndefined()
+    await expect(schreibeUndBestaetigeAltWert(
+      direktBestaetigteUpsertDb({ ...eintrag, wert: '23' }) as unknown as Parameters<typeof schreibeUndBestaetigeAltWert>[0],
+      { ...eintrag, wert: 23 }
+    )).resolves.toBeUndefined()
+    await expect(schreibeUndBestaetigeAltWert(
+      direktBestaetigteUpsertDb(null) as unknown as Parameters<typeof schreibeUndBestaetigeAltWert>[0],
+      { ...eintrag, wert: 23 }
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('bestaetigt Gewicht einschliesslich getippter Quelle und erkennt Nullzeilen', async () => {
+    const payload = { user_id: ERIJON_ID, tag: '2026-09-06', kg: 81.4, quelle: 'getippt' as const }
+    await expect(schreibeUndBestaetigeGewicht(
+      direktBestaetigteUpsertDb({ ...payload, kg: '81.40' }) as unknown as Parameters<typeof schreibeUndBestaetigeGewicht>[0],
+      payload
+    )).resolves.toBeUndefined()
+    await expect(schreibeUndBestaetigeGewicht(
+      direktBestaetigteUpsertDb({ ...payload, quelle: 'gemessen' }) as unknown as Parameters<typeof schreibeUndBestaetigeGewicht>[0],
+      payload
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+
+    const loeschen = {
+      match: vi.fn(() => loeschen),
+      select: vi.fn(() => loeschen),
+      maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+    }
+    const lesen = {
+      eq: vi.fn(() => lesen),
+      maybeSingle: vi.fn(async () => ({ data: { user_id: ERIJON_ID, tag: payload.tag }, error: null })),
+    }
+    const db = {
+      from: vi.fn()
+        .mockReturnValueOnce({ delete: vi.fn(() => loeschen) })
+        .mockReturnValueOnce({ select: vi.fn(() => lesen) }),
+    }
+    await expect(loescheUndBestaetigeGewicht(
+      db as unknown as Parameters<typeof loescheUndBestaetigeGewicht>[0],
+      ERIJON_ID,
+      payload.tag
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('akzeptiert einen Wetteinsatz nur mit Identitaet, Text, Autor und Zeitpunkt', async () => {
+    const payload = {
+      woche: '2026-08-31',
+      text: 'verlierer kocht',
+      updated_by: ERIJON_ID,
+      updated_at: '2026-09-06T18:00:00.000Z',
+    }
+    await expect(schreibeUndBestaetigeWette(
+      direktBestaetigteUpsertDb({ ...payload, updated_at: '2026-09-06T20:00:00+02:00' }) as unknown as Parameters<typeof schreibeUndBestaetigeWette>[0],
+      payload
+    )).resolves.toBeUndefined()
+    await expect(schreibeUndBestaetigeWette(
+      direktBestaetigteUpsertDb({ ...payload, updated_by: KORAY_ID }) as unknown as Parameters<typeof schreibeUndBestaetigeWette>[0],
+      payload
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('bestaetigt das Entfernen eines Wetteinsatzes ueber Woche und Endzustand', async () => {
+    const loeschen = {
+      match: vi.fn(() => loeschen),
+      select: vi.fn(() => loeschen),
+      maybeSingle: vi.fn(async () => ({ data: { woche: '2026-08-31' }, error: null })),
+    }
+    const db = { from: vi.fn(() => ({ delete: vi.fn(() => loeschen) })) }
+
+    await expect(loescheUndBestaetigeWette(
+      db as unknown as Parameters<typeof loescheUndBestaetigeWette>[0],
+      '2026-08-31'
+    )).resolves.toBeUndefined()
+    expect(loeschen.match).toHaveBeenCalledWith({ woche: '2026-08-31' })
   })
 })
 

@@ -419,6 +419,11 @@ function holeKanal(): BroadcastChannel | null {
 
 export function lokalesBackend(): Backend {
   const absender = Math.random().toString(36).slice(2)
+  // Die sichtbare Person gehoert zur Backend-Instanz. Ein anderer Tab darf
+  // diesen Vertrag nicht mitten in einer offenen Eingabe ueber localStorage
+  // umbiegen; ein bewusster Personenwechsel erzeugt im App-Root ein neues
+  // Backend.
+  const me = lokalesMe()
 
   const sende = (ereignis: EinheitEreignis) => {
     holeKanal()?.postMessage({ von: absender, ...ereignis } satisfies Nachricht)
@@ -444,9 +449,8 @@ export function lokalesBackend(): Backend {
     art: 'lokal',
 
     async laden(): Promise<Anfangszustand> {
-      uebernimmAltbestand()
+      await mitLokalerSperre(EINHEITEN_KEY, uebernimmAltbestand)
 
-      const me = lokalesMe()
       const gespeicherterSchlaf = lade<Schlafnacht[]>(SCHLAF_KEY, [])
       const schlaf = gespeicherterSchlaf.length > 0 ? gespeicherterSchlaf : erzeugeBeispielSchlaf()
 
@@ -476,74 +480,105 @@ export function lokalesBackend(): Backend {
     },
 
     async schreibeEinheit(e: Einheit) {
-      const alle = alleEinheiten()
-      // die id entscheidet: derselbe schreibversuch zweimal legt nichts an
-      if (alle.some((x) => x.id === e.id)) return
-      alle.push(e)
-      sichere(alle)
-      sende({ typ: 'einheit', art: 'neu', einheit: e })
+      return mitLokalerSperre(EINHEITEN_KEY, () => {
+        const alle = alleEinheiten()
+        // die id entscheidet: derselbe schreibversuch zweimal legt nichts an
+        if (alle.some((x) => x.id === e.id)) return
+        alle.push(e)
+        sichere(alle)
+        sende({ typ: 'einheit', art: 'neu', einheit: e })
+      })
     },
 
     async schreibeEinheitWert(e: Einheit, wert: number | null) {
-      const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, wert } : x))
-      sichere(alle)
-      sende({ typ: 'einheit', art: 'wert', einheit: { ...e, wert } })
+      return mitLokalerSperre(EINHEITEN_KEY, () => {
+        const alle = alleEinheiten()
+        const vorhanden = alle.find((x) => x.id === e.id)
+        if (!vorhanden) throw new Error('einheit wurde nicht gefunden')
+        const aktualisiert = { ...vorhanden, wert }
+        sichere(alle.map((x) => (x.id === e.id ? aktualisiert : x)))
+        sende({ typ: 'einheit', art: 'wert', einheit: aktualisiert })
+      })
     },
 
     async schreibeEinheitVon(e: Einheit, von: string | null) {
-      const alle = alleEinheiten().map((x) => (x.id === e.id ? { ...x, von } : x))
-      sichere(alle)
-      sende({ typ: 'einheit', art: 'wert', einheit: { ...e, von } })
+      return mitLokalerSperre(EINHEITEN_KEY, () => {
+        const alle = alleEinheiten()
+        const vorhanden = alle.find((x) => x.id === e.id)
+        if (!vorhanden) throw new Error('einheit wurde nicht gefunden')
+        const aktualisiert = { ...vorhanden, von }
+        sichere(alle.map((x) => (x.id === e.id ? aktualisiert : x)))
+        sende({ typ: 'einheit', art: 'wert', einheit: aktualisiert })
+      })
     },
 
     async loescheEinheit(e: Einheit) {
-      sichere(alleEinheiten().filter((x) => x.id !== e.id))
-      sendeEinheitWeg(e)
+      return mitLokalerSperre(EINHEITEN_KEY, () => {
+        const alle = alleEinheiten()
+        const vorhanden = alle.find((x) => x.id === e.id)
+        if (!vorhanden) return
+        sichere(alle.filter((x) => x.id !== e.id))
+        sendeEinheitWeg(vorhanden)
+      })
     },
 
     async loescheTag(einheiten: Einheit[]) {
       if (einheiten.length === 0) return
-      const weg = new Set(einheiten.map((e) => e.id))
-      sichere(alleEinheiten().filter((x) => !weg.has(x.id)))
-      for (const e of einheiten) sendeEinheitWeg(e)
+      return mitLokalerSperre(EINHEITEN_KEY, () => {
+        const weg = new Set(einheiten.map((e) => e.id))
+        const alle = alleEinheiten()
+        const vorhanden = alle.filter((x) => weg.has(x.id))
+        sichere(alle.filter((x) => !weg.has(x.id)))
+        for (const e of vorhanden) sendeEinheitWeg(e)
+      })
     },
 
     async schreibeGewicht(tag: string, kg: number) {
-      const me = lokalesMe()
-      const gewichte = lade<Gewichte>(GEWICHT_KEY, {})
-      const key = gewichtKey(me, tag)
-      if (kg <= 0) delete gewichte[key]
-      else gewichte[key] = kg
-      localStorage.setItem(GEWICHT_KEY, JSON.stringify(gewichte))
-      holeKanal()?.postMessage({
-        von: absender,
-        typ: 'gewicht',
-        user: me,
-        tag,
-        kg: kg <= 0 ? null : kg,
-        quelle: 'getippt',
-      } satisfies Nachricht)
+      return mitLokalerSperre(GEWICHT_KEY, () => {
+        const gewichte = lade<Gewichte>(GEWICHT_KEY, {})
+        const key = gewichtKey(me, tag)
+        if (kg <= 0) delete gewichte[key]
+        else gewichte[key] = kg
+        localStorage.setItem(GEWICHT_KEY, JSON.stringify(gewichte))
+        holeKanal()?.postMessage({
+          von: absender,
+          typ: 'gewicht',
+          user: me,
+          tag,
+          kg: kg <= 0 ? null : kg,
+          quelle: 'getippt',
+        } satisfies Nachricht)
+      })
     },
 
     async schreibeWette(woche: string, text: string) {
-      const wetten = lade<Wetten>(WETTEN_KEY, {})
-      wetten[woche] = text
-      localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
-      holeKanal()?.postMessage({ von: absender, typ: 'wette', woche, text } satisfies Nachricht)
+      return mitLokalerSperre(WETTEN_KEY, () => {
+        const wetten = lade<Wetten>(WETTEN_KEY, {})
+        if (text) wetten[woche] = text
+        else delete wetten[woche]
+        localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
+        holeKanal()?.postMessage({
+          von: absender,
+          typ: 'wette',
+          woche,
+          text: text || null,
+        } satisfies Nachricht)
+      })
     },
 
     async schreibeAbrechnung(a: Abrechnung) {
-      const alle = alleAbrechnungen()
-      const vorhanden = alle.find((x) => x.woche === a.woche)
-      if (vorhanden) return vorhanden
-      localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, a]))
-      holeKanal()?.postMessage({ von: absender, typ: 'abrechnung', abrechnung: a } satisfies Nachricht)
-      return a
+      return mitLokalerSperre(ABRECHNUNG_KEY, () => {
+        const alle = alleAbrechnungen()
+        const vorhanden = alle.find((x) => x.woche === a.woche)
+        if (vorhanden) return vorhanden
+        localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, a]))
+        holeKanal()?.postMessage({ von: absender, typ: 'abrechnung', abrechnung: a } satisfies Nachricht)
+        return a
+      })
     },
 
     async setzePruefungsfach(id: string, erwartetesFachId: string) {
       return mitLokalerSperre(FAECHER_KEY, () => {
-        const me = lokalesMe()
         const faecher = alleFaecher()
         const ziel = faecher.find((x) => x.id === id)
         const aktuell = faecher.find((x) => x.user === me && x.pruefungsfach === 4)

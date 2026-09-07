@@ -8,6 +8,7 @@ import type { Anfangszustand, Backend, BackendEreignis } from './backend'
 import { hatNeustartBlocker } from './pwaBlocker'
 import { phasenLadeKey } from './schlafLaden'
 import { useTracker } from './store'
+import { UnbestaetigteMutation } from './supabase'
 import type { Einheit, Fach, Note, Phase, Schlafnacht } from './types'
 
 afterEach(() => {
@@ -570,6 +571,227 @@ describe('useTracker atomare Notenmutationen', () => {
     expect(setzePruefungsfach).not.toHaveBeenCalled()
     expect(result.current.notenstand.faecher.find((fach) => fach.id === sport.id)?.pruefungsfach)
       .toBeNull()
+  })
+})
+
+describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
+  it('behaelt im lokalen Backend den entitaetsbezogenen Rollback', async () => {
+    const laden = vi.fn(async () => ANFANG)
+    const backend = backendMit(laden, {
+      art: 'lokal',
+      schreibeEinheit: vi.fn(async () => {
+        throw new Error('lokaler speicher voll')
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => result.current.einheitHinzu('lernen', '2026-09-06'))
+
+    await waitFor(() => expect(result.current.fehler).toBe('nicht gespeichert. tippe nochmal.'))
+    expect(result.current.zustand.einheiten).toEqual({})
+    expect(laden).toHaveBeenCalledTimes(1)
+  })
+
+  it('rollt ein Realtime-Ereignis bei unbestaetigtem Tracker-Insert nicht zurueck', async () => {
+    const schreiben = offen<void>()
+    const zweiterStand = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => zweiterStand.promise)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(laden, {
+      schreibeEinheit: vi.fn(() => schreiben.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    let lokal: Einheit | null = null
+    act(() => {
+      lokal = result.current.einheitHinzu('lernen', '2026-09-06')
+      melde({ typ: 'einheit', art: 'neu', einheit: LIVE_EINHEIT })
+    })
+    await act(async () => {
+      schreiben.reject(new UnbestaetigteMutation('einheit nicht bestaetigt'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    expect(Object.values(result.current.zustand.einheiten).flat().map((einheit) => einheit.id))
+      .toEqual(expect.arrayContaining([lokal!.id, LIVE_EINHEIT.id]))
+    expect(result.current.fehler).toBe('einheit nicht bestätigt. stand wird abgeglichen.')
+
+    act(() => zweiterStand.resolve({
+      ...ANFANG,
+      einheiten: { 'koray|gym|2026-09-05': [LIVE_EINHEIT] },
+    }))
+    await waitFor(() => {
+      expect(Object.values(result.current.zustand.einheiten).flat()).toEqual([LIVE_EINHEIT])
+    })
+  })
+
+  it('bewahrt fremdes Realtime-Gewicht bis zum starken Abgleich', async () => {
+    const schreiben = offen<void>()
+    const zweiterStand = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => zweiterStand.promise)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(laden, {
+      schreibeGewicht: vi.fn(() => schreiben.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzeGewicht('2026-09-06', 81.4)
+      melde({ typ: 'gewicht', user: 'koray', tag: '2026-09-06', kg: 90.2 })
+    })
+    await act(async () => {
+      schreiben.reject(new Error('antwort verloren'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    expect(result.current.zustand.gewichte).toEqual({
+      'erijon|2026-09-06': 81.4,
+      'koray|2026-09-06': 90.2,
+    })
+    expect(result.current.fehler).toContain('stand wird abgeglichen')
+
+    act(() => zweiterStand.resolve({
+      ...ANFANG,
+      gewichte: { 'koray|2026-09-06': 90.2 },
+    }))
+    await waitFor(() => expect(result.current.zustand.gewichte).toEqual({
+      'koray|2026-09-06': 90.2,
+    }))
+  })
+
+  it('bewahrt eine fremde Realtime-Wette bis zum starken Abgleich', async () => {
+    const schreiben = offen<void>()
+    const zweiterStand = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockImplementationOnce(() => zweiterStand.promise)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(laden, {
+      schreibeWette: vi.fn(() => schreiben.promise),
+      abonniere: vi.fn((cb) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzeWette('2026-09-07', 'eigene wette')
+      melde({ typ: 'wette', woche: '2026-08-31', text: 'fremde wette' })
+    })
+    await act(async () => {
+      schreiben.reject(new UnbestaetigteMutation('wette nicht bestaetigt'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    expect(result.current.wetten).toEqual({
+      '2026-08-31': 'fremde wette',
+      '2026-09-07': 'eigene wette',
+    })
+
+    act(() => zweiterStand.resolve({
+      ...ANFANG,
+      wetten: { '2026-08-31': 'fremde wette' },
+    }))
+    await waitFor(() => expect(result.current.wetten).toEqual({
+      '2026-08-31': 'fremde wette',
+    }))
+  })
+
+  it('laesst einen fehlgeschlagenen alten Wert nicht ueber eine neuere Eingabe rollen', async () => {
+    const erster = offen<void>()
+    const einheit: Einheit = {
+      id: 'lokale-folge', user: 'erijon', area: 'lernen', tag: '2026-09-06',
+      wert: 60, erfasst: null,
+    }
+    const schreiben = vi.fn<Backend['schreibeEinheitWert']>()
+      .mockImplementationOnce(() => erster.promise)
+      .mockResolvedValueOnce(undefined)
+    const backend = backendMit(async () => ({
+      ...ANFANG,
+      einheiten: { 'erijon|lernen|2026-09-06': [einheit] },
+    }), { art: 'lokal', schreibeEinheitWert: schreiben })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.wertSetzen(einheit.id, 61)
+      result.current.wertSetzen(einheit.id, 62)
+    })
+    await waitFor(() => expect(schreiben).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      erster.reject(new Error('erster write fehlgeschlagen'))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(schreiben).toHaveBeenCalledTimes(2))
+
+    expect(schreiben).toHaveBeenNthCalledWith(2, expect.objectContaining({ wert: 61 }), 62)
+    expect(Object.values(result.current.zustand.einheiten).flat()[0]?.wert).toBe(62)
+    expect(result.current.fehler).toBeNull()
+  })
+
+  it('ordnet schnelle lokale Gewichte und Wetten und behaelt jeweils den neuesten Stand', async () => {
+    const erstesGewicht = offen<void>()
+    const ersteWette = offen<void>()
+    const schreibeGewicht = vi.fn<Backend['schreibeGewicht']>()
+      .mockImplementationOnce(() => erstesGewicht.promise)
+      .mockResolvedValueOnce(undefined)
+    const schreibeWette = vi.fn<Backend['schreibeWette']>()
+      .mockImplementationOnce(() => ersteWette.promise)
+      .mockResolvedValueOnce(undefined)
+    const backend = backendMit(async () => ({
+      ...ANFANG,
+      wetten: { '2026-09-07': 'alt' },
+    }), { art: 'lokal', schreibeGewicht, schreibeWette })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzeGewicht('2026-09-06', 81.2)
+      result.current.setzeGewicht('2026-09-06', 81.3)
+      result.current.setzeWette('2026-09-07', 'erstes neues')
+      result.current.setzeWette('2026-09-07', 'letztes neues')
+    })
+    await waitFor(() => {
+      expect(schreibeGewicht).toHaveBeenCalledTimes(1)
+      expect(schreibeWette).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      erstesGewicht.reject(new Error('erstes gewicht fehlgeschlagen'))
+      ersteWette.reject(new Error('erste wette fehlgeschlagen'))
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(schreibeGewicht).toHaveBeenCalledTimes(2)
+      expect(schreibeWette).toHaveBeenCalledTimes(2)
+    })
+
+    expect(schreibeGewicht).toHaveBeenNthCalledWith(2, '2026-09-06', 81.3)
+    expect(schreibeWette).toHaveBeenNthCalledWith(2, '2026-09-07', 'letztes neues')
+    expect(result.current.zustand.gewichte['erijon|2026-09-06']).toBe(81.3)
+    expect(result.current.wetten['2026-09-07']).toBe('letztes neues')
+    expect(result.current.fehler).toBeNull()
   })
 })
 
