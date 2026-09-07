@@ -178,7 +178,7 @@ type AbfrageProtokoll = {
   auswahl: string | null
 }
 
-function startDb(einheitenFehler?: 'von' | 'tabelle', profilVerzoegert = false) {
+function startDb(einheitenFehler?: 'von' | 'tabelle', profilVerzoegert = false, wettenFehler?: string) {
   let profileFertig = false
   let profileFreigeben: () => void = () => {}
   const protokoll: AbfrageProtokoll[] = []
@@ -225,6 +225,13 @@ function startDb(einheitenFehler?: 'von' | 'tabelle', profilVerzoegert = false) 
             }
           })
         }
+        if (tabelle === 'duell_wetten' && wettenFehler) {
+          if (eintrag.auswahl?.includes('version_text')) {
+            return { data: null, error: { code: wettenFehler }, count: null }
+          }
+          return { data: [{ woche: '2026-09-07', text: 'verlierer kocht',
+            updated_by: ERIJON_ID, updated_at: '2026-09-07T12:00:00Z' }], error: null, count: 1 }
+        }
         if (tabelle === 'einheiten' && einheitenFehler === 'tabelle') {
           return { data: null, error: { code: 'PGRST205' }, count: null }
         }
@@ -241,6 +248,23 @@ function startDb(einheitenFehler?: 'von' | 'tabelle', profilVerzoegert = false) 
 }
 
 describe('Supabase-Startreihenfolge und Serverfilter', () => {
+  it.each(['42703', 'PGRST204'])('startet ohne CAS-Spalte (%s) und erhaelt alte Wetten', async (code) => {
+    const fake = startDb(undefined, false, code)
+    const backend = supabaseBackend(ERIJON_ID,
+      fake.db as unknown as NonNullable<Parameters<typeof supabaseBackend>[1]>)
+    await expect(backend.laden()).resolves.toMatchObject({
+      me: 'erijon', wetten: { '2026-09-07': 'verlierer kocht' }, wettenMeta: {},
+    })
+    await expect(backend.schreibeWette('2026-09-07', 'neu', '0')).rejects.toThrow('datenbankaktualisierung')
+  })
+
+  it('verschluckt keine Zugriffsfehler der Wettenabfrage', async () => {
+    const fake = startDb(undefined, false, '42501')
+    const backend = supabaseBackend(ERIJON_ID,
+      fake.db as unknown as NonNullable<Parameters<typeof supabaseBackend>[1]>)
+    await expect(backend.laden()).rejects.toMatchObject({ code: '42501' })
+  })
+
   it('validiert beide Profile vor Fachdaten und filtert jede personenbezogene Liste', async () => {
     const fake = startDb(undefined, true)
     const backend = supabaseBackend(

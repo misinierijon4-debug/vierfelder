@@ -355,7 +355,7 @@ type WetteZeile = {
   updated_by: string
   updated_at: string
   /** verlustfreie Projektion der bigint-Spalte `version` */
-  version_text: string
+  version_text?: string
 }
 type AbrechnungZeile = {
   woche: string
@@ -1209,6 +1209,7 @@ export function supabaseBackend(
   let altbestand = false
   let einheitVonVerfuegbar = false
   let gewichtQuelleVerfuegbar = false
+  let wettenVersioniert = false
   let wettenVerfuegbar = false
   let abrechnungVerfuegbar = false
   let notenVerfuegbar = false
@@ -1501,6 +1502,19 @@ export function supabaseBackend(
         )
       }
 
+      // Das Frontend kann vor der CAS-Migration live sein. Alte Wetten
+      // bleiben lesbar; ohne echte Version werden keine Mutationen erlaubt.
+      let lesbareWetten = wetteZeilen
+      wettenVersioniert = !wetteZeilen.error
+      if (wetteZeilen.error && istFehlendeVonSpalte(fehlercode(wetteZeilen.error))) {
+        lesbareWetten = await versucheAlleSeiten<WetteZeile>(
+          () => db.from('duell_wetten')
+            .select('woche, text, updated_by, updated_at', { count: 'exact' })
+            .order('woche', { ascending: true }),
+          { name: 'duell_wetten', schluessel: (wette) => wette.woche }
+        )
+      }
+
       if (einheitZeilen.error && !fehltNoch(fehlercode(einheitZeilen.error))) throw einheitZeilen.error
       if (schlafZeilen.error && !fehltNoch(fehlercode(schlafZeilen.error))) throw schlafZeilen.error
       // Die 56-Tage-Vorladung ist nur eine Beschleunigung. Scheitert sie,
@@ -1512,13 +1526,13 @@ export function supabaseBackend(
       if (aufenthaltZeilen.error && !fehltNoch(fehlercode(aufenthaltZeilen.error))) {
         throw aufenthaltZeilen.error
       }
-      if (wetteZeilen.error && !fehltNoch(fehlercode(wetteZeilen.error))) throw wetteZeilen.error
+      if (lesbareWetten.error && !fehltNoch(fehlercode(lesbareWetten.error))) throw lesbareWetten.error
       if (abrechnungMitQuelle.error && !fehltNoch(fehlercode(abrechnungMitQuelle.error))) {
         throw abrechnungMitQuelle.error
       }
       if (fachZeilen.error && !fehltNoch(fehlercode(fachZeilen.error))) throw fachZeilen.error
       if (notenZeilen.error && !fehltNoch(fehlercode(notenZeilen.error))) throw notenZeilen.error
-      wettenVerfuegbar = !wetteZeilen.error
+      wettenVerfuegbar = !lesbareWetten.error
       abrechnungVerfuegbar = !abrechnungMitQuelle.error
       notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
 
@@ -1616,7 +1630,14 @@ export function supabaseBackend(
 
       const wetten: Wetten = {}
       const wettenMeta: WettenMeta = {}
-      for (const w of (wetteZeilen.data ?? []) as WetteZeile[]) {
+      for (const w of (lesbareWetten.data ?? []) as WetteZeile[]) {
+        if (!wettenVersioniert) {
+          if (!istWochenmontag(w.woche) || typeof w.text !== 'string') {
+            throw new Error('ungueltige gespeicherte wette')
+          }
+          wetten[w.woche] = w.text
+          continue
+        }
         const stand = wetteStandAusZeile(w)
         wettenMeta[stand.woche] = {
           version: stand.version,
@@ -1778,7 +1799,9 @@ export function supabaseBackend(
     },
 
     async schreibeWette(woche, text, erwarteteVersion) {
-      if (!wettenVerfuegbar) throw new Error('duell_wetten fehlt noch')
+      if (!wettenVerfuegbar || !wettenVersioniert) {
+        throw new Error('wette kann erst nach der datenbankaktualisierung geaendert werden')
+      }
       if (!text) {
         return loescheUndBestaetigeWette(db, woche, erwarteteVersion, eigeneId)
       }
