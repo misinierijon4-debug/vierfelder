@@ -1328,6 +1328,7 @@ export function supabaseBackend(
 
   return {
     art: 'supabase',
+    kennung: `supabase:${eigeneId}`,
 
     async laden(): Promise<Anfangszustand> {
       // Die Mitgliedschaft ist die Zugriffsliste fuer alle folgenden Reads.

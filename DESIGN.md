@@ -851,3 +851,35 @@ Jetzt ist er ein feld wie jedes andere: `2px` radius, `--linie`, `--flaeche`,
 28px sichtbar. Die trefferfläche misst weiter 44px — sie sitzt als unsichtbares
 polster darum und streckt die kopfzeile nicht. `KalenderKnopf` steht als eine
 komponente für beide tabs, damit sie nicht wieder auseinanderlaufen.
+
+## 28. Nachtrag: der letzte stand ist besser als gar keiner (07.09.2026)
+
+**Zwei verschiedene Offline-Fälle.** Wer die App geladen hat und dann das netz
+abschaltet, behält alles: der stand steht im speicher des laufenden fensters.
+Wer die app ohne netz *öffnet*, bekam bisher nur "daten nicht geladen" — eine
+sackgasse, obwohl derselbe stand vor einer stunde noch da war. Der unterschied
+ist kein technischer, sondern ein zufälliger: das fenster war zu.
+
+**Also wird der gelesene stand gemerkt.** Nach jedem erfolgreichen laden legt
+`offlineStand.ts` den `Anfangszustand` mitsamt zeitpunkt in den lokalen speicher,
+getrennt nach konto (`Backend.kennung`). Der kontrollabgleich hält ihn frisch.
+Das ist eine bequemlichkeit, keine quelle der wahrheit: jeder fehler daran —
+kein speicher, volles kontingent, beschädigter inhalt — kostet eine ansicht und
+niemals einen ladevorgang.
+
+**„offline weiter" statt sackgasse.** Der fehlerbildschirm bietet den gemerkten
+stand an, mit seinem zeitpunkt im klartext: `heute 16:23`, `gestern 22:40`,
+sonst das ganze datum. Am selben tag trägt die uhrzeit die ganze aussage — "vor
+einer stunde" ist etwas anderes als "vor drei tagen", und genau das entscheidet,
+ob der alte stand noch etwas taugt.
+
+**Der offlinemodus ist eine lesebrille.** Kein eintrag, keine wette, keine note.
+Technisch braucht das keine neue sperre: `bereiteLadungRef` bleibt ungebunden,
+und damit greift dieselbe schreibsperre wie während des ladens. Ein tap sagt
+warum, statt still zu versanden. Der grund ist derselbe wie in abschnitt 19:
+was man nicht gegenprüfen kann, darf man nicht als ergebnis speichern — und
+eine warteschlange ohne konfliktauflösung wäre genau das.
+
+**Er räumt sich selbst weg.** Sobald das `online`-ereignis kommt, lädt die app
+neu; der knopf oben rechts tut dasselbe von hand. Niemand soll den alten stand
+erst wegklicken müssen, um den aktuellen zu sehen.

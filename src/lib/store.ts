@@ -11,6 +11,7 @@ import {
   KEINE_WETTE_VERSION,
   vergleicheWetteVersion,
 } from './backend'
+import { leseStand, merkeStand } from './offlineStand'
 import {
   gewichtKey,
   neueNotenId,
@@ -118,6 +119,15 @@ export function useTracker(backend: Backend) {
   const [faecher, setFaecher] = useState<Fach[]>([])
   const [noten, setNoten] = useState<Note[]>([])
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
+  /**
+   * Der Offlinemodus zeigt den zuletzt vom Server gelesenen Stand, wenn das
+   * Laden scheitert. `offlineStand` traegt den Zeitpunkt dieses Standes und ist
+   * `null`, solange die Ansicht live ist; `gemerkterStand` sagt auf dem
+   * Fehlerbildschirm, ob es ueberhaupt etwas anzusehen gibt.
+   */
+  const [offlineStand, setOfflineStand] = useState<string | null>(null)
+  const [gemerkterStand, setGemerkterStand] = useState<string | null>(null)
+  const offlineStandRef = useRef<string | null>(null)
   const [ladeversuch, setLadeversuch] = useState(0)
   const [synchronisationszustand, setSynchronisationszustand] =
     useState<Synchronisationszustand>(backend.art === 'lokal' ? 'aktuell' : 'verbindet')
@@ -272,6 +282,12 @@ export function useTracker(backend: Backend) {
 
   const darfMutationStarten = useCallback(
     () => {
+      // Der Offlinemodus ist eine Lesebrille. Schreibrechte gibt es erst
+      // wieder, wenn ein echter Ladevorgang durchgekommen ist.
+      if (offlineStandRef.current !== null) {
+        setFehler('offlinemodus: das ist der letzte stand. zum eintragen aktualisieren.')
+        return false
+      }
       if (!darfSchreiben() || abgleichSperreRef.current === backendLauf) return false
       if (backend.art === 'supabase' && typeof navigator !== 'undefined' && !navigator.onLine) {
         setFehler('offline: eingaben sind ohne sichere warteschlange gesperrt.')
@@ -285,6 +301,8 @@ export function useTracker(backend: Backend) {
   const ladenNeu = useCallback(() => {
     if (!istAktuell()) return
     bereiteLadungRef.current = null
+    offlineStandRef.current = null
+    setOfflineStand(null)
     setLadezustand('laden')
     setFehler(null)
     setSynchronisationszustand(backend.art === 'lokal' ? 'aktuell' : 'verbindet')
@@ -421,6 +439,27 @@ export function useTracker(backend: Backend) {
       setPhasenTransport({})
     }
   }, [uebernimmSchlaf])
+
+  /**
+   * Zeigt den zuletzt gelesenen Stand, wenn das Laden nicht durchkommt. Der
+   * Lauf bleibt bewusst ungebunden (`bereiteLadungRef` auf `null`): damit
+   * greift dieselbe Schreibsperre wie waehrend des Ladens, und es kann nichts
+   * auf einen Stand geschrieben werden, den niemand mehr gegenpruefen kann.
+   */
+  const offlineStandZeigen = useCallback(() => {
+    const stand = leseStand(backend.kennung)
+    if (!stand) {
+      setGemerkterStand(null)
+      return
+    }
+    uebernimmAnfang(stand.anfang, true)
+    bereiteLadungRef.current = null
+    offlineStandRef.current = stand.gespeichertAm
+    setOfflineStand(stand.gespeichertAm)
+    setSynchronisationszustand('veraltet')
+    setFehler(null)
+    setLadezustand('bereit')
+  }, [backend.kennung, uebernimmAnfang])
 
   const uebernimmWetteStand = useCallback((stand: WetteStand, sichtbar = true): boolean => {
     const bisher = wettenMetaRef.current[stand.woche]
@@ -613,6 +652,8 @@ export function useTracker(backend: Backend) {
 
     bereiteLadungRef.current = null
     abgleichSperreRef.current = null
+    offlineStandRef.current = null
+    setOfflineStand(null)
     setLadezustand('laden')
     setSynchronisationszustand(backend.art === 'lokal' ? 'aktuell' : 'verbindet')
 
@@ -701,6 +742,7 @@ export function useTracker(backend: Backend) {
         }
 
         uebernimmAnfang(anfang, false)
+        if (backend.art === 'supabase') merkeStand(backend.kennung, anfang)
         spielePuffer(startEpoche)
         erfolgreich = true
       } catch {
@@ -792,6 +834,11 @@ export function useTracker(backend: Backend) {
         const anfang = await backend.laden()
         if (!nochAktuell()) return
         uebernimmAnfang(anfang, true)
+        // erst merken, wenn der stand wirklich vom server kam
+        if (backend.art === 'supabase') {
+          merkeStand(backend.kennung, anfang)
+          setGemerkterStand(null)
+        }
         bereiteLadungRef.current = backendLauf
         initialGeladen = true
         setLadezustand('bereit')
@@ -821,6 +868,11 @@ export function useTracker(backend: Backend) {
         setLadezustand('fehler')
         setSynchronisationszustand('veraltet')
         setFehler(fehlertext(e))
+        // der fehlerbildschirm darf den letzten stand nur anbieten, wenn es
+        // ihn auch wirklich gibt
+        setGemerkterStand(
+          backend.art === 'supabase' ? (leseStand(backend.kennung)?.gespeichertAm ?? null) : null
+        )
       }
     }
 
@@ -1619,6 +1671,18 @@ export function useTracker(backend: Backend) {
     [einheiten, gewichte, gewichtQuellen, aufenthalte]
   )
 
+  /**
+   * Der Offlinemodus loest sich selbst auf, sobald wieder eine Verbindung da
+   * ist. Wer die App aus der Tasche holt, soll den letzten Stand nicht von
+   * Hand wegklicken muessen, um den aktuellen zu sehen.
+   */
+  useEffect(() => {
+    if (offlineStand === null) return
+    const beiOnline = () => ladenNeu()
+    window.addEventListener('online', beiOnline)
+    return () => window.removeEventListener('online', beiOnline)
+  }, [ladenNeu, offlineStand])
+
   const notenstand = useMemo<Notenstand>(() => ({ faecher, noten }), [faecher, noten])
 
   const phasenLadezustaende = useMemo<Record<string, PhasenLadezustand>>(() => {
@@ -1642,6 +1706,11 @@ export function useTracker(backend: Backend) {
     ladezustand,
     synchronisationszustand,
     ladenNeu,
+    /** zeitpunkt des angezeigten standes, solange die ansicht offline ist */
+    offlineStand,
+    /** zeitpunkt eines gemerkten standes, den der fehlerbildschirm anbieten kann */
+    gemerkterStand,
+    offlineStandZeigen,
     fehler,
     ereignis,
     altbestand,

@@ -905,6 +905,7 @@ export function lokalesBackend(): Backend {
 
   return {
     art: 'lokal',
+    kennung: 'lokal',
 
     async laden(): Promise<Anfangszustand> {
       try {

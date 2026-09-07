@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { AREAS, other, user as userDef } from './lib/types'
 import type { AppTab, AreaId, UserId } from './lib/types'
 import type { Backend } from './lib/backend'
-import { bauKurz, fromKey, istBilanzzeit, toKey, weekDays } from './lib/dates'
+import { bauKurz, fromKey, istBilanzzeit, standZeit, toKey, weekDays } from './lib/dates'
 import { istSelbeWoche, wochenZeitraum } from './lib/kalender'
 import { useTracker } from './lib/store'
 import { lokalWechseln, lokalesBackend } from './lib/lokal'
@@ -93,6 +93,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     notenstand,
     ladezustand,
     synchronisationszustand,
+    offlineStand,
+    gemerkterStand,
+    offlineStandZeigen,
     fehler,
     ereignis,
     altbestand,
@@ -237,7 +240,9 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
       <AppStartzustand
         status={ladezustand === 'fehler' ? 'fehler' : 'laden'}
         fehler={fehler}
+        gemerkterStand={gemerkterStand}
         onErneut={ladenNeu}
+        onOffline={offlineStandZeigen}
         onAbmelden={backend.art === 'supabase' ? abmelden : undefined}
       />
     )
@@ -264,6 +269,28 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           match={match}
           bilanzzeit={istBilanzzeit(heute)}
         />
+
+        {/* der offlinemodus sagt oben, was man sieht, und bietet den weg
+            zurueck an. sichtbar ist er nur, solange er gilt. */}
+        {offlineStand && (
+          <div
+            role="status"
+            className="mt-2 flex items-start justify-between gap-3 border-y border-linie py-2 text-[11px] leading-4 text-kreide-52"
+          >
+            <p className="min-w-0 text-pretty">
+              offlinemodus · stand von {standZeit(offlineStand)}
+              <span className="block">nur zum ansehen, bis die verbindung zurück ist</span>
+            </p>
+            <button
+              type="button"
+              onClick={ladenNeu}
+              className="relative shrink-0 font-semibold text-kreide underline decoration-linie-hell underline-offset-4"
+            >
+              aktualisieren
+              <span aria-hidden="true" className="absolute -inset-x-2 -inset-y-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Tab-Navigation */}
         <TabLeiste aktiverTab={aktiverTab} onTabWechsel={setAktiverTab} />
@@ -539,12 +566,17 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
 export function AppStartzustand({
   status,
   fehler = null,
+  gemerkterStand = null,
   onErneut,
+  onOffline,
   onAbmelden,
 }: {
   status: 'laden' | 'fehler'
   fehler?: string | null
+  /** ISO-Zeitpunkt eines gemerkten standes, sonst null */
+  gemerkterStand?: string | null
   onErneut?: () => void
+  onOffline?: () => void
   onAbmelden?: () => void | Promise<void>
 }) {
   const istFehler = status === 'fehler'
@@ -595,6 +627,15 @@ export function AppStartzustand({
                     erneut versuchen
                   </button>
                 )}
+                {gemerkterStand && onOffline && (
+                  <button
+                    type="button"
+                    onClick={onOffline}
+                    className="min-h-11 rounded-[2px] border border-linie px-4 text-[13px] text-kreide-60"
+                  >
+                    offline weiter
+                  </button>
+                )}
                 {onAbmelden && (
                   <button
                     type="button"
@@ -605,6 +646,12 @@ export function AppStartzustand({
                   </button>
                 )}
               </div>
+              {gemerkterStand && onOffline && (
+                <p className="mt-3 max-w-[34ch] text-[11px] leading-relaxed text-kreide-52">
+                  offline weiter zeigt den stand von {standZeit(gemerkterStand)}, nur zum
+                  ansehen. sobald die verbindung zurück ist, aktualisiert er sich von allein.
+                </p>
+              )}
             </div>
           ) : (
             <>
