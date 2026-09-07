@@ -65,6 +65,31 @@ function ohneUeberschneidung(sortiert: Aufenthalt[]): Aufenthalt[] {
 }
 
 /**
+ * alle abgeschlossenen sitzungen dieses tages, auch wenn sie die schwelle fuer
+ * einen punkt noch nicht erreichen. eine kurze automation ist echte messung
+ * und soll deshalb sichtbar bleiben; nur `messungen` entscheidet, was zaehlt.
+ */
+export function sitzungen(
+  aufenthalte: Aufenthalt[],
+  u: UserId,
+  f: FeldId,
+  tag: string
+): Aufenthalt[] {
+  if (!istMessbar(f)) return []
+  return ohneUeberschneidung(
+    aufenthalte
+      .filter(
+        (a) =>
+          a.user === u &&
+          a.bereich === f &&
+          dauerMinuten(a) !== null &&
+          tagVon(a) === tag
+      )
+      .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
+  )
+}
+
+/**
  * alle zählenden sitzungen dieser person in diesem bereich an diesem tag, nach
  * beginn sortiert. zwei besuche sind zwei einheiten — am tick ändert das
  * nichts, der zählt weiter tage.
@@ -75,12 +100,7 @@ export function messungen(
   f: FeldId,
   tag: string
 ): Aufenthalt[] {
-  if (!istMessbar(f)) return []
-  return ohneUeberschneidung(
-    aufenthalte
-      .filter((a) => a.user === u && a.bereich === f && zaehlt(a) && tagVon(a) === tag)
-      .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
-  )
+  return sitzungen(aufenthalte, u, f, tag).filter(zaehlt)
 }
 
 /**

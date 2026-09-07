@@ -84,6 +84,8 @@ export function Bereichszeile({
 
   const hatMessung = quelle === 'gemessen' || quelle === 'gemischt'
   const hatManuell = quelle === 'getippt' || quelle === 'gemischt'
+  const messungVorhanden = (messungMinuten ?? 0) > 0
+  const kurzeMessung = messungVorhanden && !hatMessung
 
   /**
    * den wert liefert die messung nur dort, wo der bereich in minuten rechnet.
@@ -99,7 +101,11 @@ export function Bereichszeile({
   // von „rückgängig" verdeckt, also genau so lange, wie man tippt. er steht
   // jetzt zwischen den schritten, die ihn ändern, und der platz rechts gehört
   // allein dem rückgängig und der messung.
-  const rechts = hatMessung ? `messung-${quelle}-${zeigeUndo ? 'undo' : 'bereit'}` : zeigeUndo ? 'undo' : 'nichts'
+  const rechts = messungVorhanden
+    ? `messung-${quelle ?? 'offen'}-${zeigeUndo ? 'undo' : 'bereit'}`
+    : zeigeUndo
+      ? 'undo'
+      : 'nichts'
 
   const kopfInhalt = (
     <>
@@ -110,10 +116,15 @@ export function Bereichszeile({
         >
           {area.label}
         </span>
-        {quelle === 'gemischt' && (
+        {(quelle === 'gemischt' || kurzeMessung) && (
           <span className="mt-0.5 block truncate text-[9px] leading-none text-kreide-52">
-            gemessen + getippt
+            {quelle === 'gemischt'
+              ? 'gemessen + getippt'
+              : hatManuell
+                ? 'getippt + kurze messung'
+                : 'kurze messung'}
             {messungMinuten !== null ? ` · ${messungMinuten} min gemessen` : ''}
+            {kurzeMessung ? ' · noch kein punkt' : ''}
           </span>
         )}
       </span>
@@ -296,7 +307,7 @@ export function Bereichszeile({
           </Wechsel>
 
           <Wechsel schluessel={rechts}>
-            {quelle === 'gemischt' ? (
+            {hatManuell && messungVorhanden ? (
               <span className="flex flex-wrap items-center justify-end gap-x-2">
                 {mehrfachMoeglich && (
                   <button
@@ -338,7 +349,7 @@ export function Bereichszeile({
               >
                 rückgängig
               </button>
-            ) : hatMessung ? (
+            ) : messungVorhanden ? (
               /* beim lesen steht links weiter der seitenzähler zwischen den
                  schritten und hier die gemessene zeit: die seiten sind der wert
                  des bereichs, die minuten der beleg. keine ersetzt die andere. */
@@ -350,7 +361,8 @@ export function Bereichszeile({
                     style={{ color: 'var(--kreide-60)' }}
                   />
                   <span className="text-[12px] text-kreide-52">
-                    min · gemessen{anzahl > 1 ? ` · ${anzahl}×` : ''}
+                    min · gemessen
+                    {hatMessung ? (anzahl > 1 ? ` · ${anzahl}×` : '') : ' · noch kein punkt'}
                   </span>
                 </span>
 

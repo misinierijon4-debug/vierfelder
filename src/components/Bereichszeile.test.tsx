@@ -139,4 +139,38 @@ describe('Bereichszeile', () => {
     expect(onNeueEinheit).toHaveBeenCalledOnce()
     expect(onUndo).toHaveBeenCalledOnce()
   })
+
+  it('zeigt eine kurze Automation ohne sie als Tagespunkt auszugeben', () => {
+    render(
+      <Bereichszeile
+        area={AREAS[0]!}
+        index={0}
+        gesetzt={false}
+        wocheIch={0}
+        abstand={0}
+        streak={0}
+        wert={0}
+        hatWert={false}
+        einheitWert={0}
+        anzahl={1}
+        mehrfachMoeglich={true}
+        quelle={null}
+        messungMinuten={12}
+        farbe="gold"
+        farbeEr="petrol"
+        zeigeUndo={false}
+        onTap={vi.fn()}
+        onUndo={vi.fn()}
+        onWert={vi.fn()}
+        onNeueEinheit={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText(/kurze messung.*12 min gemessen.*noch kein punkt/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'lernen, heute offen' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    expect(screen.getByRole('button', { name: 'weitere einheit lernen eintragen' })).toBeEnabled()
+  })
 })

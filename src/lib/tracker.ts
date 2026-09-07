@@ -13,7 +13,7 @@ import type {
   UserId,
   Zustand,
 } from './types'
-import { dauerMinuten, gemessen, messungen, tagVon, zaehlt } from './training'
+import { dauerMinuten, gemessen, messungen, sitzungen, tagVon, zaehlt } from './training'
 
 /**
  * beim gewicht gibt es keine einheit: gesetzt heißt schlicht, dass für diesen
@@ -86,6 +86,8 @@ export type Tageseinheit = {
   /** zeitpunkt der eintragung (getippt) oder des beginns (gemessen) */
   erfasst: string | null
   herkunft: TickQuelle
+  /** ob diese durchfuehrung fuer den tagespunkt zaehlt */
+  zaehlt: boolean
   /** nur bei einer messung: der name der quelle, ein ort oder ein fokus */
   ort?: string
 }
@@ -101,9 +103,10 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
     von: e.von ?? null,
     erfasst: e.erfasst,
     herkunft: 'getippt' as const,
+    zaehlt: true,
   }))
 
-  for (const a of messungen(z.aufenthalte, u, f, tag)) {
+  for (const a of sitzungen(z.aufenthalte, u, f, tag)) {
     liste.push({
       id: `messung|${a.ankunft}|${a.ort}`,
       wert: Math.round(dauerMinuten(a)!),
@@ -111,6 +114,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
       von: null,
       erfasst: a.ankunft,
       herkunft: 'gemessen',
+      zaehlt: zaehlt(a),
       ort: a.ort,
     })
   }
@@ -191,7 +195,7 @@ export function tageMitDaten(z: Zustand, u: UserId): string[] {
     if (key.startsWith(`${u}|`)) tage.add(key.slice(key.indexOf('|') + 1))
   }
   for (const a of z.aufenthalte) {
-    if (a.user === u && zaehlt(a)) tage.add(tagVon(a))
+    if (a.user === u && dauerMinuten(a) !== null) tage.add(tagVon(a))
   }
 
   return [...tage].sort()
