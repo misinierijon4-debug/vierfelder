@@ -4,9 +4,12 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AppStartzustand } from './App'
+import { AppStartzustand, Fusszeile } from './App'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
 
 describe('AppStartzustand', () => {
   it('zeigt beim Start einen benannten und nicht bedienbaren Ladezustand', () => {
@@ -48,5 +51,16 @@ describe('AppStartzustand', () => {
 
     await user.click(screen.getByRole('button', { name: 'sicher abmelden' }))
     expect(await screen.findByText(/abmeldung konnte nicht bestätigt werden/i)).toBeInTheDocument()
+  })
+})
+
+describe('Fusszeile', () => {
+  it('zeigt die an die Backend-Instanz gebundene Identitaet statt eines spaeter geaenderten Tab-Schluessels', () => {
+    localStorage.setItem('vierfelder.me.v2', 'koray')
+
+    render(<Fusszeile art="lokal" me="erijon" onWechsel={vi.fn()} />)
+
+    expect(screen.getByText(/prototyp · angemeldet als erijon/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /zu koray wechseln/i })).toBeInTheDocument()
   })
 })

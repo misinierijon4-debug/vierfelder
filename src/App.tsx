@@ -7,7 +7,7 @@ import type { Backend } from './lib/backend'
 import { bauKurz, fromKey, istBilanzzeit, toKey, weekDays } from './lib/dates'
 import { istSelbeWoche, wochenZeitraum } from './lib/kalender'
 import { useTracker } from './lib/store'
-import { lokalWechseln, lokalesBackend, lokalesMe } from './lib/lokal'
+import { lokalWechseln, lokalesBackend } from './lib/lokal'
 import { abmelden, hatSupabase, supabaseBackend, useSession } from './lib/supabase'
 import {
   abstand,
@@ -638,7 +638,7 @@ export function AppStartzustand({
   )
 }
 
-function Fusszeile({
+export function Fusszeile({
   art,
   me,
   onWechsel,
@@ -677,7 +677,7 @@ function Fusszeile({
 
   return (
     <footer className="mt-6 flex min-h-11 items-center gap-2 text-[11px] text-kreide-52">
-      <span>prototyp · angemeldet als {userDef(lokalesMe()).name}</span>
+      <span>prototyp · angemeldet als {userDef(me).name}</span>
       <button
         type="button"
         onClick={() => {
