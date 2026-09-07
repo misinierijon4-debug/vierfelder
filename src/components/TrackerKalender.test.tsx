@@ -101,6 +101,11 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
       'vollbild-safe-x'
     )
     expect(container.querySelector('.overflow-y-auto')).toHaveClass('vollbild-safe-x')
+    // die wochenleiste steht ausserhalb der scrollflaeche: als klebender
+    // streifen blieb ueber ihr ein spalt, durch den der inhalt sichtbar
+    // nach oben davonlief
+    const scrollflaeche = container.querySelector('.overflow-y-auto')!
+    expect(scrollflaeche.contains(screen.getByText('mo'))).toBe(false)
     expect(
       screen.getByRole('button', { name: /^Samstag, 5\. September 2026,/ })
     ).toBeInTheDocument()

@@ -4,6 +4,7 @@ import type { Schlafnacht, UserId } from '../../lib/types'
 import { TAGKUERZEL, fromKey } from '../../lib/dates'
 import { abendDatum, qualitaet } from '../../lib/schlafPhasen'
 import { kalenderMonate } from '../../lib/kalender'
+import { fokusRingLoesen } from '../../lib/dialogFokus'
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { user as userDef } from '../../lib/types'
 
@@ -62,7 +63,10 @@ export function SchlafKalender({
     if (!dialog) return
 
     if (offen && !dialog.open) dialog.showModal()
-    if (!offen && dialog.open) dialog.close()
+    if (!offen && dialog.open) {
+      dialog.close()
+      fokusRingLoesen()
+    }
   }, [offen])
 
   useScrollSperre(offen)
@@ -121,21 +125,30 @@ export function SchlafKalender({
           <p className={istPrototyp ? 'mt-0.5' : ''}>~ = nur aus der schlafdauer geschätzt</p>
         </div>
 
+        {/* die wochenleiste steht ausserhalb der scrollflaeche. als klebender
+            streifen konnte sie nur bis an den inhaltsrand hoch, ueber ihr blieb
+            das polster der scrollflaeche offen — und durch diesen spalt liefen
+            die ringe des naechsten monats sichtbar nach oben davon. */}
+        <div className="vollbild-safe-x shrink-0 border-b border-linie">
+          <div className="mx-auto grid w-full max-w-[420px] grid-cols-7 pb-2 pt-3">
+            {TAGKUERZEL.map((tag) => (
+              <span
+                key={tag}
+                className="text-center text-[10px] font-semibold uppercase text-kreide-52"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+
         <div
           ref={scrollRef}
-          className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain pt-4"
+          className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
         >
           <div className="mx-auto w-full max-w-[420px]">
-            <div className="sticky top-0 z-10 grid grid-cols-7 border-b border-linie bg-grund pb-2 pt-1">
-              {TAGKUERZEL.map((tag) => (
-                <span key={tag} className="text-center text-[10px] font-semibold uppercase text-kreide-52">
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            <div className="space-y-7 pt-5">
+            <div className="space-y-7">
               {monate.map((monat) => (
                 <section key={monat.key} data-monat={monat.key} aria-labelledby={`schlaf-monat-${monat.key}`}>
                   <h3 id={`schlaf-monat-${monat.key}`} className="text-balance text-[22px] font-bold text-kreide">

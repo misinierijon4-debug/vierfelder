@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { CalendarBlank } from '@phosphor-icons/react'
 import { AREAS, other, user as userDef } from './lib/types'
 import type { AppTab, AreaId, UserId } from './lib/types'
 import type { Backend } from './lib/backend'
@@ -28,6 +27,7 @@ import { Bereichszeile } from './components/Bereichszeile'
 import { Raster } from './components/Raster'
 import { Tagesdetail } from './components/Tagesdetail'
 import type { Tagesauswahl } from './components/Tagesdetail'
+import { KalenderKnopf } from './components/KalenderKnopf'
 import { TrackerKalender } from './components/TrackerKalender'
 import { Anmeldung } from './components/Anmeldung'
 import {
@@ -407,15 +407,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                     )}
                   </AnimatePresence>
 
-                  <button
-                    type="button"
-                    aria-label="kalender öffnen"
-                    aria-haspopup="dialog"
-                    onClick={() => setKalenderOffen(true)}
-                    className="flex size-11 items-center justify-center rounded-full border border-linie bg-flaeche text-kreide transition-colors duration-150 hover:border-linie-hell focus-visible:outline-none"
-                  >
-                    <CalendarBlank size={21} weight="bold" aria-hidden="true" />
-                  </button>
+                  <KalenderKnopf label="kalender öffnen" onOeffnen={() => setKalenderOffen(true)} />
                 </div>
 
                 <Raster
