@@ -8,7 +8,6 @@ import type {
   WetteMeta,
   WetteStand,
   Wetten,
-  WettenMeta,
 } from './backend'
 import {
   KEINE_WETTE_VERSION,
@@ -97,9 +96,14 @@ function mitLokalerSperre<T>(key: string, aktion: () => T | Promise<T>): Promise
   ).then((wert) => wert)
 }
 
+type LokalerWetteMetaEintrag = WetteMeta & {
+  /** Spiegel des zu dieser Version gehoerenden Texts; null ist Tombstone. */
+  inhalt: string | null
+}
+
 type LokalerWettenMetaSpeicher = {
   revision: string
-  wochen: WettenMeta
+  wochen: Record<string, LokalerWetteMetaEintrag>
 }
 
 const LEGACY_WETTE_ZEIT = '1970-01-01T00:00:00.000Z'
@@ -114,16 +118,26 @@ function istLokaleWetteMeta(wert: unknown): wert is WetteMeta {
     && Number.isFinite(Date.parse(meta.updatedAt))
 }
 
+function istLokalerWetteInhalt(wert: unknown): wert is string | null {
+  return wert === null || (
+    typeof wert === 'string'
+    && wert === wert.trim()
+    && wert.length >= 1
+    && wert.length <= 160
+  )
+}
+
+function istLokalerWetteMetaEintrag(wert: unknown): wert is LokalerWetteMetaEintrag {
+  return istLokaleWetteMeta(wert)
+    && Object.hasOwn(wert as object, 'inhalt')
+    && istLokalerWetteInhalt((wert as { inhalt?: unknown }).inhalt)
+}
+
 function istLokalerWetteStand(wert: unknown): wert is WetteStand {
   if (!wert || typeof wert !== 'object' || Array.isArray(wert)) return false
   const stand = wert as Record<string, unknown>
   return istWochenmontag(stand.woche)
-    && (stand.text === null || (
-      typeof stand.text === 'string'
-      && stand.text === stand.text.trim()
-      && stand.text.length >= 1
-      && stand.text.length <= 160
-    ))
+    && istLokalerWetteInhalt(stand.text)
     && istLokaleWetteMeta(stand)
 }
 
@@ -142,7 +156,8 @@ function ladeLokalenWettenStand(): {
   const revisionGueltig = istWetteVersion(roh.revision, true)
   const roheRevision = revisionGueltig ? roh.revision! : KEINE_WETTE_VERSION
   let revision = BigInt(roheRevision)
-  const wochen: WettenMeta = {}
+  const vorhandeneMeta: Record<string, WetteMeta & { inhalt?: unknown }> = {}
+  const wochen: Record<string, LokalerWetteMetaEintrag> = {}
   const versionen = new Set<string>()
 
   if (roh.wochen && typeof roh.wochen === 'object' && !Array.isArray(roh.wochen)) {
@@ -151,23 +166,36 @@ function ladeLokalenWettenStand(): {
       if (!istLokaleWetteMeta(eintrag) || versionen.has(eintrag.version)) {
         throw new Error('lokale wetten-metadaten sind widerspruechlich')
       }
-      wochen[woche] = eintrag
+      vorhandeneMeta[woche] = eintrag
       versionen.add(eintrag.version)
       const version = BigInt(eintrag.version)
       if (version > revision) revision = version
     }
   }
 
-  for (const woche of Object.keys(wetten).sort()) {
-    if (wochen[woche]) continue
-    revision += 1n
-    const version = revision.toString()
-    wochen[woche] = {
-      version,
-      updatedBy: 'legacy',
-      updatedAt: LEGACY_WETTE_ZEIT,
+  const alleWochen = new Set([...Object.keys(wetten), ...Object.keys(vorhandeneMeta)])
+  for (const woche of [...alleWochen].sort()) {
+    const inhalt = Object.hasOwn(wetten, woche) ? wetten[woche]! : null
+    if (!istWochenmontag(woche) || !istLokalerWetteInhalt(inhalt)) {
+      throw new Error('lokaler wettenbestand ist widerspruechlich')
     }
-    versionen.add(version)
+    const vorhanden = vorhandeneMeta[woche]
+    if (vorhanden && istLokalerWetteMetaEintrag(vorhanden) && vorhanden.inhalt === inhalt) {
+      wochen[woche] = vorhanden
+      continue
+    }
+
+    // Ein alter Tab kennt nur `vierfelder.wetten.v1`. Weicht dieser Spiegel
+    // vom versionierten Inhalt ab (oder fehlt der Inhaltsanker noch), ist das
+    // eine neue Legacy-Revision. So kann ein spaeter CAS-Schreibzug sie nicht
+    // mit der zuvor bestaetigten Version still ueberschreiben.
+    revision += 1n
+    wochen[woche] = {
+      version: revision.toString(),
+      updatedBy: 'legacy',
+      updatedAt: vorhanden ? new Date().toISOString() : LEGACY_WETTE_ZEIT,
+      inhalt,
+    }
   }
 
   const meta = { revision: revision.toString(), wochen }
@@ -800,7 +828,7 @@ export function lokalesBackend(): Backend {
           revision: version,
           wochen: {
             ...aktuell.meta.wochen,
-            [woche]: { version, updatedBy: me, updatedAt },
+            [woche]: { version, updatedBy: me, updatedAt, inhalt: neuerStand.text },
           },
         }
         speichereLokalenWettenStand(wetten, meta)

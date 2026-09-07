@@ -4,6 +4,10 @@ const migrationen = import.meta.glob(
   '../../supabase/migrations/*_duell_wette_cas.sql',
   { eager: true, query: '?raw', import: 'default' }
 ) as Record<string, string>
+const loeschMigrationen = import.meta.glob(
+  '../../supabase/migrations/*_duell_wette_loeschen.sql',
+  { eager: true, query: '?raw', import: 'default' }
+) as Record<string, string>
 const abschlussMigrationen = import.meta.glob(
   '../../supabase/migrations/*_duell_wochenabschluss_serverautoritaer.sql',
   { eager: true, query: '?raw', import: 'default' }
@@ -15,8 +19,10 @@ const wochenLock =
   /pg_catalog\.hashtextextended\('zweikampf:wochenabrechnung:' \|\| p_woche::text, 0\)/i
 
 describe('atomare gemeinsame Wette', () => {
-  it('ersetzt die nicht ausgerollte Delete-Migration genau einmal', () => {
+  it('liegt genau einmal als spaetere additive Migration vor', () => {
     expect(Object.keys(migrationen)).toHaveLength(1)
+    expect(Object.keys(loeschMigrationen)).toHaveLength(1)
+    expect(Object.keys(migrationen)[0]! > Object.keys(loeschMigrationen)[0]!).toBe(true)
     expect(sql).toMatch(/begin;[\s\S]*commit;/i)
     expect(sql).not.toMatch(/grant delete on table public\.duell_wetten/i)
     expect(sql).not.toMatch(/delete from public\.duell_wetten/i)

@@ -476,6 +476,43 @@ describe('lokale Pruefungsfachwahl', () => {
     }
   })
 
+  it('importiert den Wert eines noch offenen alten Tabs als neue Version', async () => {
+    speicher.setItem('vierfelder.abrechnung.v1', '[]')
+    const backend = lokalesBackend()
+    const gesetzt = await backend.schreibeWette('2026-09-07', 'neuer tab', '0')
+
+    // Alte Builds schreiben nur den historischen Nutzwert-Key und kennen die
+    // CAS-Metadaten nicht.
+    speicher.setItem('vierfelder.wetten.v1', JSON.stringify({
+      '2026-09-07': 'alter tab gewinnt spaeter',
+    }))
+
+    const importiert = await backend.laden()
+    expect(importiert.wetten['2026-09-07']).toBe('alter tab gewinnt spaeter')
+    expect(BigInt(importiert.wettenMeta['2026-09-07']!.version)).toBeGreaterThan(
+      BigInt(gesetzt.version)
+    )
+    await expect(
+      backend.schreibeWette('2026-09-07', 'staler overwrite', gesetzt.version)
+    ).rejects.toMatchObject({ code: '40001' })
+  })
+
+  it('versioniert auch ein Legacy-Loeschen als Tombstone', async () => {
+    speicher.setItem('vierfelder.abrechnung.v1', '[]')
+    const backend = lokalesBackend()
+    const gesetzt = await backend.schreibeWette('2026-09-07', 'wird entfernt', '0')
+
+    speicher.setItem('vierfelder.wetten.v1', '{}')
+    const importiert = await backend.laden()
+
+    expect(importiert.wetten).not.toHaveProperty('2026-09-07')
+    expect(BigInt(importiert.wettenMeta['2026-09-07']!.version)).toBeGreaterThan(
+      BigInt(gesetzt.version)
+    )
+    const meta = JSON.parse(speicher.getItem('vierfelder.wetten.meta.v1')!)
+    expect(meta.wochen['2026-09-07'].inhalt).toBeNull()
+  })
+
   it('meldet einen lokalen Speicherfehler, statt eine erfolgreiche Wette vorzutäuschen', async () => {
     const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
     const locks = {

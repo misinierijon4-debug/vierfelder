@@ -2,7 +2,8 @@
 -- Tabellenwrites waeren Last-Write-Wins und koennten einen bereits gesehenen
 -- Partnerwert mit einem alten Set/Delete/Undo ueberschreiben. Diese noch nicht
 -- ausgerollte Forward-Migration ersetzt deshalb den alten DELETE-Vertrag durch
--- eine einzige atomare CAS-RPC.
+-- eine einzige atomare CAS-RPC. Sie folgt mit neuer Versionsnummer auf die
+-- fruehere DELETE-Migration und entzieht deren Tabellenrecht wieder.
 begin;
 
 set local lock_timeout = '10s';
