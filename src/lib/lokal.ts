@@ -495,6 +495,9 @@ export function lokalesBackend(): Backend {
         const alle = alleEinheiten()
         const vorhanden = alle.find((x) => x.id === e.id)
         if (!vorhanden) throw new Error('einheit wurde nicht gefunden')
+        if (vorhanden.wert !== e.wert) {
+          throw Object.assign(new Error('einheit-wert wurde parallel geaendert'), { code: '40001' })
+        }
         const aktualisiert = { ...vorhanden, wert }
         sichere(alle.map((x) => (x.id === e.id ? aktualisiert : x)))
         sende({ typ: 'einheit', art: 'wert', einheit: aktualisiert })
@@ -506,6 +509,9 @@ export function lokalesBackend(): Backend {
         const alle = alleEinheiten()
         const vorhanden = alle.find((x) => x.id === e.id)
         if (!vorhanden) throw new Error('einheit wurde nicht gefunden')
+        if ((vorhanden.von ?? null) !== (e.von ?? null)) {
+          throw Object.assign(new Error('einheit-zeit wurde parallel geaendert'), { code: '40001' })
+        }
         const aktualisiert = { ...vorhanden, von }
         sichere(alle.map((x) => (x.id === e.id ? aktualisiert : x)))
         sende({ typ: 'einheit', art: 'wert', einheit: aktualisiert })

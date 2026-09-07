@@ -610,16 +610,26 @@ export async function aktualisiereUndBestaetigeEinheit(
   db: NonNullable<typeof supabase>,
   id: string,
   eigeneId: string,
-  aenderung: { wert: number | null } | { von: string | null }
+  aenderung: { wert: number | null } | { von: string | null },
+  erwarteterAltwert: number | string | null
 ): Promise<string> {
   const feld = 'wert' in aenderung ? 'wert' : 'von'
   const soll = feld === 'wert'
     ? (aenderung as { wert: number | null }).wert
     : (aenderung as { von: string | null }).von
-  const bestaetigung = await db
+  let aktualisierung = db
     .from('einheiten')
     .update(aenderung)
     .match({ id, user_id: eigeneId })
+
+  // Der vom Client geladene Feldwert ist Teil derselben UPDATE-Anweisung.
+  // Dadurch kann nach einem konkurrierenden Write keine veraltete Aenderung
+  // mehr dieselbe Zeile treffen und anschließend still bestaetigt werden.
+  aktualisierung = erwarteterAltwert === null
+    ? aktualisierung.is(feld, null)
+    : aktualisierung.eq(feld, erwarteterAltwert)
+
+  const bestaetigung = await aktualisierung
     .select(`id,user_id,${feld}`)
     .maybeSingle()
   if (bestaetigung.error) throw bestaetigung.error
@@ -1469,7 +1479,7 @@ export function supabaseBackend(
 
     async schreibeEinheitVon(e, von) {
       if (!einheitVonVerfuegbar) throw new Error('durchführungszeit fehlt noch')
-      await aktualisiereUndBestaetigeEinheit(db, e.id, eigeneId, { von })
+      await aktualisiereUndBestaetigeEinheit(db, e.id, eigeneId, { von }, e.von ?? null)
     },
 
     async schreibeEinheitWert(e, wert) {
@@ -1491,7 +1501,7 @@ export function supabaseBackend(
         return
       }
 
-      await aktualisiereUndBestaetigeEinheit(db, e.id, eigeneId, { wert })
+      await aktualisiereUndBestaetigeEinheit(db, e.id, eigeneId, { wert }, e.wert)
     },
 
     async loescheEinheit(e) {

@@ -331,6 +331,54 @@ function einheitSchreibDb(kanonisch: unknown) {
   }
 }
 
+function einheitUpdateCasDb(anfang: { wert: number | null; von: string | null }) {
+  let zeile = {
+    id: EINHEIT_ZEILE.id,
+    user_id: ERIJON_ID,
+    ...anfang,
+  }
+  const from = vi.fn(() => {
+    let aenderung: { wert: number | null } | { von: string | null } | null = null
+    let filter: { art: 'eq' | 'is'; feld: string; wert: unknown } | null = null
+    const kette = {
+      update: vi.fn((naechste: { wert: number | null } | { von: string | null }) => {
+        aenderung = naechste
+        return kette
+      }),
+      match: vi.fn(() => kette),
+      eq: vi.fn((feld: string, wert: unknown) => {
+        filter = { art: 'eq', feld, wert }
+        return kette
+      }),
+      is: vi.fn((feld: string, wert: unknown) => {
+        filter = { art: 'is', feld, wert }
+        return kette
+      }),
+      select: vi.fn(() => kette),
+      maybeSingle: vi.fn(async () => {
+        if (!aenderung || !filter) return { data: null, error: null }
+        const ist = zeile[filter.feld as keyof typeof zeile]
+        const trifft = filter.art === 'is'
+          ? ist === null && filter.wert === null
+          : ist === filter.wert
+        if (!trifft) return { data: null, error: null }
+
+        zeile = { ...zeile, ...aenderung }
+        const feld = 'wert' in aenderung ? 'wert' : 'von'
+        return {
+          data: { id: zeile.id, user_id: zeile.user_id, [feld]: zeile[feld] },
+          error: null,
+        }
+      }),
+    }
+    return kette
+  })
+  return {
+    db: { from },
+    stand: () => ({ ...zeile }),
+  }
+}
+
 describe('bestaetigte Tracker-Mutationen', () => {
   it('bestaetigt den exakten Einheit-Retry und lehnt eine UUID-Kollision ab', async () => {
     const exakt = einheitSchreibDb(EINHEIT_ZEILE)
@@ -350,27 +398,81 @@ describe('bestaetigte Tracker-Mutationen', () => {
     )).rejects.toBeInstanceOf(UnbestaetigteMutation)
   })
 
-  it('akzeptiert Updates nur mit exakt zurueckgegebenem Wert oder Zeitpunkt', async () => {
+  it('filtert Updates atomar auf den alten Nicht-Null- oder Nullwert', async () => {
     const updateDb = (data: unknown) => {
       const kette = {
         match: vi.fn(() => kette),
+        eq: vi.fn(() => kette),
+        is: vi.fn(() => kette),
         select: vi.fn(() => kette),
         maybeSingle: vi.fn(async () => ({ data, error: null })),
       }
-      return { from: vi.fn(() => ({ update: vi.fn(() => kette) })) }
+      return {
+        db: { from: vi.fn(() => ({ update: vi.fn(() => kette) })) },
+        kette,
+      }
     }
+
+    const wert = updateDb({ id: EINHEIT_ZEILE.id, user_id: ERIJON_ID, wert: 61 })
     await expect(aktualisiereUndBestaetigeEinheit(
-      updateDb({ id: EINHEIT_ZEILE.id, user_id: ERIJON_ID, wert: 61 }) as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
+      wert.db as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
       EINHEIT_ZEILE.id,
       ERIJON_ID,
-      { wert: 61 }
+      { wert: 61 },
+      EINHEIT_ZEILE.wert
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    expect(wert.kette.eq).toHaveBeenCalledWith('wert', EINHEIT_ZEILE.wert)
+    expect(wert.kette.is).not.toHaveBeenCalled()
+
+    const von = '2026-09-06T18:10:00.000Z'
+    const zeit = updateDb({ id: EINHEIT_ZEILE.id, user_id: ERIJON_ID, von })
+    await expect(aktualisiereUndBestaetigeEinheit(
+      zeit.db as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID,
+      { von },
+      null
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    expect(zeit.kette.is).toHaveBeenCalledWith('von', null)
+    expect(zeit.kette.eq).not.toHaveBeenCalled()
+
+    const konflikt = updateDb(null)
+    await expect(aktualisiereUndBestaetigeEinheit(
+      konflikt.db as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
+      EINHEIT_ZEILE.id,
+      ERIJON_ID,
+      { von },
+      null
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+  })
+
+  it('laesst 50 -> 60 -> 70 zu, aber bestaetigt zwei Schreiber mit Altwert 50 nicht beide', async () => {
+    const schreibkette = einheitUpdateCasDb({ wert: 50, von: null })
+    const db = schreibkette.db as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0]
+
+    await expect(aktualisiereUndBestaetigeEinheit(
+      db, EINHEIT_ZEILE.id, ERIJON_ID, { wert: 60 }, 50
     )).resolves.toBe(EINHEIT_ZEILE.id)
     await expect(aktualisiereUndBestaetigeEinheit(
-      updateDb(null) as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0],
-      EINHEIT_ZEILE.id,
-      ERIJON_ID,
-      { von: '2026-09-06T18:10:00.000Z' }
-    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
+      db, EINHEIT_ZEILE.id, ERIJON_ID, { wert: 70 }, 60
+    )).resolves.toBe(EINHEIT_ZEILE.id)
+    expect(schreibkette.stand().wert).toBe(70)
+
+    const konkurrenz = einheitUpdateCasDb({ wert: 50, von: null })
+    const konkurrenzDb = konkurrenz.db as unknown as Parameters<typeof aktualisiereUndBestaetigeEinheit>[0]
+    const ergebnisse = await Promise.allSettled([
+      aktualisiereUndBestaetigeEinheit(
+        konkurrenzDb, EINHEIT_ZEILE.id, ERIJON_ID, { wert: 60 }, 50
+      ),
+      aktualisiereUndBestaetigeEinheit(
+        konkurrenzDb, EINHEIT_ZEILE.id, ERIJON_ID, { wert: 70 }, 50
+      ),
+    ])
+
+    expect(ergebnisse.filter((ergebnis) => ergebnis.status === 'fulfilled')).toHaveLength(1)
+    const abgelehnt = ergebnisse.find((ergebnis) => ergebnis.status === 'rejected')
+    expect(abgelehnt).toMatchObject({ reason: expect.any(UnbestaetigteMutation) })
+    expect([60, 70]).toContain(konkurrenz.stand().wert)
   })
 
   it('bestaetigt nur die exakte DELETE-Zeile und erhaelt Null- und Fehlerpfade', async () => {

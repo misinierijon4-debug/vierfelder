@@ -311,6 +311,69 @@ describe('lokale Pruefungsfachwahl', () => {
     }
   })
 
+  it('prueft Einheiten-Wert und -Zeit unter dem Web Lock gegen den erwarteten Altstand', async () => {
+    const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    let kette = Promise.resolve<unknown>(undefined)
+    const locks = {
+      request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+        const ergebnis = kette.then(aktion)
+        kette = ergebnis.then(() => undefined, () => undefined)
+        return ergebnis
+      },
+    }
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { locks },
+      })
+      const tabA = lokalesBackend()
+      const tabB = lokalesBackend()
+      const schreibkette = {
+        id: 'cas-kette', user: 'erijon' as const, area: 'gym' as const,
+        tag: '2026-09-06', wert: 50, erfasst: null, von: null,
+      }
+
+      await tabA.schreibeEinheit(schreibkette)
+      await tabA.schreibeEinheitWert(schreibkette, 60)
+      await tabA.schreibeEinheitWert({ ...schreibkette, wert: 60 }, 70)
+
+      const konkurrenz = {
+        ...schreibkette,
+        id: 'cas-konkurrenz',
+      }
+      await tabA.schreibeEinheit(konkurrenz)
+      const wertErgebnisse = await Promise.allSettled([
+        tabA.schreibeEinheitWert(konkurrenz, 60),
+        tabB.schreibeEinheitWert(konkurrenz, 70),
+      ])
+      expect(wertErgebnisse.filter((ergebnis) => ergebnis.status === 'fulfilled')).toHaveLength(1)
+      expect(wertErgebnisse.find((ergebnis) => ergebnis.status === 'rejected')).toMatchObject({
+        reason: expect.objectContaining({ code: '40001' }),
+      })
+
+      const zeitErgebnisse = await Promise.allSettled([
+        tabA.schreibeEinheitVon(konkurrenz, '2026-09-06T18:00:00.000Z'),
+        tabB.schreibeEinheitVon(konkurrenz, '2026-09-06T19:00:00.000Z'),
+      ])
+      expect(zeitErgebnisse.filter((ergebnis) => ergebnis.status === 'fulfilled')).toHaveLength(1)
+      expect(zeitErgebnisse.find((ergebnis) => ergebnis.status === 'rejected')).toMatchObject({
+        reason: expect.objectContaining({ code: '40001' }),
+      })
+
+      const einheiten = Object.values((await tabA.laden()).einheiten).flat()
+      expect(einheiten.find((einheit) => einheit.id === schreibkette.id)?.wert).toBe(70)
+      expect([60, 70]).toContain(einheiten.find((einheit) => einheit.id === konkurrenz.id)?.wert)
+      expect([
+        '2026-09-06T18:00:00.000Z',
+        '2026-09-06T19:00:00.000Z',
+      ]).toContain(einheiten.find((einheit) => einheit.id === konkurrenz.id)?.von)
+    } finally {
+      if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
+      else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
   it('entscheidet konkurrierende gleiche IDs und Wochen unter derselben Sperre deterministisch', async () => {
     const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
     let kette = Promise.resolve<unknown>(undefined)
