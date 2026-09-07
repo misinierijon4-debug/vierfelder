@@ -869,6 +869,26 @@ und eine ausdrückliche Freigabe erforderlich.
 - lokaler/staging Supabase-Reset und RLS-/RPC-pgTAP
 - Staging-Migration, Backup und Restore-Probe
 - zuverlässiger Lighthouse-Lauf
-- öffentliche Preview, Push, PR, Merge und Produktion
+- Supabase-Produktionsmigration und Deployment der fünf Edge Functions
 - Produktentscheidung: endgültiger Wochenabschluss Sonntag 18:00 oder empfohlen
   erst Montag 00:00 Uhr Europe/Berlin; bis dahin bleibt die Zeitgrenze fachlich offen
+
+## GitHub-Main-Release am 7. September 2026
+
+- Der zuvor saubere Arbeitsbranch wurde ohne Force als Fast-Forward auf den
+  lokalen `main` übernommen und anschließend nach `origin/main` gepusht.
+  GitHub bestätigt `dd9c63ee887b51605b0666894f16c37fd9721dff` als Remote-Commit.
+- Der durch diesen Push ausgelöste Pages-Lauf `34139013557` endete erfolgreich.
+  Die veröffentlichte Wurzel unter `/vierfelder/`, das gehashte JavaScript, CSS,
+  Manifest und `sw.js` antworteten anschließend mit HTTP 200 und passenden
+  Content-Types. Manifest und Service Worker tragen `Cache-Control: max-age=600`.
+- Die Supabase-Prüfung blieb bis hierhin lesend. Das Projekt ist aktiv und hat
+  zwei Profile. Es existiert keine Development-Branch. Die produktive
+  Migrationstabelle enthält 29 Einträge, während das Repository 37 Dateien
+  besitzt; zusätzlich enthält das produktive Schema einzelne Objekte wie
+  `private.ist_duellprofil()` und `duell_wetten_text_check`, die nicht durch die
+  gelistete Remote-Historie erklärbar sind. Deshalb wurden weder DDL noch Edge
+  Functions direkt in Produktion geschrieben.
+- Eine isolierte Supabase-Branch kostet laut der am 7. September 2026
+  abgerufenen Projektkalkulation 0,01344 US-Dollar pro Stunde. Ihre Erstellung
+  bleibt bis zur ausdrücklichen Kostenbestätigung offen.
