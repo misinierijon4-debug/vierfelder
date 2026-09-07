@@ -6,6 +6,7 @@ import {
   gemesseneMinuten,
   messung,
   messungen,
+  offeneMessungen,
   sitzungen,
   tagVon,
   zaehlt,
@@ -17,6 +18,7 @@ import {
   fuegeEinheitHinzu,
   istGesetzt,
   hatMoeglicheDoppelerfassung,
+  messungsLaufstatus,
   quelle,
   setzeTick,
   messungsMinuten,
@@ -57,7 +59,7 @@ function fokus(
   tag: string,
   bereich: AreaId,
   von: [number, number],
-  dauer: number,
+  dauer: number | null,
   rest: Partial<Aufenthalt> = {}
 ): Aufenthalt {
   return besuch(tag, von, dauer, { bereich, ort: `fokus ${bereich}`, ...rest })
@@ -76,6 +78,80 @@ describe('aufenthalt', () => {
     const offen = besuch('2026-08-26', [18, 0], null)
     expect(dauerMinuten(offen)).toBeNull()
     expect(zaehlt(offen)).toBe(false)
+  })
+
+  it('zeigt offene Fokuslaeufe unter und ueber der Schwelle, ohne sie fertig zu zaehlen', () => {
+    const offen = fokus('2026-08-26', 'lernen', [18, 0], null, { id: 'offen-a' })
+    const duplikat = { ...offen, id: 'offen-b' }
+    const z = mit(offen, duplikat)
+    const start = new Date(offen.ankunft).getTime()
+
+    expect(offeneMessungen(
+      z.aufenthalte,
+      'erijon',
+      'lernen',
+      new Date(start + (MINDESTMINUTEN - 1) * 60_000)
+    )).toEqual([{
+      art: 'laeuft',
+      ankunft: offen.ankunft,
+      mindestdauerErreicht: false,
+    }])
+    expect(messungsLaufstatus(
+      z,
+      'erijon',
+      'lernen',
+      new Date(start + (MINDESTMINUTEN + 1) * 60_000)
+    )).toMatchObject({
+      seit: offen.ankunft,
+      laufend: 1,
+      mindestdauerErreicht: true,
+      warnungen: [],
+    })
+
+    const zweiteQuelle = fokus('2026-08-26', 'lernen', [18, 5], null, {
+      id: 'offen-c', ort: 'standort lernen',
+    })
+    expect(messungsLaufstatus(
+      mit(offen, duplikat, zweiteQuelle),
+      'erijon',
+      'lernen',
+      new Date(start + (MINDESTMINUTEN - 1) * 60_000)
+    )).toMatchObject({ seit: offen.ankunft, laufend: 2, warnungen: [] })
+
+    expect(istGesetzt(z, 'erijon', 'lernen', '2026-08-26')).toBe(false)
+    expect(quelle(z, 'erijon', 'lernen', '2026-08-26')).toBeNull()
+    expect(tageseinheiten(z, 'erijon', 'lernen', '2026-08-26')).toEqual([])
+    expect(anzahlEinheiten(z, 'erijon', 'lernen', '2026-08-26')).toBe(0)
+    expect(messungsMinuten(z, 'erijon', 'lernen', '2026-08-26')).toBe(0)
+    expect(wocheBereich(z, 'erijon', 'lernen', weekDays(MITTWOCH))).toBe(0)
+  })
+
+  it('warnt bei ungueltigen, zukuenftigen und verwaisten offenen Starts', () => {
+    const jetzt = new Date(zeit('2026-08-26', 18, 0))
+    const z = mit(
+      fokus('2026-08-26', 'lernen', [18, 0], null, {
+        id: 'ungueltig', ankunft: 'kein zeitpunkt', ort: 'fokus ungueltig',
+      }),
+      fokus('2026-08-26', 'lernen', [18, 1], null, {
+        id: 'zukunft', ort: 'fokus zukunft',
+      }),
+      fokus('2026-08-26', 'lernen', [5, 59], null, {
+        id: 'verwaist', ort: 'fokus verwaist',
+      })
+    )
+
+    expect(offeneMessungen(z.aufenthalte, 'erijon', 'lernen', jetzt)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ art: 'warnung', grund: 'start_ungueltig' }),
+        expect.objectContaining({ art: 'warnung', grund: 'start_in_zukunft' }),
+        expect.objectContaining({ art: 'warnung', grund: 'verwaist' }),
+      ])
+    )
+    expect(messungsLaufstatus(z, 'erijon', 'lernen', jetzt)).toMatchObject({
+      seit: null,
+      laufend: 0,
+      warnungen: ['start_ungueltig', 'start_in_zukunft', 'verwaist'],
+    })
   })
 
   it('zählt einen zu kurzen besuch nicht', () => {
@@ -163,6 +239,7 @@ describe('tick aus der messung', () => {
     })
     expect(istGesetzt(z, 'erijon', 'lernen', '2026-08-26')).toBe(false)
     expect(wocheBereich(z, 'erijon', 'lernen', weekDays(MITTWOCH))).toBe(0)
+    expect(messungsLaufstatus(z, 'erijon', 'lernen', MITTWOCH)).toBeNull()
   })
 
   it('nennt einen antippten tick getippt', () => {

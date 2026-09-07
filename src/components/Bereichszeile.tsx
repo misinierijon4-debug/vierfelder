@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus } from '@phosphor-icons/react'
+import type { MessungsLaufstatus } from '../lib/tracker'
 import type { AreaDef, TagesQuelle } from '../lib/types'
 import { EASE, EINGANG, TAKT } from '../lib/motion'
 import { Marke } from './Marke'
@@ -17,6 +18,34 @@ function uhrzeitVon(von: string | null | undefined): string {
   if (!von) return ''
   const d = new Date(von)
   return Number.isFinite(d.getTime()) ? UHRZEIT.format(d) : ''
+}
+
+function laufstatusText(status: MessungsLaufstatus | null | undefined): string {
+  if (!status) return ''
+  const teile: string[] = []
+  if (status.laufend > 0 && status.seit) {
+    const seit = uhrzeitVon(status.seit)
+    teile.push(status.laufend > 1
+      ? `${status.laufend} messungen laufen · älteste läuft seit ${seit}`
+      : `läuft seit ${seit}`)
+    if (status.mindestdauerErreicht) teile.push('ende fehlt')
+    teile.push('noch nicht gezählt')
+  }
+  if (status.warnungen.length > 0) {
+    const eindeutig = [...new Set(status.warnungen)]
+    const grund = eindeutig.length > 1
+      ? 'mehrere startzeiten sind unplausibel'
+      : eindeutig[0] === 'start_ungueltig'
+        ? 'startzeit ungültig'
+        : eindeutig[0] === 'start_in_zukunft'
+          ? 'startzeit liegt in der zukunft'
+          : 'seit über 12 stunden ohne ende'
+    const anzahl = status.warnungen.length > 1
+      ? `${status.warnungen.length} offene messungen prüfen`
+      : 'offene messung prüfen'
+    teile.push(`${anzahl}: ${grund}`)
+  }
+  return teile.join(' · ')
 }
 
 type Props = {
@@ -42,6 +71,8 @@ type Props = {
   quelle: TagesQuelle | null
   /** minuten der gemessenen sitzungen des tages, wenn es welche gibt */
   messungMinuten: number | null
+  /** offene Automationen sind nur Status, nie fertige Messminuten */
+  laufstatus?: MessungsLaufstatus | null
   farbe: string
   farbeEr: string
   zeigeUndo: boolean
@@ -71,6 +102,7 @@ export function Bereichszeile({
   mehrfachMoeglich,
   quelle,
   messungMinuten,
+  laufstatus,
   farbe,
   farbeEr,
   zeigeUndo,
@@ -86,6 +118,18 @@ export function Bereichszeile({
   const hatManuell = quelle === 'getippt' || quelle === 'gemischt'
   const messungVorhanden = (messungMinuten ?? 0) > 0
   const kurzeMessung = messungVorhanden && !hatMessung
+  const laufHinweis = laufstatusText(laufstatus)
+  const quellenHinweis = quelle === 'gemischt'
+    ? 'gemessen + getippt'
+    : kurzeMessung
+      ? hatManuell ? 'getippt + kurze messung' : 'kurze messung'
+      : ''
+  const statuszeile = [
+    quellenHinweis,
+    quellenHinweis && messungMinuten !== null ? `${messungMinuten} min gemessen` : '',
+    kurzeMessung ? 'noch kein punkt' : '',
+    laufHinweis,
+  ].filter(Boolean).join(' · ')
 
   /**
    * den wert liefert die messung nur dort, wo der bereich in minuten rechnet.
@@ -116,15 +160,9 @@ export function Bereichszeile({
         >
           {area.label}
         </span>
-        {(quelle === 'gemischt' || kurzeMessung) && (
-          <span className="mt-0.5 block truncate text-[9px] leading-none text-kreide-52">
-            {quelle === 'gemischt'
-              ? 'gemessen + getippt'
-              : hatManuell
-                ? 'getippt + kurze messung'
-                : 'kurze messung'}
-            {messungMinuten !== null ? ` · ${messungMinuten} min gemessen` : ''}
-            {kurzeMessung ? ' · noch kein punkt' : ''}
+        {statuszeile && (
+          <span className="mt-0.5 block text-pretty text-[10px] leading-snug text-kreide-52">
+            {statuszeile}
           </span>
         )}
       </span>
@@ -181,7 +219,7 @@ export function Bereichszeile({
       >
         {quelle === 'gemessen' ? (
           <div
-            aria-label={`${area.label}, heute ${hatMessung ? 'gemessen' : 'offen'}`}
+            aria-label={`${area.label}, heute ${hatMessung ? 'gemessen' : 'offen'}${laufHinweis ? `; ${laufHinweis}` : ''}`}
             className="flex min-h-11 w-full flex-wrap items-center gap-2 min-[260px]:flex-nowrap min-[360px]:gap-3"
           >
             {kopfInhalt}
@@ -193,8 +231,8 @@ export function Bereichszeile({
             aria-pressed={quelle === 'gemischt' ? undefined : gesetzt}
             aria-label={
               quelle === 'gemischt'
-                ? `${area.label}, heute gemessen und manuell eingetragen; manuelle eintraege entfernen`
-                : `${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}`
+                ? `${area.label}, heute gemessen und manuell eingetragen; manuelle eintraege entfernen${laufHinweis ? `; ${laufHinweis}` : ''}`
+                : `${area.label}, heute ${gesetzt ? 'eingetragen' : 'offen'}${laufHinweis ? `; ${laufHinweis}` : ''}`
             }
             onClick={onTap}
             whileTap={reduced || disabled ? undefined : { scale: 0.995 }}
@@ -203,6 +241,12 @@ export function Bereichszeile({
           >
             {kopfInhalt}
           </motion.button>
+        )}
+
+        {laufHinweis && (
+          <span className="sr-only" role="status" aria-live="polite">
+            {area.label}: {laufHinweis}
+          </span>
         )}
 
         {/* zweite zeile: feste touchhoehe, egal was drinsteht */}

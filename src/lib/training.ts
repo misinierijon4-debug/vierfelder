@@ -17,6 +17,30 @@ export const MINDESTMINUTEN = 20
  */
 export const MINDESTMINUTEN_LESEN = 10
 
+/**
+ * Der Importvertrag ersetzt beim naechsten Start offene Sitzungen, die aelter
+ * als zwoelf Stunden sind. Bis dahin ist `abgang = null` ein Laufstatus; danach
+ * ist es ein unvollstaendiger Datensatz, aus dem keine Dauer geraten wird.
+ */
+export const MAXIMALE_OFFENE_MINUTEN = 12 * 60
+
+export type OffeneMessungWarnung =
+  | 'start_ungueltig'
+  | 'start_in_zukunft'
+  | 'verwaist'
+
+export type OffeneMessungStatus =
+  | {
+      art: 'laeuft'
+      ankunft: string
+      mindestdauerErreicht: boolean
+    }
+  | {
+      art: 'warnung'
+      ankunft: string
+      grund: OffeneMessungWarnung
+    }
+
 export function mindestMinuten(bereich: MessbarerBereich): number {
   return bereich === 'lesen' ? MINDESTMINUTEN_LESEN : MINDESTMINUTEN
 }
@@ -41,6 +65,64 @@ export function tagVon(a: Aufenthalt): string {
 export function zaehlt(a: Aufenthalt): boolean {
   const dauer = dauerMinuten(a)
   return dauer !== null && dauer >= mindestMinuten(a.bereich)
+}
+
+/**
+ * Deduplizierte offene Automationen einer Person und eines Bereichs. Sie sind
+ * absichtlich keine `sitzungen`: Ohne bestaetigten Abgang gibt es weder eine
+ * fertige Dauer noch einen Messpunkt. Ungueltige, zukuenftige und ueberlange
+ * Starts bleiben als Warnstatus sichtbar, statt still als Null Minuten zu
+ * verschwinden.
+ */
+export function offeneMessungen(
+  aufenthalte: Aufenthalt[],
+  u: UserId,
+  f: FeldId,
+  jetzt: Date = new Date()
+): OffeneMessungStatus[] {
+  if (!istMessbar(f)) return []
+  const jetztMs = jetzt.getTime()
+  if (!Number.isFinite(jetztMs)) return []
+
+  const gesehenIds = new Set<string>()
+  const gesehenInhalte = new Set<string>()
+  const ergebnis: OffeneMessungStatus[] = []
+
+  for (const a of aufenthalte) {
+    if (a.user !== u || a.bereich !== f || a.abgang !== null) continue
+    const inhalt = `${a.user}\u0000${a.bereich}\u0000${a.ort}\u0000${a.ankunft}`
+    if ((a.id !== undefined && gesehenIds.has(a.id)) || gesehenInhalte.has(inhalt)) continue
+    if (a.id !== undefined) gesehenIds.add(a.id)
+    gesehenInhalte.add(inhalt)
+
+    const ankunftMs = new Date(a.ankunft).getTime()
+    if (!Number.isFinite(ankunftMs)) {
+      ergebnis.push({ art: 'warnung', ankunft: a.ankunft, grund: 'start_ungueltig' })
+      continue
+    }
+    const vergangeneMinuten = (jetztMs - ankunftMs) / 60_000
+    if (vergangeneMinuten < 0) {
+      ergebnis.push({ art: 'warnung', ankunft: a.ankunft, grund: 'start_in_zukunft' })
+      continue
+    }
+    if (vergangeneMinuten > MAXIMALE_OFFENE_MINUTEN) {
+      ergebnis.push({ art: 'warnung', ankunft: a.ankunft, grund: 'verwaist' })
+      continue
+    }
+    ergebnis.push({
+      art: 'laeuft',
+      ankunft: a.ankunft,
+      mindestdauerErreicht: vergangeneMinuten >= mindestMinuten(a.bereich),
+    })
+  }
+
+  return ergebnis.sort((a, b) => {
+    const aZeit = new Date(a.ankunft).getTime()
+    const bZeit = new Date(b.ankunft).getTime()
+    if (!Number.isFinite(aZeit)) return Number.isFinite(bZeit) ? 1 : 0
+    if (!Number.isFinite(bZeit)) return -1
+    return aZeit - bZeit
+  })
 }
 
 /**

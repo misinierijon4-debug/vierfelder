@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MessungsLaufstatus } from '../lib/tracker'
 import { AREAS } from '../lib/types'
 import { Bereichszeile } from './Bereichszeile'
 
@@ -46,6 +47,34 @@ function renderZeile(
   )
 
   return { onTap, onUndo, onWert, onNeueEinheit }
+}
+
+function renderLaufstatus(laufstatus: MessungsLaufstatus) {
+  render(
+    <Bereichszeile
+      area={AREAS[0]!}
+      index={0}
+      gesetzt={false}
+      wocheIch={0}
+      abstand={0}
+      streak={0}
+      wert={0}
+      hatWert={false}
+      einheitWert={0}
+      anzahl={0}
+      mehrfachMoeglich={true}
+      quelle={null}
+      messungMinuten={null}
+      laufstatus={laufstatus}
+      farbe="gold"
+      farbeEr="petrol"
+      zeigeUndo={false}
+      onTap={vi.fn()}
+      onUndo={vi.fn()}
+      onWert={vi.fn()}
+      onNeueEinheit={vi.fn()}
+    />
+  )
 }
 
 describe('Bereichszeile', () => {
@@ -172,5 +201,39 @@ describe('Bereichszeile', () => {
       'false'
     )
     expect(screen.getByRole('button', { name: 'weitere einheit lernen eintragen' })).toBeEnabled()
+  })
+
+  it('zeigt eine offene Automation als zugaenglichen Laufstatus statt als Tagespunkt', () => {
+    renderLaufstatus({
+      seit: new Date(2026, 7, 26, 18, 0).toISOString(),
+      laufend: 1,
+      mindestdauerErreicht: true,
+      warnungen: [],
+    })
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      /lernen: läuft seit .* ende fehlt · noch nicht gezählt/
+    )
+    expect(screen.getByRole('button', { name: /lernen, heute offen; läuft seit/ })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    expect(screen.queryByText(/min · gemessen/)).not.toBeInTheDocument()
+  })
+
+  it('warnt verstaendlich vor einer offenen Automation mit unplausiblem Start', () => {
+    renderLaufstatus({
+      seit: null,
+      laufend: 0,
+      mindestdauerErreicht: false,
+      warnungen: ['start_in_zukunft'],
+    })
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'offene messung prüfen: startzeit liegt in der zukunft'
+    )
+    expect(screen.getByRole('button', {
+      name: /heute offen; offene messung prüfen: startzeit liegt in der zukunft/,
+    })).toHaveAttribute('aria-pressed', 'false')
   })
 })

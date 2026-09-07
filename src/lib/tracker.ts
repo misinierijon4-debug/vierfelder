@@ -13,7 +13,16 @@ import type {
   UserId,
   Zustand,
 } from './types'
-import { dauerMinuten, gemessen, messungen, sitzungen, tagVon, zaehlt } from './training'
+import {
+  dauerMinuten,
+  gemessen,
+  messungen,
+  offeneMessungen,
+  sitzungen,
+  tagVon,
+  zaehlt,
+} from './training'
+import type { OffeneMessungWarnung } from './training'
 
 /**
  * beim gewicht gibt es keine einheit: gesetzt heißt schlicht, dass für diesen
@@ -157,6 +166,42 @@ export function messungsMinuten(z: Zustand, u: UserId, f: FeldId, tag: string): 
   return tageseinheiten(z, u, f, tag)
     .filter((e) => e.herkunft === 'gemessen')
     .reduce((s, e) => s + (e.wert ?? 0), 0)
+}
+
+export type MessungsLaufstatus = {
+  /** aeltester plausible Start; null, wenn nur Warnungen vorliegen */
+  seit: string | null
+  laufend: number
+  mindestdauerErreicht: boolean
+  /** ein Eintrag je deduplizierter unplausibler offener Messung */
+  warnungen: OffeneMessungWarnung[]
+}
+
+/** Lauf- und Warnstatus offener Automationen; beeinflusst keinen Tageswert. */
+export function messungsLaufstatus(
+  z: Zustand,
+  u: UserId,
+  f: FeldId,
+  jetzt: Date = new Date()
+): MessungsLaufstatus | null {
+  const offen = offeneMessungen(z.aufenthalte, u, f, jetzt)
+  if (offen.length === 0) return null
+  const laufend = offen.filter((status) => status.art === 'laeuft')
+  const warnungen = offen.filter((status) => status.art === 'warnung')
+  const prioritaet: OffeneMessungWarnung[] = [
+    'start_ungueltig',
+    'start_in_zukunft',
+    'verwaist',
+  ]
+
+  return {
+    seit: laufend[0]?.ankunft ?? null,
+    laufend: laufend.length,
+    mindestdauerErreicht: laufend.some((status) => status.mindestdauerErreicht),
+    warnungen: warnungen
+      .map((status) => status.grund)
+      .sort((a, b) => prioritaet.indexOf(a) - prioritaet.indexOf(b)),
+  }
 }
 
 /** die jüngste getippte einheit — die, auf die die schritte wirken */

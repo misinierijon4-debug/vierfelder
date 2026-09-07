@@ -15,6 +15,7 @@ import {
   hatTageswert,
   istGesetzt,
   letzteEinheit,
+  messungsLaufstatus,
   messungsMinuten,
   quelle,
   streak,
@@ -371,6 +372,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
                       // bei zwei sitzungen an einem tag steht dort die summe,
                       // nicht die längere von beiden
                       messungMinuten={messungsMinuten(zustand, me, area.id, heuteKey)}
+                      laufstatus={messungsLaufstatus(zustand, me, area.id)}
                       farbe={ich.farbe}
                       farbeEr={er.farbe}
                       zeigeUndo={undoFuer === area.id}
