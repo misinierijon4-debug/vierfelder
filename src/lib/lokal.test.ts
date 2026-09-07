@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BackendEreignis } from './backend'
 import { lokalesBackend } from './lokal'
 import { tickKey } from './types'
@@ -23,6 +23,49 @@ class Speicher {
 
 const speicher = new Speicher()
 ;(globalThis as { localStorage?: unknown }).localStorage = speicher
+
+// Node 24 stellt experimentell Web Locks bereit, die festgelegte Node-22-CI-
+// Laufzeit dagegen nicht. Die Tests duerfen nicht zufaellig von der globalen
+// Node-Version abhaengen und bekommen deshalb denselben seriellen Vertrag wie
+// ein Browser. Einzelne Konkurrenztests ersetzen ihn weiterhin gezielt.
+const urspruenglicherNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+let standardLockKette = Promise.resolve<unknown>(undefined)
+const standardLocks = {
+  request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+    const ergebnis = standardLockKette.then(aktion)
+    standardLockKette = ergebnis.then(() => undefined, () => undefined)
+    return ergebnis
+  },
+}
+
+beforeEach(() => {
+  standardLockKette = Promise.resolve(undefined)
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { locks: standardLocks },
+  })
+})
+
+afterAll(() => {
+  if (urspruenglicherNavigator) {
+    Object.defineProperty(globalThis, 'navigator', urspruenglicherNavigator)
+  } else {
+    Reflect.deleteProperty(globalThis, 'navigator')
+  }
+})
+
+describe('lokale Web-Lock-Voraussetzung', () => {
+  it('bricht ohne Web Locks fail-closed ab', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: {},
+    })
+
+    await expect(lokalesBackend().laden()).rejects.toThrow(
+      'sichere lokale mehrtab-speicherung wird nicht unterstützt'
+    )
+  })
+})
 
 describe('altbestand aus dem alten format', () => {
   beforeEach(() => {
