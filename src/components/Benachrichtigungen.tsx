@@ -15,6 +15,7 @@ import {
   setzeGewichtErinnerungszeit,
 } from '../lib/erinnerung'
 import { blockiereNeustart } from '../lib/pwaBlocker'
+import { AktivitaetsErinnerungen } from './AktivitaetsErinnerungen'
 
 /**
  * Der Schalter fuer Benachrichtigungen.
@@ -116,6 +117,8 @@ export function Benachrichtigungen() {
         onZeit={aendereZeit}
         onAus={fuehreAus}
       />
+
+      {zustand === 'an' && <AktivitaetsErinnerungen />}
 
       <AnimatePresence initial={false}>
         {meldung && (

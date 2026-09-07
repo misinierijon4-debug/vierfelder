@@ -18,3 +18,7 @@ verify_jwt = false
 
 [functions.gewicht-erinnerung]
 verify_jwt = false
+
+# Eigener Vault-Schluessel, im Handler gegen einen serverseitigen Hash geprueft.
+[functions.aktivitaets-erinnerung]
+verify_jwt = false

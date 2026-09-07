@@ -66,17 +66,33 @@ unveränderliche Archivzeile; Legacy-Nachberechnungen bleiben gekennzeichnet.
 - Zielgewicht nur nach gemeinsamer Produktentscheidung. Es wäre ein Urteil in
   einer sensiblen Datenansicht, nicht bloß eine zusätzliche Linie.
 
-## Benachrichtigungskandidaten
+## Neue Benachrichtigungen – umgesetzt am 07.09.2026
 
-Die Transportkette und zwei schmale Reminder sind gebaut. Weitere Nachrichten
-kommen erst nach einer störungsfreien Beobachtungsphase der bestehenden
-Erinnerungen und mit eigener Abschaltmöglichkeit.
+- **Lernen:** Montag bis Freitag 18:30, nur ohne heutigen Lerntick und ohne
+  laufende Lernsitzung. Nachholfenster endet um 20:00.
+- **Lesen:** täglich 20:45, nur ohne heutigen Lesetick und ohne laufende
+  Lesesitzung. Nachholfenster endet um 22:00.
+- **Wochenendspurt:** Sonntag 18:00, aktueller Vergleich der fünf Felder.
+  Ausdrücklich ein Zwischenstand, kein verfrühter Wochenabschluss. Ohne
+  Aktivität beider Personen bleibt die Nachricht aus; Nachholfenster bis 19:00.
+
+Die drei Schalter stehen unter „weitere erinnerungen“ und sind unabhängig.
+Gezählt werden echte manuelle Einheiten und abgeschlossene gemessene Sitzungen,
+jeder Bereich pro Tag höchstens einmal. Laufende Sitzungen werden bis zu zwölf
+Stunden berücksichtigt. Versand höchstens einmal je Person, Art und Tag;
+keine verspätete Provider-Nachlieferung an offline befindliche Geräte.
+
+Produktionsnachweise und bewusste Grenzen: [Releasebericht](docs/aktivitaets-erinnerungen-release.md).
+
+## Weitere Benachrichtigungskandidaten
+
+Gewicht, Schlafimport sowie die drei oben beschriebenen Meldungen sind gebaut.
+Weitere Nachrichten brauchen weiterhin einen konkreten Nutzen und eine eigene
+Abschaltmöglichkeit.
 
 Mögliche Kandidaten:
 
-- „heute noch nicht gelesen?“
 - „2 von 5 heute. was geht noch?“
-- sonntag 18:00: „letzter tag. dir fehlen noch 3 haken.“
 - „koray hat gym abgehakt. du liegst 2 zurück.“
 - „erijon hat dich überholt. 12 zu 11.“
 - sonntag 21:00: „woche vorbei: du 28, koray 25.“
