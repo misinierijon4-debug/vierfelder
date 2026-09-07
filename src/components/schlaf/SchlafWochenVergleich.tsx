@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { CalendarBlank } from '@phosphor-icons/react'
+import { KalenderKnopf } from '../KalenderKnopf'
 import { fromKey, langesDatum, TAGKUERZEL } from '../../lib/dates'
 import { USERS } from '../../lib/types'
 import type { Schlafnacht, UserId } from '../../lib/types'
@@ -237,16 +237,7 @@ export function SchlafWochenVergleich({
               </span>
             </>
           )}
-          {/* kleines symbol, volle trefferflaeche: die kopfzeile bleibt so hoch, wie sie war */}
-          <button
-            type="button"
-            aria-label="Schlafkalender öffnen"
-            aria-haspopup="dialog"
-            onClick={onKalenderOeffnen}
-            className="-my-3.5 flex size-11 shrink-0 items-center justify-center rounded-full border border-linie bg-flaeche text-kreide transition-colors duration-150 hover:border-linie-hell focus-visible:outline-none"
-          >
-            <CalendarBlank size={15} weight="bold" aria-hidden="true" />
-          </button>
+          <KalenderKnopf label="Schlafkalender öffnen" onOeffnen={onKalenderOeffnen} />
         </div>
       </div>
 

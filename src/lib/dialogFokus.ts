@@ -27,6 +27,21 @@ function fokusziele(root: HTMLElement): HTMLElement[] {
 }
 
 /**
+ * Nach `dialog.close()` gibt der Browser den Fokus an den Oeffner zurueck und
+ * zeichnet dort seinen Tastatur-Fokusring: auf dem Telefon ein heller Kasten,
+ * den niemand angefordert hat und der bis zur naechsten Beruehrung stehen
+ * bleibt. Wo es keine Tastaturnavigation gibt, nehmen wir den Fokus deshalb
+ * weg. Am Schreibtisch bleibt er, weil er dort der einzige Wegweiser ist.
+ */
+export function fokusRingLoesen(): void {
+  const feinerZeiger = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches === true
+  if (feinerZeiger) return
+
+  const aktiv = document.activeElement
+  if (aktiv instanceof HTMLElement) aktiv.blur()
+}
+
+/**
  * Sperrt bei einem benutzerdefinierten modalen Blatt den Hintergrund, hält
  * Tab/Shift+Tab im Dialog und gibt den Fokus beim Schließen zurück. Native
  * `<dialog>.showModal()`-Ansichten brauchen diesen Helfer nicht.

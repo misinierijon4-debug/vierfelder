@@ -5,7 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useDialogFokus } from './dialogFokus'
+import { fokusRingLoesen, useDialogFokus } from './dialogFokus'
 
 afterEach(cleanup)
 
@@ -66,5 +66,42 @@ describe('useDialogFokus', () => {
     expect(erstes).toHaveFocus()
     await user.tab({ shift: true })
     expect(letztes).toHaveFocus()
+  })
+})
+
+describe('fokusRingLoesen', () => {
+  function zeiger(feiner: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (abfrage: string) => ({ matches: feiner, media: abfrage }),
+    })
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'matchMedia')
+  })
+
+  it('nimmt den Fokus weg, wo es keine Tastaturnavigation gibt', () => {
+    zeiger(false)
+    const knopf = document.createElement('button')
+    document.body.append(knopf)
+    knopf.focus()
+
+    fokusRingLoesen()
+
+    expect(knopf).not.toHaveFocus()
+    knopf.remove()
+  })
+
+  it('lässt den Fokus am Schreibtisch stehen', () => {
+    zeiger(true)
+    const knopf = document.createElement('button')
+    document.body.append(knopf)
+    knopf.focus()
+
+    fokusRingLoesen()
+
+    expect(knopf).toHaveFocus()
+    knopf.remove()
   })
 })

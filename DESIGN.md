@@ -824,3 +824,30 @@ im raster.
 richtig ist und nicht verschwindet, wenn man sie nicht anzeigt. Der ehrliche
 weg ist der, bei dem beide dasselbe sehen: eine zahl, ihre herkunft, und keine
 punkte für die herkunft.
+
+## 27. Nachtrag: drei kanten am kalender (07.09.2026)
+
+**Die wochenleiste klebte an der falschen kante.** `MO DI MI …` stand als
+`sticky top-0` im scrollbereich. Sticky misst zum scrollport, halten kann es
+sich aber nur innerhalb seines eigenen elternfeldes — und das begann erst nach
+dem polster der scrollfläche. Über der leiste blieb also ein spalt offen, durch
+den die ringe des nächsten monats sichtbar nach oben davonliefen. Die leiste
+ist jetzt kein teil der scrollfläche mehr, sondern ein fester streifen zwischen
+kopf und liste. Damit gibt es keinen spalt, an dem etwas durchlaufen könnte.
+
+**Der helle kasten nach dem schließen.** Ein natives `<dialog>` gibt beim
+`close()` den fokus an den öffner zurück, und der browser wertet das als
+tastaturnavigation: er zeichnet seinen fokusring. Auf dem telefon ist das ein
+heller kasten, den niemand angefordert hat und der bis zur nächsten berührung
+stehen bleibt. `fokusRingLoesen` nimmt den fokus deshalb dort weg, wo es keine
+tastaturnavigation gibt (`(hover: hover) and (pointer: fine)` trifft nicht).
+Am schreibtisch bleibt er stehen, denn dort ist er der einzige wegweiser.
+
+**Der kalenderknopf ist kein kreis mehr.** Abschnitt 20 hat ihn vom schlaf-tab
+übernommen, rund, 44px, wie er dort seit abschnitt 18 stand. In einer
+oberfläche aus haarlinien und einer einzigen radienstufe von `2px` war er das
+einzige kreisrunde element weit und breit und sah entsprechend aufgeklebt aus.
+Jetzt ist er ein feld wie jedes andere: `2px` radius, `--linie`, `--flaeche`,
+28px sichtbar. Die trefferfläche misst weiter 44px — sie sitzt als unsichtbares
+polster darum und streckt die kopfzeile nicht. `KalenderKnopf` steht als eine
+komponente für beide tabs, damit sie nicht wieder auseinanderlaufen.
