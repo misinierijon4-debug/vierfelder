@@ -3,7 +3,13 @@ import type {
   Anfangszustand,
   Backend,
   BackendDatenEreignis,
+  WetteStand,
   Wetten,
+  WettenMeta,
+} from './backend'
+import {
+  KEINE_WETTE_VERSION,
+  vergleicheWetteVersion,
 } from './backend'
 import {
   gewichtKey,
@@ -168,6 +174,10 @@ export function useTracker(backend: Backend) {
   )
   const meRef = useRef<UserId>('erijon')
   const wettenRef = useRef<Wetten>({})
+  /** Nur bestaetigte CAS-Staende; optimistische UI-Texte leben separat in wettenRef. */
+  const wettenMetaRef = useRef<WettenMeta>({})
+  const wetteKetteRef = useRef(new Map<string, Promise<WetteStand>>())
+  const letzteWetteAbsichtRef = useRef(new Map<string, symbol>())
   const abrechnungenRef = useRef<Abrechnung[]>([])
   const abrechnungStatusRef = useRef<Record<string, AbrechnungSchreibstatus>>({})
   const faecherRef = useRef<Fach[]>([])
@@ -215,6 +225,9 @@ export function useTracker(backend: Backend) {
     bereiteLadungRef.current = null
     letzteAktion.current = null
     kette.current.clear()
+    wetteKetteRef.current.clear()
+    letzteWetteAbsichtRef.current.clear()
+    wettenMetaRef.current = {}
     laufendeMutationen.current.clear()
     for (const blocker of [...mutationsBlocker.current]) {
       blocker.loese()
@@ -371,6 +384,7 @@ export function useTracker(backend: Backend) {
     gewichteRef.current = anfang.gewichte
     gewichtQuellenRef.current = anfang.gewichtQuellen
     wettenRef.current = anfang.wetten
+    wettenMetaRef.current = anfang.wettenMeta
     abrechnungenRef.current = anfang.abrechnungen
     faecherRef.current = anfang.noten.faecher
     notenRef.current = anfang.noten.noten
@@ -408,13 +422,33 @@ export function useTracker(backend: Backend) {
     }
   }, [uebernimmSchlaf])
 
+  const uebernimmWetteStand = useCallback((stand: WetteStand, sichtbar = true): boolean => {
+    const bisher = wettenMetaRef.current[stand.woche]
+    if (bisher && vergleicheWetteVersion(stand.version, bisher.version) <= 0) return false
+    wettenMetaRef.current = {
+      ...wettenMetaRef.current,
+      [stand.woche]: {
+        version: stand.version,
+        updatedBy: stand.updatedBy,
+        updatedAt: stand.updatedAt,
+      },
+    }
+    if (!sichtbar) return true
+    const next = { ...wettenRef.current }
+    if (stand.text === null) delete next[stand.woche]
+    else next[stand.woche] = stand.text
+    wettenRef.current = next
+    setWetten(next)
+    return true
+  }, [])
+
   const verarbeiteBackendEreignis = useCallback((e: BackendDatenEreignis) => {
     if (e.typ === 'wette') {
-      const next = { ...wettenRef.current }
-      if (e.text === null) delete next[e.woche]
-      else next[e.woche] = e.text
-      wettenRef.current = next
-      setWetten(next)
+      if (e.art === 'invalidierung') {
+        abgleichAnfordernRef.current(true)
+        return
+      }
+      uebernimmWetteStand(e.stand)
       return
     }
 
@@ -547,7 +581,14 @@ export function useTracker(backend: Backend) {
         quelle: einheit.user === meRef.current ? 'selbst' : 'fremd',
       })
     }
-  }, [merkeAbrechnungStatus, merkeGewichtQuelle, merkePhasenTransport, uebernimm, uebernimmSchlaf])
+  }, [
+    merkeAbrechnungStatus,
+    merkeGewichtQuelle,
+    merkePhasenTransport,
+    uebernimm,
+    uebernimmSchlaf,
+    uebernimmWetteStand,
+  ])
 
   useEffect(() => {
     const ABGLEICH_DROSSEL_MS = 5_000
@@ -1363,8 +1404,32 @@ export function useTracker(backend: Backend) {
       wettenRef.current = next
       setWetten(next)
       setFehler(null)
+
+      const absicht = Symbol('wette-absicht')
+      letzteWetteAbsichtRef.current.set(woche, absicht)
+      const basisVersion = wettenMetaRef.current[woche]?.version ?? KEINE_WETTE_VERSION
+      const vorgaenger = wetteKetteRef.current.get(woche)
+      // Eine schnelle Folgeaktion baut kausal auf der bestaetigten Version der
+      // eigenen Vorgaengeraktion auf. Scheitert diese, wird niemals eine
+      // inzwischen eingetroffene Partner-Version still als Schreibbasis benutzt.
+      const lauf = (vorgaenger
+        ? vorgaenger.then((stand) => stand.version, () => basisVersion)
+        : Promise.resolve(basisVersion)
+      ).then((erwarteteVersion) => backend.schreibeWette(woche, sauber, erwarteteVersion))
+      wetteKetteRef.current.set(woche, lauf)
+      const raeumeKette = () => {
+        if (wetteKetteRef.current.get(woche) === lauf) wetteKetteRef.current.delete(woche)
+      }
+      void lauf.then(raeumeKette, raeumeKette)
+
       void verfolgeMutation(() =>
-        nacheinander([`wette|${woche}`], () => backend.schreibeWette(woche, sauber)).catch(() => {
+        lauf.then((stand) => {
+          if (!darfSchreiben()) return
+          uebernimmWetteStand(
+            stand,
+            letzteWetteAbsichtRef.current.get(woche) === absicht
+          )
+        }).catch(() => {
           const istNochDieseAenderung = sauber
             ? wettenRef.current[woche] === sauber
             : !Object.hasOwn(wettenRef.current, woche)
@@ -1383,7 +1448,14 @@ export function useTracker(backend: Backend) {
         })
       )
     },
-    [backend, behandleMutationsfehler, darfMutationStarten, nacheinander, verfolgeMutation]
+    [
+      backend,
+      behandleMutationsfehler,
+      darfMutationStarten,
+      darfSchreiben,
+      uebernimmWetteStand,
+      verfolgeMutation,
+    ]
   )
 
   /**

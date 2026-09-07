@@ -104,12 +104,30 @@ describe('altbestand aus dem alten format', () => {
   })
 
   it('entfernt einen laufenden Wetteinsatz, ohne ein Wochenarchiv zu veraendern', async () => {
+    speicher.setItem('vierfelder.abrechnung.v1', '[]')
     const backend = lokalesBackend()
-    await backend.schreibeWette('2026-08-31', 'verlierer kocht')
-    await backend.schreibeWette('2026-08-31', '')
+    const gesetzt = await backend.schreibeWette('2026-08-31', 'verlierer kocht', '0')
+    const geloescht = await backend.schreibeWette('2026-08-31', '', gesetzt.version)
 
     const stand = await backend.laden()
     expect(stand.wetten).not.toHaveProperty('2026-08-31')
+    expect(stand.wettenMeta['2026-08-31']?.version).toBe(geloescht.version)
+  })
+
+  it('friert die Wette unter demselben Lock mit dem Wochenarchiv ein', async () => {
+    speicher.setItem('vierfelder.abrechnung.v1', '[]')
+    const backend = lokalesBackend()
+    const gesetzt = await backend.schreibeWette('2026-09-07', 'kanonisch', '0')
+    const archiv = await backend.schreibeAbrechnung({
+      woche: '2026-09-07', sieger: 'erijon', grund: 'punkte', differenz: 1,
+      belegErijon: 1, belegKoray: 0, wette: 'stale clientwert',
+      abgeschlossen: '2026-09-13T16:00:00.000Z',
+    })
+    expect(archiv.wette).toBe('kanonisch')
+    await expect(
+      backend.schreibeWette('2026-09-07', '', gesetzt.version)
+    ).rejects.toMatchObject({ code: '23514' })
+    expect((await backend.laden()).wetten['2026-09-07']).toBe('kanonisch')
   })
 })
 
@@ -242,6 +260,7 @@ describe('lokale Pruefungsfachwahl', () => {
 
       expect(namen).toEqual([
         'vierfelder.storage.vierfelder.einheiten.v1',
+        'vierfelder.storage.vierfelder.wetten.v1',
         'vierfelder.storage.vierfelder.faecher.v2',
         'vierfelder.storage.vierfelder.faecher.v2',
         'vierfelder.storage.vierfelder.noten.v2',
@@ -401,14 +420,55 @@ describe('lokale Pruefungsfachwahl', () => {
         tabA.schreibeEinheit(zuerst),
         tabB.schreibeEinheit({ ...zuerst, wert: 99 }),
       ])
-      await Promise.all([
-        tabA.schreibeWette('2026-09-07', 'zuerst'),
-        tabB.schreibeWette('2026-09-07', 'danach'),
+      speicher.setItem('vierfelder.abrechnung.v1', '[]')
+      const ergebnisse = await Promise.allSettled([
+        tabA.schreibeWette('2026-09-07', 'zuerst', '0'),
+        tabB.schreibeWette('2026-09-07', 'danach', '0'),
       ])
 
       const stand = await tabA.laden()
       expect(Object.values(stand.einheiten).flat().filter((e) => e.id === 'gleich')).toEqual([zuerst])
-      expect(stand.wetten['2026-09-07']).toBe('danach')
+      expect(ergebnisse.filter((ergebnis) => ergebnis.status === 'fulfilled')).toHaveLength(1)
+      expect(ergebnisse.find((ergebnis) => ergebnis.status === 'rejected')).toMatchObject({
+        reason: expect.objectContaining({ code: '40001' }),
+      })
+      expect(['zuerst', 'danach']).toContain(stand.wetten['2026-09-07'])
+    } finally {
+      if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
+      else Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
+  it('versioniert Altbestand deterministisch und schliesst Set/Delete/Undo-ABA aus', async () => {
+    const vorher = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    let kette = Promise.resolve<unknown>(undefined)
+    const locks = {
+      request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+        const ergebnis = kette.then(aktion)
+        kette = ergebnis.then(() => undefined, () => undefined)
+        return ergebnis
+      },
+    }
+    try {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks } })
+      speicher.setItem('vierfelder.abrechnung.v1', '[]')
+      speicher.setItem('vierfelder.wetten.v1', JSON.stringify({
+        '2026-09-14': 'spaeter',
+        '2026-09-07': 'zuerst',
+      }))
+      const backend = lokalesBackend()
+      const alt = await backend.laden()
+      expect(alt.wettenMeta['2026-09-07']?.version).toBe('1')
+      expect(alt.wettenMeta['2026-09-14']?.version).toBe('2')
+
+      const gesetzt = await backend.schreibeWette('2026-09-07', 'neu', '1')
+      const geloescht = await backend.schreibeWette('2026-09-07', '', gesetzt.version)
+      const undo = await backend.schreibeWette('2026-09-07', 'neu', geloescht.version)
+      await expect(
+        backend.schreibeWette('2026-09-07', 'stale', gesetzt.version)
+      ).rejects.toMatchObject({ code: '40001' })
+      expect(undo.version).toBe('5')
+      expect((await backend.laden()).wetten['2026-09-07']).toBe('neu')
     } finally {
       if (vorher) Object.defineProperty(globalThis, 'navigator', vorher)
       else Reflect.deleteProperty(globalThis, 'navigator')
@@ -433,7 +493,7 @@ describe('lokale Pruefungsfachwahl', () => {
         throw new Error('speicher voll')
       })
 
-      await expect(lokalesBackend().schreibeWette('2026-09-07', 'abendessen')).rejects.toThrow(
+      await expect(lokalesBackend().schreibeWette('2026-09-07', 'abendessen', '0')).rejects.toThrow(
         'speicher voll'
       )
       expect(speicher.getItem('vierfelder.wetten.v1')).toBeNull()

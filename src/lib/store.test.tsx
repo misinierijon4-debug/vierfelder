@@ -24,6 +24,7 @@ const ANFANG: Anfangszustand = {
   schlaf: [],
   aufenthalte: [],
   wetten: {},
+  wettenMeta: {},
   abrechnungen: [],
   noten: { faecher: [], noten: [] },
   einheitVonVerfuegbar: true,
@@ -81,7 +82,13 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     loescheEinheit: vi.fn(async () => {}),
     loescheTag: vi.fn(async () => {}),
     schreibeGewicht: vi.fn(async () => {}),
-    schreibeWette: vi.fn(async () => {}),
+    schreibeWette: vi.fn(async (woche: string, text: string, erwarteteVersion: string) => ({
+      woche,
+      text: text || null,
+      version: (BigInt(erwarteteVersion) + 1n).toString(),
+      updatedBy: '11111111-1111-4111-8111-111111111111',
+      updatedAt: '2026-09-07T12:00:00.000Z',
+    })),
     schreibeAbrechnung: vi.fn(async (a) => a),
     setzePruefungsfach: vi.fn(async (fachId: string) => fachId),
     schreibeNote: vi.fn(async (note) => note.id),
@@ -413,6 +420,13 @@ describe('useTracker Schreibbereitschaft', () => {
         ankunft: '2026-09-04T16:00:00Z', abgang: '2026-09-04T17:00:00Z',
       }],
       wetten: { '2026-08-31': 'einsatz' },
+      wettenMeta: {
+        '2026-08-31': {
+          version: '1',
+          updatedBy: '11111111-1111-4111-8111-111111111111',
+          updatedAt: '2026-09-06T12:00:00.000Z',
+        },
+      },
       noten: { faecher: [fach], noten: [note] },
     }
     let melde!: (e: BackendEreignis) => void
@@ -429,7 +443,17 @@ describe('useTracker Schreibbereitschaft', () => {
       melde({ typ: 'einheit', art: 'weg', id: einheit.id })
       melde({ typ: 'aufenthalt', art: 'weg', id: '42' })
       melde({ typ: 'note', art: 'weg', id: note.id })
-      melde({ typ: 'wette', woche: '2026-08-31', text: null })
+      melde({
+        typ: 'wette',
+        art: 'wert',
+        stand: {
+          woche: '2026-08-31',
+          text: null,
+          version: '2',
+          updatedBy: '22222222-2222-4222-8222-222222222222',
+          updatedAt: '2026-09-06T13:00:00.000Z',
+        },
+      })
     })
     expect(result.current.zustand.einheiten).toEqual({})
     expect(result.current.zustand.aufenthalte).toEqual([])
@@ -438,6 +462,55 @@ describe('useTracker Schreibbereitschaft', () => {
 
     act(() => melde({ typ: 'fach', art: 'weg', id: fach.id }))
     expect(result.current.notenstand.faecher).toEqual([])
+  })
+
+  it('uebernimmt nur neuere Wetten-Versionen und resynct bei physischem DELETE stark', async () => {
+    const woche = '2026-09-07'
+    const ersterStand: Anfangszustand = {
+      ...ANFANG,
+      wetten: { [woche]: 'version zehn' },
+      wettenMeta: {
+        [woche]: {
+          version: '90071992547409930', updatedBy: 'legacy',
+          updatedAt: '2026-09-07T10:00:00.000Z',
+        },
+      },
+    }
+    const snapshot = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ersterStand)
+      .mockImplementationOnce(() => snapshot.promise)
+    let melde!: (e: BackendEreignis) => void
+    const backend = backendMit(laden, {
+      abonniere: vi.fn((cb) => { melde = cb; return () => {} }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    const event = (version: string, text: string): BackendEreignis => ({
+      typ: 'wette', art: 'wert', stand: {
+        woche, text, version, updatedBy: '22222222-2222-4222-8222-222222222222',
+        updatedAt: '2026-09-07T11:00:00.000Z',
+      },
+    })
+    act(() => {
+      melde(event('90071992547409932', 'version zwoelf'))
+      melde(event('90071992547409931', 'stale elf'))
+    })
+    expect(result.current.wetten[woche]).toBe('version zwoelf')
+
+    act(() => melde({ typ: 'wette', art: 'invalidierung', woche }))
+    await waitFor(() => expect(laden).toHaveBeenCalledTimes(2))
+    act(() => snapshot.resolve({
+      ...ANFANG,
+      wettenMeta: {
+        [woche]: {
+          version: '90071992547409933', updatedBy: '22222222-2222-4222-8222-222222222222',
+          updatedAt: '2026-09-07T12:00:00.000Z',
+        },
+      },
+    }))
+    await waitFor(() => expect(result.current.wetten).toEqual({}))
   })
 })
 
@@ -677,7 +750,7 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
   })
 
   it('bewahrt eine fremde Realtime-Wette bis zum starken Abgleich', async () => {
-    const schreiben = offen<void>()
+    const schreiben = offen<Awaited<ReturnType<Backend['schreibeWette']>>>()
     const zweiterStand = offen<Anfangszustand>()
     const laden = vi.fn<Backend['laden']>()
       .mockResolvedValueOnce(ANFANG)
@@ -695,7 +768,17 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
 
     act(() => {
       result.current.setzeWette('2026-09-07', 'eigene wette')
-      melde({ typ: 'wette', woche: '2026-08-31', text: 'fremde wette' })
+      melde({
+        typ: 'wette',
+        art: 'wert',
+        stand: {
+          woche: '2026-08-31',
+          text: 'fremde wette',
+          version: '1',
+          updatedBy: '22222222-2222-4222-8222-222222222222',
+          updatedAt: '2026-09-06T13:00:00.000Z',
+        },
+      })
     })
     await act(async () => {
       schreiben.reject(new UnbestaetigteMutation('wette nicht bestaetigt'))
@@ -711,6 +794,13 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
     act(() => zweiterStand.resolve({
       ...ANFANG,
       wetten: { '2026-08-31': 'fremde wette' },
+      wettenMeta: {
+        '2026-08-31': {
+          version: '1',
+          updatedBy: '22222222-2222-4222-8222-222222222222',
+          updatedAt: '2026-09-06T13:00:00.000Z',
+        },
+      },
     }))
     await waitFor(() => expect(result.current.wetten).toEqual({
       '2026-08-31': 'fremde wette',
@@ -752,16 +842,24 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
 
   it('ordnet schnelle lokale Gewichte und Wetten und behaelt jeweils den neuesten Stand', async () => {
     const erstesGewicht = offen<void>()
-    const ersteWette = offen<void>()
+    const ersteWette = offen<Awaited<ReturnType<Backend['schreibeWette']>>>()
     const schreibeGewicht = vi.fn<Backend['schreibeGewicht']>()
       .mockImplementationOnce(() => erstesGewicht.promise)
       .mockResolvedValueOnce(undefined)
     const schreibeWette = vi.fn<Backend['schreibeWette']>()
       .mockImplementationOnce(() => ersteWette.promise)
-      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        woche: '2026-09-07', text: 'letztes neues', version: '2',
+        updatedBy: 'erijon', updatedAt: '2026-09-07T12:00:00.000Z',
+      })
     const backend = backendMit(async () => ({
       ...ANFANG,
       wetten: { '2026-09-07': 'alt' },
+      wettenMeta: {
+        '2026-09-07': {
+          version: '1', updatedBy: 'legacy', updatedAt: '1970-01-01T00:00:00.000Z',
+        },
+      },
     }), { art: 'lokal', schreibeGewicht, schreibeWette })
     const { result } = renderHook(() => useTracker(backend))
     await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
@@ -788,10 +886,45 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
     })
 
     expect(schreibeGewicht).toHaveBeenNthCalledWith(2, '2026-09-06', 81.3)
-    expect(schreibeWette).toHaveBeenNthCalledWith(2, '2026-09-07', 'letztes neues')
+    expect(schreibeWette).toHaveBeenNthCalledWith(2, '2026-09-07', 'letztes neues', '1')
     expect(result.current.zustand.gewichte['erijon|2026-09-06']).toBe(81.3)
     expect(result.current.wetten['2026-09-07']).toBe('letztes neues')
     expect(result.current.fehler).toBeNull()
+  })
+
+  it('verkettet schnelles Wetten-Delete und Undo ueber die bestaetigte Version', async () => {
+    const erste = offen<Awaited<ReturnType<Backend['schreibeWette']>>>()
+    const schreibeWette = vi.fn<Backend['schreibeWette']>()
+      .mockImplementationOnce(() => erste.promise)
+      .mockResolvedValueOnce({
+        woche: '2026-09-07', text: 'alt', version: '7', updatedBy: 'erijon',
+        updatedAt: '2026-09-07T12:00:01.000Z',
+      })
+    const backend = backendMit(async () => ({
+      ...ANFANG,
+      wetten: { '2026-09-07': 'alt' },
+      wettenMeta: {
+        '2026-09-07': {
+          version: '5', updatedBy: 'legacy', updatedAt: '1970-01-01T00:00:00.000Z',
+        },
+      },
+    }), { schreibeWette })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    act(() => {
+      result.current.setzeWette('2026-09-07', '')
+      result.current.setzeWette('2026-09-07', 'alt')
+    })
+    await waitFor(() => expect(schreibeWette).toHaveBeenCalledTimes(1))
+    expect(schreibeWette).toHaveBeenNthCalledWith(1, '2026-09-07', '', '5')
+    act(() => erste.resolve({
+      woche: '2026-09-07', text: null, version: '6', updatedBy: 'erijon',
+      updatedAt: '2026-09-07T12:00:00.000Z',
+    }))
+    await waitFor(() => expect(schreibeWette).toHaveBeenCalledTimes(2))
+    expect(schreibeWette).toHaveBeenNthCalledWith(2, '2026-09-07', 'alt', '6')
+    await waitFor(() => expect(result.current.wetten['2026-09-07']).toBe('alt'))
   })
 
   it('faellt nach zwei lokalen Wertfehlern auf den bestaetigten Speicherstand zurueck', async () => {
@@ -864,6 +997,11 @@ describe('useTracker kanonischer Abgleich nach Mutationsfehlern', () => {
       ...ANFANG,
       gewichte: { 'erijon|2026-09-06': 80 },
       wetten: { '2026-09-07': 'alt' },
+      wettenMeta: {
+        '2026-09-07': {
+          version: '1', updatedBy: 'legacy', updatedAt: '1970-01-01T00:00:00.000Z',
+        },
+      },
     }
     const laden = vi.fn(async () => kanonisch)
     const schreibeGewicht = vi.fn<Backend['schreibeGewicht']>()
@@ -1140,7 +1278,14 @@ describe('useTracker Realtime-Lifecycle', () => {
         gewichte: { 'erijon|2026-09-05': 81.2 },
       })
     const schreibeGewicht = vi.fn(() => gewichtAntwort.promise)
-    const schreibeWette = vi.fn(async () => {})
+    const schreibeWette = vi.fn<Backend['schreibeWette']>(async (
+      woche,
+      text,
+      erwarteteVersion
+    ) => ({
+      woche, text: text || null, version: (BigInt(erwarteteVersion) + 1n).toString(),
+      updatedBy: 'erijon', updatedAt: '2026-09-07T12:00:00.000Z',
+    }))
     const backend = backendMit(laden, {
       schreibeGewicht,
       schreibeWette,

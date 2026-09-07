@@ -15,6 +15,7 @@ import {
   realtimeSubscribeEreignis,
   realtimeSystemEreignis,
   realtimeTextId,
+  wetteRealtimeEreignis,
   loescheUndBestaetigeNote,
   loescheUndBestaetigeEinheit,
   loescheUndBestaetigeEinheiten,
@@ -615,36 +616,84 @@ describe('bestaetigte Legacy-, Gewichts- und Wettmutationen', () => {
     )).rejects.toBeInstanceOf(UnbestaetigteMutation)
   })
 
-  it('akzeptiert einen Wetteinsatz nur mit Identitaet, Text, Autor und Zeitpunkt', async () => {
+  it('sendet Set-CAS exakt und akzeptiert nur die vollstaendige neuere RPC-Zeile', async () => {
     const payload = {
       woche: '2026-08-31',
       text: 'verlierer kocht',
-      updated_by: ERIJON_ID,
-      updated_at: '2026-09-06T18:00:00.000Z',
+      erwarteteVersion: '41',
+      updatedBy: ERIJON_ID,
     }
+    const rpc = vi.fn(async (): Promise<{ data: unknown; error: unknown }> => ({
+      data: {
+        woche: payload.woche,
+        text: payload.text,
+        updated_by: ERIJON_ID,
+        updated_at: '2026-09-06T18:00:00.000Z',
+        version: '9007199254740993',
+      },
+      error: null,
+    }))
+    const db = { rpc }
     await expect(schreibeUndBestaetigeWette(
-      direktBestaetigteUpsertDb({ ...payload, updated_at: '2026-09-06T20:00:00+02:00' }) as unknown as Parameters<typeof schreibeUndBestaetigeWette>[0],
+      db as unknown as Parameters<typeof schreibeUndBestaetigeWette>[0],
       payload
-    )).resolves.toBeUndefined()
+    )).resolves.toMatchObject({ version: '9007199254740993', updatedBy: ERIJON_ID })
+    expect(rpc).toHaveBeenCalledWith('setze_duell_wette', {
+      p_woche: payload.woche,
+      p_text: payload.text,
+      p_erwartete_version: payload.erwarteteVersion,
+    })
+
+    rpc.mockResolvedValueOnce({
+      data: {
+        woche: payload.woche,
+        text: payload.text,
+        updated_by: KORAY_ID,
+        updated_at: '2026-09-06T18:00:00.000Z',
+        version: '42',
+      },
+      error: null,
+    })
     await expect(schreibeUndBestaetigeWette(
-      direktBestaetigteUpsertDb({ ...payload, updated_by: KORAY_ID }) as unknown as Parameters<typeof schreibeUndBestaetigeWette>[0],
+      db as unknown as Parameters<typeof schreibeUndBestaetigeWette>[0],
       payload
     )).rejects.toBeInstanceOf(UnbestaetigteMutation)
   })
 
-  it('bestaetigt das Entfernen eines Wetteinsatzes ueber Woche und Endzustand', async () => {
-    const loeschen = {
-      match: vi.fn(() => loeschen),
-      select: vi.fn(() => loeschen),
-      maybeSingle: vi.fn(async () => ({ data: { woche: '2026-08-31' }, error: null })),
-    }
-    const db = { from: vi.fn(() => ({ delete: vi.fn(() => loeschen) })) }
+  it('sendet Delete als null-Tombstone und lehnt unexakte/alte Resultate ab', async () => {
+    const rpc = vi.fn(async (): Promise<{ data: unknown; error: unknown }> => ({
+      data: {
+        woche: '2026-08-31',
+        text: null,
+        updated_by: ERIJON_ID,
+        updated_at: '2026-09-06T18:00:00.000Z',
+        version: '43',
+      },
+      error: null,
+    }))
+    const db = { rpc }
 
     await expect(loescheUndBestaetigeWette(
       db as unknown as Parameters<typeof loescheUndBestaetigeWette>[0],
-      '2026-08-31'
-    )).resolves.toBeUndefined()
-    expect(loeschen.match).toHaveBeenCalledWith({ woche: '2026-08-31' })
+      '2026-08-31',
+      '42',
+      ERIJON_ID
+    )).resolves.toMatchObject({ text: null, version: '43' })
+    expect(rpc).toHaveBeenCalledWith('setze_duell_wette', {
+      p_woche: '2026-08-31', p_text: null, p_erwartete_version: '42',
+    })
+
+    rpc.mockResolvedValueOnce({
+      data: {
+        woche: '2026-08-31', text: null, updated_by: ERIJON_ID,
+        updated_at: '2026-09-06T18:00:00.000Z', version: '42', extra: true,
+      },
+      error: null,
+    })
+    await expect(loescheUndBestaetigeWette(
+      db as unknown as Parameters<typeof loescheUndBestaetigeWette>[0],
+      '2026-08-31', '42', ERIJON_ID
+    )).rejects.toBeInstanceOf(UnbestaetigteMutation)
   })
 })
 
@@ -672,6 +721,27 @@ describe('supabase migrationskompatibilitaet', () => {
       'bigint'
     )).toBe('9007199254740993')
     expect(realtimeLoeschId({ eventType: 'UPDATE', old: { id: 'uuid-1' } })).toBeNull()
+  })
+
+  it('liefert Wetten nur versioniert und behandelt DELETE oder Altformat als Invalidation', () => {
+    const zeile = {
+      woche: '2026-08-31', text: 'einsatz', updated_by: ERIJON_ID,
+      updated_at: '2026-09-06T18:00:00.000Z', version_text: '9007199254740993',
+    }
+    expect(wetteRealtimeEreignis({ eventType: 'UPDATE', new: zeile })).toEqual({
+      typ: 'wette',
+      art: 'wert',
+      stand: {
+        woche: zeile.woche, text: zeile.text, updatedBy: ERIJON_ID,
+        updatedAt: zeile.updated_at, version: zeile.version_text,
+      },
+    })
+    expect(wetteRealtimeEreignis({
+      eventType: 'DELETE', old: { woche: zeile.woche, version_text: zeile.version_text },
+    })).toEqual({ typ: 'wette', art: 'invalidierung', woche: zeile.woche })
+    expect(wetteRealtimeEreignis({
+      eventType: 'UPDATE', new: { woche: zeile.woche, text: 'alt ohne version' },
+    })).toEqual({ typ: 'wette', art: 'invalidierung' })
   })
 })
 

@@ -19,7 +19,28 @@ export type EinheitEreignis =
   | { typ: 'einheit'; art: 'neu' | 'wert'; einheit: Einheit }
   | { typ: 'einheit'; art: 'weg'; id: string }
 
-export type WetteEreignis = { typ: 'wette'; woche: string; text: string | null }
+export const KEINE_WETTE_VERSION = '0'
+
+export type WetteMeta = {
+  /** global monoton von der kanonischen Schreibstelle vergeben */
+  version: string
+  /** Auth-UUID bei Supabase, lokale Person im Prototyp, `legacy` bei Altbestand */
+  updatedBy: string
+  /** server- bzw. speicherseitig erzeugter ISO-Zeitpunkt */
+  updatedAt: string
+}
+
+export type WetteStand = WetteMeta & {
+  woche: string
+  /** null ist ein versionierter Tombstone und verhindert ABA nach einem Delete */
+  text: string | null
+}
+
+export type WettenMeta = Record<string, WetteMeta>
+
+export type WetteEreignis =
+  | { typ: 'wette'; art: 'wert'; stand: WetteStand }
+  | { typ: 'wette'; art: 'invalidierung'; woche?: string }
 export type AbrechnungEreignis = { typ: 'abrechnung'; abrechnung: Abrechnung }
 export type FachEreignis =
   | { typ: 'fach'; art: 'neu' | 'wert'; fach: Fach }
@@ -81,6 +102,33 @@ export type VerbindungEreignis =
 export type BackendEreignis = BackendDatenEreignis | VerbindungEreignis
 export type Wetten = Record<string, string>
 
+const WETTE_VERSION_MUSTER = /^(0|[1-9][0-9]*)$/
+const DATUM_MUSTER = /^\d{4}-\d{2}-\d{2}$/
+
+/** Bigint bleibt im Browser Text und wird nur fuer den Vergleich zu BigInt. */
+export function istWetteVersion(wert: unknown, nullErlaubt = false): wert is string {
+  if (typeof wert !== 'string' || !WETTE_VERSION_MUSTER.test(wert)) return false
+  return nullErlaubt || wert !== KEINE_WETTE_VERSION
+}
+
+export function vergleicheWetteVersion(a: string, b: string): number {
+  if (!istWetteVersion(a, true) || !istWetteVersion(b, true)) {
+    throw new Error('ungueltige wette-version')
+  }
+  const links = BigInt(a)
+  const rechts = BigInt(b)
+  return links < rechts ? -1 : links > rechts ? 1 : 0
+}
+
+/** Strikte UTC-Pruefung vermeidet normalisierte Fantasiedaten wie 2026-02-31. */
+export function istWochenmontag(woche: unknown): woche is string {
+  if (typeof woche !== 'string' || !DATUM_MUSTER.test(woche)) return false
+  const datum = new Date(`${woche}T00:00:00.000Z`)
+  return !Number.isNaN(datum.getTime())
+    && datum.toISOString().slice(0, 10) === woche
+    && datum.getUTCDay() === 1
+}
+
 export type Anfangszustand = {
   me: UserId
   einheiten: Einheiten
@@ -91,6 +139,8 @@ export type Anfangszustand = {
   /** gemessene trainingsbesuche beider personen. schreibt nur die datenbank */
   aufenthalte: Aufenthalt[]
   wetten: Wetten
+  /** kanonische CAS-Basis, einschliesslich geloeschter Wochen-Tombstones */
+  wettenMeta: WettenMeta
   /** archivierte sonntagsabrechnungen, älteste zuerst */
   abrechnungen: Abrechnung[]
   noten: Notenstand
@@ -124,8 +174,11 @@ export interface Backend {
   loescheTag(einheiten: Einheit[]): Promise<void>
   /** kilogramm für einen tag. `kg <= 0` löscht den eintrag */
   schreibeGewicht(tag: string, kg: number): Promise<void>
-  /** gemeinsamer Einsatz, leer entfernt ihn; Schluessel ist der lokale Montag */
-  schreibeWette(woche: string, text: string): Promise<void>
+  /**
+   * Gemeinsamer Einsatz; leer erzeugt einen Tombstone. Die Mutation darf nur
+   * auf exakt der Version aufbauen, die der Nutzer gesehen hat.
+   */
+  schreibeWette(woche: string, text: string, erwarteteVersion: string): Promise<WetteStand>
   /** archiviert die sonntagsabrechnung und gibt die kanonisch gespeicherte Zeile zurück */
   schreibeAbrechnung(a: Abrechnung): Promise<Abrechnung>
   /** wechselt das vierte Prüfungsfach atomar und bestätigt die Ziel-ID */

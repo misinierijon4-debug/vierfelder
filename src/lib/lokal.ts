@@ -5,7 +5,16 @@ import type {
   EinheitEreignis,
   FachEreignis,
   NoteEreignis,
+  WetteMeta,
+  WetteStand,
   Wetten,
+  WettenMeta,
+} from './backend'
+import {
+  KEINE_WETTE_VERSION,
+  istWochenmontag,
+  istWetteVersion,
+  vergleicheWetteVersion,
 } from './backend'
 import { addDays, toKey, weekDays } from './dates'
 import { gewichtKey, neueEinheitId, tickKey, wertKey } from './types'
@@ -42,6 +51,8 @@ const GEWICHT_KEY = 'vierfelder.gewicht.v1'
 /** eine zeile pro durchführung, flach über beide personen */
 const EINHEITEN_KEY = 'vierfelder.einheiten.v1'
 const WETTEN_KEY = 'vierfelder.wetten.v1'
+/** CAS/Audit getrennt halten: der bestehende Wetten-Key bleibt unveraendert. */
+const WETTEN_META_KEY = 'vierfelder.wetten.meta.v1'
 const ABRECHNUNG_KEY = 'vierfelder.abrechnung.v1'
 const FAECHER_KEY = 'vierfelder.faecher.v2'
 const NOTEN_KEY = 'vierfelder.noten.v2'
@@ -84,6 +95,105 @@ function mitLokalerSperre<T>(key: string, aktion: () => T | Promise<T>): Promise
     { mode: 'exclusive' },
     async () => await aktion()
   ).then((wert) => wert)
+}
+
+type LokalerWettenMetaSpeicher = {
+  revision: string
+  wochen: WettenMeta
+}
+
+const LEGACY_WETTE_ZEIT = '1970-01-01T00:00:00.000Z'
+
+function istLokaleWetteMeta(wert: unknown): wert is WetteMeta {
+  if (!wert || typeof wert !== 'object' || Array.isArray(wert)) return false
+  const meta = wert as Record<string, unknown>
+  return istWetteVersion(meta.version)
+    && typeof meta.updatedBy === 'string'
+    && meta.updatedBy.length > 0
+    && typeof meta.updatedAt === 'string'
+    && Number.isFinite(Date.parse(meta.updatedAt))
+}
+
+function istLokalerWetteStand(wert: unknown): wert is WetteStand {
+  if (!wert || typeof wert !== 'object' || Array.isArray(wert)) return false
+  const stand = wert as Record<string, unknown>
+  return istWochenmontag(stand.woche)
+    && (stand.text === null || (
+      typeof stand.text === 'string'
+      && stand.text === stand.text.trim()
+      && stand.text.length >= 1
+      && stand.text.length <= 160
+    ))
+    && istLokaleWetteMeta(stand)
+}
+
+/**
+ * Ein alter `vierfelder.wetten.v1`-Bestand hat noch keine CAS-Daten. Unter
+ * derselben Web-Lock-Sperre bekommt er in sortierter Wochenreihenfolge stabile
+ * Versionen. Tombstones aus einem vorhandenen Meta-Stand bleiben erhalten.
+ */
+function ladeLokalenWettenStand(): {
+  wetten: Wetten
+  meta: LokalerWettenMetaSpeicher
+  metaGeaendert: boolean
+} {
+  const wetten = lade<Wetten>(WETTEN_KEY, {})
+  const roh = lade<Partial<LokalerWettenMetaSpeicher>>(WETTEN_META_KEY, {})
+  const revisionGueltig = istWetteVersion(roh.revision, true)
+  const roheRevision = revisionGueltig ? roh.revision! : KEINE_WETTE_VERSION
+  let revision = BigInt(roheRevision)
+  const wochen: WettenMeta = {}
+  const versionen = new Set<string>()
+
+  if (roh.wochen && typeof roh.wochen === 'object' && !Array.isArray(roh.wochen)) {
+    for (const woche of Object.keys(roh.wochen).sort()) {
+      const eintrag = roh.wochen[woche]
+      if (!istLokaleWetteMeta(eintrag) || versionen.has(eintrag.version)) {
+        throw new Error('lokale wetten-metadaten sind widerspruechlich')
+      }
+      wochen[woche] = eintrag
+      versionen.add(eintrag.version)
+      const version = BigInt(eintrag.version)
+      if (version > revision) revision = version
+    }
+  }
+
+  for (const woche of Object.keys(wetten).sort()) {
+    if (wochen[woche]) continue
+    revision += 1n
+    const version = revision.toString()
+    wochen[woche] = {
+      version,
+      updatedBy: 'legacy',
+      updatedAt: LEGACY_WETTE_ZEIT,
+    }
+    versionen.add(version)
+  }
+
+  const meta = { revision: revision.toString(), wochen }
+  return {
+    wetten,
+    meta,
+    metaGeaendert: !revisionGueltig || JSON.stringify(roh) !== JSON.stringify(meta),
+  }
+}
+
+function speichereLokalenWettenStand(wetten: Wetten, meta: LokalerWettenMetaSpeicher): void {
+  const vorher = localStorage.getItem(WETTEN_KEY)
+  localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
+  try {
+    localStorage.setItem(WETTEN_META_KEY, JSON.stringify(meta))
+  } catch (error) {
+    // Bestmoegliche Kompensation: nie einen neuen Wert mit alter CAS-Version
+    // als bestaetigt zurueckgeben.
+    try {
+      if (vorher === null) localStorage.removeItem(WETTEN_KEY)
+      else localStorage.setItem(WETTEN_KEY, vorher)
+    } catch {
+      // Der kanonische Reload meldet den Speicherfehler; Originalursache bleibt.
+    }
+    throw error
+  }
 }
 
 function alleWerte(): AlleWerte {
@@ -450,6 +560,13 @@ export function lokalesBackend(): Backend {
 
     async laden(): Promise<Anfangszustand> {
       await mitLokalerSperre(EINHEITEN_KEY, uebernimmAltbestand)
+      const wetteStand = await mitLokalerSperre(WETTEN_KEY, () => {
+        const stand = ladeLokalenWettenStand()
+        if (stand.metaGeaendert) {
+          localStorage.setItem(WETTEN_META_KEY, JSON.stringify(stand.meta))
+        }
+        return stand
+      })
 
       const gespeicherterSchlaf = lade<Schlafnacht[]>(SCHLAF_KEY, [])
       const schlaf = gespeicherterSchlaf.length > 0 ? gespeicherterSchlaf : erzeugeBeispielSchlaf()
@@ -471,7 +588,8 @@ export function lokalesBackend(): Backend {
         gewichtQuellen: {},
         schlaf,
         aufenthalte: erzeugeBeispielAufenthalte(),
-        wetten: lade<Wetten>(WETTEN_KEY, {}),
+        wetten: wetteStand.wetten,
+        wettenMeta: wetteStand.meta.wochen,
         abrechnungen: alleAbrechnungen(),
         noten: { faecher: alleFaecher(), noten: alleNoten() },
         einheitVonVerfuegbar: true,
@@ -557,29 +675,74 @@ export function lokalesBackend(): Backend {
       })
     },
 
-    async schreibeWette(woche: string, text: string) {
+    async schreibeWette(woche: string, text: string, erwarteteVersion: string) {
+      if (!istWochenmontag(woche)) throw new Error('wette braucht einen wochenmontag')
+      if (!istWetteVersion(erwarteteVersion, true)) {
+        throw new Error('wette braucht eine gueltige erwartete version')
+      }
+      if (
+        text !== ''
+        && (text !== text.trim() || text.length < 1 || text.length > 160)
+      ) {
+        throw new Error('wette braucht einen getrimmten text mit hoechstens 160 zeichen')
+      }
       return mitLokalerSperre(WETTEN_KEY, () => {
-        const wetten = lade<Wetten>(WETTEN_KEY, {})
-        if (text) wetten[woche] = text
-        else delete wetten[woche]
-        localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
+        if (alleAbrechnungen().some((abrechnung) => abrechnung.woche === woche)) {
+          throw Object.assign(new Error('eine archivierte woche darf nicht mehr geaendert werden'), {
+            code: '23514',
+          })
+        }
+        const aktuell = ladeLokalenWettenStand()
+        const aktuelleVersion = aktuell.meta.wochen[woche]?.version ?? KEINE_WETTE_VERSION
+        if (vergleicheWetteVersion(aktuelleVersion, erwarteteVersion) !== 0) {
+          throw Object.assign(new Error('duell_wette wurde parallel geaendert'), { code: '40001' })
+        }
+
+        const version = (BigInt(aktuell.meta.revision) + 1n).toString()
+        const updatedAt = new Date().toISOString()
+        const neuerStand: WetteStand = {
+          woche,
+          text: text || null,
+          version,
+          updatedBy: me,
+          updatedAt,
+        }
+        const wetten = { ...aktuell.wetten }
+        if (neuerStand.text === null) delete wetten[woche]
+        else wetten[woche] = neuerStand.text
+        const meta: LokalerWettenMetaSpeicher = {
+          revision: version,
+          wochen: {
+            ...aktuell.meta.wochen,
+            [woche]: { version, updatedBy: me, updatedAt },
+          },
+        }
+        speichereLokalenWettenStand(wetten, meta)
         holeKanal()?.postMessage({
           von: absender,
           typ: 'wette',
-          woche,
-          text: text || null,
+          art: 'wert',
+          stand: neuerStand,
         } satisfies Nachricht)
+        return neuerStand
       })
     },
 
     async schreibeAbrechnung(a: Abrechnung) {
-      return mitLokalerSperre(ABRECHNUNG_KEY, () => {
+      // Derselbe Lock wie bei der Wette schliesst die Archiv/Wette-Race-Luecke.
+      return mitLokalerSperre(WETTEN_KEY, () => {
         const alle = alleAbrechnungen()
         const vorhanden = alle.find((x) => x.woche === a.woche)
         if (vorhanden) return vorhanden
-        localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, a]))
-        holeKanal()?.postMessage({ von: absender, typ: 'abrechnung', abrechnung: a } satisfies Nachricht)
-        return a
+        const wetten = ladeLokalenWettenStand().wetten
+        const kanonisch = { ...a, wette: wetten[a.woche] ?? null }
+        localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify([...alle, kanonisch]))
+        holeKanal()?.postMessage({
+          von: absender,
+          typ: 'abrechnung',
+          abrechnung: kanonisch,
+        } satisfies Nachricht)
+        return kanonisch
       })
     },
 
@@ -653,6 +816,26 @@ export function lokalesBackend(): Backend {
       const onMessage = (e: MessageEvent<Nachricht>) => {
         const n = e.data
         if (!n || n.von === absender) return
+        const roheWette = n as unknown as {
+          typ?: unknown
+          art?: unknown
+          stand?: unknown
+          woche?: unknown
+        }
+        if (roheWette.typ === 'wette') {
+          if (roheWette.art === 'wert' && istLokalerWetteStand(roheWette.stand)) {
+            cb({ typ: 'wette', art: 'wert', stand: roheWette.stand })
+          } else {
+            // Alte Tabs senden `{typ,woche,text}` ohne Version. Das ist nur ein
+            // Invalidation-Signal; der aktuelle Wert kommt aus dem CAS-Snapshot.
+            cb({
+              typ: 'wette',
+              art: 'invalidierung',
+              ...(typeof roheWette.woche === 'string' ? { woche: roheWette.woche } : {}),
+            })
+          }
+          return
+        }
         // Ein bereits offener Tab mit der vorherigen Fassung sendet bei
         // Deletes noch die ganze Zeile. Bis alle Tabs aktualisiert sind,
         // normalisieren wir sie auf denselben stabilen ID-Vertrag.

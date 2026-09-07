@@ -5,7 +5,15 @@ import type {
   Anfangszustand,
   Backend,
   VerbindungEreignis,
+  WetteEreignis,
+  WetteStand,
   Wetten,
+  WettenMeta,
+} from './backend'
+import {
+  istWochenmontag,
+  istWetteVersion,
+  vergleicheWetteVersion,
 } from './backend'
 import { addDays, toKey } from './dates'
 import { gewichtKey, tickKey } from './types'
@@ -341,7 +349,14 @@ type AufenthaltZeile = {
   ankunft: string
   abgang: string | null
 }
-type WetteZeile = { woche: string; text: string }
+type WetteZeile = {
+  woche: string
+  text: string | null
+  updated_by: string
+  updated_at: string
+  /** verlustfreie Projektion der bigint-Spalte `version` */
+  version_text: string
+}
 type AbrechnungZeile = {
   woche: string
   sieger: Abrechnung['sieger']
@@ -378,6 +393,104 @@ export function istUnbestaetigteMutation(error: unknown): error is Unbestaetigte
 
 function mutationNichtBestaetigt(message: string, ursache?: unknown): UnbestaetigteMutation {
   return new UnbestaetigteMutation(message, ursache)
+}
+
+function wetteStandAusZeile(data: unknown): WetteStand {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('wetteinsatz hat keine gueltige zeile')
+  }
+  const zeile = data as Record<string, unknown>
+  const version = zeile.version_text
+  if (!istWochenmontag(zeile.woche)) {
+    throw new Error('wetteinsatz hat keinen gueltigen wochenmontag')
+  }
+  if (
+    zeile.text !== null
+    && (
+      typeof zeile.text !== 'string'
+      || zeile.text !== zeile.text.trim()
+      || zeile.text.length < 1
+      || zeile.text.length > 160
+    )
+  ) {
+    throw new Error('wetteinsatz hat einen ungueltigen text')
+  }
+  if (typeof zeile.updated_by !== 'string' || !UUID_MUSTER.test(zeile.updated_by)) {
+    throw new Error('wetteinsatz hat keinen gueltigen autor')
+  }
+  if (typeof zeile.updated_at !== 'string' || !Number.isFinite(Date.parse(zeile.updated_at))) {
+    throw new Error('wetteinsatz hat keinen gueltigen zeitpunkt')
+  }
+  if (!istWetteVersion(version)) {
+    throw new Error('wetteinsatz hat keine gueltige version')
+  }
+  return {
+    woche: zeile.woche,
+    text: zeile.text,
+    version,
+    updatedBy: zeile.updated_by,
+    updatedAt: zeile.updated_at,
+  }
+}
+
+function bestaetigteWette(
+  data: unknown,
+  erwartet: { woche: string; text: string | null; version: string; updatedBy: string }
+): WetteStand {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw mutationNichtBestaetigt('wetteinsatz wurde nicht bestaetigt')
+  }
+  const zeile = data as Record<string, unknown>
+  const schluessel = Object.keys(zeile).sort()
+  const erwartetSchluessel = ['text', 'updated_at', 'updated_by', 'version', 'woche']
+  if (
+    schluessel.length !== erwartetSchluessel.length
+    || schluessel.some((schluesselname, index) => schluesselname !== erwartetSchluessel[index])
+  ) {
+    throw mutationNichtBestaetigt('wetteinsatz-rpc lieferte keinen exakten vertrag')
+  }
+
+  let stand: WetteStand
+  try {
+    stand = wetteStandAusZeile({ ...zeile, version_text: zeile.version })
+  } catch (error) {
+    throw mutationNichtBestaetigt('wetteinsatz wurde nicht bestaetigt', error)
+  }
+  if (
+    stand.woche !== erwartet.woche
+    || stand.text !== erwartet.text
+    || stand.updatedBy !== erwartet.updatedBy
+    || vergleicheWetteVersion(stand.version, erwartet.version) <= 0
+  ) {
+    throw mutationNichtBestaetigt('wetteinsatz wurde nicht exakt bestaetigt')
+  }
+  return stand
+}
+
+/**
+ * Ein physisches DELETE hat unter RLS keine verlaessliche Version und ist daher
+ * nur ein Signal fuer einen starken Snapshot. INSERT/UPDATE duerfen ausschliesslich
+ * als vollstaendig versionierter Stand in den Store gelangen.
+ */
+export function wetteRealtimeEreignis(payload: {
+  eventType?: string
+  new?: unknown
+  old?: unknown
+}): WetteEreignis | null {
+  if (payload.eventType === 'DELETE') {
+    const alt = payload.old as { woche?: unknown } | null
+    return {
+      typ: 'wette',
+      art: 'invalidierung',
+      ...(typeof alt?.woche === 'string' ? { woche: alt.woche } : {}),
+    }
+  }
+  if (payload.eventType !== 'INSERT' && payload.eventType !== 'UPDATE') return null
+  try {
+    return { typ: 'wette', art: 'wert', stand: wetteStandAusZeile(payload.new) }
+  } catch {
+    return { typ: 'wette', art: 'invalidierung' }
+  }
 }
 
 function gleicherZeitpunkt(ist: unknown, soll: unknown): boolean {
@@ -812,30 +925,62 @@ export async function loescheUndBestaetigeGewicht(
 
 export async function schreibeUndBestaetigeWette(
   db: NonNullable<typeof supabase>,
-  payload: { woche: string; text: string; updated_by: string; updated_at: string }
-): Promise<void> {
-  const bestaetigung = await db
-    .from('duell_wetten')
-    .upsert(payload, { onConflict: 'woche' })
-    .select('woche,text,updated_by,updated_at')
-    .maybeSingle()
-  if (bestaetigung.error) throw bestaetigung.error
-  if (!hatExakteFelder(bestaetigung.data, payload, { zeitpunkte: ['updated_at'] })) {
-    throw mutationNichtBestaetigt('wetteinsatz wurde nicht bestaetigt')
-  }
+  payload: { woche: string; text: string; erwarteteVersion: string; updatedBy: string }
+): Promise<WetteStand> {
+  return aendereUndBestaetigeWette(db, payload)
 }
 
 export async function loescheUndBestaetigeWette(
   db: NonNullable<typeof supabase>,
-  woche: string
-): Promise<void> {
-  return loescheUndBestaetigeNatuerlicheZeile(
-    db,
-    'duell_wetten',
-    { woche },
-    'woche',
-    'wetteinsatz'
-  )
+  woche: string,
+  erwarteteVersion: string,
+  updatedBy: string
+): Promise<WetteStand> {
+  return aendereUndBestaetigeWette(db, {
+    woche,
+    text: null,
+    erwarteteVersion,
+    updatedBy,
+  })
+}
+
+async function aendereUndBestaetigeWette(
+  db: NonNullable<typeof supabase>,
+  payload: {
+    woche: string
+    text: string | null
+    erwarteteVersion: string
+    updatedBy: string
+  }
+): Promise<WetteStand> {
+  if (!istWochenmontag(payload.woche)) throw new Error('wette braucht einen wochenmontag')
+  if (!istWetteVersion(payload.erwarteteVersion, true)) {
+    throw new Error('wette braucht eine gueltige erwartete version')
+  }
+  if (
+    payload.text !== null
+    && (
+      payload.text !== payload.text.trim()
+      || payload.text.length < 1
+      || payload.text.length > 160
+    )
+  ) {
+    throw new Error('wette braucht einen getrimmten text mit hoechstens 160 zeichen')
+  }
+  if (!UUID_MUSTER.test(payload.updatedBy)) throw new Error('wette braucht einen gueltigen autor')
+
+  const { data, error } = await db.rpc('setze_duell_wette', {
+    p_woche: payload.woche,
+    p_text: payload.text,
+    p_erwartete_version: payload.erwarteteVersion,
+  })
+  if (error) throw error
+  return bestaetigteWette(data, {
+    woche: payload.woche,
+    text: payload.text,
+    version: payload.erwarteteVersion,
+    updatedBy: payload.updatedBy,
+  })
 }
 
 export async function wechsleUndBestaetigePruefungsfach(
@@ -1205,7 +1350,7 @@ export function supabaseBackend(
         versucheAlleSeiten<WetteZeile>(
           () => db
             .from('duell_wetten')
-            .select('woche, text', { count: 'exact' })
+            .select('woche, text, updated_by, updated_at, version_text', { count: 'exact' })
             .order('woche', { ascending: true }),
           { name: 'duell_wetten', schluessel: (wette) => wette.woche }
         ),
@@ -1406,7 +1551,16 @@ export function supabaseBackend(
       }
 
       const wetten: Wetten = {}
-      for (const w of (wetteZeilen.data ?? []) as WetteZeile[]) wetten[w.woche] = w.text
+      const wettenMeta: WettenMeta = {}
+      for (const w of (wetteZeilen.data ?? []) as WetteZeile[]) {
+        const stand = wetteStandAusZeile(w)
+        wettenMeta[stand.woche] = {
+          version: stand.version,
+          updatedBy: stand.updatedBy,
+          updatedAt: stand.updatedAt,
+        }
+        if (stand.text !== null) wetten[stand.woche] = stand.text
+      }
 
       const abrechnungen: Abrechnung[] = []
       for (const a of (abrechnungMitQuelle.data ?? []) as AbrechnungZeile[]) {
@@ -1436,6 +1590,7 @@ export function supabaseBackend(
         schlaf,
         aufenthalte,
         wetten,
+        wettenMeta,
         abrechnungen,
         noten: { faecher, noten },
         einheitVonVerfuegbar,
@@ -1546,17 +1701,16 @@ export function supabaseBackend(
       }
     },
 
-    async schreibeWette(woche, text) {
+    async schreibeWette(woche, text, erwarteteVersion) {
       if (!wettenVerfuegbar) throw new Error('duell_wetten fehlt noch')
       if (!text) {
-        await loescheUndBestaetigeWette(db, woche)
-        return
+        return loescheUndBestaetigeWette(db, woche, erwarteteVersion, eigeneId)
       }
-      await schreibeUndBestaetigeWette(db, {
+      return schreibeUndBestaetigeWette(db, {
         woche,
         text,
-        updated_by: eigeneId,
-        updated_at: new Date().toISOString(),
+        erwarteteVersion,
+        updatedBy: eigeneId,
       })
     },
 
@@ -1752,14 +1906,8 @@ export function supabaseBackend(
               'postgres_changes',
               { event: '*', schema: 'public', table: 'duell_wetten' },
               (p) => {
-                const w = (p.eventType === 'DELETE' ? p.old : p.new) as Partial<WetteZeile> | null
-                if (p.eventType === 'DELETE' && w?.woche) {
-                  cb({ typ: 'wette', woche: w.woche, text: null })
-                  return
-                }
-                if (w?.woche && typeof w.text === 'string') {
-                  cb({ typ: 'wette', woche: w.woche, text: w.text })
-                }
+                const ereignis = wetteRealtimeEreignis(p)
+                if (ereignis) cb(ereignis)
               }
             )
           }
@@ -1810,14 +1958,8 @@ export function supabaseBackend(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'duell_wetten' },
             (p) => {
-              const w = (p.eventType === 'DELETE' ? p.old : p.new) as Partial<WetteZeile> | null
-              if (p.eventType === 'DELETE' && w?.woche) {
-                cb({ typ: 'wette', woche: w.woche, text: null })
-                return
-              }
-              if (w?.woche && typeof w.text === 'string') {
-                cb({ typ: 'wette', woche: w.woche, text: w.text })
-              }
+              const ereignis = wetteRealtimeEreignis(p)
+              if (ereignis) cb(ereignis)
             }
           )
         }
