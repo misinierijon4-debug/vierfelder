@@ -18,6 +18,7 @@
     "check:web": "npm test && npm run build:web && npm run check:dist",
     "check:all": "npm run check:web && npm run check:edge",
     "check": "npm run check:all",
+    "benchmark:core": "npm run build:sites && node scripts/benchmark-core-flow.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

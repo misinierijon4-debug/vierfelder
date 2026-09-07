@@ -104,23 +104,47 @@ if (process.env.CHECK_NO_SERVER === '1') {
 
 const assetsOrdner = new URL('assets/', dist)
 const jsDateien = (await readdir(assetsOrdner)).filter((name) => name.endsWith('.js'))
+const initialeJsPfade = new Set(
+  referenzen
+    .map((referenz) => referenz.slice(erwartet.length))
+    .filter((referenz) => referenz.startsWith('assets/') && referenz.endsWith('.js'))
+)
 let jsRoh = 0
 let jsGzip = 0
+let initialRoh = 0
+let initialGzip = 0
 for (const name of jsDateien) {
   const bytes = await readFile(new URL(name, assetsOrdner))
+  const gzip = gzipSync(bytes, { level: 9 }).byteLength
   jsRoh += bytes.byteLength
-  jsGzip += gzipSync(bytes, { level: 9 }).byteLength
+  jsGzip += gzip
+  if (initialeJsPfade.has(`assets/${name}`)) {
+    initialRoh += bytes.byteLength
+    initialGzip += gzip
+  }
 }
 
-const GZIP_BUDGET = 230 * 1024
-if (jsGzip > GZIP_BUDGET) {
-  throw new Error(`JavaScript-Budget ueberschritten: ${jsGzip} > ${GZIP_BUDGET} Byte gzip`)
+// Ein Split ist nur dann ein Gewinn, wenn der Browser zum Start tatsaechlich
+// weniger laden muss. Deshalb wird der HTML-Einstieg strenger begrenzt als die
+// Summe aller spaeter bedarfsweise geladenen Tabs.
+const INITIAL_GZIP_BUDGET = 225 * 1024
+const GESAMT_GZIP_BUDGET = 230 * 1024
+if (initialGzip > INITIAL_GZIP_BUDGET) {
+  throw new Error(
+    `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
+  )
+}
+if (jsGzip > GESAMT_GZIP_BUDGET) {
+  throw new Error(
+    `Gesamtes JavaScript-Budget ueberschritten: ${jsGzip} > ${GESAMT_GZIP_BUDGET} Byte gzip`
+  )
 }
 
 const gesamt = await groesse(new URL('.', dist))
 console.log(
-  `Web-Artefakt geprueft: ${jsDateien.length} JS-Datei(en), ` +
-    `${jsRoh} Byte roh / ${jsGzip} Byte gzip, ${gesamt} Byte gesamt.`
+  `Web-Artefakt geprueft: initial ${initialRoh} Byte roh / ${initialGzip} Byte gzip; ` +
+    `${jsDateien.length} JS-Datei(en) insgesamt ${jsRoh} Byte roh / ${jsGzip} Byte gzip; ` +
+    `${gesamt} Byte Artefakt.`
 )
 
 async function groesse(url) {
