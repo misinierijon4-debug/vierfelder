@@ -67,6 +67,79 @@ describe('lokale Web-Lock-Voraussetzung', () => {
   })
 })
 
+describe('beschaedigter lokaler Speicherbestand', () => {
+  beforeEach(() => {
+    speicher.clear()
+  })
+
+  it('lehnt malformed JSON sichtbar ab und blockiert danach jede Mutation ohne Writes', async () => {
+    const key = 'vierfelder.einheiten.v1'
+    const original = '[{"id":'
+    speicher.setItem(key, original)
+    const backend = lokalesBackend()
+    const setItem = vi.spyOn(speicher, 'setItem')
+    const removeItem = vi.spyOn(speicher, 'removeItem')
+
+    try {
+      await expect(backend.laden()).rejects.toThrow(
+        'lokaler Speicherbestand vierfelder.einheiten.v1 enthaelt kein gueltiges JSON'
+      )
+      await expect(backend.schreibeGewicht('2026-09-07', 81.2)).rejects.toMatchObject({
+        code: 'LOKALER_SPEICHER_BESCHAEDIGT',
+      })
+      expect(speicher.getItem(key)).toBe(original)
+      expect(setItem).not.toHaveBeenCalled()
+      expect(removeItem).not.toHaveBeenCalled()
+    } finally {
+      setItem.mockRestore()
+      removeItem.mockRestore()
+    }
+  })
+
+  it.each([
+    ['vierfelder.einheiten.v1', '{}'],
+    ['vierfelder.gewicht.v1', '[]'],
+  ])('lehnt die falsche Array/Object-Form in %s ohne Writes ab', async (key, raw) => {
+    speicher.setItem(key, raw)
+    const backend = lokalesBackend()
+    const setItem = vi.spyOn(speicher, 'setItem')
+    const removeItem = vi.spyOn(speicher, 'removeItem')
+
+    try {
+      await expect(backend.laden()).rejects.toThrow('unerwartete oder unsichere Form')
+      expect(speicher.getItem(key)).toBe(raw)
+      expect(setItem).not.toHaveBeenCalled()
+      expect(removeItem).not.toHaveBeenCalled()
+    } finally {
+      setItem.mockRestore()
+      removeItem.mockRestore()
+    }
+  })
+
+  it('reicht einen localStorage-Lesefehler sichtbar weiter und schreibt nichts', async () => {
+    const backend = lokalesBackend()
+    const originalGetItem = speicher.getItem.bind(speicher)
+    const getItem = vi.spyOn(speicher, 'getItem').mockImplementation((key) => {
+      if (key === 'vierfelder.schlaf.v2') throw new Error('browser verweigert lesen')
+      return originalGetItem(key)
+    })
+    const setItem = vi.spyOn(speicher, 'setItem')
+    const removeItem = vi.spyOn(speicher, 'removeItem')
+
+    try {
+      await expect(backend.laden()).rejects.toThrow(
+        'lokaler Speicherbestand vierfelder.schlaf.v2 kann nicht gelesen werden'
+      )
+      expect(setItem).not.toHaveBeenCalled()
+      expect(removeItem).not.toHaveBeenCalled()
+    } finally {
+      getItem.mockRestore()
+      setItem.mockRestore()
+      removeItem.mockRestore()
+    }
+  })
+})
+
 describe('altbestand aus dem alten format', () => {
   beforeEach(() => {
     speicher.clear()

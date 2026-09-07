@@ -67,15 +67,60 @@ type Nachricht =
   | { von: string; typ: 'einheit'; art: 'weg'; id: string; einheit: Einheit }
   | { von: string; typ: 'note'; art: 'weg'; id: string; note: Note }
 
-function lade<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? (parsed as T) : fallback
-  } catch {
-    return fallback
+class LokalerSpeicherfehler extends Error {
+  readonly code = 'LOKALER_SPEICHER_BESCHAEDIGT'
+
+  constructor(key: string, grund: string, ursache?: unknown) {
+    super(`lokaler Speicherbestand ${key} ${grund}`)
+    this.name = 'LokalerSpeicherfehler'
+    if (ursache !== undefined) Object.assign(this, { cause: ursache })
   }
+}
+
+function leseRoh(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch (error) {
+    throw new LokalerSpeicherfehler(key, 'kann nicht gelesen werden.', error)
+  }
+}
+
+function istSichereJsonStruktur(wert: unknown): boolean {
+  if (wert === null || typeof wert === 'string' || typeof wert === 'boolean') return true
+  if (typeof wert === 'number') return Number.isFinite(wert)
+  if (Array.isArray(wert)) return wert.every(istSichereJsonStruktur)
+  if (typeof wert !== 'object') return false
+  const prototyp = Object.getPrototypeOf(wert)
+  if (prototyp !== Object.prototype && prototyp !== null) return false
+  return Object.entries(wert as Record<string, unknown>).every(([key, eintrag]) => (
+    key !== '__proto__'
+    && key !== 'prototype'
+    && key !== 'constructor'
+    && istSichereJsonStruktur(eintrag)
+  ))
+}
+
+function istJsonObjekt(wert: unknown): wert is Record<string, unknown> {
+  return Boolean(wert)
+    && typeof wert === 'object'
+    && !Array.isArray(wert)
+    && istSichereJsonStruktur(wert)
+}
+
+function lade<T>(key: string, fallback: T, istGueltig: (wert: unknown) => wert is T): T {
+  const raw = leseRoh(key)
+  if (raw === null) return fallback
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (error) {
+    throw new LokalerSpeicherfehler(key, 'enthaelt kein gueltiges JSON.', error)
+  }
+  if (!istGueltig(parsed)) {
+    throw new LokalerSpeicherfehler(key, 'hat eine unerwartete oder unsichere Form.')
+  }
+  return parsed
 }
 
 /**
@@ -141,6 +186,170 @@ function istLokalerWetteStand(wert: unknown): wert is WetteStand {
     && istLokaleWetteMeta(stand)
 }
 
+const LOKALES_DATUM_MUSTER = /^\d{4}-\d{2}-\d{2}$/
+
+function istUserId(wert: unknown): wert is UserId {
+  return wert === 'erijon' || wert === 'koray'
+}
+
+function istAreaId(wert: unknown): wert is AreaId {
+  return wert === 'lernen' || wert === 'gym' || wert === 'boxen' || wert === 'lesen'
+}
+
+function istKalendertag(wert: unknown): wert is string {
+  if (typeof wert !== 'string' || !LOKALES_DATUM_MUSTER.test(wert)) return false
+  const datum = new Date(`${wert}T00:00:00.000Z`)
+  return Number.isFinite(datum.getTime()) && datum.toISOString().slice(0, 10) === wert
+}
+
+function istZeitpunktOderNull(wert: unknown): wert is string | null {
+  return wert === null || (typeof wert === 'string' && Number.isFinite(Date.parse(wert)))
+}
+
+function istEndlicheZahl(wert: unknown): wert is number {
+  return typeof wert === 'number' && Number.isFinite(wert)
+}
+
+function istTicks(wert: unknown): wert is Ticks {
+  if (!istJsonObjekt(wert)) return false
+  return Object.entries(wert).every(([key, gesetzt]) => {
+    const teile = key.split('|')
+    return teile.length === 3
+      && istUserId(teile[0])
+      && istAreaId(teile[1])
+      && istKalendertag(teile[2])
+      && gesetzt === true
+  })
+}
+
+function istAlleWerte(wert: unknown): wert is AlleWerte {
+  if (!istJsonObjekt(wert)) return false
+  return Object.entries(wert).every(([user, werte]) => (
+    istUserId(user)
+    && istJsonObjekt(werte)
+    && Object.entries(werte).every(([key, zahl]) => {
+      const teile = key.split('|')
+      return teile.length === 2
+        && istAreaId(teile[0])
+        && istKalendertag(teile[1])
+        && istEndlicheZahl(zahl)
+        && zahl >= 0
+    })
+  ))
+}
+
+function istEinheit(wert: unknown): wert is Einheit {
+  if (!istJsonObjekt(wert)) return false
+  return typeof wert.id === 'string'
+    && wert.id.length > 0
+    && istUserId(wert.user)
+    && istAreaId(wert.area)
+    && istKalendertag(wert.tag)
+    && (wert.wert === null || (istEndlicheZahl(wert.wert) && wert.wert >= 0))
+    && istZeitpunktOderNull(wert.erfasst)
+    && (!Object.hasOwn(wert, 'von') || istZeitpunktOderNull(wert.von))
+}
+
+function istEinheitenListe(wert: unknown): wert is Einheit[] {
+  if (!Array.isArray(wert) || !istSichereJsonStruktur(wert)) return false
+  const ids = new Set<string>()
+  return wert.every((einheit) => {
+    if (!istEinheit(einheit) || ids.has(einheit.id)) return false
+    ids.add(einheit.id)
+    return true
+  })
+}
+
+function istGewichte(wert: unknown): wert is Gewichte {
+  if (!istJsonObjekt(wert)) return false
+  return Object.entries(wert).every(([key, kg]) => {
+    const teile = key.split('|')
+    return teile.length === 2
+      && istUserId(teile[0])
+      && istKalendertag(teile[1])
+      && istEndlicheZahl(kg)
+      && kg > 0
+  })
+}
+
+function istWetten(wert: unknown): wert is Wetten {
+  return istJsonObjekt(wert) && Object.entries(wert).every(
+    ([woche, inhalt]) => istWochenmontag(woche) && istLokalerWetteInhalt(inhalt)
+  )
+}
+
+function istRoherWettenMetaSpeicher(
+  wert: unknown
+): wert is Partial<LokalerWettenMetaSpeicher> {
+  if (!istJsonObjekt(wert) || !istWetteVersion(wert.revision, true) || !istJsonObjekt(wert.wochen)) {
+    return false
+  }
+  return Object.entries(wert.wochen).every(([woche, meta]) => (
+    istWochenmontag(woche)
+    && istLokaleWetteMeta(meta)
+    && (!Object.hasOwn(meta as object, 'inhalt')
+      || istLokalerWetteInhalt((meta as { inhalt?: unknown }).inhalt))
+  ))
+}
+
+function istFach(wert: unknown): wert is Fach {
+  if (!istJsonObjekt(wert)) return false
+  return typeof wert.id === 'string'
+    && wert.id.length > 0
+    && istUserId(wert.user)
+    && typeof wert.name === 'string'
+    && wert.name.length > 0
+    && (wert.kursart === 'lk' || wert.kursart === 'gk')
+    && (wert.pruefungsfach === null
+      || (Number.isInteger(wert.pruefungsfach) && Number(wert.pruefungsfach) > 0))
+    && Number.isInteger(wert.sortierung)
+    && Number(wert.sortierung) >= 0
+}
+
+function istNote(wert: unknown): wert is Note {
+  if (!istJsonObjekt(wert)) return false
+  return typeof wert.id === 'string'
+    && wert.id.length > 0
+    && istUserId(wert.user)
+    && typeof wert.fachId === 'string'
+    && wert.fachId.length > 0
+    && (wert.art === 'klausur' || wert.art === 'epo' || wert.art === 'hue')
+    && istEndlicheZahl(wert.punkte)
+    && wert.punkte >= 0
+    && wert.punkte <= 15
+    && istEndlicheZahl(wert.gewicht)
+    && wert.gewicht > 0
+    && istKalendertag(wert.datum)
+    && typeof wert.titel === 'string'
+}
+
+function istObjektListe<T>(
+  wert: unknown,
+  istEintrag: (eintrag: unknown) => eintrag is T
+): wert is T[] {
+  return Array.isArray(wert) && istSichereJsonStruktur(wert) && wert.every(istEintrag)
+}
+
+function istSchlafnacht(wert: unknown): wert is Schlafnacht {
+  return istJsonObjekt(wert)
+    && istUserId(wert.user)
+    && istKalendertag(wert.nacht)
+    && (!Object.hasOwn(wert, 'phasen') || wert.phasen === null || Array.isArray(wert.phasen))
+}
+
+function istAbrechnung(wert: unknown): wert is Abrechnung {
+  if (!istJsonObjekt(wert)) return false
+  return istWochenmontag(wert.woche)
+    && (wert.sieger === 'erijon' || wert.sieger === 'koray' || wert.sieger === 'unentschieden')
+    && (wert.grund === 'punkte' || wert.grund === 'beleg' || wert.grund === 'unentschieden')
+    && istEndlicheZahl(wert.differenz)
+    && istEndlicheZahl(wert.belegErijon)
+    && istEndlicheZahl(wert.belegKoray)
+    && (wert.wette === null || typeof wert.wette === 'string')
+    && typeof wert.abgeschlossen === 'string'
+    && Number.isFinite(Date.parse(wert.abgeschlossen))
+}
+
 /**
  * Ein alter `vierfelder.wetten.v1`-Bestand hat noch keine CAS-Daten. Unter
  * derselben Web-Lock-Sperre bekommt er in sortierter Wochenreihenfolge stabile
@@ -151,8 +360,12 @@ function ladeLokalenWettenStand(): {
   meta: LokalerWettenMetaSpeicher
   metaGeaendert: boolean
 } {
-  const wetten = lade<Wetten>(WETTEN_KEY, {})
-  const roh = lade<Partial<LokalerWettenMetaSpeicher>>(WETTEN_META_KEY, {})
+  const wetten = lade<Wetten>(WETTEN_KEY, {}, istWetten)
+  const roh = lade<Partial<LokalerWettenMetaSpeicher>>(
+    WETTEN_META_KEY,
+    {},
+    istRoherWettenMetaSpeicher
+  )
   const revisionGueltig = istWetteVersion(roh.revision, true)
   const roheRevision = revisionGueltig ? roh.revision! : KEINE_WETTE_VERSION
   let revision = BigInt(roheRevision)
@@ -207,7 +420,7 @@ function ladeLokalenWettenStand(): {
 }
 
 function speichereLokalenWettenStand(wetten: Wetten, meta: LokalerWettenMetaSpeicher): void {
-  const vorher = localStorage.getItem(WETTEN_KEY)
+  const vorher = leseRoh(WETTEN_KEY)
   localStorage.setItem(WETTEN_KEY, JSON.stringify(wetten))
   try {
     localStorage.setItem(WETTEN_META_KEY, JSON.stringify(meta))
@@ -225,13 +438,16 @@ function speichereLokalenWettenStand(wetten: Wetten, meta: LokalerWettenMetaSpei
 }
 
 function alleWerte(): AlleWerte {
-  const alle = lade<AlleWerte>(WERTE_KEY, { erijon: {}, koray: {} })
+  const alle = lade<AlleWerte>(
+    WERTE_KEY,
+    { erijon: {}, koray: {} },
+    istAlleWerte
+  )
   return { erijon: alle.erijon ?? {}, koray: alle.koray ?? {} }
 }
 
 function alleEinheiten(): Einheit[] {
-  const roh = lade<Einheit[]>(EINHEITEN_KEY, [])
-  return Array.isArray(roh) ? roh : []
+  return lade<Einheit[]>(EINHEITEN_KEY, [], istEinheitenListe)
 }
 
 function sichere(einheiten: Einheit[]) {
@@ -332,22 +548,20 @@ function beispielNoten(): Note[] {
 }
 
 function alleFaecher(): Fach[] {
-  if (localStorage.getItem(FAECHER_KEY) === null) {
+  if (leseRoh(FAECHER_KEY) === null) {
     localStorage.setItem(FAECHER_KEY, JSON.stringify(START_FAECHER))
     return START_FAECHER
   }
-  const roh = lade<Fach[]>(FAECHER_KEY, [])
-  return Array.isArray(roh) ? roh : []
+  return lade<Fach[]>(FAECHER_KEY, [], (wert): wert is Fach[] => istObjektListe(wert, istFach))
 }
 
 function alleNoten(): Note[] {
-  if (localStorage.getItem(NOTEN_KEY) === null) {
+  if (leseRoh(NOTEN_KEY) === null) {
     const start = beispielNoten()
     localStorage.setItem(NOTEN_KEY, JSON.stringify(start))
     return start
   }
-  const roh = lade<Note[]>(NOTEN_KEY, [])
-  return Array.isArray(roh) ? roh : []
+  return lade<Note[]>(NOTEN_KEY, [], (wert): wert is Note[] => istObjektListe(wert, istNote))
 }
 
 /**
@@ -356,9 +570,13 @@ function alleNoten(): Note[] {
  * der zeitpunkt fehlt, weil das alte format keinen gespeichert hat.
  */
 function uebernimmAltbestand() {
-  if (localStorage.getItem(MIGRIERT_KEY)) return
+  const migriert = leseRoh(MIGRIERT_KEY)
+  if (migriert !== null && migriert !== '1') {
+    throw new LokalerSpeicherfehler(MIGRIERT_KEY, 'hat einen unbekannten Migrationsstand.')
+  }
+  if (migriert === '1') return
 
-  const ticks = lade<Ticks>(TICKS_KEY, {})
+  const ticks = lade<Ticks>(TICKS_KEY, {}, istTicks)
   const werte = alleWerte()
   const vorhanden = new Set(alleEinheiten().map((e) => `${e.user}|${e.area}|${e.tag}`))
   const uebernommen = alleEinheiten()
@@ -381,7 +599,10 @@ function uebernimmAltbestand() {
 }
 
 export function lokalesMe(): UserId {
-  return localStorage.getItem(ME_KEY) === 'koray' ? 'koray' : 'erijon'
+  const gespeichert = leseRoh(ME_KEY)
+  if (gespeichert === null || gespeichert === 'erijon') return 'erijon'
+  if (gespeichert === 'koray') return 'koray'
+  throw new LokalerSpeicherfehler(ME_KEY, 'enthaelt keine bekannte Person.')
 }
 
 export function lokalWechseln(u: UserId) {
@@ -584,13 +805,45 @@ function erzeugeBeispielAbrechnungen(): Abrechnung[] {
 }
 
 function alleAbrechnungen(): Abrechnung[] {
-  if (localStorage.getItem(ABRECHNUNG_KEY) === null) {
+  if (leseRoh(ABRECHNUNG_KEY) === null) {
     const beispiele = erzeugeBeispielAbrechnungen()
     localStorage.setItem(ABRECHNUNG_KEY, JSON.stringify(beispiele))
     return beispiele
   }
-  const roh = lade<Abrechnung[]>(ABRECHNUNG_KEY, [])
-  return Array.isArray(roh) ? roh : []
+  return lade<Abrechnung[]>(
+    ABRECHNUNG_KEY,
+    [],
+    (wert): wert is Abrechnung[] => istObjektListe(wert, istAbrechnung)
+  )
+}
+
+/**
+ * Kein Migrations-, Beispiel- oder Meta-Write darf beginnen, bevor jeder von
+ * diesem Backend verwaltete Key wenigstens einmal lesbar und typgerecht war.
+ */
+function pruefeLokalenSpeicherbestand(): void {
+  lokalesMe()
+  const migriert = leseRoh(MIGRIERT_KEY)
+  if (migriert !== null && migriert !== '1') {
+    throw new LokalerSpeicherfehler(MIGRIERT_KEY, 'hat einen unbekannten Migrationsstand.')
+  }
+  lade<Ticks>(TICKS_KEY, {}, istTicks)
+  alleWerte()
+  alleEinheiten()
+  lade<Schlafnacht[]>(
+    SCHLAF_KEY,
+    [],
+    (wert): wert is Schlafnacht[] => istObjektListe(wert, istSchlafnacht)
+  )
+  lade<Gewichte>(GEWICHT_KEY, {}, istGewichte)
+  ladeLokalenWettenStand()
+  lade<Abrechnung[]>(
+    ABRECHNUNG_KEY,
+    [],
+    (wert): wert is Abrechnung[] => istObjektListe(wert, istAbrechnung)
+  )
+  lade<Fach[]>(FAECHER_KEY, [], (wert): wert is Fach[] => istObjektListe(wert, istFach))
+  lade<Note[]>(NOTEN_KEY, [], (wert): wert is Note[] => istObjektListe(wert, istNote))
 }
 
 let kanal: BroadcastChannel | null | undefined
@@ -607,7 +860,28 @@ export function lokalesBackend(): Backend {
   // diesen Vertrag nicht mitten in einer offenen Eingabe ueber localStorage
   // umbiegen; ein bewusster Personenwechsel erzeugt im App-Root ein neues
   // Backend.
-  const me = lokalesMe()
+  let me: UserId = 'erijon'
+  let meGebunden = false
+  let speicherBlockiert: unknown = null
+  try {
+    me = lokalesMe()
+    meGebunden = true
+  } catch (error) {
+    // Der Fehler wird von laden() sichtbar ausgeliefert; die Backend-Fabrik
+    // selbst darf React nicht noch vor seinem Ladefehlerzustand sprengen.
+    speicherBlockiert = error
+  }
+
+  const mitSichererMutation = <T>(
+    key: string,
+    aktion: () => T | Promise<T>
+  ): Promise<T> => {
+    if (speicherBlockiert) return Promise.reject(speicherBlockiert)
+    return mitLokalerSperre(key, aktion).catch((error: unknown) => {
+      if (error instanceof LokalerSpeicherfehler) speicherBlockiert = error
+      throw error
+    })
+  }
 
   const sende = (ereignis: EinheitEreignis) => {
     holeKanal()?.postMessage({ von: absender, ...ereignis } satisfies Nachricht)
@@ -633,46 +907,65 @@ export function lokalesBackend(): Backend {
     art: 'lokal',
 
     async laden(): Promise<Anfangszustand> {
-      await mitLokalerSperre(EINHEITEN_KEY, uebernimmAltbestand)
-      const wetteStand = await mitLokalerSperre(WETTEN_KEY, () => {
-        const stand = ladeLokalenWettenStand()
-        if (stand.metaGeaendert) {
-          localStorage.setItem(WETTEN_META_KEY, JSON.stringify(stand.meta))
+      try {
+        const gelesenerUser = lokalesMe()
+        if (!meGebunden) {
+          me = gelesenerUser
+          meGebunden = true
         }
-        return stand
-      })
+        pruefeLokalenSpeicherbestand()
+        await mitLokalerSperre(EINHEITEN_KEY, uebernimmAltbestand)
+        const wetteStand = await mitLokalerSperre(WETTEN_KEY, () => {
+          const stand = ladeLokalenWettenStand()
+          if (stand.metaGeaendert) {
+            localStorage.setItem(WETTEN_META_KEY, JSON.stringify(stand.meta))
+          }
+          return stand
+        })
 
-      const gespeicherterSchlaf = lade<Schlafnacht[]>(SCHLAF_KEY, [])
-      const schlaf = gespeicherterSchlaf.length > 0 ? gespeicherterSchlaf : erzeugeBeispielSchlaf()
+        const gespeicherterSchlaf = lade<Schlafnacht[]>(
+          SCHLAF_KEY,
+          [],
+          (wert): wert is Schlafnacht[] => istObjektListe(wert, istSchlafnacht)
+        )
+        const schlaf = gespeicherterSchlaf.length > 0
+          ? gespeicherterSchlaf
+          : erzeugeBeispielSchlaf()
 
-      const einheiten: Einheiten = {}
-      for (const e of alleEinheiten()) {
-        const key = tickKey(e.user, e.area, e.tag)
-        const liste = einheiten[key]
-        if (!liste) einheiten[key] = [e]
-        else if (!liste.some((x) => x.id === e.id)) liste.push(e)
-      }
+        const einheiten: Einheiten = {}
+        for (const e of alleEinheiten()) {
+          const key = tickKey(e.user, e.area, e.tag)
+          const liste = einheiten[key]
+          if (!liste) einheiten[key] = [e]
+          else if (!liste.some((x) => x.id === e.id)) liste.push(e)
+        }
 
-      return {
-        me,
-        einheiten,
-        gewichte: lade<Gewichte>(GEWICHT_KEY, {}),
-        // im demomodus gibt es keine waage und keine automation: hier wird
-        // getippt, und genau das steht dann auch dran.
-        gewichtQuellen: {},
-        schlaf,
-        aufenthalte: erzeugeBeispielAufenthalte(),
-        wetten: wetteStand.wetten,
-        wettenMeta: wetteStand.meta.wochen,
-        abrechnungen: alleAbrechnungen(),
-        noten: { faecher: alleFaecher(), noten: alleNoten() },
-        einheitVonVerfuegbar: true,
-        altbestand: false,
+        const anfang: Anfangszustand = {
+          me,
+          einheiten,
+          gewichte: lade<Gewichte>(GEWICHT_KEY, {}, istGewichte),
+          // im demomodus gibt es keine waage und keine automation: hier wird
+          // getippt, und genau das steht dann auch dran.
+          gewichtQuellen: {},
+          schlaf,
+          aufenthalte: erzeugeBeispielAufenthalte(),
+          wetten: wetteStand.wetten,
+          wettenMeta: wetteStand.meta.wochen,
+          abrechnungen: alleAbrechnungen(),
+          noten: { faecher: alleFaecher(), noten: alleNoten() },
+          einheitVonVerfuegbar: true,
+          altbestand: false,
+        }
+        speicherBlockiert = null
+        return anfang
+      } catch (error) {
+        speicherBlockiert = error
+        throw error
       }
     },
 
     async schreibeEinheit(e: Einheit) {
-      return mitLokalerSperre(EINHEITEN_KEY, () => {
+      return mitSichererMutation(EINHEITEN_KEY, () => {
         const alle = alleEinheiten()
         // die id entscheidet: derselbe schreibversuch zweimal legt nichts an
         if (alle.some((x) => x.id === e.id)) return
@@ -686,7 +979,7 @@ export function lokalesBackend(): Backend {
       validiereEinheitenWiederherstellung(einheiten, me)
       if (einheiten.length === 0) return
 
-      return mitLokalerSperre(EINHEITEN_KEY, () => {
+      return mitSichererMutation(EINHEITEN_KEY, () => {
         const alle = alleEinheiten()
         const gesucht = new Set(einheiten.map((einheit) => einheit.id))
         const vorhandene = new Map<string, Einheit>()
@@ -723,7 +1016,7 @@ export function lokalesBackend(): Backend {
     },
 
     async schreibeEinheitWert(e: Einheit, wert: number | null) {
-      return mitLokalerSperre(EINHEITEN_KEY, () => {
+      return mitSichererMutation(EINHEITEN_KEY, () => {
         const alle = alleEinheiten()
         const vorhanden = alle.find((x) => x.id === e.id)
         if (!vorhanden) throw new Error('einheit wurde nicht gefunden')
@@ -737,7 +1030,7 @@ export function lokalesBackend(): Backend {
     },
 
     async schreibeEinheitVon(e: Einheit, von: string | null) {
-      return mitLokalerSperre(EINHEITEN_KEY, () => {
+      return mitSichererMutation(EINHEITEN_KEY, () => {
         const alle = alleEinheiten()
         const vorhanden = alle.find((x) => x.id === e.id)
         if (!vorhanden) throw new Error('einheit wurde nicht gefunden')
@@ -751,7 +1044,7 @@ export function lokalesBackend(): Backend {
     },
 
     async loescheEinheit(e: Einheit) {
-      return mitLokalerSperre(EINHEITEN_KEY, () => {
+      return mitSichererMutation(EINHEITEN_KEY, () => {
         const alle = alleEinheiten()
         const vorhanden = alle.find((x) => x.id === e.id)
         if (!vorhanden) return
@@ -762,7 +1055,7 @@ export function lokalesBackend(): Backend {
 
     async loescheTag(einheiten: Einheit[]) {
       if (einheiten.length === 0) return
-      return mitLokalerSperre(EINHEITEN_KEY, () => {
+      return mitSichererMutation(EINHEITEN_KEY, () => {
         const weg = new Set(einheiten.map((e) => e.id))
         const alle = alleEinheiten()
         const vorhanden = alle.filter((x) => weg.has(x.id))
@@ -772,8 +1065,8 @@ export function lokalesBackend(): Backend {
     },
 
     async schreibeGewicht(tag: string, kg: number) {
-      return mitLokalerSperre(GEWICHT_KEY, () => {
-        const gewichte = lade<Gewichte>(GEWICHT_KEY, {})
+      return mitSichererMutation(GEWICHT_KEY, () => {
+        const gewichte = lade<Gewichte>(GEWICHT_KEY, {}, istGewichte)
         const key = gewichtKey(me, tag)
         if (kg <= 0) delete gewichte[key]
         else gewichte[key] = kg
@@ -800,7 +1093,7 @@ export function lokalesBackend(): Backend {
       ) {
         throw new Error('wette braucht einen getrimmten text mit hoechstens 160 zeichen')
       }
-      return mitLokalerSperre(WETTEN_KEY, () => {
+      return mitSichererMutation(WETTEN_KEY, () => {
         if (alleAbrechnungen().some((abrechnung) => abrechnung.woche === woche)) {
           throw Object.assign(new Error('eine archivierte woche darf nicht mehr geaendert werden'), {
             code: '23514',
@@ -844,7 +1137,7 @@ export function lokalesBackend(): Backend {
 
     async schreibeAbrechnung(a: Abrechnung) {
       // Derselbe Lock wie bei der Wette schliesst die Archiv/Wette-Race-Luecke.
-      return mitLokalerSperre(WETTEN_KEY, () => {
+      return mitSichererMutation(WETTEN_KEY, () => {
         const alle = alleAbrechnungen()
         const vorhanden = alle.find((x) => x.woche === a.woche)
         if (vorhanden) return vorhanden
@@ -861,7 +1154,7 @@ export function lokalesBackend(): Backend {
     },
 
     async setzePruefungsfach(id: string, erwartetesFachId: string) {
-      return mitLokalerSperre(FAECHER_KEY, () => {
+      return mitSichererMutation(FAECHER_KEY, () => {
         const faecher = alleFaecher()
         const ziel = faecher.find((x) => x.id === id)
         const aktuell = faecher.find((x) => x.user === me && x.pruefungsfach === 4)
@@ -887,7 +1180,7 @@ export function lokalesBackend(): Backend {
     },
 
     async schreibeNote(note: Note) {
-      return mitLokalerSperre(NOTEN_KEY, () => {
+      return mitSichererMutation(NOTEN_KEY, () => {
         const alle = alleNoten()
         const vorhanden = alle.find((x) => x.id === note.id)
         if (vorhanden) {
@@ -903,7 +1196,7 @@ export function lokalesBackend(): Backend {
     },
 
     async loescheNote(id: string) {
-      return mitLokalerSperre(NOTEN_KEY, () => {
+      return mitSichererMutation(NOTEN_KEY, () => {
         const alle = alleNoten()
         const note = alle.find((x) => x.id === id)
         if (!note) throw new Error('note wurde nicht bestaetigt geloescht')
@@ -916,7 +1209,11 @@ export function lokalesBackend(): Backend {
     // im prototyp liegt alles im browser, es gibt nichts nachzuladen
     async ladePhasen(user, nacht, signal) {
       if (signal.aborted) throw new DOMException('abgebrochen', 'AbortError')
-      const gespeichert = lade<Schlafnacht[]>(SCHLAF_KEY, [])
+      const gespeichert = lade<Schlafnacht[]>(
+        SCHLAF_KEY,
+        [],
+        (wert): wert is Schlafnacht[] => istObjektListe(wert, istSchlafnacht)
+      )
       const alle = gespeichert.length > 0 ? gespeichert : erzeugeBeispielSchlaf()
       const gefunden = alle.find((n) => n.user === user && n.nacht === nacht)
       if (!gefunden) throw new Error('schlafnacht wurde nicht gefunden')
