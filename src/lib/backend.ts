@@ -161,6 +161,11 @@ export type Anfangszustand = {
  */
 export interface Backend {
   readonly art: 'lokal' | 'supabase'
+  /**
+   * stabile kennung dieser datenquelle. sie trennt den gemerkten offline-stand
+   * zweier konten auf demselben geraet und ueberlebt einen neustart der app.
+   */
+  readonly kennung: string
   laden(): Promise<Anfangszustand>
   /** legt eine durchführung an. die id kommt vom client und macht das wiederholbar */
   schreibeEinheit(e: Einheit): Promise<void>

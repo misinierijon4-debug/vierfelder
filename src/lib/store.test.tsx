@@ -78,6 +78,7 @@ function offen<T>() {
 function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): Backend {
   return {
     art: 'supabase',
+    kennung: 'test:konto',
     laden,
     schreibeEinheit: vi.fn(async () => {}),
     stelleEinheitenWiederHer: vi.fn(async () => {}),
@@ -235,6 +236,84 @@ describe('useTracker Schreibbereitschaft', () => {
     expect(result.current.zustand.einheiten).toEqual({})
     expect(result.current.fehler).toBe('offline: eingaben sind ohne sichere warteschlange gesperrt.')
     online.mockRestore()
+  })
+
+  it('bietet nach einem Ladefehler den zuletzt gelesenen Stand an', async () => {
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce({ ...ANFANG, altbestand: true })
+      .mockRejectedValue(new Error('kein profil fuer dieses konto'))
+    const backend = backendMit(laden)
+
+    // erster start mit verbindung: der stand wird gemerkt
+    const mitNetz = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(mitNetz.result.current.ladezustand).toBe('bereit'))
+    expect(mitNetz.result.current.gemerkterStand).toBeNull()
+    mitNetz.unmount()
+
+    // zweiter start ohne verbindung: leerer zustand, aber ein angebot
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('fehler'))
+    expect(result.current.gemerkterStand).not.toBeNull()
+    expect(result.current.altbestand).toBe(false)
+
+    act(() => result.current.offlineStandZeigen())
+
+    expect(result.current.ladezustand).toBe('bereit')
+    expect(result.current.offlineStand).toBe(result.current.gemerkterStand)
+    expect(result.current.altbestand).toBe(true)
+    expect(result.current.synchronisationszustand).toBe('veraltet')
+  })
+
+  it('sperrt Eingaben im Offlinemodus sichtbar', async () => {
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockRejectedValue(new Error('kein profil fuer dieses konto'))
+    const backend = backendMit(laden)
+    const { result } = renderHook(() => useTracker(backend))
+
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    act(() => result.current.ladenNeu())
+    await waitFor(() => expect(result.current.ladezustand).toBe('fehler'))
+    act(() => result.current.offlineStandZeigen())
+
+    act(() => {
+      result.current.toggle('lernen', '2026-09-04')
+      result.current.setzeGewicht('2026-09-04', 81.2)
+    })
+
+    expect(backend.schreibeEinheit).not.toHaveBeenCalled()
+    expect(backend.schreibeGewicht).not.toHaveBeenCalled()
+    expect(result.current.zustand.einheiten).toEqual({})
+    expect(result.current.fehler).toBe(
+      'offlinemodus: das ist der letzte stand. zum eintragen aktualisieren.'
+    )
+  })
+
+  it('verlaesst den Offlinemodus, sobald die Verbindung zurueck ist', async () => {
+    const dritterVersuch = offen<Anfangszustand>()
+    const laden = vi.fn<Backend['laden']>()
+      .mockResolvedValueOnce(ANFANG)
+      .mockRejectedValueOnce(new Error('kein profil fuer dieses konto'))
+      .mockImplementationOnce(() => dritterVersuch.promise)
+    const backend = backendMit(laden)
+    const { result } = renderHook(() => useTracker(backend))
+
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    act(() => result.current.ladenNeu())
+    await waitFor(() => expect(result.current.ladezustand).toBe('fehler'))
+    act(() => result.current.offlineStandZeigen())
+    expect(result.current.offlineStand).not.toBeNull()
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    await waitFor(() => expect(result.current.ladezustand).toBe('laden'))
+    expect(result.current.offlineStand).toBeNull()
+
+    act(() => dritterVersuch.resolve(ANFANG))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    expect(laden).toHaveBeenCalledTimes(3)
   })
 
   it('laesst einen endgueltigen Ladefehler ausdruecklich erneut versuchen', async () => {

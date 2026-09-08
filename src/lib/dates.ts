@@ -80,3 +80,22 @@ export function bauKurz(iso: string): string {
   const tag = `${zwei(d.getDate())}.${zwei(d.getMonth() + 1)}.`
   return `${tag} ${zwei(d.getHours())}:${zwei(d.getMinutes())}`
 }
+
+const UHRZEIT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
+
+/**
+ * Der Zeitpunkt eines gemerkten Standes: `heute 18:23` oder `montag, 7.
+ * september, 18:23`.
+ *
+ * Am selben Tag traegt die Uhrzeit die ganze Aussage — "vor einer Stunde" ist
+ * etwas anderes als "vor drei Tagen", und genau diese Unterscheidung braucht
+ * man, um zu entscheiden, ob der alte Stand noch etwas taugt.
+ */
+export function standZeit(iso: string, jetzt = new Date()): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const uhr = UHRZEIT.format(d)
+  if (toKey(d) === toKey(jetzt)) return `heute ${uhr}`
+  if (toKey(d) === toKey(addDays(jetzt, -1))) return `gestern ${uhr}`
+  return `${langesDatum(d)}, ${uhr}`
+}

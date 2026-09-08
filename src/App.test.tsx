@@ -40,6 +40,29 @@ describe('AppStartzustand', () => {
     expect(abmelden).toHaveBeenCalledOnce()
   })
 
+  it('bietet den zuletzt gelesenen Stand nur an, wenn es ihn gibt', async () => {
+    const user = userEvent.setup()
+    const offline = vi.fn()
+    const { rerender } = render(
+      <AppStartzustand status="fehler" fehler="daten konnten nicht geladen werden." onOffline={offline} />
+    )
+
+    expect(screen.queryByRole('button', { name: 'offline weiter' })).toBeNull()
+
+    rerender(
+      <AppStartzustand
+        status="fehler"
+        fehler="daten konnten nicht geladen werden."
+        gemerkterStand={new Date().toISOString()}
+        onOffline={offline}
+      />
+    )
+
+    expect(screen.getByText(/offline weiter zeigt den stand von heute/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'offline weiter' }))
+    expect(offline).toHaveBeenCalledOnce()
+  })
+
   it('behauptet bei fehlgeschlagener Abmeldung keinen Erfolg', async () => {
     const user = userEvent.setup()
     render(
