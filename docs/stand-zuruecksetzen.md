@@ -61,16 +61,56 @@ gegen die Produktionsdatenbank ausgeführt.
 
 1. **Zählen.** `scripts/reset-stand-pruefen.sql` — der Stand vor dem Eingriff,
    als Notiz festhalten.
-2. **Sichern.** `scripts/reset-stand-sichern.sql` — eine Anweisung je
-   Tabelle, jede Ausgabe als eigene JSON-Datei ablegen. Das ist die
-   Rückfahrkarte; ohne sie ist das Löschen endgültig. Am 07.09.2026 ergaben
-   alle Tabellen zusammen rund 348 kB, weit überwiegend aus `schlafnaechte`
-   und `schlaf_updates`.
+2. **Sichern.** `scripts/reset-stand-sichern.sql` — kopiert die Nutzdaten
+   vollständig in ein eigenes Schema `sicherung_<datum>` derselben Datenbank
+   und zählt beide Seiten gegeneinander. Erst wenn jede Zeile `ok` zeigt, darf
+   Schritt 3 laufen. Das ist die Rückfahrkarte; ohne sie ist das Löschen
+   endgültig.
+
+   Die Kopie liegt bewusst in der Datenbank und nicht in einer JSON-Datei: die
+   Ausgabe aller Tabellen lag am 07.09.2026 bei rund 348 kB, weit überwiegend
+   `schlafnaechte` und `schlaf_updates`. `create table as select` ist exakt und
+   typgetreu, ein Export durch ein Chatfenster ist es nicht. Das Schema enthält
+   keine App-Objekte, `anon` und `authenticated` haben darauf keine Rechte, und
+   die App liest es nicht.
 3. **Löschen.** `scripts/reset-stand.sql` — eine Transaktion, alles oder
    nichts.
 4. **Belegen.** `scripts/reset-stand-pruefen.sql` erneut. Die Gruppe `geleert`
    muss überall `0` zeigen, die Gruppe `bleibt` dieselben Zahlen wie in
    Schritt 1.
+
+## Der Rückweg
+
+`scripts/reset-stand-zuruecknehmen.sql` spielt die Sicherung wieder ein, in
+umgekehrter Reihenfolge und in einer Transaktion. Zwei Punkte sind daran nicht
+offensichtlich:
+
+- `aufenthalte.id` ist eine Identity-Spalte. Das Skript schreibt mit
+  `overriding system value` und setzt den Zähler danach über den höchsten
+  wiederhergestellten Wert. Ohne diesen `setval` kollidiert die nächste
+  Ankunft mit einer alten Zeile.
+- `schlaf_updates` wird ausdrücklich mitgeschrieben und nicht neu abgeleitet.
+  Der Einfügetrigger auf `schlafnaechte` erzeugt die Projektion ohnehin;
+  `on conflict do nothing` lässt beide Wege nebeneinander bestehen.
+
+Der Rückweg lohnt nur, solange nach dem Reset noch keine neuen Daten
+entstanden sind, die dabei verloren gingen.
+
+## Durchführung am 09.09.2026
+
+Ausgeführt um 10:35 UTC gegen das Produktionsprojekt, nach ausdrücklicher
+Freigabe.
+
+- Kein offener Aufenthalt zum Zeitpunkt des Eingriffs.
+- Sicherung nach `sicherung_20260909`, alle neun Tabellen mit `ok` belegt.
+- Gelöscht: 23 Schlafnächte, 23 Projektionszeilen, 27 Aufenthalte,
+  2 Wochenabrechnungen, 3 Werte, 2 Gewichte, 1 Einheit, 1 Haken.
+  `duell_wetten` war bereits leer.
+- Unverändert: 2 Konten, 20 Fächer, 4 Noten, 3 Push-Geräte, 2 Importtoken,
+  2 Erinnerungseinstellungen, 15 Versandzeilen.
+- Der Rückweg wurde anschließend in einer zurückgerollten Transaktion
+  erprobt: alle Zeilen kamen vollständig zurück, danach war der Stand wieder
+  leer.
 
 ## Die Handys nicht vergessen
 
