@@ -36,6 +36,8 @@ type Props = {
   frisch?: string | null
   bildAdressen?: Map<string, string>
   spricht?: string | null
+  /** die zeile, deren ton gerade geholt wird: gedrueckt, aber noch nicht zu hoeren */
+  holt?: string | null
   onVorlesen?: (zeile: EniZeile) => void
   onAuftakt: (text: string) => void
   duellStand?: DuellKontext | null
@@ -48,6 +50,7 @@ export function EniStrom({
   frisch,
   bildAdressen,
   spricht,
+  holt,
   onVorlesen,
   onAuftakt,
   duellStand,
@@ -72,6 +75,7 @@ export function EniStrom({
                 text={zeile.text}
                 frisch={zeile.id === frisch}
                 spricht={spricht === zeile.id}
+                holt={holt === zeile.id}
                 onVorlesen={onVorlesen && (() => onVorlesen(zeile))}
               />
             ) : (
@@ -118,11 +122,13 @@ function EniWort({
   text,
   frisch,
   spricht,
+  holt,
   onVorlesen,
 }: {
   text: string
   frisch: boolean
   spricht: boolean
+  holt: boolean
   onVorlesen?: () => void
 }) {
   return (
@@ -133,12 +139,21 @@ function EniWort({
           <button
             type="button"
             onClick={onVorlesen}
-            aria-label={spricht ? 'vorlesen anhalten' : 'vorlesen'}
+            aria-label={
+              holt ? 'ENIs stimme wird geholt' : spricht ? 'vorlesen anhalten' : 'vorlesen'
+            }
             className="-my-2 -ml-1 flex size-11 items-center justify-center transition-colors"
             style={{ color: spricht ? 'var(--kreide)' : 'var(--kreide-52)' }}
           >
             {spricht ? (
-              <IconStop size={13} />
+              /*
+               * Solange der ton noch geholt wird, pulst das zeichen. ENIs eigene
+               * stimme muss beim ersten mal drueben wirklich gesprochen werden,
+               * und diese sekunden sollen nach warten aussehen und nicht nach
+               * einem knopf, der nichts tut. Vorher sprang dafuer die eingebaute
+               * stimme ein — die war schneller da und klang schrecklich.
+               */
+              <IconStop size={13} className={holt ? 'animate-pulse' : undefined} />
             ) : (
               <IconSpeakerHigh size={14} />
             )}

@@ -641,6 +641,7 @@ export function EniApp({
             frisch={frisch}
             bildAdressen={adressen}
             spricht={stimme.spricht}
+            holt={stimme.holt}
             onVorlesen={stimme.moeglich ? lieseVor : undefined}
             onAuftakt={uebernimmAuftakt}
             duellStand={duellStand}

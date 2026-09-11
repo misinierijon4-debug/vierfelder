@@ -1471,3 +1471,44 @@ mitgeladen beim kaltstart. Die funktion steht jetzt in `token.ts`, beide
 functions holen sie dort, und `eniModell.ts` reicht sie weiter, damit die
 aufrufer nichts davon merken. Das bündel der stimme ist damit bei knapp
 dreißigtausend zeichen.
+
+## 37. Nachtrag: zwei fehler aus abschnitt 36 (11.09.2026)
+
+Abschnitt 36 hat die stimme schneller gemacht und dabei zwei neue fehler
+eingebaut. Zusammen ergaben sie genau das, was man am wenigsten wollte: ENIs
+eigene stimme kam nie mehr, und zu hören war jedes mal die blecherne eingebaute.
+
+**`upsert: true` war die falsche antwort auf ein rennen.** Der gedanke war
+richtig: wer zweimal tippt, weil es lange dauert, löst zwei aufrufe für dieselbe
+nachricht aus, und der zweite scheiterte daran, dass der erste die datei schon
+hingelegt hatte. Nur verlangt ein upsert am bucket ein update-recht, und die
+policy in `20260910224500_eni_stimme.sql` gibt dem angemeldeten konto insert,
+select und delete — kein update. Also ein `AccessDenied` bei *jedem* ton, nicht
+nur beim zweiten. Im protokoll stand es wörtlich: `new row violates row-level
+security policy`, `code: AccessDenied`.
+
+Die richtige antwort braucht gar kein neues recht. Derselbe pfad heisst
+derselbe ton — er ergibt sich vollständig aus der nachricht. Liegt die datei
+also schon da, hat der zweite aufruf genau das gefunden, was er selbst ablegen
+wollte, und ist fertig. `liegtSchonDa` erkennt diesen fall an seinen vielen
+namen (409, `KeyAlreadyExists`, `Duplicate`, „already exists"), alles andere
+bleibt ein fehler. Ein konto, das überschreiben darf, hätte hier nichts
+gewonnen und ein recht mehr gehabt.
+
+**Und die acht-sekunden-frist war eine stoppuhr, wo ein notnagel hingehört.**
+Die begründung stimmte: eine halbe minute stille sieht aus wie ein defekt. Die
+zahl war trotzdem falsch, denn der erste ton einer antwort muss drüben wirklich
+gesprochen werden, und das dauert länger als acht sekunden. Die frist hat also
+praktisch immer gewonnen. Gehört hat man dann nie ENI, sondern jedes mal genau
+die stimme, gegen die abschnitt 33 angetreten ist.
+
+Wer eine gute stimme hat, wartet auf sie. Die frist steht jetzt auf
+fünfundvierzig sekunden und fängt nur noch eine anfrage ab, die überhaupt nicht
+mehr zurückkommt. Ein echter fehlschlag fällt weiterhin sofort zurück — da gibt
+es nichts, worauf man warten könnte.
+
+**Dass etwas passiert, sagt jetzt die oberfläche.** Das war ja der eigentliche
+punkt der alten frist, und eine schlechte stimme war die falsche art, ihn zu
+machen. `holt` nennt die zeile, deren ton gerade unterwegs ist; der knopf zeigt
+dafür das haltezeichen pulsierend und heisst dann „ENIs stimme wird geholt".
+Warten sieht damit nach warten aus, und nicht nach einem knopf, der nichts tut.

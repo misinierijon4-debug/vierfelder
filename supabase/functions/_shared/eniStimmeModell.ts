@@ -87,7 +87,7 @@ export const ABTASTRATE = 24_000
 /** so lange gilt die adresse, unter der der browser den ton abholt */
 export const FRIST_S = 3600
 
-type Fehler = { code?: string; message?: string; status?: number }
+type Fehler = { code?: string; message?: string; status?: number; statusCode?: string }
 type Ergebnis<T> = { data: T; error: Fehler | null }
 
 export type Zeile = Record<string, unknown>
@@ -178,6 +178,27 @@ function bearerToken(autorisierung: string): string | null {
   const fund = autorisierung.match(/^Bearer\s+(.+)$/i)
   const token = fund?.[1]?.trim() ?? ''
   return token === '' ? null : token
+}
+
+/**
+ * Ob ein missglueckter Upload nur heisst: jemand war schneller.
+ *
+ * Liegt die Datei schon da, ist alles gut. Derselbe Pfad heisst derselbe Ton —
+ * er ergibt sich vollstaendig aus der Nachricht —, also hat ein zweiter Aufruf
+ * fuer dieselbe Zeile hier genau das gefunden, was er selbst ablegen wollte.
+ * Wer zweimal auf den Knopf tippt, weil es beim ersten Mal lange dauert, loest
+ * das aus, und das ist kein Fehler, sondern ein Rennen mit gutem Ausgang.
+ *
+ * Der kurze Umweg ueber `upsert: true` war die falsche Antwort darauf: der Bucket
+ * gibt dem angemeldeten Konto insert, select und delete, aber kein update, und
+ * ein Upsert verlangt beides. Ergebnis war ein AccessDenied bei jedem Ton —
+ * und damit die blecherne Stimme statt ENIs eigener. Ein Konto braucht hier kein
+ * Ueberschreiben; es reicht zu wissen, dass Ueberschreiben nicht noetig ist.
+ */
+export function liegtSchonDa(fehler: Fehler): boolean {
+  if (fehler.statusCode === '409' || fehler.status === 409) return true
+  if (fehler.code === 'KeyAlreadyExists' || fehler.code === 'Duplicate') return true
+  return /already exists|duplicate/i.test(fehler.message ?? '')
 }
 
 /**
@@ -497,18 +518,11 @@ export async function behandleEniStimme(
     }
     const toene = wavAusPcm(pcm)
 
-    /**
-     * `upsert: true`, und das ist kein Detail.
-     *
-     * Mit `false` scheiterte der zweite von zwei gleichzeitigen Aufrufen fuer
-     * dieselbe Nachricht daran, dass der erste die Datei schon hingelegt hatte —
-     * ein Fehlschlag, der nach einem Problem aussieht und keins ist. Wer zweimal
-     * auf den Knopf tippt, weil es beim ersten Mal lange dauert, hat genau das
-     * ausgeloest. Derselbe Pfad heisst ohnehin derselbe Ton; ihn zu ueberschreiben
-     * kann nichts kaputtmachen.
-     */
-    const gelegt = await eimer.upload(pfad, toene, { contentType: 'audio/wav', upsert: true })
-    if (gelegt.error) {
+    // `upsert: false`: der Bucket erlaubt dem Konto kein Ueberschreiben, und es
+    // braucht auch keins. Dass die Datei schon dalag, ist kein Fehlschlag —
+    // siehe `liegtSchonDa`.
+    const gelegt = await eimer.upload(pfad, toene, { contentType: 'audio/wav', upsert: false })
+    if (gelegt.error && !liegtSchonDa(gelegt.error)) {
       // Eine Adresse zu unterschreiben, hinter der nichts liegt, waere die
       // schlechteste aller Antworten: der Browser laedt sie, bekommt 404 und
       // faellt erst dann auf seine eigene Stimme zurueck — nach der ganzen

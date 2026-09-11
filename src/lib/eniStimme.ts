@@ -267,16 +267,25 @@ export async function holeTonAdresse(nachrichtId: string): Promise<string | null
 
 /**
  * So lange darf ENIs eigene Stimme auf sich warten lassen, bevor die eingebaute
- * anfängt.
+ * einspringt.
  *
- * Beim ersten Mal muss der Ton drüben wirklich gesprochen werden, und das dauert
- * — bei einer langen Antwort auch mal eine halbe Minute. Eine halbe Minute in
- * die Stille zu schauen ist aber kein Warten mehr, sondern ein Defekt: man tippt
- * noch einmal, und noch einmal. Also redet nach diesen Sekunden der Browser
- * selbst. Die Anfrage läuft dabei weiter, ihr Ton landet im Regal, und beim
- * nächsten Tippen auf dieselbe Antwort ist er sofort da.
+ * Hier standen acht Sekunden, mit der Begründung, dass Stille wie ein Defekt
+ * aussieht. Die Begründung stimmt, die Zahl war falsch. Der erste Ton einer
+ * Antwort muss drüben wirklich gesprochen werden, und das dauert länger als
+ * acht Sekunden — die Frist hat also praktisch immer gewonnen, und gehört hat
+ * man nie ENI, sondern jedes Mal die eingebaute Stimme. Genau die ist der
+ * Grund, warum es die echte überhaupt gibt: auf dem iPhone ist sie blechern,
+ * und auf Windows klingt sie nach Ansage im Bahnhof.
+ *
+ * Wer eine gute Stimme hat, wartet auf sie. Diese Frist ist deshalb kein
+ * Taktgeber mehr, sondern ein Notnagel gegen eine Anfrage, die überhaupt nicht
+ * mehr zurückkommt. Ein echter Fehlschlag fällt weiterhin sofort zurück, denn
+ * bei dem gibt es nichts mehr, worauf man warten könnte.
+ *
+ * Dass etwas passiert, sagt jetzt die Oberfläche über `holt` — nicht eine
+ * schlechte Stimme.
  */
-export const TON_FRIST_MS = 8_000
+export const TON_FRIST_MS = 45_000
 
 /**
  * Wie lange eine einmal geholte Adresse hier gilt. Der Server unterschreibt sie
@@ -299,6 +308,13 @@ export type Stimme = {
   moeglich: boolean
   /** die id der zeile, die gerade gesprochen wird */
   spricht: string | null
+  /**
+   * die id der zeile, deren ton gerade geholt wird — also gedrückt, aber noch
+   * nicht zu hören. Der knopf sagt das hin, damit die stille dazwischen nach
+   * warten aussieht und nicht nach einem defekt. Das war der eigentliche grund
+   * für die alte acht-sekunden-frist, und dies ist die richtige antwort darauf.
+   */
+  holt: string | null
   /**
    * welche stimme gerade zuständig ist. `server` ist die neuronale hinter der
    * Function, `browser` die eingebaute. der unterschied ist hörbar, also darf
@@ -324,6 +340,7 @@ export function useStimme(): Stimme {
   const [browserMoeglich] = useState(stimmeMoeglich)
   const [serverBereit, setServerBereit] = useState(false)
   const [spricht, setSpricht] = useState<string | null>(null)
+  const [holt, setHolt] = useState<string | null>(null)
   const [art, setArt] = useState<'server' | 'browser'>('browser')
   const [gewaehlt, setGewaehlt] = useState<SpeechSynthesisVoice | null>(null)
   /** welche zeile gerade laufen soll. gegen ein spätes `onend` der vorherigen. */
@@ -368,6 +385,7 @@ export function useStimme(): Stimme {
   const halt = useCallback(() => {
     laufendeRef.current = null
     setSpricht(null)
+    setHolt(null)
     ausgabe()?.cancel()
     const klang = tonElement
     if (klang?.src) {
@@ -385,6 +403,8 @@ export function useStimme(): Stimme {
   /** die eingebaute stimme. rückfall und einziger weg ohne modellverbindung. */
   const sprichImBrowser = useCallback(
     (id: string, text: string) => {
+      // ab hier wird geredet, nicht mehr geholt
+      setHolt(null)
       const synth = ausgabe()
       if (!synth || typeof window.SpeechSynthesisUtterance !== 'function') {
         if (laufendeRef.current === id) {
@@ -459,6 +479,7 @@ export function useStimme(): Stimme {
       }
 
       const spiele = (adresse: string) => {
+        setHolt(null)
         setArt('server')
         klang.src = adresse
         klang.onended = () => {
@@ -481,6 +502,7 @@ export function useStimme(): Stimme {
         return
       }
 
+      setHolt(id)
       void (async () => {
         /**
          * Zwei Uhren laufen gegeneinander: die Function, die den Ton holt, und
@@ -558,6 +580,7 @@ export function useStimme(): Stimme {
       // selbst keine hat — dann spricht eben nur ENIs eigene.
       moeglich: browserMoeglich || serverBereit,
       spricht,
+      holt,
       art,
       serverBereit,
       oertlich: art === 'server' ? false : gewaehlt ? gewaehlt.localService : null,
@@ -565,7 +588,7 @@ export function useStimme(): Stimme {
       sprich,
       halt,
     }),
-    [art, browserMoeglich, gewaehlt, halt, serverBereit, spricht, sprich]
+    [art, browserMoeglich, gewaehlt, halt, holt, serverBereit, spricht, sprich]
   )
 }
 

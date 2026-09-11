@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   behandleEniStimme,
   fuerDieStimme,
+  liegtSchonDa,
   MAX_STUECK_ZEICHEN,
   STANDARD_STIMME,
   StimmFehler,
@@ -219,9 +220,10 @@ describe('ENIs stimme hinter der function', () => {
     expect((await antwort.json()).code).toBe('nicht_abgelegt')
   })
 
-  it('legt denselben ton ueber einen bereits liegenden, statt am doppelten zu scheitern', async () => {
-    // zweimal getippt, weil es beim ersten mal lange dauerte: der zweite ruf
-    // darf nicht daran scheitern, dass der erste die datei schon hingelegt hat.
+  it('verlangt kein ueberschreiben, weil der bucket keins erlaubt', async () => {
+    // `upsert: true` braucht am bucket ein update-recht, das dort niemand hat.
+    // Das ergab bei jedem ton ein AccessDenied — und damit die blecherne
+    // stimme statt ENIs eigener.
     const { abhaengigkeiten } = deps()
     const echt = abhaengigkeiten.datenbank
     let gesehen: boolean | null = null
@@ -240,7 +242,45 @@ describe('ENIs stimme hinter der function', () => {
     }
 
     await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
-    expect(gesehen).toBe(true)
+    expect(gesehen).toBe(false)
+  })
+
+  it('nimmt eine datei, die schon dalag, als erledigt statt als fehler', async () => {
+    // zweimal getippt, weil es beim ersten mal lange dauerte: der zweite ruf
+    // findet genau das, was er selbst ablegen wollte. Das ist kein fehlschlag.
+    for (const fehler of [
+      { statusCode: '409', message: 'The resource already exists' },
+      { code: 'Duplicate', message: 'Duplicate' },
+    ]) {
+      const { abhaengigkeiten } = deps()
+      const echt = abhaengigkeiten.datenbank
+      abhaengigkeiten.datenbank = (...args) => {
+        const db = echt(...args)
+        const eimer = db.storage.from('eni-stimme')
+        db.storage.from = () => ({ ...eimer, upload: () => Promise.resolve({ data: null, error: fehler }) })
+        return db
+      }
+
+      const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+      expect(antwort.status).toBe(200)
+      expect(typeof (await antwort.json()).adresse).toBe('string')
+    }
+  })
+})
+
+describe('ob ein missglueckter upload nur heisst: jemand war schneller', () => {
+  it('erkennt die vielen namen desselben falls', () => {
+    expect(liegtSchonDa({ statusCode: '409' })).toBe(true)
+    expect(liegtSchonDa({ status: 409 })).toBe(true)
+    expect(liegtSchonDa({ code: 'KeyAlreadyExists' })).toBe(true)
+    expect(liegtSchonDa({ message: 'The resource already exists' })).toBe(true)
+  })
+
+  it('haelt ein verweigertes recht nicht dafuer', () => {
+    // genau das ging schief: AccessDenied wurde nie als fehler behandelt, weil
+    // upsert es ausgeloest hat. Es ist einer.
+    expect(liegtSchonDa({ statusCode: '403', code: 'AccessDenied', message: 'new row violates row-level security policy' })).toBe(false)
+    expect(liegtSchonDa({ message: 'voll' })).toBe(false)
   })
 })
 
