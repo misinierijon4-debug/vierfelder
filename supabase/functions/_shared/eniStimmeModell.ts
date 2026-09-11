@@ -153,11 +153,27 @@ export class StimmFehler extends Error {
     message: string,
     readonly wiederholbar: boolean,
     /** was die gegenstelle selbst als wartezeit nennt, in millisekunden */
-    readonly wartenMs: number | null = null
+    readonly wartenMs: number | null = null,
+    /**
+     * Ein kurzes kennzeichen fuer die oberflaeche, etwa `gemini-429`.
+     *
+     * Nie die antwort der gegenstelle und nie eine adresse: beides koennte den
+     * schluessel spiegeln. Nur so viel, dass „ENIs stimme kam nicht durch" eine
+     * ursache bekommt, die man von aussen lesen kann — sonst steht der mensch
+     * vor demselben satz, egal ob das kontingent leer ist, das netz weg war
+     * oder der ton nicht abgelegt werden konnte.
+     */
+    readonly kurz: string | null = null
   ) {
     super(message)
     this.name = 'StimmFehler'
   }
+}
+
+/** das kennzeichen eines fehlschlags, soweit er eins hat */
+export function kurzerGrund(ursache: unknown): string | null {
+  if (ursache instanceof StimmFehler) return ursache.kurz
+  return null
 }
 
 export type EniStimmeAbhaengigkeiten = {
@@ -386,6 +402,25 @@ async function sprichAlle(
 }
 
 /**
+ * Bytes als base64. In bloecken, nicht byte fuer byte.
+ *
+ * Vorher wuchs die zeichenkette in einer schleife um jedes einzelne byte. Bei
+ * einer minute sprache sind das knapp drei millionen durchlaeufe je antwort,
+ * und eine Edge Function hat nicht nur ein zeitbudget, sondern auch eines fuer
+ * rechenzeit. Wird das ueberschritten, stirbt der arbeiter mitten im strom —
+ * und beim menschen sieht das aus wie „ENIs stimme ist nicht erreichbar".
+ * `fromCharCode` nimmt einen ganzen block auf einmal; achttausend, weil jeder
+ * block als argumentliste uebergeben wird und die nicht beliebig lang sein darf.
+ */
+export function alsBase64(bytes: Uint8Array): string {
+  const teile: string[] = []
+  for (let i = 0; i < bytes.length; i += 8_192) {
+    teile.push(String.fromCharCode(...bytes.subarray(i, i + 8_192)))
+  }
+  return btoa(teile.join(''))
+}
+
+/**
  * Aus rohem PCM eine Datei machen, die ein Browser abspielt.
  *
  * Ein WAV ist vierundvierzig Byte Kopf und danach die Abtastwerte, so wie sie
@@ -534,6 +569,7 @@ export async function behandleEniStimme(
       return antwort(502, {
         error: 'ENIs stimme kam nicht durch.',
         code: 'stimme_fehler',
+        grund: kurzerGrund(ursache),
       })
     }
 
@@ -567,7 +603,12 @@ export async function behandleEniStimme(
       // faellt erst dann auf seine eigene Stimme zurueck — nach der ganzen
       // Wartezeit. Ein Fehler hier laesst ihn sofort selbst sprechen.
       deps.protokoll.error('eni-stimme: ton nicht abgelegt', gelegt.error)
-      return antwort(502, { error: 'ENIs stimme kam nicht durch.', code: 'nicht_abgelegt' })
+      return antwort(502, {
+        error: 'ENIs stimme kam nicht durch.',
+        code: 'nicht_abgelegt',
+        // der statuscode der ablage, nicht ihre meldung: die koennte pfade nennen
+        grund: gelegt.error.status ? `ablage-${gelegt.error.status}` : 'ablage',
+      })
     }
   }
 
@@ -587,10 +628,7 @@ export async function behandleEniStimme(
     return ereignisStrom((sende, signal) => aufnehmen((pcm) => {
       // Bounded frames avoid large JSON lines and excessive string arguments.
       for (let offset = 0; offset < pcm.length; offset += 24_000) {
-        const teil = pcm.subarray(offset, offset + 24_000)
-        let roh = ''
-        for (const byte of teil) roh += String.fromCharCode(byte)
-        sende({ typ: 'audio', pcm: btoa(roh) })
+        sende({ typ: 'audio', pcm: alsBase64(pcm.subarray(offset, offset + 24_000)) })
       }
     }, signal), CORS)
   }

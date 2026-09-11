@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  alsBase64,
   behandleEniStimme,
   fuerDieStimme,
   MAX_STUECK_ZEICHEN,
@@ -497,5 +498,21 @@ describe('ENIs Audiostream', () => {
     expect(text).toContain('"status":502')
     expect(modell).toHaveBeenCalledTimes(1)
     expect(ablage.hochgeladen).toHaveLength(0)
+  })
+})
+
+describe('bytes als base64', () => {
+  it('liefert dasselbe wie der weg byte für byte, auch über einen block hinaus', () => {
+    // der weg byte für byte kostete rechenzeit, die eine Edge Function nicht
+    // beliebig hat. das ergebnis muss dasselbe bleiben.
+    const bytes = new Uint8Array(20_000)
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 7) % 256
+    let roh = ''
+    for (const byte of bytes) roh += String.fromCharCode(byte)
+    expect(alsBase64(bytes)).toBe(btoa(roh))
+  })
+
+  it('kommt mit nichts zurecht', () => {
+    expect(alsBase64(new Uint8Array())).toBe('')
   })
 })

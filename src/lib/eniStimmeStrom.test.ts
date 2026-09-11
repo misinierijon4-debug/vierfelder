@@ -22,7 +22,7 @@ vi.mock('./eniAudioStrom', () => ({
   audioWarteschlange: () => warteschlange,
 }))
 
-import { TON_FRIST_MS, useStimme } from './eniStimme'
+import { kennzeichen, TON_FRIST_MS, useStimme } from './eniStimme'
 
 /** eine nachricht, die es in der datenbank geben könnte */
 const ECHTE_ID = '11111111-2222-4333-8444-555555555555'
@@ -162,5 +162,35 @@ describe('wenn die eigene stimme zu lange braucht', () => {
 
     expect(warteschlange.anhaengen).not.toHaveBeenCalled()
     expect(result.current.art).toBe('browser')
+  })
+})
+
+describe('wenn die eigene stimme gar nicht durchkommt', () => {
+  it('sagt, woran es lag, statt nur „nicht erreichbar"', async () => {
+    // drei verschiedene ursachen hatten vorher denselben satz. von aussen war
+    // dann nicht zu sehen, ob das kontingent leer ist oder die ablage klemmt.
+    ruf.mockResolvedValueOnce({ status: 200, inhalt: { bereit: true } })
+    ruf.mockResolvedValueOnce({
+      status: 502,
+      inhalt: { error: 'ENIs stimme kam nicht durch.', code: 'stimme_fehler', grund: 'gemini-429' },
+    })
+
+    const { result } = renderHook(() => useStimme())
+    await act(async () => {})
+    await act(async () => {
+      result.current.sprich(ECHTE_ID, 'Das reicht nicht.')
+    })
+
+    expect(result.current.hinweis).toContain('stimme_fehler: gemini-429')
+    // und ENI bleibt trotzdem nicht stumm
+    expect(synth.gesprochen).toHaveLength(1)
+  })
+
+  it('nimmt den statuscode, wenn die function gar keinen grund nennt', () => {
+    expect(kennzeichen(502, {})).toBe('http-502')
+    expect(kennzeichen(502, { code: 'nicht_abgelegt' })).toBe('nicht_abgelegt')
+    expect(kennzeichen(502, { code: 'nicht_abgelegt', grund: 'ablage-403' })).toBe(
+      'nicht_abgelegt: ablage-403'
+    )
   })
 })

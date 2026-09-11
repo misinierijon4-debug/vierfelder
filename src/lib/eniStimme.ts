@@ -296,6 +296,32 @@ function istServerZeile(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
+/**
+ * Ein fehlschlag der eigenen stimme, der sein kennzeichen mitbringt.
+ *
+ * „Die eigene Stimme ist gerade nicht erreichbar" stand vorher ueber jedem
+ * fehlschlag, egal welchem: leeres kontingent bei der gegenstelle, ton nicht
+ * abgelegt, netz weg. Drei verschiedene dinge, ein satz — und niemand, auch
+ * nicht der, der es reparieren soll, konnte von aussen sehen, welches davon
+ * gerade passiert. Das kennzeichen ist kurz und technisch, und genau so soll
+ * es sein: es steht in klammern hinter dem satz und ist das erste, wonach man
+ * fragt, wenn ENI stumm bleibt.
+ */
+class StimmAus extends Error {
+  constructor(readonly kennzeichen: string) {
+    super(kennzeichen)
+    this.name = 'StimmAus'
+  }
+}
+
+/** was die function als grund nennt, sonst ihr statuscode */
+export function kennzeichen(status: number, inhalt: Record<string, unknown>): string {
+  const teile = [inhalt.code, inhalt.grund].filter(
+    (teil): teil is string => typeof teil === 'string' && teil !== ''
+  )
+  return teile.length > 0 ? teile.join(': ') : `http-${status}`
+}
+
 export type Stimme = {
   /** ob der knopf überhaupt angezeigt wird */
   moeglich: boolean
@@ -553,19 +579,20 @@ export function useStimme(): Stimme {
             // dafuer hat sich das weiterlaufen ja gelohnt.
             if (typeof inhalt.adresse === 'string') regalRef.current.set(id, { adresse: inhalt.adresse, bis: Date.now() + ADRESSE_GILT_MS })
             if (verworfen || generationRef.current !== generation) return
-            if (status !== 200) throw new Error('Stimme unterbrochen')
+            if (status !== 200) throw new StimmAus(kennzeichen(status, inhalt))
             if (ersterTon) queue.abschliessen()
             else if (typeof inhalt.adresse === 'string') spiele(inhalt.adresse)
-            else throw new Error('Kein Ton')
-          } catch {
+            else throw new StimmAus('kein-ton')
+          } catch (ursache) {
             clearTimeout(wecker)
             queue.halt()
             if (verworfen || generationRef.current !== generation || controller.signal.aborted) return
+            const grund = ursache instanceof StimmAus ? ursache.kennzeichen : 'netz'
             if (ersterTon) {
               laufendeRef.current = null; setSpricht(null)
-              setHinweis('Die Sprachausgabe wurde unterbrochen. Du kannst die Antwort erneut vorlesen lassen.')
+              setHinweis(`Die Sprachausgabe wurde unterbrochen (${grund}). Du kannst die Antwort erneut vorlesen lassen.`)
             } else {
-              setHinweis('Die eigene Stimme ist gerade nicht erreichbar. ENI nutzt die Gerätestimme.')
+              setHinweis(`Die eigene Stimme kam nicht durch (${grund}). ENI nutzt die Gerätestimme.`)
               sprichImBrowser(id, text)
             }
           }
@@ -598,6 +625,7 @@ export function useStimme(): Stimme {
           // in der zwischenzeit kann längst etwas anderes drankommen sein
           if (laufendeRef.current !== id || gefallen) return
           if (!adresse) {
+            setHinweis('Die eigene Stimme kam nicht durch (keine adresse). ENI nutzt die Gerätestimme.')
             sprichImBrowser(id, text)
             return
           }
