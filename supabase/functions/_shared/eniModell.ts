@@ -170,6 +170,27 @@ export type ModellAnfrage = {
 export type EniAbhaengigkeiten = {
   umgebung(name: string): string | undefined
   datenbank(url: string, key: string, autorisierung: string): EniDatenbank
+  /**
+   * Ein Klient mit Dienstrechten, ausschliesslich fuer das Insert in
+   * `eni_anhaenge`.
+   *
+   * Die Tabelle gibt `authenticated` absichtlich kein Insert: was ENI gesehen
+   * hat, soll kein Client behaupten koennen. Nur stand diese Function bisher
+   * auf derselben Seite der Regel — sie laeuft mit dem Token des Aufrufers,
+   * also unter genau der Rolle, der das Insert verwehrt ist. Ergebnis war ein
+   * 42501 bei jedem Foto: die Regel war richtig, der Schreiber fehlte.
+   *
+   * Nur dieses eine Insert laeuft damit. Alles andere — der Verlauf, die
+   * Vorlage, die signierten Adressen — bleibt beim Token des Aufrufers und
+   * damit unter Row Level Security. Die drei Spalten, die hier ohne RLS
+   * geschrieben werden, stehen vorher schon fest: `user_id` kommt aus dem
+   * geprueften Token, `chat_id` hat das Insert der Vorlage eben unter RLS
+   * bestaetigt, und `pfad` hat `pruefeAnhaenge` gegen den eigenen Ordner
+   * geprueft.
+   *
+   * Optional, damit die Tests ihn weglassen koennen.
+   */
+  dienstDatenbank?(): EniDatenbank | null
   /** ruft das modell. injiziert, damit die tests kein netz brauchen */
   modell(anfrage: ModellAnfrage, anbieter: Anbieter, schluessel: string): Promise<string>
   protokoll: Pick<Console, 'error'>
@@ -569,7 +590,10 @@ export async function behandleEni(
     // gar keine insert-Policy fuer angemeldete Konten.
     let meineAnhaenge: Zeile[] = []
     if (anhaenge.length > 0) {
-      const gespeichert = await db
+      // siehe `dienstDatenbank`: nur diese eine Zeile braucht mehr als das
+      // Token des Aufrufers.
+      const schreiber = deps.dienstDatenbank?.() ?? db
+      const gespeichert = await schreiber
         .from('eni_anhaenge')
         .insert(
           anhaenge.map((anhang) => ({

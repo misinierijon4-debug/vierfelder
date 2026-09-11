@@ -49,7 +49,12 @@ function grunddaten(): Tabellen {
  * Eine winzige Attrappe der Abfragekette. Sie kann genau das, was der Handler
  * benutzt, und nichts weiter.
  */
-function baueDatenbank(tabellen: Tabellen, nutzer: string | null) {
+function baueDatenbank(
+  tabellen: Tabellen,
+  nutzer: string | null,
+  /** tabellen, in die diese rolle nicht schreiben darf. wie ein fehlendes GRANT. */
+  gesperrt: string[] = []
+) {
   const kette = (zeilen: Array<Record<string, unknown>>) => {
     let aktuell = [...zeilen]
     const api = {
@@ -94,6 +99,22 @@ function baueDatenbank(tabellen: Tabellen, nutzer: string | null) {
       return {
         select: () => kette(tabellen[tabelle] ?? []),
         insert(zeile: Record<string, unknown> | Array<Record<string, unknown>>) {
+          if (gesperrt.includes(tabelle)) {
+            const abgewiesen = {
+              code: '42501',
+              message: `permission denied for table ${tabelle}`,
+            }
+            return {
+              select: () => ({
+                ...kette([]),
+                then: (aufloesen: (wert: unknown) => unknown) =>
+                  Promise.resolve({ data: null, error: abgewiesen }).then(aufloesen),
+                single: () => Promise.resolve({ data: null, error: abgewiesen }),
+              }),
+              then: (aufloesen: (wert: unknown) => unknown) =>
+                Promise.resolve({ data: null, error: abgewiesen }).then(aufloesen),
+            }
+          }
           const eingang = Array.isArray(zeile) ? zeile : [zeile]
           const gebaut = eingang.map((einzeln, versatz) => ({
             ...einzeln,
@@ -133,6 +154,13 @@ function deps(
     openrouter?: string
     modell?: (anfrage: ModellAnfrage) => Promise<string>
     limit?: string
+    /**
+     * die echte lage: `authenticated` darf nicht in `eni_anhaenge` schreiben.
+     * nur der dienstklient darf es.
+     */
+    anhaengeNurMitDienst?: boolean
+    /** kein dienstschluessel gesetzt — dann muss der anhang ehrlich scheitern */
+    ohneDienst?: boolean
   } = {}
 ) {
   const tabellen = optionen.tabellen ?? grunddaten()
@@ -147,7 +175,15 @@ function deps(
         OPENROUTER_API_KEY: optionen.openrouter,
         ENI_TAGESLIMIT: optionen.limit,
       })[name],
-    datenbank: () => baueDatenbank(tabellen, optionen.nutzer === undefined ? ICH : optionen.nutzer),
+    datenbank: () =>
+      baueDatenbank(
+        tabellen,
+        optionen.nutzer === undefined ? ICH : optionen.nutzer,
+        optionen.anhaengeNurMitDienst ? ['eni_anhaenge'] : []
+      ),
+    dienstDatenbank: optionen.ohneDienst
+      ? () => null
+      : () => baueDatenbank(tabellen, optionen.nutzer === undefined ? ICH : optionen.nutzer),
     modell: async (anfrage, anbieter, schluessel) => {
       gesehen.push(anfrage)
       gerufen.push({ anbieter, schluessel })
@@ -715,6 +751,50 @@ describe('ENI mit bild und datei', () => {
     // der client bekommt die zeile zurueck, wie sie steht
     const koerper = await antwort.json()
     expect(koerper.mensch.anhaenge).toHaveLength(1)
+  })
+
+  it('schreibt den anhang mit dienstrechten, weil das konto selbst nicht darf', async () => {
+    // genau die lage in produktion: `authenticated` hat kein insert auf
+    // eni_anhaenge, und die function laeuft mit dem token des aufrufers.
+    const { abhaengigkeiten, tabellen } = deps({ anhaengeNurMitDienst: true })
+    const antwort = await behandleEni(
+      anfrage({
+        chatId: 'chat-9',
+        text: 'was siehst du',
+        anhaenge: [
+          { art: 'bild', name: 'raster.png', pfad: `${ICH}/chat-9/abc.jpg`, groesse: 4242 },
+        ],
+      }),
+      abhaengigkeiten
+    )
+
+    expect(antwort.status).toBe(200)
+    expect(tabellen.eni_anhaenge).toHaveLength(1)
+    expect((await antwort.json()).mensch.anhaenge).toHaveLength(1)
+  })
+
+  it('sagt es, statt das foto stillschweigend zu verlieren, wenn kein dienstschluessel steht', async () => {
+    const { abhaengigkeiten, tabellen } = deps({
+      anhaengeNurMitDienst: true,
+      ohneDienst: true,
+    })
+    const antwort = await behandleEni(
+      anfrage({
+        chatId: 'chat-9',
+        text: 'was siehst du',
+        anhaenge: [
+          { art: 'bild', name: 'raster.png', pfad: `${ICH}/chat-9/abc.jpg`, groesse: 4242 },
+        ],
+      }),
+      abhaengigkeiten
+    )
+    const inhalt = await antwort.json()
+
+    expect(antwort.status).toBe(500)
+    expect(inhalt.code).toBe('anhang_nicht_gespeichert')
+    // die vorlage steht trotzdem: sie ist gesagt worden
+    expect(inhalt.mensch.text).toBe('was siehst du')
+    expect(tabellen.eni_anhaenge).toHaveLength(0)
   })
 
   it('nimmt ein bild ohne ein einziges wort an', async () => {

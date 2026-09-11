@@ -189,6 +189,20 @@ Deno.serve((request) =>
         global: { headers: { authorization: autorisierung } },
         auth: { autoRefreshToken: false, persistSession: false },
       }) as unknown as EniDatenbank,
+    /**
+     * Nur fuer das Insert in `eni_anhaenge`, siehe den Kommentar an
+     * `dienstDatenbank`. Supabase legt diesen Schluessel selbst in die
+     * Umgebung jeder Function; fehlt er, faellt das Insert auf das Token des
+     * Aufrufers zurueck und meldet den Anhang ehrlich als nicht gespeichert.
+     */
+    dienstDatenbank: () => {
+      const url = Deno.env.get('SUPABASE_URL')
+      const dienstKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+      if (!url || !dienstKey) return null
+      return createClient(url, dienstKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      }) as unknown as EniDatenbank
+    },
     modell: rufeModell,
     protokoll: console,
   })
