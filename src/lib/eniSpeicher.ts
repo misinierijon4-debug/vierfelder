@@ -3,6 +3,18 @@ import { raeumeChatDateien } from './eniAnhang'
 import type { EniAnhang } from './eniAnhang'
 import type { UserId } from './types'
 
+export type DuellKontext = {
+  ich: UserId
+  gegner: UserId
+  ichName: string
+  gegnerName: string
+  wocheIch: number
+  wocheEr: number
+  diff: number
+  statusText?: string
+  offeneAufgaben?: string[]
+}
+
 export type EniRolle = 'eni' | 'mensch'
 
 export type EniZeile = {
@@ -49,6 +61,7 @@ export type EniSpeicher = {
   neuerChat: (titel: string) => Promise<EniChat>
   schreibe: (chatId: string, rolle: EniRolle, text: string) => Promise<EniZeile>
   loesche: (chatId: string) => Promise<void>
+  duellStand?: () => Promise<DuellKontext | null>
 }
 
 /** der titel eines chats ist seine erste vorlage, gekürzt auf eine zeile */
@@ -103,9 +116,6 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
     },
 
     async nachrichten(chatId) {
-      // zwei abfragen statt eines joins: der join haengte an jede nachricht die
-      // spalten ihrer anhaenge, und `inhalt` einer textdatei sind bis zu 20000
-      // zeichen. so kommt jede zeile genau einmal.
       const [zeilen, anhaenge] = await Promise.all([
         klient
           .from('eni_nachrichten')
@@ -119,8 +129,6 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
       ])
       if (zeilen.error) throw new EniSpeicherfehler('der chat konnte nicht geladen werden.', zeilen.error)
 
-      // ein fehlgeschlagener anhang-abruf darf den chat nicht verschlucken:
-      // die worte sind die hauptsache, die bilder haengen daran.
       const nachNachricht = new Map<string, EniAnhang[]>()
       for (const roh of anhaenge.data ?? []) {
         const anhang = leseAnhang(roh)
@@ -162,14 +170,58 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
     async loesche(chatId) {
       const { error } = await klient.from('eni_chats').delete().eq('id', chatId)
       if (error) throw new EniSpeicherfehler('der chat wurde nicht gelöscht.', error)
-      // die zeilen nimmt das cascade mit, die dateien im bucket nicht: der ist
-      // keine tabelle. das hier ist der einzige ort, an dem noch bekannt ist,
-      // welcher ordner zu diesem chat gehoerte.
       try {
         await raeumeChatDateien(kontoId, chatId)
       } catch {
-        /* der chat ist weg. eine datei, auf die kein pfad mehr zeigt, ist kein
-           grund, dem menschen zu sagen, das loeschen sei gescheitert. */
+        /* der chat ist weg */
+      }
+    },
+
+    async duellStand() {
+      try {
+        const { data: profData } = await klient
+          .from('profile')
+          .select('person')
+          .eq('id', kontoId)
+          .single()
+        const person = (profData as { person?: unknown })?.person as UserId
+        if (person !== 'erijon' && person !== 'koray') return null
+        const ich = person
+        const gegner: UserId = person === 'koray' ? 'erijon' : 'koray'
+
+        const heute = new Date()
+        const montag = new Date(heute)
+        const day = (montag.getDay() + 6) % 7
+        montag.setDate(montag.getDate() - day)
+        const montagIso = montag.toISOString().slice(0, 10)
+
+        const { data: einheitenData } = await klient
+          .from('einheiten')
+          .select('user_id,bereich,tag')
+          .gte('tag', montagIso)
+
+        const { data: allProfiles } = await klient.from('profile').select('id,person')
+        const personMap = new Map((allProfiles ?? []).map((p) => [String(p.id), p.person as UserId]))
+
+        let wocheIch = 0
+        let wocheEr = 0
+        for (const row of einheitenData ?? []) {
+          const u = personMap.get(String(row.user_id))
+          if (u === ich) wocheIch += 1
+          else if (u === gegner) wocheEr += 1
+        }
+
+        return {
+          ich,
+          gegner,
+          ichName: ich === 'koray' ? 'Koray' : 'Erijon',
+          gegnerName: gegner === 'koray' ? 'Koray' : 'Erijon',
+          wocheIch,
+          wocheEr,
+          diff: wocheIch - wocheEr,
+        }
+      } catch {
+        return null
       }
     },
   }
@@ -256,6 +308,49 @@ export function lokalerEniSpeicher(me: UserId): EniSpeicher {
       const alle = alleNachrichten()
       delete alle[chatId]
       schreibeRoh(NACHRICHTEN_KEY, alle)
+    },
+    async duellStand() {
+      try {
+        const rawEinheiten = localStorage.getItem('vierfelder.einheiten.v1')
+        const einheitenObj = rawEinheiten ? JSON.parse(rawEinheiten) : null
+        const heute = new Date()
+        const montag = new Date(heute)
+        const day = (montag.getDay() + 6) % 7
+        montag.setDate(montag.getDate() - day)
+        const montagIso = montag.toISOString().slice(0, 10)
+        const heuteIso = heute.toISOString().slice(0, 10)
+
+        let wocheIch = 0
+        let wocheEr = 0
+        const ich = me
+        const gegner: UserId = me === 'koray' ? 'erijon' : 'koray'
+
+        if (einheitenObj && typeof einheitenObj === 'object') {
+          for (const [, liste] of Object.entries(einheitenObj)) {
+            if (!Array.isArray(liste)) continue
+            for (const e of liste as Array<Record<string, unknown>>) {
+              if (!e || typeof e !== 'object') continue
+              const tag = String(e.tag ?? '')
+              if (tag >= montagIso && tag <= heuteIso) {
+                if (e.user === ich) wocheIch += 1
+                else if (e.user === gegner) wocheEr += 1
+              }
+            }
+          }
+        }
+
+        return {
+          ich,
+          gegner,
+          ichName: ich === 'koray' ? 'Koray' : 'Erijon',
+          gegnerName: gegner === 'koray' ? 'Koray' : 'Erijon',
+          wocheIch,
+          wocheEr,
+          diff: wocheIch - wocheEr,
+        }
+      } catch {
+        return null
+      }
     },
   }
 }

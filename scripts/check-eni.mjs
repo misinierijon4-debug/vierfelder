@@ -28,7 +28,10 @@ if (!url || !schluessel) {
 
 const ziel = `${url.replace(/\/+$/, '')}/functions/v1/eni`
 
-const SETZEN = '  npx supabase secrets set DEEPSEEK_API_KEY=sk-DEIN-SCHLUESSEL'
+const SETZEN = [
+  '  npx supabase secrets set DEEPSEEK_API_KEY=sk-DEIN-SCHLUESSEL',
+  '  npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-DEIN-SCHLUESSEL',
+]
 
 /**
  * Kein `process.exit()`: Node reisst damit den noch offenen Verbindungshandle
@@ -74,14 +77,23 @@ async function pruefe() {
   }
 
   if (inhalt.bereit === true) {
+    const offen = Array.isArray(inhalt.anbieter) ? inhalt.anbieter : []
     console.log(`ENI ist verbunden. Modell: ${inhalt.modell}.`)
-    console.log('In der App steht oben im Kopf jetzt "deepseek ueber supabase".')
+    if (offen.length > 1) {
+      console.log('Zur Wahl stehen:')
+      for (const eintrag of offen) console.log(`  ${eintrag.name} (${eintrag.modell})`)
+      console.log('Der Knopf dafuer steht in der App oben im Kopf.')
+    } else if (offen.length === 1) {
+      console.log(`In der App steht oben im Kopf jetzt "${offen[0].name} ueber supabase".`)
+      console.log('Zur Wahl kommt es erst mit einem zweiten Schluessel. Moeglich sind:')
+      for (const zeile of SETZEN) console.log(zeile)
+    }
     return 0
   }
 
-  console.log('ENI ist ausgerollt, aber ohne Schluessel. Setz ihn mit:')
+  console.log('ENI ist ausgerollt, aber ohne Schluessel. Setz mindestens einen:')
   console.log('')
-  console.log(SETZEN)
+  for (const zeile of SETZEN) console.log(zeile)
   console.log('')
   console.log('Danach noch einmal: npm run check:eni')
   return 1

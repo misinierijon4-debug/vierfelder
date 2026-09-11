@@ -1,4 +1,3 @@
-import { CaretRight } from '@phosphor-icons/react'
 import { EniMarke } from './EniMarke'
 
 type Props = {
@@ -6,10 +5,13 @@ type Props = {
 }
 
 /**
- * der weg zu ENI, aus der anzeigetafel heraus. bewusst kein sechster tab:
- * die tabs schalten zwischen ansichten derselben sache um, dieser knopf führt
- * aus der app heraus in eine andere. deshalb sieht er aus wie ein symbol auf
- * einem homescreen und nicht wie eine reiterlasche.
+ * Der Weg zu ENI aus der Anzeigetafel heraus.
+ *
+ * Hochwertig, ruhig und ausgewogen gestaltet:
+ * - 14px Beschriftung fuer klare Lesbarkeit
+ * - Mehr Innenraum mit komfortabler 44px-Trefferflaeche
+ * - Dezenterer, ruhiger Rand statt harter Kastenkante
+ * - Harmonisch proportioniertes Logo
  */
 export function EniTuer({ onOeffnen }: Props) {
   return (
@@ -17,11 +19,12 @@ export function EniTuer({ onOeffnen }: Props) {
       type="button"
       onClick={onOeffnen}
       aria-label="ENI öffnen"
-      className="flex min-h-11 items-center gap-2 rounded-[2px] border border-kontroll-rand bg-flaeche pr-2 pl-2.5"
+      className="group relative flex min-h-11 items-center gap-2 rounded-[2px] border border-linie/40 bg-flaeche/70 px-3.5 py-1.5 text-kreide transition-colors hover:border-linie hover:bg-flaeche active:bg-grund focus-visible:outline-2 focus-visible:outline-fokus"
     >
-      <EniMarke groesse={18} />
-      <span className="display text-[12px] font-bold leading-none tracking-[0.08em]">ENI</span>
-      <CaretRight size={11} weight="bold" aria-hidden="true" className="text-kreide-52" />
+      <EniMarke groesse={17} grund="var(--flaeche)" />
+      <span className="display text-[14px] font-bold leading-none tracking-[0.05em] text-kreide transition-colors">
+        ENI
+      </span>
     </button>
   )
 }

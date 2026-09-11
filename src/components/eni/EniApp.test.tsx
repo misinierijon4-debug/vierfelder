@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lokalerEniSpeicher } from '../../lib/eniSpeicher'
 import type { EniSpeicher } from '../../lib/eniSpeicher'
+import type { Modellstand } from '../../lib/eniAntwort'
 import { EniApp } from './EniApp'
 
 // jsdom bringt showModal nicht mit. dieselbe kleine kruecke wie im kalender.
@@ -67,7 +68,7 @@ describe('ENI als eigene oberflaeche', () => {
     const { onZurueck } = zeigeEni()
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
-    fireEvent.click(screen.getByRole('button', { name: 'zweikampf' }))
+    fireEvent.click(screen.getByRole('button', { name: /zurück zum zweikampf/i }))
     expect(onZurueck).toHaveBeenCalledTimes(1)
   })
 
@@ -215,8 +216,8 @@ describe('ENI als eigene oberflaeche', () => {
       <EniApp
         speicher={lokalerEniSpeicher('erijon')}
         onZurueck={vi.fn()}
-        pruefeModell={() => Promise.resolve(true)}
-        baueGeber={() => geber}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: [] })}
+        baueGeber={() => geber as unknown as any}
       />
     )
 
@@ -228,14 +229,80 @@ describe('ENI als eigene oberflaeche', () => {
     expect(screen.getByText(/verlässt dein gerät/i)).toBeInTheDocument()
   })
 
-  it('nimmt nichts an, solange die verbindung noch geprüft wird', async () => {
+  it('lässt das modell wechseln und schickt die wahl an den geber weiter', async () => {
     vi.useFakeTimers()
-    let loese: (bereit: boolean) => void = () => {}
+    const geber = {
+      art: 'modell' as const,
+      anbieter: null,
+      antworte: vi.fn(),
+    }
+    const baue = vi.fn(() => geber as unknown as any)
+    const zwei = [
+      { id: 'deepseek', name: 'deepseek flash', hinweis: 'schnell', modell: 'deepseek-flash' },
+      { id: 'ling', name: 'ling 3.0 flash', hinweis: 'kostenlos', modell: 'inclusionai/ling' },
+    ]
     render(
       <EniApp
         speicher={lokalerEniSpeicher('erijon')}
         onZurueck={vi.fn()}
-        pruefeModell={() => new Promise<boolean>((weiter) => { loese = weiter })}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: zwei })}
+        baueGeber={baue}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // ohne gemerkte wahl gilt der erste
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'deepseek')
+    expect(screen.getByText(/deepseek flash über supabase/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /ling 3\.0 flash/i }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling')
+    expect(screen.getByText(/ling 3\.0 flash über supabase/i)).toBeInTheDocument()
+    // das menü ist wieder zu
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+  })
+
+  it('legt das wort am rückweg unter 416 pixeln ab, damit der kopf nicht überläuft', async () => {
+    vi.useFakeTimers()
+    zeigeEni(lokalerEniSpeicher('erijon'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    const zurueck = screen.getByRole('button', { name: /zurück zum zweikampf/i })
+    // der pfeil bleibt immer, das wort geht auf schmalen geräten
+    expect(zurueck.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('zweikampf')).toHaveClass('max-[415px]:hidden')
+  })
+
+  it('zeigt keine modellwahl, wenn es nur einen anbieter gibt', async () => {
+    vi.useFakeTimers()
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() =>
+          Promise.resolve({
+            bereit: true,
+            anbieter: [{ id: 'deepseek', name: 'deepseek flash', hinweis: '', modell: 'deepseek-flash' }],
+          })
+        }
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    expect(screen.queryByRole('button', { name: /modell wählen/i })).toBeNull()
+  })
+
+  it('nimmt nichts an, solange die verbindung noch geprüft wird', async () => {
+    vi.useFakeTimers()
+    let loese: (stand: Modellstand) => void = () => {}
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() => new Promise<Modellstand>((weiter) => { loese = weiter })}
       />
     )
 
@@ -243,9 +310,243 @@ describe('ENI als eigene oberflaeche', () => {
     expect(screen.getByRole('button', { name: 'vorlegen' })).toBeDisabled()
 
     await act(async () => {
-      loese(false)
+      loese({ bereit: false, anbieter: [] })
       await vi.advanceTimersByTimeAsync(10)
     })
     expect(screen.getByRole('button', { name: 'vorlegen' })).toBeEnabled()
   })
-})
+  describe('gezielte regressionstests', () => {
+    it('erhaelt entwuerfe bei chatwechsel und ordnet sie korrekt zu', async () => {
+      vi.useFakeTimers()
+      const speicher = lokalerEniSpeicher('erijon')
+      const c1 = await speicher.neuerChat('chat eins')
+      await speicher.schreibe(c1.id, 'mensch', 'hallo eins')
+      zeigeEni(speicher)
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      // In neuem Chat etwas tippen
+      fireEvent.change(feld(), { target: { value: 'entwurf fuer neuen chat' } })
+
+      // Zu Chat 1 wechseln
+      fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+      const verlauf = screen.getByRole('dialog', { name: 'verlauf' })
+      fireEvent.click(within(verlauf).getByText('chat eins'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      // In Chat 1 ist das Feld zunaechst leer
+      expect(feld()).toHaveValue('')
+      fireEvent.change(feld(), { target: { value: 'entwurf fuer chat eins' } })
+
+      // Zurueck zu neuem Chat wechseln
+      fireEvent.click(screen.getByRole('button', { name: 'neuer chat' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      // Entwurf des neuen Chats ist wieder da
+      expect(feld()).toHaveValue('entwurf fuer neuen chat')
+
+      // Wieder zurueck zu Chat 1 wechseln
+      fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+      fireEvent.click(within(screen.getByRole('dialog', { name: 'verlauf' })).getByText('chat eins'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      // Entwurf von Chat 1 ist erhalten
+      expect(feld()).toHaveValue('entwurf fuer chat eins')
+    })
+
+    it('ermoeglicht die wiederholung einer fehlgeschlagenen vorlage ohne nachrichten-duplikate', async () => {
+      vi.useFakeTimers()
+      let aufrufNr = 0
+      const geber = {
+        art: 'modell' as const,
+        antworte: vi.fn(async () => {
+          aufrufNr += 1
+          if (aufrufNr === 1) {
+            throw new Error('netzwerkfehler')
+          }
+          return {
+            mensch: { id: 'm1', rolle: 'mensch' as const, text: 'mein versuch', erstellt: new Date().toISOString() },
+            eni: { id: 'e1', rolle: 'eni' as const, text: 'jetzt hat es geklappt.', erstellt: new Date().toISOString() },
+          }
+        }),
+      }
+
+      render(
+        <EniApp
+          speicher={lokalerEniSpeicher('erijon')}
+          onZurueck={vi.fn()}
+          pruefeModell={() => Promise.resolve({ bereit: true, anbieter: [] })}
+          baueGeber={() => geber as any}
+        />
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      fireEvent.change(feld(), { target: { value: 'mein versuch' } })
+      fireEvent.click(screen.getByRole('button', { name: 'vorlegen' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      // Fehler wird gemeldet und Wiederholen-Button ist da
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      const wiederholenBtn = screen.getByRole('button', { name: 'wiederholen' })
+      expect(wiederholenBtn).toBeInTheDocument()
+
+      // Erneut versuchen
+      fireEvent.click(wiederholenBtn)
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      // Antwort ist da, keine doppelten Zeilen
+      expect(screen.getByLabelText('dialog mit ENI')).toHaveTextContent(/jetzt hat es geklappt/)
+      expect(within(screen.getByLabelText('dialog mit ENI')).getAllByText('mein versuch')).toHaveLength(1)
+    })
+
+    it('leitet spaete antworten bei chatwechsel nicht in den falschen chat weiter', async () => {
+      vi.useFakeTimers()
+      let loeseAntwort: (res: { mensch: any; eni: any }) => void = () => {}
+      const geber: any = {
+        art: 'modell',
+        antworte: vi.fn(async () => {
+          return new Promise((resolve) => {
+            loeseAntwort = resolve
+          })
+        }),
+      }
+
+      const speicher = lokalerEniSpeicher('erijon')
+      const c1 = await speicher.neuerChat('chat a')
+      await speicher.schreibe(c1.id, 'mensch', 'nachricht a')
+
+      render(
+        <EniApp
+          speicher={speicher}
+          onZurueck={vi.fn()}
+          pruefeModell={() => Promise.resolve({ bereit: true, anbieter: [] })}
+          baueGeber={() => geber}
+        />
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      // Wir starten im leeren Chat und senden etwas
+      fireEvent.change(feld(), { target: { value: 'frage fuer chat b' } })
+      fireEvent.click(screen.getByRole('button', { name: 'vorlegen' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(60) })
+
+      // Waehrend Anfrage laeuft, wechseln wir zu Chat a
+      fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+      fireEvent.click(within(screen.getByRole('dialog', { name: 'verlauf' })).getByText('chat a'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      // Jetzt loesen wir die spaete Antwort von Chat b auf
+      await act(async () => {
+        loeseAntwort({
+          mensch: { id: 'm-b', rolle: 'mensch', text: 'frage fuer chat b', erstellt: new Date().toISOString() },
+          eni: { id: 'e-b', rolle: 'eni', text: 'antwort fuer chat b', erstellt: new Date().toISOString() },
+        })
+        await vi.advanceTimersByTimeAsync(100)
+      })
+
+      // Chat a darf die Antwort von Chat b NICHT anzeigen!
+      expect(screen.queryByText('antwort fuer chat b')).toBeNull()
+      expect(screen.getByText('nachricht a')).toBeInTheDocument()
+    })
+
+    it('ersetzt das feld beim startvorschlag sauber ohne zu stacken', async () => {
+      vi.useFakeTimers()
+      zeigeEni()
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      const auftakt1 = screen.getByRole('button', { name: 'wie stehe ich gegen koray' })
+      fireEvent.click(auftakt1)
+      expect(feld()).toHaveValue('wie stehe ich gegen koray')
+
+      const auftakt2 = screen.getByRole('button', { name: 'was soll ich heute essen' })
+      fireEvent.click(auftakt2)
+      expect(feld()).toHaveValue('was soll ich heute essen')
+    })
+
+    it('zeigt bei Gleichstand Fuehrung uebernehmen statt Vorsprung ausbauen', async () => {
+      vi.useFakeTimers()
+      const speicher = lokalerEniSpeicher('erijon')
+      render(
+        <EniApp
+          speicher={speicher}
+          onZurueck={vi.fn()}
+          initialDuellStand={{
+            ich: 'erijon',
+            gegner: 'koray',
+            ichName: 'Erijon',
+            gegnerName: 'Koray',
+            wocheIch: 4,
+            wocheEr: 4,
+            diff: 0,
+          }}
+        />
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      expect(screen.getByText('Führung übernehmen')).toBeInTheDocument()
+      expect(screen.queryByText('Vorsprung ausbauen')).toBeNull()
+    })
+
+    it('formatiert frische antworten mit Fettdruck ohne raw markdown und staffelt woerter', async () => {
+      vi.useFakeTimers()
+      const speicher = lokalerEniSpeicher('erijon')
+      const baueGeber = () => ({
+        art: 'modell' as const,
+        anbieter: 'test',
+        async antworte(chatId: string, text: string) {
+          const mensch = await speicher.schreibe(chatId, 'mensch', text)
+          const eni = await speicher.schreibe(chatId, 'eni', 'Hier ist **echter Einsatz** gefragt.')
+          return { mensch, eni }
+        },
+      })
+
+      render(
+        <EniApp
+          speicher={speicher}
+          onZurueck={vi.fn()}
+          pruefeModell={async () => ({ bereit: true, anbieter: [], gewaehlt: null })}
+          baueGeber={baueGeber}
+        />
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      fireEvent.change(feld(), { target: { value: 'mein plan' } })
+      fireEvent.click(screen.getByRole('button', { name: 'vorlegen' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      // Keine raw Markdown-Sterne im gerenderten Text
+      expect(screen.queryByText(/\*\*/)).toBeNull()
+      const echter = screen.getByText('echter')
+      expect(echter.closest('strong')).not.toBeNull()
+      expect(echter.classList.contains('eni-wort')).toBe(true)
+    })
+
+    it('startet mit Audio standardmaessig aus und liest erst nach Einschalten vor', async () => {
+      vi.useFakeTimers()
+      const altSynth = window.speechSynthesis
+      const altUtt = window.SpeechSynthesisUtterance
+      window.speechSynthesis = {
+        speak: vi.fn(),
+        cancel: vi.fn(),
+        getVoices: () => [],
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as SpeechSynthesis
+      window.SpeechSynthesisUtterance = function () {} as unknown as typeof SpeechSynthesisUtterance
+
+      const speicher = lokalerEniSpeicher('erijon')
+      render(<EniApp speicher={speicher} onZurueck={vi.fn()} />)
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      const audioBtn = screen.getByRole('button', { name: 'antworten vorlesen' })
+      expect(audioBtn).toHaveAttribute('aria-pressed', 'false')
+
+      // Einschalten
+      fireEvent.click(audioBtn)
+      expect(audioBtn).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'nicht mehr vorlesen' })).toBeInTheDocument()
+
+      window.speechSynthesis = altSynth
+      window.SpeechSynthesisUtterance = altUtt
+    })
+  })
+});

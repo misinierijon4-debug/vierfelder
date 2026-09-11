@@ -1,23 +1,23 @@
 type Props = {
   /** kantenlänge des zeichens in pixeln */
   groesse?: number
-  /** auf der anzeigetafel steht das zeichen auf --grund, in ENI auf --flaeche */
+  /** grund-farbe fuer rueckwaertskompatibilitaet */
   grund?: string
 }
 
 /**
  * ENIs zeichen: ein monolith. ein aufgerichteter stein, oben schräg
- * abgeschlagen, mit einer harten kerbe quer hindurch.
+ * abgeschlagen, mit einer harten kerbe im rechten grat.
  *
- * das app-zeichen (DESIGN.md, abschnitt 23) erzählt von zweien, die sich
- * ineinander verkeilen. ENI steht für sich allein, deshalb ist sein zeichen
- * eine einzelne figur ohne gegenstück. die kerbe ist die einzige unterbrechung
- * und sitzt bewusst nicht mittig, sondern etwas höher: eine exakt halbierte
- * figur sähe aus wie zwei blöcke, nicht wie ein stein mit einer wunde.
+ * das app-zeichen erzählt von zweien, die sich ineinander verkeilen.
+ * ENI steht für sich allein, deshalb ist sein zeichen eine einzelne figur
+ * ohne gegenstück. die kerbe sitzt als meisselschlag im oberen drittel.
  *
  * keine sechste farbe. gold und petrol gehören den zwei menschen.
  */
-export function EniMarke({ groesse = 40, grund = 'var(--flaeche)' }: Props) {
+export function EniMarke({ groesse = 40, grund: _grund = 'var(--flaeche)' }: Props) {
+  const klein = groesse <= 22
+
   return (
     <svg
       aria-hidden="true"
@@ -27,15 +27,19 @@ export function EniMarke({ groesse = 40, grund = 'var(--flaeche)' }: Props) {
       viewBox="0 0 40 40"
       className="shrink-0"
     >
-      {/* der stein: fast senkrecht, nur leicht nach unten breiter, und oben
-          schraeg abgeschlagen statt gerade gesaegt. */}
-      <path d="M12 4 L28 1 L29.5 39 H10.5 Z" fill="var(--kreide)" />
-      {/* die kerbe geht nur zwei drittel hinein, nicht durch. ein schnitt quer
-          durch waere zwei bloecke uebereinander, und bei einer kerbe im oberen
-          drittel saehe das aus wie ein kleines i. so bleibt es ein stein mit
-          einer wunde. breiter als eine haarlinie muss sie sein, sonst faellt
-          sie bei 18 px in der tuer im kopf einfach weg. */}
-      <rect x="7" y="12" width="16" height="3.2" fill={grund} />
+      {klein ? (
+        /* optisch verstärkte silhouette für kleine größen (z.b. 15-22px) mit integrierter kerbe */
+        <path
+          d="M11 6 L28 3.5 L28.5 13.5 L21 17.5 L29 21.5 L30 37 H10 Z"
+          fill="var(--kreide)"
+        />
+      ) : (
+        /* verfeinerte, ausgewogene monolith-geometrie für große darstellungen */
+        <path
+          d="M11.5 6.5 L28.5 4 L28.8 14 L22 17.5 L29.2 21 L30 37 H10 Z"
+          fill="var(--kreide)"
+        />
+      )}
     </svg>
   )
 }

@@ -12,8 +12,24 @@ import type { EniSpeicher, EniZeile } from './eniSpeicher'
  * unterscheiden, wo das Urteil herkommt. Nur eine Stelle unterscheidet: die
  * Zeile im Kopf, die sagt, was gerade laeuft. Sie muss die Wahrheit sagen.
  */
+/** ein anbieter, so wie die function ihn anbietet */
+export type AnbieterInfo = {
+  id: string
+  name: string
+  hinweis: string
+  modell: string
+}
+
+/** was die pruefung zurueckgibt: ob überhaupt, und wenn ja, wer zur wahl steht */
+export type Modellstand = {
+  bereit: boolean
+  anbieter: AnbieterInfo[]
+}
+
 export type Antwortgeber = {
   art: 'modell' | 'stimmenprobe'
+  /** die id des anbieters, der antwortet. null in der stimmenprobe. */
+  anbieter: string | null
   /**
    * schreibt vorlage und urteil und gibt beide zurueck. `eni` ist null, wenn
    * ENI zu dieser vorlage nichts sagt; dann steht der grund in `hinweis`.
@@ -23,7 +39,8 @@ export type Antwortgeber = {
     text: string,
     bisher: EniZeile[],
     /** bilder und dateien, die schon hochgeladen sind. leer ist der normalfall. */
-    anhaenge?: AnhangVorlage[]
+    anhaenge?: AnhangVorlage[],
+    signal?: AbortSignal
   ) => Promise<{ mensch: EniZeile; eni: EniZeile | null; hinweis?: string }>
 }
 
@@ -50,7 +67,11 @@ function funktionsAdresse(name: string): { url: string; schluessel: string } | n
  * dieselben Kopfzeilen und dieselbe Behandlung einer Antwort braucht, die kein
  * JSON ist — und weil zwei Kopien davon garantiert auseinanderlaufen.
  */
-export async function rufeEniFunktion(name: string, rumpf: Record<string, unknown>) {
+export async function rufeEniFunktion(
+  name: string,
+  rumpf: Record<string, unknown>,
+  signal?: AbortSignal
+) {
   const adresse = funktionsAdresse(name)
   const db = supabase
   if (!adresse || !db) throw new EniModellFehler('kein konto')
@@ -60,52 +81,89 @@ export async function rufeEniFunktion(name: string, rumpf: Record<string, unknow
     throw new EniModellFehler('die anmeldung ist abgelaufen. melde dich neu an.')
   }
 
-  const antwort = await fetch(adresse.url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${data.session.access_token}`,
-      apikey: adresse.schluessel,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(rumpf),
-  })
-
-  const text = await antwort.text()
-  let inhalt: Record<string, unknown>
   try {
-    inhalt = text.trim() === '' ? {} : (JSON.parse(text) as Record<string, unknown>)
-  } catch {
-    throw new EniModellFehler(`server antwortet ${antwort.status}, aber kein json`)
+    const antwort = await fetch(adresse.url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${data.session.access_token}`,
+        apikey: adresse.schluessel,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(rumpf),
+      signal,
+    })
+
+    const text = await antwort.text()
+    let inhalt: Record<string, unknown>
+    try {
+      inhalt = text.trim() === '' ? {} : (JSON.parse(text) as Record<string, unknown>)
+    } catch {
+      throw new EniModellFehler(`server antwortet ${antwort.status}, aber kein json`)
+    }
+    return { status: antwort.status, inhalt }
+  } catch (err) {
+    if (err instanceof EniModellFehler) throw err
+    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+      throw new EniModellFehler('anfrage abgebrochen')
+    }
+    throw err
   }
-  return { status: antwort.status, inhalt }
 }
 
-const rufe = (rumpf: Record<string, unknown>) => rufeEniFunktion('eni', rumpf)
+const rufe = (rumpf: Record<string, unknown>, signal?: AbortSignal) =>
+  rufeEniFunktion('eni', rumpf, signal)
 
 /**
- * Ob ueberhaupt ein Schluessel gesetzt ist. Kostet nichts: die Function ruft
- * dafuer kein Modell auf. Ein Fehler heisst hier immer "nein" statt zu werfen,
- * damit ENI auch ohne Netz aufgeht.
+ * Ob ueberhaupt ein Schluessel gesetzt ist, und welche Modelle damit zur Wahl
+ * stehen. Kostet nichts: die Function ruft dafuer kein Modell auf. Ein Fehler
+ * heisst hier immer "nein" statt zu werfen, damit ENI auch ohne Netz aufgeht.
+ *
+ * Die Liste kommt vom Server, nie aus dem Bundle. Sonst stünde im Menü ein
+ * Modell, für das niemand einen Schlüssel gesetzt hat — eine Oberfläche, die
+ * eine Verbindung andeutet, die es nicht gibt.
  */
-export async function modellBereit(): Promise<boolean> {
+export async function modellBereit(): Promise<Modellstand> {
   try {
     const { status, inhalt } = await rufe({ pruefen: true })
-    return status === 200 && inhalt.bereit === true
+    if (status !== 200 || inhalt.bereit !== true) return { bereit: false, anbieter: [] }
+    const roh = Array.isArray(inhalt.anbieter) ? inhalt.anbieter : []
+    const anbieter = roh
+      .filter((eintrag): eintrag is AnbieterInfo => {
+        const wert = eintrag as Partial<AnbieterInfo> | null
+        return typeof wert?.id === 'string' && typeof wert.name === 'string'
+      })
+      .map((eintrag) => ({
+        id: eintrag.id,
+        name: eintrag.name,
+        hinweis: String(eintrag.hinweis ?? ''),
+        modell: String(eintrag.modell ?? ''),
+      }))
+    return { bereit: true, anbieter }
   } catch {
-    return false
+    return { bereit: false, anbieter: [] }
   }
 }
 
-/** ENI hinter der Edge Function. Vorlage und Urteil schreibt der Server. */
-export function modellAntwort(): Antwortgeber {
+/**
+ * ENI hinter der Edge Function. Vorlage und Urteil schreibt der Server.
+ *
+ * `anbieter` ist nur eine id. Adresse, Modellname und Schlüssel kennt
+ * ausschließlich die Function; der Browser weiß von keinem davon.
+ */
+export function modellAntwort(anbieter: string | null = null): Antwortgeber {
   return {
     art: 'modell',
-    async antworte(chatId, text, _bisher, anhaenge) {
-      const { status, inhalt } = await rufe({
-        chatId,
-        text,
-        ...(anhaenge && anhaenge.length > 0 ? { anhaenge } : {}),
-      })
+    anbieter,
+    async antworte(chatId, text, _bisher, anhaenge, signal) {
+      const { status, inhalt } = await rufe(
+        {
+          chatId,
+          text,
+          ...(anbieter ? { modell: anbieter } : {}),
+          ...(anhaenge && anhaenge.length > 0 ? { anhaenge } : {}),
+        },
+        signal
+      )
       const mensch = (inhalt.mensch ?? null) as EniZeile | null
 
       if (status === 200 && inhalt.eni === null) {
@@ -131,11 +189,39 @@ export function modellAntwort(): Antwortgeber {
 export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
   return {
     art: 'stimmenprobe',
-    async antworte(chatId, text, bisher) {
+    anbieter: null,
+    async antworte(chatId, text, bisher, _anhaenge, signal) {
+      if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
+      const person = await speicher.person()
       const nr = bisher.filter((zeile) => zeile.rolle === 'mensch').length
       const mensch = await speicher.schreibe(chatId, 'mensch', text)
-      const eni = await speicher.schreibe(chatId, 'eni', eniAntwort(text, nr))
+      if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen', mensch)
+      const eni = await speicher.schreibe(chatId, 'eni', eniAntwort(text, nr, person))
       return { mensch, eni }
     },
+  }
+}
+
+/**
+ * Welches Modell zuletzt gewählt war. Reine Bequemlichkeit auf diesem Gerät:
+ * die Wahl ist nichts Geheimes, und sie gilt nur, solange der Server denselben
+ * Anbieter noch anbietet — sonst fällt sie auf den ersten zurück.
+ */
+const ANBIETER_KEY = 'eni.anbieter'
+
+export function anbieterGemerkt(): string | null {
+  try {
+    const wert = localStorage.getItem(ANBIETER_KEY)
+    return wert && wert.trim() !== '' ? wert : null
+  } catch {
+    return null
+  }
+}
+
+export function merkeAnbieter(id: string) {
+  try {
+    localStorage.setItem(ANBIETER_KEY, id)
+  } catch {
+    /* ein voller oder gesperrter speicher darf die wahl nicht verhindern */
   }
 }

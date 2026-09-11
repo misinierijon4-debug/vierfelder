@@ -497,11 +497,7 @@ export function useStimme(): Stimme {
 
 /** ob beim letzten mal vorgelesen wurde */
 export function vorlesenGemerkt(): boolean {
-  try {
-    return localStorage.getItem(VORLESEN_KEY) === 'ja'
-  } catch {
-    return false
-  }
+  return false
 }
 
 export function merkeVorlesen(an: boolean) {

@@ -1,3 +1,5 @@
+import type { UserId } from './types'
+
 /**
  * ENIs stimme, solange keine modellverbindung steht.
  *
@@ -15,74 +17,82 @@
  * ENI sagt, ist kein etikett, sondern rede.
  */
 
-/** der erste satz. er steht vor der ersten frage und setzt den ton. */
+/** kompakter erster satz fuer abwaertskompatibilitaet */
 export const ERSTER_SATZ =
-  'Ich bin ENI. Ich führe den Zweikampf zwischen dir und Koray, und ich zähle nach Punkten, nicht nach Sympathie. Sag, was du wissen willst.'
+  'Ich bin ENI. Schiedsrichter und Begleiter im Zweikampf: nach Punkten, nicht nach Sympathie. Sag, was ansteht.'
 
-/**
- * die reihenfolge ist die entscheidung: die erste passende regel gewinnt.
- * ausreden stehen weit vorn, weil sie sich hinter allem anderen verstecken.
- */
-const REGELN: Array<{ muster: RegExp; antwort: string }> = [
-  {
-    muster: /\b(ki|ai|bot|chatbot|modell|gpt|prompt)\b|bist du (echt|wirklich|ein)|wer bist du|was bist du/,
-    antwort:
-      'Ich bin heute eine Stimmenprobe auf deinem Gerät, kein Modell im Netz. Jeder Satz, den ich sage, steht fest im Code, und ich sehe deine Zahlen nicht. Wenn du mehr von mir willst, dann bau die Verbindung.',
-  },
-  {
-    muster: /\b(morgen|sp[äa]ter|m[üu]de|kaputt|irgendwann|vielleicht|eigentlich|wollte)\b|keine zeit|kann (ich )?nicht|schaffe? .*nicht/,
-    antwort:
-      'Das ist kein Grund, das ist ein Aufschub. Nenn mir die eine Sache, die du heute noch machst, und mach sie, bevor du wieder mit mir redest.',
-  },
-  {
-    muster: /\b(stand|punkte|vorsprung|wette|kw|woche)\b|wer f[üu]hrt|(ge)?winne|verliere/,
-    antwort:
-      'Ich sehe die Zahlen in dieser Fassung nicht, also behaupte ich auch keine. Sie stehen im Raster. Mit Modellverbindung lese ich sie und sage dir, wo du hinten liegst.',
-  },
-  {
-    muster: /\b(leber|milch|eigelb|roh|fett|zucker|soja|öl|oel|essen|ern[äa]hrung|kreatin|zink)\b/,
-    antwort:
-      'Rohe Leber, rohe Milch, Eigelb, rohes Fett. Dazu Vitamin D mit K2 und Zink. Kein Zucker, kein Soja, keine Pflanzenöle. Der Körper baut aus dem, was du ihm gibst, und Industriefutter baut nichts.',
-  },
-  {
-    muster: /\b(fertig|erledigt|geschafft|durchgezogen|trainiert|gelernt|gelesen)\b/,
-    antwort:
-      'Gut. Das war heute. Eine Woche hat sieben Tage, und heute ist einer davon. Leg morgen dasselbe hin, dann reden wir über Stolz.',
-  },
-  {
-    muster: /\b(wie|hilf|hilfe|rat|tipp|anfangen|starten|training|gym|boxen)\b|was soll ich/,
-    antwort:
-      'Fang mit dem Bereich an, in dem du hinten liegst, und nimm die kleinste Einheit, die noch zählt. Nicht die beste, die kleinste, die du sicher zu Ende bringst.',
-  },
-  {
-    muster: /\b(aufgeben|egal|hasse|sinnlos)\b|keinen sinn|bringt nichts|schlecht drauf/,
-    antwort:
-      'Du hast dich für diesen Zweikampf entschieden, als es dir gut ging. Dieser Tag zählt genauso wie der. Steh auf und mach die kleinste Einheit.',
-  },
-  {
-    muster: /\b(koray|erijon|unfair)\b|er hat|der andere|betr[üu]g/,
-    antwort:
-      'Der andere ist nicht dein Problem, er ist dein Maß. Wenn er vorne liegt, hat er gearbeitet, während du geredet hast.',
-  },
-]
+/** begruessung und rollensatz, angepasst an die angemeldete person */
+export function eniBegruessung(person: UserId = 'erijon'): { gruss: string; rolle: string; gegner: string } {
+  const ich = person === 'koray' ? 'Koray' : 'Erijon'
+  const gegner = person === 'koray' ? 'Erijon' : 'Koray'
+  return {
+    gruss: `Hallo ${ich}.`,
+    rolle: `Ich bin ENI. Schiedsrichter und Begleiter im Zweikampf gegen ${gegner}: nach Punkten, nicht nach Sympathie. Sag, was ansteht.`,
+    gegner,
+  }
+}
 
-/** wenn nichts greift, wird nachgefragt statt geraten */
+/** wenn nichts greift, wird gezielt nachgefragt statt abgewertet */
 const NACHFRAGEN = [
   'Zu vage. Nenn den Bereich, die Zahl und den Tag, dann urteile ich.',
-  'Ich bin kein Zuhörer für Stimmungen. Bring mir etwas, das man nachprüfen kann.',
-  'Gesagt ist nichts. Was davon steht am Sonntag im Raster?',
+  'Ich bin kein Zuhörer für Stimmungen. Bring mir etwas, das man nachprüfen kann: welcher Bereich und welcher Stand?',
+  'Gesagt ist nichts. Was davon steht am Sonntag im Raster? Nenn den konkreten nächsten Schritt.',
 ]
 
 /**
- * die antwort auf eine vorlage. rein, damit sie prüfbar ist: derselbe satz und
- * derselbe zähler ergeben immer dasselbe urteil.
- *
- * @param zaehler laufende nummer der vorlage, rotiert die nachfragen
+ * die antwort auf eine vorlage in der lokalen stimmenprobe.
+ * rein und reproduzierbar.
  */
-export function eniAntwort(frage: string, zaehler: number): string {
+export function eniAntwort(frage: string, zaehler: number, person: UserId = 'erijon'): string {
   const text = frage.trim().toLowerCase()
   if (!text) return NACHFRAGEN[0]!
-  for (const regel of REGELN) {
+
+  const gegner = person === 'koray' ? 'Erijon' : 'Koray'
+
+  const regeln: Array<{ muster: RegExp; antwort: string }> = [
+    {
+      muster: /\b(ki|ai|bot|chatbot|modell|gpt|prompt)\b|bist du (echt|wirklich|ein)|wer bist du|was bist du/,
+      antwort:
+        'Ich bin heute eine Stimmenprobe auf deinem Gerät, kein Modell im Netz. Jeder Satz, den ich sage, steht fest im Code, und ich sehe deine Zahlen nicht. Wenn du mehr von mir willst, dann bau die Verbindung.',
+    },
+    {
+      muster: /\b(morgen|sp[äa]ter|irgendwann|vielleicht|eigentlich|wollte)\b|keine zeit|kann (ich )?nicht|schaffe? .*nicht|\b(m[üu]de|kaputt|ersch[öo]pft)\b/,
+      antwort:
+        'Das ist kein Grund, das ist ein Aufschub oder echte Erschöpfung. Wenn der Schlaf unter 6 Stunden lag oder Gelenke schmerzen: schlaf oder mach Mobilität. Wenn du nur träge bist: nenn die kleinste Einheit und zieh sie durch.',
+    },
+    {
+      muster: /\b(stand|punkte|vorsprung|wette|kw|woche)\b|wer f[üu]hrt|(ge)?winne|verliere/,
+      antwort:
+        `Ich sehe die Zahlen in dieser Fassung nicht, also behaupte ich auch keine. Sie stehen im Raster. Mit Modellverbindung lese ich sie und sage dir, wo du gegen ${gegner} stehst.`,
+    },
+    {
+      muster: /\b(leber|milch|eigelb|roh|fett|zucker|soja|öl|oel|essen|ern[äa]hrung|kreatin|zink)\b/,
+      antwort:
+        'Rohe Leber, rohe Milch, Eigelb, rohes Fett. Dazu Vitamin D mit K2 und Zink. Kein Zucker, kein Soja, keine Pflanzenöle. Der Körper baut aus dem, was du ihm gibst, und Industriefutter baut nichts.',
+    },
+    {
+      muster: /\b(fertig|erledigt|geschafft|durchgezogen|trainiert|gelernt|gelesen)\b/,
+      antwort:
+        'Gute Einheit. Der Punkt steht. Aber eine Woche hat sieben Tage, und heute ist einer davon. Sauber essen, regenerieren und morgen nachlegen.',
+    },
+    {
+      muster: /\b(wie|hilf|hilfe|rat|tipp|anfangen|starten|training|gym|boxen)\b|was soll ich/,
+      antwort:
+        'Fang mit dem Bereich an, in dem du hinten liegst, und nimm die kleinste Einheit, die noch zählt. Nicht die beste, die kleinste, die du sicher zu Ende bringst.',
+    },
+    {
+      muster: /\b(aufgeben|egal|hasse|sinnlos)\b|keinen sinn|bringt nichts|schlecht drauf/,
+      antwort:
+        'Du hast dich für diesen Zweikampf entschieden, als es dir gut ging. Dieser Tag zählt genauso wie der. Steh auf und mach die kleinste Einheit.',
+    },
+    {
+      muster: new RegExp(`\\b(${gegner.toLowerCase()}|duell|gegner|unfair)\\b|er hat|der andere|betr[üu]g`),
+      antwort:
+        `${gegner} ist nicht dein Problem, er ist dein Maß. Wenn er vorne liegt, hat er gearbeitet, während du geredet hast.`,
+    },
+  ]
+
+  for (const regel of regeln) {
     if (regel.muster.test(text)) return regel.antwort
   }
   return NACHFRAGEN[Math.abs(zaehler) % NACHFRAGEN.length]!

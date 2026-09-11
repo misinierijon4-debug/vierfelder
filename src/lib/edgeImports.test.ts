@@ -18,16 +18,24 @@ describe('edge-function-abhaengigkeiten', () => {
 
     /**
      * Jede Adresse, die eine Function nach draussen anspricht, steht hier
-     * namentlich. Absichtlich nicht nur die eine von DeepSeek: die Liste ist
-     * die Stelle, an der auffaellt, wenn eine Function anfaengt, irgendwo
-     * anders hinzutelefonieren.
+     * namentlich. Absichtlich nicht nur die eine, an der ENI gerade haengt:
+     * die Liste ist die Stelle, an der auffaellt, wenn eine Function anfaengt,
+     * irgendwo anders hinzutelefonieren.
      */
-    const adressen = quellen
-      .flatMap(([, inhalt]) => [...inhalt.matchAll(/https:\/\/[^'"\s`]+/g)].map((f) => f[0]))
-      .sort()
+    // als Menge: dieselbe Adresse darf mehrfach dastehen, sobald zwei Zeilen
+    // der Anbietertabelle auf dieselbe Gegenstelle zeigen. Die Frage hier ist
+    // nicht, wie oft telefoniert wird, sondern wohin.
+    const adressen = [
+      ...new Set(
+        quellen.flatMap(([, inhalt]) =>
+          [...inhalt.matchAll(/https:\/\/[^'"\s`]+/g)].map((f) => f[0])
+        )
+      ),
+    ].sort()
     expect(adressen).toEqual([
       'https://api.deepseek.com/chat/completions',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent',
+      'https://openrouter.ai/api/v1/chat/completions',
     ])
 
     // der schluessel gehoert in eine kopfzeile, nie in die adresse: eine URL

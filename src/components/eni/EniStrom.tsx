@@ -1,18 +1,24 @@
+import React from 'react'
 import { motion, useReducedMotion } from 'motion/react'
-import { FileText, SpeakerHigh, Stop } from '@phosphor-icons/react'
+import { IconFileText, IconSpeakerHigh, IconStop } from './EniSymbole'
+import { IconChart, IconFood, IconMoon, IconTarget } from './EniSymbole'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
 import { toKey } from '../../lib/dates'
-import { ERSTER_SATZ } from '../../lib/eni'
+import { eniBegruessung } from '../../lib/eni'
 import { lesbareGroesse } from '../../lib/eniAnhang'
 import type { EniAnhang } from '../../lib/eniAnhang'
-import type { EniZeile } from '../../lib/eniSpeicher'
+import type { DuellKontext, EniZeile } from '../../lib/eniSpeicher'
 import { EniMarke } from './EniMarke'
 
 const TAGESDATUM = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' })
 const UHRZEIT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
 
-/** die drei, mit denen man anfangen kann, wenn einem nichts einfällt */
+// eine Beschreibung des Duells, keine zweite: sie steht beim Speicher, der sie
+// fuellt, und wird hier nur weitergereicht.
+export type { DuellKontext }
+
+/** abwaertskompatible standard-auftakte */
 export const AUFTAKTE = [
   'wie stehe ich gegen koray',
   'ich habe diese woche nichts gemacht',
@@ -20,33 +26,19 @@ export const AUFTAKTE = [
 ]
 
 /** versatz von wort zu wort, wenn eine antwort aufklappt */
-const WORT_VERSATZ_MS = 26
-
-/**
- * so lange darf das aufklappen höchstens dauern. ohne diese schranke bräuchte
- * eine lange erklärung zwanzig sekunden, bis der letzte satz steht, und man
- * säße vor einem text, den man nicht überfliegen darf. bei langen antworten
- * rücken die wörter also enger zusammen.
- */
-const AUSKLAPP_MAX_MS = 1100
+const WORT_VERSATZ_MS = 14
+const AUSKLAPP_MAX_MS = 500
 
 type Props = {
   zeilen: EniZeile[]
   me: UserId
-  /** ENI prüft gerade, der takt läuft */
   prueft: boolean
-  /** die zeile, die gerade hereingekommen ist. nur sie klappt auf. */
   frisch?: string | null
-  /**
-   * signierte adressen der bilder, nach bucket-pfad. der bucket ist nicht
-   * öffentlich, also kann kein `src` direkt auf ihn zeigen.
-   */
   bildAdressen?: Map<string, string>
-  /** die zeile, die gerade vorgelesen wird. null, wenn es still ist. */
   spricht?: string | null
-  /** fehlt, wenn das gerät nicht vorlesen kann. dann gibt es keinen knopf. */
   onVorlesen?: (zeile: EniZeile) => void
   onAuftakt: (text: string) => void
+  duellStand?: DuellKontext | null
 }
 
 export function EniStrom({
@@ -58,15 +50,16 @@ export function EniStrom({
   spricht,
   onVorlesen,
   onAuftakt,
+  duellStand,
 }: Props) {
   if (zeilen.length === 0 && !prueft) {
-    return <EniLeer onAuftakt={onAuftakt} />
+    return <EniLeer me={me} duellStand={duellStand} onAuftakt={onAuftakt} />
   }
 
   let letzterTag = ''
 
   return (
-    <ol aria-label="dialog mit ENI" aria-live="polite" className="mt-auto pb-2">
+    <ol aria-label="dialog mit ENI" aria-live="polite" className="pb-6 pt-2">
       {zeilen.map((zeile) => {
         const tag = toKey(new Date(zeile.erstellt))
         const neuerTag = tag !== letzterTag
@@ -110,7 +103,7 @@ function Tagestrenner({ iso }: { iso: string }) {
   const label = tag === heute ? 'heute' : tag === gestern ? 'gestern' : TAGESDATUM.format(wann)
 
   return (
-    <div className="flex items-center gap-3 pt-6 pb-1">
+    <div className="flex items-center gap-3 pt-6 pb-2">
       <span aria-hidden="true" className="h-px flex-1 bg-linie" />
       <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-kreide-52">
         {label}
@@ -120,7 +113,7 @@ function Tagestrenner({ iso }: { iso: string }) {
   )
 }
 
-/** ENIs worte liegen ohne rahmen auf dem grund, wie eine inschrift */
+/** ENIs worte: ruhige leseschrift fuer laengere texte, display fuer kurze urteile */
 function EniWort({
   text,
   frisch,
@@ -134,9 +127,6 @@ function EniWort({
 }) {
   return (
     <div className="pt-5">
-      {/* der knopf steht neben ENIs namen und nicht unter dem text: der text
-          ist mal drei zeilen und mal dreissig lang, und ein knopf, den man
-          erst suchen muss, wird nicht gedrückt. */}
       <div className="flex items-center gap-2">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kreide-52">ENI</p>
         {onVorlesen && (
@@ -144,61 +134,138 @@ function EniWort({
             type="button"
             onClick={onVorlesen}
             aria-label={spricht ? 'vorlesen anhalten' : 'vorlesen'}
-            className="-my-2 -ml-1 flex size-11 items-center justify-center"
+            className="-my-2 -ml-1 flex size-11 items-center justify-center transition-colors"
             style={{ color: spricht ? 'var(--kreide)' : 'var(--kreide-52)' }}
           >
             {spricht ? (
-              <Stop size={13} weight="fill" aria-hidden="true" />
+              <IconStop size={13} />
             ) : (
-              <SpeakerHigh size={14} aria-hidden="true" />
+              <IconSpeakerHigh size={14} />
             )}
           </button>
         )}
       </div>
-      {/* absätze bleiben absätze: ENI erklärt manchmal weit aus, und dann ist
-          ein einziger block aus siebzig zeilen unlesbar. */}
-      <p className="display mt-2 whitespace-pre-wrap text-pretty text-[17px] font-semibold leading-[1.35] text-kreide">
-        {frisch ? <Ausklappen text={text} /> : text}
-      </p>
+
+      <div className="mt-2 text-kreide">
+        <StrukturierterText text={text} frisch={frisch} />
+      </div>
     </div>
   )
 }
 
 /**
- * ein wort nach dem anderen, wie eine inschrift, die geschlagen wird. nur die
- * gerade eingetroffene antwort läuft so auf; ein alter chat steht sofort da,
- * weil man ihn liest und nicht empfängt.
- *
- * der text steht dabei vollständig im dokument. vorleseprogramme bekommen ihn
- * am stück, das auge bekommt ihn nach und nach. die trenner bleiben erhalten,
- * sonst gingen absätze und leerzeilen verloren.
+ * strukturiert antworten sinnvoll in absaetze, aufzaehlungen und fettdruck.
+ * frische antworten durchlaufen dieselbe struktur und typografie wie
+ * gespeicherte chats, wobei woerter fuer das aufklappen staffelbar sind.
  */
-function Ausklappen({ text }: { text: string }) {
-  const teile = text.split(/(\s+)/).filter((teil) => teil !== '')
-  const woerter = teile.filter((teil) => !/^\s+$/.test(teil)).length
-  const schritt = Math.min(WORT_VERSATZ_MS, AUSKLAPP_MAX_MS / Math.max(woerter, 1))
-  let nr = -1
+function StrukturierterText({ text, frisch = false }: { text: string; frisch?: boolean }) {
+  const absaetze = text.split(/\n\s*\n/).map((a) => a.trim()).filter(Boolean)
+  const istKurz = absaetze.length <= 1 && text.length < 180
+
+  const woerterZahl = (text.match(/[^\s]+/g) || []).length
+  const schritt = Math.min(WORT_VERSATZ_MS, AUSKLAPP_MAX_MS / Math.max(woerterZahl, 1))
+  const counter = { current: 0 }
+
+  if (istKurz) {
+    return (
+      <p className="display whitespace-pre-wrap text-pretty text-[16px] sm:text-[17px] font-semibold leading-[1.35] text-kreide">
+        {formatiereTextTeile(text, counter, schritt, frisch)}
+      </p>
+    )
+  }
 
   return (
-    <>
-      {teile.map((teil, index) => {
-        if (/^\s+$/.test(teil)) return <span key={index}>{teil}</span>
-        nr += 1
+    <div className="space-y-3">
+      {absaetze.map((absatz, idx) => {
+        const zeilen = absatz.split('\n').map((z) => z.trim()).filter(Boolean)
+        const istListe = zeilen.every((z) => /^[\-•*]\s+|^\d+\.\s+/.test(z))
+
+        if (istListe) {
+          return (
+            <ul key={idx} className="my-2 space-y-1.5 pl-1">
+              {zeilen.map((zeile, lIdx) => {
+                const bereinigt = zeile.replace(/^[\-•*]\s+|^\d+\.\s+/, '')
+                return (
+                  <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
+                    <span className="mt-2 block size-1 shrink-0 rounded-full bg-kreide-52" aria-hidden="true" />
+                    <span>{formatiereTextTeile(bereinigt, counter, schritt, frisch)}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          )
+        }
+
+        // erste zeile eines laengeren textes kann akzentuierter stehen
+        if (idx === 0) {
+          return (
+            <p key={idx} className="display whitespace-pre-wrap text-pretty text-[15px] sm:text-[16px] font-semibold leading-[1.4] text-kreide">
+              {formatiereTextTeile(absatz, counter, schritt, frisch)}
+            </p>
+          )
+        }
+
         return (
-          <span
-            key={index}
-            className="eni-wort"
-            style={{ animationDelay: `${Math.round(nr * schritt)}ms` }}
-          >
-            {teil}
-          </span>
+          <p key={idx} className="font-body whitespace-pre-wrap text-pretty text-[14px] sm:text-[15px] leading-relaxed text-kreide">
+            {formatiereTextTeile(absatz, counter, schritt, frisch)}
+          </p>
         )
       })}
-    </>
+    </div>
   )
 }
 
-/** was du vorlegst, steht eingerückt hinter deiner farbe */
+function formatiereTextTeile(
+  text: string,
+  counter: { current: number },
+  schritt: number,
+  frisch: boolean
+): React.ReactNode {
+  const teile = text.split(/(\*\*[^*]+\*\*)/g)
+  return teile.map((teil, i) => {
+    if (teil.startsWith('**') && teil.endsWith('**')) {
+      const kern = teil.slice(2, -2)
+      return (
+        <strong key={i} className="font-bold text-kreide">
+          {rendereWoerter(kern, counter, schritt, frisch)}
+        </strong>
+      )
+    }
+    return (
+      <React.Fragment key={i}>
+        {rendereWoerter(teil, counter, schritt, frisch)}
+      </React.Fragment>
+    )
+  })
+}
+
+function rendereWoerter(
+  text: string,
+  counter: { current: number },
+  schritt: number,
+  frisch: boolean
+): React.ReactNode {
+  if (!frisch) return text
+
+  const teile = text.split(/(\s+)/).filter((t) => t !== '')
+  return teile.map((teil, i) => {
+    if (/^\s+$/.test(teil)) {
+      return teil
+    }
+    const nr = counter.current++
+    return (
+      <span
+        key={i}
+        className="eni-wort"
+            style={{ animationDelay: `${Math.round(nr * schritt)}ms` }}
+      >
+        {teil}
+      </span>
+    )
+  })
+}
+
+/** was du vorlegst, steht praesent und klar lesbar */
 function MenschWort({
   text,
   me,
@@ -215,20 +282,20 @@ function MenschWort({
   const farbe = userDef(me).farbe
   return (
     <div className="pt-5">
-      <div className="border-l-2 pl-3" style={{ borderColor: farbe }}>
+      <div className="border-l-2 pl-3.5 py-0.5" style={{ borderColor: farbe }}>
         <p className="flex items-baseline gap-2">
           <span
-            className="text-[10px] font-bold uppercase tracking-[0.2em]"
+            className="text-[11px] font-bold uppercase tracking-wider"
             style={{ color: farbe }}
           >
             du
           </span>
-          <span className="tnum text-[10px] text-kreide-52">
+          <span className="tnum text-[11px] text-kreide-52">
             {UHRZEIT.format(new Date(zeit))}
           </span>
         </p>
         {text !== '' && (
-          <p className="mt-1 whitespace-pre-wrap text-pretty text-[13px] leading-relaxed text-kreide-60">
+          <p className="mt-1.5 whitespace-pre-wrap text-pretty text-[15px] leading-relaxed text-kreide">
             {text}
           </p>
         )}
@@ -240,12 +307,6 @@ function MenschWort({
   )
 }
 
-/**
- * Was mit einer Vorlage ging, unter ihr. Bilder klein und angeschnitten: der
- * Verlauf ist ein Gespräch und keine Galerie, und wer das Bild groß sehen will,
- * öffnet es. Eine Datei bleibt ein Name mit Größe — ihr Text steht nicht hier,
- * sondern ist zu ENI gegangen.
- */
 function Anhaenge({
   anhaenge,
   adressen,
@@ -270,18 +331,15 @@ function Anhaenge({
                   />
                 </a>
               ) : (
-                // die adresse hat eine frist. ist sie abgelaufen oder war das
-                // netz weg, steht hier, dass ein bild dabei war, statt eines
-                // kaputten symbols.
                 <span className="flex h-16 items-center rounded-[2px] border border-linie px-2.5 text-[11px] text-kreide-52">
                   bild nicht geladen
                 </span>
               )
             ) : (
               <span className="flex h-16 max-w-[220px] items-center gap-2 rounded-[2px] border border-linie px-2.5">
-                <FileText size={16} aria-hidden="true" className="shrink-0 text-kreide-52" />
+                <IconFileText size={16} className="shrink-0 text-kreide-52" />
                 <span className="min-w-0">
-                  <span className="block truncate text-[12px] text-kreide-60">{anhang.name}</span>
+                  <span className="block truncate text-[12px] text-kreide">{anhang.name}</span>
                   <span className="tnum block text-[10px] text-kreide-52">
                     {lesbareGroesse(anhang.groesse)}
                   </span>
@@ -295,14 +353,13 @@ function Anhaenge({
   )
 }
 
-/** kein ladekreis. zwölf striche in festem takt, wie eine anzeige, die läuft. */
 export function EniTakt() {
   const reduced = useReducedMotion()
   const striche = [12, 20, 8, 26, 14, 22, 10, 28, 16, 20, 8, 24]
 
   return (
-    <div role="status" className="flex items-end gap-[3px] pt-6" style={{ height: 40 }}>
-      <span className="sr-only">ENI prüft, was du vorgelegt hast</span>
+    <div role="status" className="flex items-end gap-[3px] pt-5 pb-1" style={{ height: 38 }}>
+      <span className="sr-only">ENI prüft</span>
       {striche.map((hoehe, index) => (
         <motion.span
           key={index}
@@ -314,7 +371,7 @@ export function EniTakt() {
           transition={
             reduced
               ? { duration: 0 }
-              : { duration: 0.9, repeat: Infinity, delay: index * 0.055, ease: 'easeInOut' }
+              : { duration: 0.8, repeat: Infinity, delay: index * 0.05, ease: 'easeInOut' }
           }
         />
       ))}
@@ -323,33 +380,142 @@ export function EniTakt() {
 }
 
 /**
- * der leere chat. kein „womit kann ich helfen" — ENI stellt sich hin und sagt
- * seinen satz, darunter drei sätze, die man ihm hinwerfen kann.
+ * Der neue Gesprächseinstieg:
+ * Kompakte Begrüßung, klare Rolle, Bezug zur angemeldeten Person,
+ * echte Duell-Daten und 4 strukturierte, klickbare Themen-Chips.
  */
-function EniLeer({ onAuftakt }: { onAuftakt: (text: string) => void }) {
+function EniLeer({
+  me,
+  duellStand,
+  onAuftakt,
+}: {
+  me: UserId
+  duellStand?: DuellKontext | null
+  onAuftakt: (text: string) => void
+}) {
+  const { gruss, gegner } = eniBegruessung(me)
+  const ichFarbe = userDef(me).farbe
+  const gegnerDef = userDef(me === 'koray' ? 'erijon' : 'koray')
+
+  const aufholenTitel = duellStand
+    ? duellStand.diff > 0
+      ? 'Vorsprung ausbauen'
+      : duellStand.diff === 0
+        ? 'Führung übernehmen'
+        : 'Heute aufholen'
+    : 'Führung übernehmen'
+
+  const aufholenPrompt = duellStand
+    ? duellStand.diff > 0
+      ? `wie baue ich meinen vorsprung gegen ${gegner.toLowerCase()} weiter aus`
+      : duellStand.diff === 0
+        ? `wie übernehme ich heute die führung gegen ${gegner.toLowerCase()}`
+        : `wie hole ich heute gegen ${gegner.toLowerCase()} am besten auf`
+    : `wie übernehme ich heute die führung gegen ${gegner.toLowerCase()}`
+
+  // Personalisierte Vorschläge
+  const vorschlaege = [
+    {
+      id: 'duell',
+      titel: 'Duell analysieren',
+      icon: IconChart,
+      prompt: `wie stehe ich gegen ${gegner.toLowerCase()}`,
+    },
+    {
+      id: 'aufholen',
+      titel: aufholenTitel,
+      icon: IconTarget,
+      prompt: aufholenPrompt,
+    },
+    {
+      id: 'abend',
+      titel: 'Abend planen',
+      icon: IconMoon,
+      prompt: 'hilf mir den abend planen: schlaf, essen und regeneration',
+    },
+    {
+      id: 'ernaehrung',
+      titel: 'Ernährung besprechen',
+      icon: IconFood,
+      prompt: 'was soll ich heute essen',
+    },
+  ]
+
   return (
-    <div className="flex flex-1 flex-col justify-center py-8">
-      <EniMarke groesse={56} grund="var(--grund)" />
-      <p className="display mt-5 text-pretty text-[19px] font-semibold leading-[1.3] text-kreide">
-        {ERSTER_SATZ}
-      </p>
-      <p className="mt-3 text-[11px] leading-4 text-kreide-52">
-        was hier steht, bleibt bei dir. koray sieht diese chats nicht.
+    <div className="flex flex-1 flex-col justify-start pt-8 pb-6">
+      {/* Kopf-Einheit mit Monolith und Begrüßung */}
+      <div className="flex items-start gap-4">
+        <EniMarke groesse={44} grund="var(--grund)" />
+        <div className="min-w-0 flex-1">
+          <h2 className="display text-[20px] font-bold tracking-tight text-kreide leading-tight">
+            {gruss}
+          </h2>
+          <p className="mt-1 text-[13px] leading-snug text-kreide-60">
+            Schiedsrichter und Begleiter im Zweikampf gegen {gegner}.
+          </p>
+        </div>
+      </div>
+
+      {/* Echte Duell-Lage (falls vorhanden) */}
+      {duellStand && (
+        <div className="mt-5 rounded-[2px] border border-linie/40 bg-flaeche/50 p-3">
+          <div className="flex items-center justify-between text-[11px] text-kreide-52">
+            <span className="font-bold uppercase tracking-wider">Aktueller Stand</span>
+            <span className="tnum font-bold text-kreide">
+              {duellStand.diff > 0
+                ? `+${duellStand.diff}`
+                : duellStand.diff < 0
+                  ? `−${Math.abs(duellStand.diff)}`
+                  : '='}
+            </span>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-[13px] font-semibold" style={{ color: ichFarbe }}>
+              Du: <span className="tnum text-[16px] font-bold">{duellStand.wocheIch}</span>
+            </span>
+            <span className="text-[12px] text-kreide-52">:</span>
+            <span className="text-[13px] font-semibold" style={{ color: gegnerDef.farbe }}>
+              {gegner}: <span className="tnum text-[16px] font-bold">{duellStand.wocheEr}</span>
+            </span>
+          </div>
+          {duellStand.statusText && (
+            <p className="mt-1.5 truncate text-[11px] text-kreide-60">
+              {duellStand.statusText}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Privatsphäre-Hinweis */}
+      <p className="mt-4 text-[11px] leading-relaxed text-kreide-52">
+        Deine Unterhaltungen sind privat. {gegner} hat keinen Zugriff auf deinen Verlauf.
       </p>
 
-      <ul className="mt-7 border-t border-linie">
-        {AUFTAKTE.map((satz) => (
-          <li key={satz}>
-            <button
-              type="button"
-              onClick={() => onAuftakt(satz)}
-              className="flex min-h-12 w-full items-center border-b border-linie text-left text-[13px] text-kreide-60 transition-colors hover:text-kreide focus-visible:text-kreide"
-            >
-              {satz}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {/* 4 kompakte, klickbare Startvorschläge */}
+      <div className="mt-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-kreide-52 mb-2.5">
+          Startvorschläge
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {vorschlaege.map((item) => {
+            const Icon = item.icon
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onAuftakt(item.prompt)}
+                aria-label={item.prompt}
+                className="group flex min-h-12 items-center gap-3 rounded-[2px] border border-linie/40 bg-flaeche/60 px-3.5 py-3 text-left transition-colors hover:border-linie hover:bg-flaeche active:bg-grund focus-visible:outline-2 focus-visible:outline-fokus"
+              >
+                <Icon size={20} className="shrink-0 text-kreide-60 transition-colors group-hover:text-kreide" aria-hidden="true" />
+                <span className="block truncate text-[14px] sm:text-[15px] font-medium text-kreide">
+                  {item.titel}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

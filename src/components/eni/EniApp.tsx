@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  CaretLeft,
-  ClockCounterClockwise,
-  Plus,
-  SpeakerHigh,
-  SpeakerSlash,
-} from '@phosphor-icons/react'
+import { IconCaretLeft, IconClock, IconPlus, IconSpeakerHigh, IconSpeakerSlash } from './EniSymbole'
 import { chatTitel } from '../../lib/eniSpeicher'
-import type { EniChat, EniSpeicher, EniZeile } from '../../lib/eniSpeicher'
+import type { DuellKontext, EniChat, EniSpeicher, EniZeile } from '../../lib/eniSpeicher'
 import {
+  anbieterGemerkt,
   EniModellFehler,
+  merkeAnbieter,
   modellAntwort,
   modellBereit,
   stimmenprobeAntwort,
 } from '../../lib/eniAntwort'
-import type { Antwortgeber } from '../../lib/eniAntwort'
+import type { AnbieterInfo, Antwortgeber, Modellstand } from '../../lib/eniAntwort'
 import {
   bereiteVor,
   bildAdressen as holeBildAdressen,
@@ -24,48 +20,42 @@ import {
   MAX_ANHAENGE,
 } from '../../lib/eniAnhang'
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
-import { merkeVorlesen, useStimme, vorlesenGemerkt, weckeStimme } from '../../lib/eniStimme'
+import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
+import { IconInfo } from './EniSymbole'
 import { EniEingabe } from './EniEingabe'
-import { EniMarke } from './EniMarke'
+import { EniInfoDialog } from './EniInfoDialog'
+import { EniModellwahl } from './EniModellwahl'
 import { EniStrom } from './EniStrom'
 import { EniVerlauf } from './EniVerlauf'
-
-/**
- * so lange steht der takt mindestens. das modell ist manchmal schneller, und
- * eine antwort ohne pause fuehlt sich nicht wie ein urteil an, sondern wie ein
- * echo.
- */
-const BEDENKZEIT_MS = 700
 
 type Modus = 'pruefen' | 'modell' | 'stimmenprobe'
 
 type Props = {
   speicher: EniSpeicher
   onZurueck: () => void
-  /** prüft, ob eine modellverbindung steht. injiziert für tests */
-  pruefeModell?: () => Promise<boolean>
-  /** baut den antwortgeber. injiziert für tests */
-  baueGeber?: (bereit: boolean, speicher: EniSpeicher) => Antwortgeber
+  /** prueft, ob eine modellverbindung steht, und welche modelle es gibt */
+  pruefeModell?: () => Promise<Modellstand>
+  /** baut den antwortgeber. injiziert fuer tests */
+  baueGeber?: (bereit: boolean, speicher: EniSpeicher, anbieter: string | null) => Antwortgeber
+  initialDuellStand?: DuellKontext | null
 }
 
-const STANDARD_GEBER = (bereit: boolean, speicher: EniSpeicher): Antwortgeber =>
-  bereit ? modellAntwort() : stimmenprobeAntwort(speicher)
+const STANDARD_GEBER = (
+  bereit: boolean,
+  speicher: EniSpeicher,
+  anbieter: string | null
+): Antwortgeber => (bereit ? modellAntwort(anbieter) : stimmenprobeAntwort(speicher))
 
-/**
- * ENI als eigene oberfläche. sie übernimmt den ganzen bildschirm, hat einen
- * eigenen kopf und einen eigenen weg zurück in die anzeigetafel. der grund ist
- * nicht der platz: ein gespräch mit einem schiedsrichter ist etwas anderes als
- * ein häkchen zu setzen, und beides im selben rahmen hätte beides kleiner
- * gemacht.
- */
 export function EniApp({
   speicher,
   onZurueck,
   pruefeModell = modellBereit,
   baueGeber = STANDARD_GEBER,
+  initialDuellStand = null,
 }: Props) {
   const [me, setMe] = useState<UserId>('erijon')
+  const [duellStand, setDuellStand] = useState<DuellKontext | null>(initialDuellStand)
   const [chats, setChats] = useState<EniChat[]>([])
   const [chatsZustand, setChatsZustand] = useState<'laden' | 'bereit' | 'fehler'>('laden')
   const [aktiverChat, setAktiverChat] = useState<string | null>(null)
@@ -74,25 +64,106 @@ export function EniApp({
   const [geber, setGeber] = useState<Antwortgeber | null>(null)
   const [prueft, setPrueft] = useState(false)
   const [verlaufOffen, setVerlaufOffen] = useState(false)
+  const [infoOffen, setInfoOffen] = useState(false)
+  const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
+  const [gewaehlt, setGewaehlt] = useState<string | null>(null)
+  const [wahlOffen, setWahlOffen] = useState(false)
   const [vorgabe, setVorgabe] = useState<{ text: string; nr: number } | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
-  /** die zeile, die gerade hereingekommen ist. sie klappt auf, alles andere steht. */
   const [frisch, setFrisch] = useState<string | null>(null)
   const [hinweis, setHinweis] = useState<string | null>(null)
   const [anhaenge, setAnhaenge] = useState<VorbereiteterAnhang[]>([])
-  /**
-   * ob ENI von selbst vorliest. das überlebt die ansicht: wer ihn einmal hören
-   * wollte, will ihn beim nächsten mal wieder hören, und den schalter jedes mal
-   * neu zu suchen wäre die art von reibung, an der eine gewohnheit stirbt.
-   */
-  const [vorlesen, setVorlesen] = useState(vorlesenGemerkt)
-  /** signierte adressen der bilder im offenen chat, nach bucket-pfad */
+  // Standardmaessig ist Audio aus. ENI spricht nur, wenn man es einschaltet.
+  const [vorlesen, setVorlesen] = useState(false)
   const [adressen, setAdressen] = useState<Map<string, string>>(() => new Map())
+
+  // Referenzen fuer nebenlaeufige Aktionen & Chatwechsel
+  const aktiverChatRef = useRef<string | null>(null)
+  aktiverChatRef.current = aktiverChat
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const endeRef = useRef<HTMLDivElement>(null)
   const vorgabeNr = useRef(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const letzterFehlversuchRef = useRef<{ text: string; anhaenge: VorbereiteterAnhang[] } | null>(null)
+
+  // Entwurfsverwaltung je Chat: Entwuerfe bleiben beim Chatwechsel und bei Fehlern erhalten
+  const aktuellerTextRef = useRef('')
+  const entwuerfeRef = useRef<Map<string | null, { text: string; anhaenge: VorbereiteterAnhang[] }>>(
+    new Map()
+  )
+
   const stimme = useStimme()
 
-  /** der knopf an einer einzelnen antwort: anhalten, wenn sie gerade läuft */
+  const ladeChats = useCallback(async () => {
+    setChatsZustand('laden')
+    try {
+      const [person, liste] = await Promise.all([speicher.person(), speicher.chats()])
+      setMe(person)
+      setChats(liste)
+      setChatsZustand('bereit')
+      if (speicher.duellStand) {
+        const stand = await speicher.duellStand()
+        if (stand) setDuellStand(stand)
+      }
+    } catch {
+      setChatsZustand('fehler')
+    }
+  }, [speicher])
+
+  useEffect(() => {
+    void ladeChats()
+  }, [ladeChats])
+
+  useEffect(() => {
+    let abgemeldet = false
+    void (async () => {
+      const stand = await pruefeModell()
+      if (abgemeldet) return
+      setModus(stand.bereit ? 'modell' : 'stimmenprobe')
+      setAnbieter(stand.anbieter)
+      /**
+       * Die gemerkte Wahl gilt nur, solange der Server sie noch anbietet.
+       * Wird ein Schlüssel entfernt, fällt sie stillschweigend auf den ersten
+       * zurück, statt in ein 400 zu laufen, das niemand erklären kann.
+       */
+      const gemerkt = anbieterGemerkt()
+      const gueltig = stand.anbieter.some((eintrag) => eintrag.id === gemerkt)
+      const wahl = gueltig ? gemerkt : (stand.anbieter[0]?.id ?? null)
+      setGewaehlt(wahl)
+      setGeber(baueGeber(stand.bereit, speicher, wahl))
+    })()
+    return () => {
+      abgemeldet = true
+    }
+  }, [baueGeber, pruefeModell, speicher])
+
+  /** das modell wechseln. der laufende verlauf bleibt, nur die stimme wechselt. */
+  const waehleAnbieter = useCallback(
+    (id: string) => {
+      setWahlOffen(false)
+      if (id === gewaehlt) return
+      merkeAnbieter(id)
+      setGewaehlt(id)
+      setGeber(baueGeber(true, speicher, id))
+    },
+    [baueGeber, gewaehlt, speicher]
+  )
+
+  // Intelligentes Scrollen: Zieht den Nutzer nicht nach unten, wenn er aeltere Zeilen liest
+  const scrolleZumEndeWennSinnvoll = useCallback((erzwingen = false) => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const abstandUnten = el.scrollHeight - el.scrollTop - el.clientHeight
+    const amEnde = abstandUnten < 120
+    if (erzwingen || amEnde) {
+      endeRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
+    }
+  }, [])
+
+  useEffect(() => {
+    scrolleZumEndeWennSinnvoll(prueft)
+  }, [zeilen.length, prueft, scrolleZumEndeWennSinnvoll])
+
   const lieseVor = useCallback(
     (zeile: EniZeile) => {
       if (stimme.spricht === zeile.id) stimme.halt()
@@ -104,69 +175,16 @@ export function EniApp({
   const schalteVorlesen = useCallback(() => {
     setVorlesen((vorher) => {
       const jetzt = !vorher
-      merkeVorlesen(jetzt)
-      // wer abschaltet, will sofort ruhe und nicht erst nach dem letzten satz
       if (!jetzt) stimme.halt()
-      // und wer einschaltet, tut das mit dem finger auf dem knopf: der moment,
-      // in dem safari die ausgabe für den rest der sitzung aufmacht.
       else weckeStimme()
       return jetzt
     })
   }, [stimme])
 
-  // anhänge brauchen beides: einen bucket, in dem ein bild liegen kann, und
-  // augen, die es ansehen. die stimmenprobe hat keine — sie ist ein paar regeln
-  // in einer datei —, und ohne konto gibt es keinen bucket. dann ist die
-  // büroklammer nicht grau, sondern weg: ein bild hochzuladen, das nie jemand
-  // ansieht, wäre genau die art von schein, gegen die die zeile im kopf steht.
   const anhaengenMoeglich =
     speicher.art === 'supabase' && speicher.kontoId !== null && modus === 'modell'
 
-  useEffect(() => {
-    let abgemeldet = false
-    void (async () => {
-      try {
-        const [person, liste] = await Promise.all([speicher.person(), speicher.chats()])
-        if (abgemeldet) return
-        setMe(person)
-        setChats(liste)
-        setChatsZustand('bereit')
-      } catch {
-        if (!abgemeldet) setChatsZustand('fehler')
-      }
-    })()
-    return () => {
-      abgemeldet = true
-    }
-  }, [speicher])
-
-  // die zeile im kopf darf erst behaupten, dass ein modell antwortet, wenn das
-  // geprueft ist. bis dahin nimmt ENI auch nichts an.
-  useEffect(() => {
-    let abgemeldet = false
-    void (async () => {
-      const bereit = await pruefeModell()
-      if (abgemeldet) return
-      setModus(bereit ? 'modell' : 'stimmenprobe')
-      setGeber(baueGeber(bereit, speicher))
-    })()
-    return () => {
-      abgemeldet = true
-    }
-  }, [baueGeber, pruefeModell, speicher])
-
-  useEffect(() => {
-    endeRef.current?.scrollIntoView?.({ block: 'end' })
-  }, [zeilen.length, prueft])
-
-  /**
-   * die bilder des offenen chats sichtbar machen. der bucket ist nicht
-   * öffentlich, also braucht jedes bild eine signierte adresse; sie werden in
-   * einem zug geholt, nicht eine je bild.
-   *
-   * die karte wächst nur. eine adresse, die einmal steht, wird nicht noch
-   * einmal geholt, und ein zurückgeblätterter chat zeigt seine bilder sofort.
-   */
+  // Bilder signieren
   useEffect(() => {
     const fehlend = [
       ...new Set(
@@ -189,35 +207,27 @@ export function EniApp({
     }
   }, [zeilen, adressen])
 
-  /**
-   * eine ausgewählte datei annehmen. jede für sich: wer drei bilder und ein pdf
-   * markiert, soll die drei bilder behalten und einen satz über das pdf lesen,
-   * statt alles zurückzubekommen.
-   */
-  const nimmAnhaenge = useCallback(
-    (dateien: File[]) => {
-      setFehler(null)
-      void (async () => {
-        const fertig: VorbereiteterAnhang[] = []
-        let abgelehnt: string | null = null
-        for (const datei of dateien) {
-          try {
-            fertig.push(await bereiteVor(datei))
-          } catch (ursache) {
-            abgelehnt =
-              ursache instanceof EniAnhangFehler
-                ? ursache.message
-                : 'die datei ließ sich nicht anhängen.'
-          }
+  const nimmAnhaenge = useCallback((dateien: File[]) => {
+    setFehler(null)
+    void (async () => {
+      const fertig: VorbereiteterAnhang[] = []
+      let abgelehnt: string | null = null
+      for (const datei of dateien) {
+        try {
+          fertig.push(await bereiteVor(datei))
+        } catch (ursache) {
+          abgelehnt =
+            ursache instanceof EniAnhangFehler
+              ? ursache.message
+              : 'die datei ließ sich nicht anhängen.'
         }
-        if (fertig.length > 0) {
-          setAnhaenge((vorher) => [...vorher, ...fertig].slice(0, MAX_ANHAENGE))
-        }
-        if (abgelehnt) setFehler(abgelehnt)
-      })()
-    },
-    []
-  )
+      }
+      if (fertig.length > 0) {
+        setAnhaenge((vorher) => [...vorher, ...fertig].slice(0, MAX_ANHAENGE))
+      }
+      if (abgelehnt) setFehler(abgelehnt)
+    })()
+  }, [])
 
   const entferneAnhang = useCallback((id: string) => {
     setAnhaenge((vorher) => {
@@ -227,29 +237,32 @@ export function EniApp({
     })
   }, [])
 
+  // Anfrage lokal abbrechen
+  const brecheAb = useCallback(() => {
+    if (!prueft) return
+    abortControllerRef.current?.abort()
+    setPrueft(false)
+    setFehler('anfrage abgebrochen.')
+  }, [prueft])
+
+  // Vorlage abschicken
   const legeVor = useCallback(
-    (text: string) => {
+    (text: string, wiederholungsAnhaenge?: VorbereiteterAnhang[]) => {
       if (!geber || prueft) return
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
       setPrueft(true)
-      // was noch gesprochen wird, gehört zur vorigen runde
       stimme.halt()
-      // ENIs antwort kommt sekunden später, safari lässt eine stimme aber nur
-      // aus einer echten handlung heraus zu. dies hier ist diese handlung.
       if (vorlesen) weckeStimme()
 
-      // die anhänge gehen mit dieser vorlage. der streifen wird sofort leer:
-      // was einmal vorgelegt ist, hängt nicht mehr am nächsten satz.
-      const mitgeben = anhaenge
-      setAnhaenge([])
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
-      /**
-       * die vorschau der eigenen bilder, bis die echten zeilen da sind. sie
-       * steht unter einem schlüssel, den es im bucket nicht gibt, damit die
-       * signier-schleife sie nicht zu holen versucht.
-       */
+      const mitgeben = wiederholungsAnhaenge ?? anhaenge
+      if (!wiederholungsAnhaenge) setAnhaenge([])
+      letzterFehlversuchRef.current = null
+
       const vorschau = new Map<string, string>()
       for (const anhang of mitgeben) {
         if (anhang.art === 'bild' && anhang.vorschau) {
@@ -277,111 +290,144 @@ export function EniApp({
             }
           : {}),
       }
-      // die eigenen worte stehen sofort da. auf ein urteil wartet man, auf das
-      // eigene echo nicht.
+
       const bisher = zeilen
       setZeilen((vorher) => [...vorher, vorlaeufig])
 
       void (async () => {
-        const start = Date.now()
-        const takt = async () => {
-          const rest = BEDENKZEIT_MS - (Date.now() - start)
-          if (rest > 0) await new Promise((weiter) => setTimeout(weiter, rest))
-        }
+        const zielChatId = aktiverChatRef.current
         try {
-          let chatId = aktiverChat
+          let chatId = zielChatId
           if (!chatId) {
             const chat = await speicher.neuerChat(chatTitel(text))
             chatId = chat.id
+            aktiverChatRef.current = chat.id
             setAktiverChat(chat.id)
             setChats((vorher) => [chat, ...vorher])
           }
-          // die bilder liegen, bevor die vorlage abgeht. ein abgebrochener
-          // upload erzeugt so keine nachricht, die auf ein bild zeigt, das es
-          // nicht gibt.
-          const vorlagen = await ladeHoch(mitgeben, speicher.kontoId ?? '', chatId)
 
-          const ergebnis = await geber.antworte(chatId, text, bisher, vorlagen)
-          await takt()
-          setZeilen((vorher) => [
-            ...vorher.filter((zeile) => zeile.id !== vorlaeufig.id),
-            ergebnis.mensch,
-            ...(ergebnis.eni ? [ergebnis.eni] : []),
-          ])
-          setFrisch(ergebnis.eni?.id ?? null)
-          if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
-          if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
-          // die echte zeile steht, die vorschau wird nicht mehr gebraucht
+          await new Promise((weiter) => setTimeout(weiter, 50))
+          const vorlagen = await ladeHoch(mitgeben, speicher.kontoId ?? '', chatId)
+          const ergebnis = await geber.antworte(
+            chatId,
+            text,
+            bisher,
+            vorlagen,
+            controller.signal
+          )
+
+          // Wichtig: Spaete Antworten duerfen niemals im falschen Gespraech landen!
+          const gehoertZuAktivemChat = zielChatId === null ? (aktiverChatRef.current === null || aktiverChatRef.current === chatId) : (aktiverChatRef.current === zielChatId);
+          if (gehoertZuAktivemChat) {
+            setZeilen((vorher) => [
+              ...vorher.filter((zeile) => zeile.id !== vorlaeufig.id),
+              ergebnis.mensch,
+              ...(ergebnis.eni ? [ergebnis.eni] : []),
+            ])
+            setFrisch(ergebnis.eni?.id ?? null)
+            if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
+            if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
+          }
+
+          // Entwurf fuer diesen Chat bereinigen
+          entwuerfeRef.current.delete(chatId)
           for (const anhang of mitgeben) gibVorschauFrei(anhang)
         } catch (ursache) {
-          await takt()
+          const istAbbruch =
+            controller.signal.aborted ||
+            (ursache instanceof Error && ursache.message.includes('abgebrochen'))
           const gespeichert = ursache instanceof EniModellFehler ? ursache.mensch : null
+
           setZeilen((vorher) => [
             ...vorher.filter((zeile) => zeile.id !== vorlaeufig.id),
             ...(gespeichert ? [gespeichert] : []),
           ])
+
           if (!gespeichert) {
-            // nichts ist gespeichert, also darf auch nichts stehen bleiben.
-            // der satz gehoert zurueck ins feld, und die anhaenge auch: sie
-            // sind ausgesucht, zugeschnitten und vielleicht schon hochgeladen,
-            // und wer sie noch einmal heraussuchen muss, laesst es sein.
+            // Fehlversuch fuer Wiederholung vormerken und Text/Anhaenge wiederherstellen
+            letzterFehlversuchRef.current = { text, anhaenge: mitgeben }
             vorgabeNr.current += 1
             setVorgabe({ text, nr: vorgabeNr.current })
             setAnhaenge((vorher) => [...mitgeben, ...vorher].slice(0, MAX_ANHAENGE))
           } else {
             for (const anhang of mitgeben) gibVorschauFrei(anhang)
           }
-          setFehler(
-            ursache instanceof EniAnhangFehler
-              ? ursache.message
-              : ursache instanceof EniModellFehler
+
+          if (istAbbruch) {
+            setFehler('anfrage abgebrochen.')
+          } else {
+            setFehler(
+              ursache instanceof EniAnhangFehler
                 ? ursache.message
-                : 'deine vorlage wurde nicht gespeichert. versuch es erneut.'
-          )
+                : ursache instanceof EniModellFehler
+                  ? ursache.message
+                  : 'deine vorlage wurde nicht gespeichert. versuch es erneut.'
+            )
+          }
         } finally {
           setPrueft(false)
         }
       })()
     },
-    [aktiverChat, anhaenge, geber, prueft, speicher, stimme, vorlesen, zeilen]
+    [anhaenge, geber, prueft, speicher, stimme, vorlesen, zeilen]
   )
 
+  const wiederhole = useCallback(() => {
+    const fehl = letzterFehlversuchRef.current
+    if (fehl && !prueft) {
+      legeVor(fehl.text, fehl.anhaenge)
+    }
+  }, [legeVor, prueft])
+
+  // Startvorschlag uebernehmen: setzt den gewaehlten Vorschlag direkt ins Feld, ohne zu stacken
   const uebernimmAuftakt = useCallback((text: string) => {
     vorgabeNr.current += 1
     setVorgabe({ text, nr: vorgabeNr.current })
   }, [])
 
-  /** ein angefangener anhang gehört zu dem chat, in dem er ausgesucht wurde */
-  const leereAnhaenge = useCallback(() => {
-    setAnhaenge((vorher) => {
-      for (const anhang of vorher) gibVorschauFrei(anhang)
-      return []
+  // Entwurf speichern vor Chatwechsel
+  const speichereAktuellenEntwurf = useCallback(() => {
+    entwuerfeRef.current.set(aktiverChatRef.current, {
+      text: aktuellerTextRef.current,
+      anhaenge,
     })
-  }, [])
+  }, [anhaenge])
 
   const oeffneChat = useCallback(
     (chatId: string) => {
+      speichereAktuellenEntwurf()
       setVerlaufOffen(false)
       setFehler(null)
       setHinweis(null)
       stimme.halt()
-      leereAnhaenge()
-      // ein alter chat wird gelesen, nicht empfangen: er steht sofort ganz da
       setFrisch(null)
       setAktiverChat(chatId)
+
+      // Gespeicherten Entwurf fuer diesen Chat wiederherstellen
+      const entwurf = entwuerfeRef.current.get(chatId) ?? { text: '', anhaenge: [] }
+      vorgabeNr.current += 1
+      setVorgabe({ text: entwurf.text, nr: vorgabeNr.current })
+      setAnhaenge(entwurf.anhaenge)
+
       void (async () => {
         try {
-          setZeilen(await speicher.nachrichten(chatId))
+          const nachrichten = await speicher.nachrichten(chatId)
+          if (aktiverChatRef.current === chatId) {
+            setZeilen(nachrichten)
+          }
         } catch {
-          setZeilen([])
-          setFehler('der chat konnte nicht geladen werden.')
+          if (aktiverChatRef.current === chatId) {
+            setZeilen([])
+            setFehler('der chat konnte nicht geladen werden.')
+          }
         }
       })()
     },
-    [leereAnhaenge, speicher, stimme]
+    [speicher, speichereAktuellenEntwurf, stimme]
   )
 
   const neuerChat = useCallback(() => {
+    speichereAktuellenEntwurf()
     setVerlaufOffen(false)
     setFehler(null)
     setHinweis(null)
@@ -389,11 +435,18 @@ export function EniApp({
     setAktiverChat(null)
     setZeilen([])
     stimme.halt()
-    leereAnhaenge()
-  }, [leereAnhaenge, stimme])
+
+    // Entwurf fuer neuen Chat laden
+    const entwurf = entwuerfeRef.current.get(null) ?? { text: '', anhaenge: [] }
+    vorgabeNr.current += 1
+    setVorgabe({ text: entwurf.text, nr: vorgabeNr.current })
+    setAnhaenge(entwurf.anhaenge)
+  }, [speichereAktuellenEntwurf, stimme])
 
   const loescheChat = useCallback(
     (chatId: string) => {
+      stimme.halt()
+      entwuerfeRef.current.delete(chatId)
       void (async () => {
         try {
           await speicher.loesche(chatId)
@@ -407,96 +460,103 @@ export function EniApp({
         }
       })()
     },
-    [aktiverChat, speicher]
+    [aktiverChat, speicher, stimme]
   )
 
   return (
     <div className="flex h-[100dvh] flex-col bg-grund">
       <header className="vollbild-safe-x shrink-0 border-b border-linie pt-[calc(var(--app-safe-top)+0.75rem)]">
-        <div className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2">
+        <div className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2 pb-2.5">
+          {/* Ruecknavigation */}
           <button
             type="button"
             onClick={onZurueck}
-            className="-ml-2 flex min-h-11 items-center gap-1 px-2 text-[12px] text-kreide-60"
+            aria-label="zurück zum zweikampf"
+            className="-ml-2 flex min-h-11 items-center gap-1.5 px-2 text-[12px] text-kreide-60 transition-colors hover:text-kreide"
           >
-            <CaretLeft size={14} weight="bold" aria-hidden="true" />
-            zweikampf
+            <IconCaretLeft size={16} aria-hidden="true" />
+            {/*
+              Unter 416 Pixeln geht das Wort, der Pfeil bleibt. Die Kopfleiste
+              trägt links den Rückweg, in der Mitte ENIs Namen und rechts vier
+              Werkzeugflächen zu 44 Pixeln; auf einem 375er-Display passt das
+              zusammen nicht mehr, und dann schob es bisher den Knopf für den
+              neuen Chat über den Rand. Ein Pfeil ohne Wort ist verständlich,
+              ein halb abgeschnittener Knopf nicht. Das Wort bleibt im
+              aria-label stehen, damit der Screenreader es weiter vorliest.
+            */}
+            <span className="max-[415px]:hidden">zweikampf</span>
           </button>
 
-          <div className="flex items-center gap-2">
-            <EniMarke groesse={22} grund="var(--grund)" />
-            <span className="display text-[17px] font-bold leading-none tracking-[0.06em]">
-              ENI
-            </span>
-          </div>
+          {/* Eni-Identitaet, und dahinter die wahl des modells */}
+          <EniModellwahl
+            anbieter={modus === 'modell' ? anbieter : []}
+            gewaehlt={gewaehlt}
+            offen={wahlOffen}
+            gesperrt={prueft}
+            onUmschalten={() => setWahlOffen((vorher) => !vorher)}
+            onSchliessen={() => setWahlOffen(false)}
+            onWaehlen={waehleAnbieter}
+          />
 
-          <div className="-mr-2 flex items-center">
-            {/* der schalter steht im kopf und nicht bei den knöpfen unten: er
-                gilt für das ganze gespräch und nicht für die nächste vorlage. */}
+          {/* Werkzeugleiste: einheitliche 44px-Flaechen */}
+          <div className="-mr-2 flex items-center gap-0.5">
             {stimme.moeglich && (
               <button
                 type="button"
                 onClick={schalteVorlesen}
                 aria-pressed={vorlesen}
                 aria-label={vorlesen ? 'nicht mehr vorlesen' : 'antworten vorlesen'}
-                className="flex size-11 items-center justify-center"
+                className="flex size-11 items-center justify-center transition-colors"
                 style={{ color: vorlesen ? 'var(--kreide)' : 'var(--kreide-52)' }}
               >
                 {vorlesen ? (
-                  <SpeakerHigh size={18} aria-hidden="true" />
+                  <IconSpeakerHigh size={18} />
                 ) : (
-                  <SpeakerSlash size={18} aria-hidden="true" />
+                  <IconSpeakerSlash size={18} />
                 )}
               </button>
             )}
             <button
               type="button"
+              onClick={() => setInfoOffen(true)}
+              aria-label="informationen und datenschutz"
+              className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
+            >
+              <IconInfo size={18} className="text-kreide-60 hover:text-kreide" />
+            </button>
+            <button
+              type="button"
               onClick={() => setVerlaufOffen(true)}
               aria-label="verlauf öffnen"
-              className="flex size-11 items-center justify-center text-kreide-60"
+              className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
             >
-              <ClockCounterClockwise size={18} aria-hidden="true" />
+              <IconClock size={18} />
             </button>
             <button
               type="button"
               onClick={neuerChat}
               aria-label="neuer chat"
-              className="flex size-11 items-center justify-center text-kreide-60"
+              className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
             >
-              <Plus size={18} weight="bold" aria-hidden="true" />
+              <IconPlus size={18} />
             </button>
           </div>
         </div>
 
-        {/* diese zeile sagt, was gerade laeuft, und sie sagt es genau. solange
-            keine verbindung steht, heisst das stimmenprobe; sobald eine steht,
-            heisst das: deine worte verlassen das geraet. */}
-        <p className="mx-auto w-full max-w-[560px] pb-2 text-[10px] leading-4 text-kreide-52">
+        <p className="sr-only">
           {modus === 'pruefen'
             ? 'verbindung wird geprüft …'
             : modus === 'modell'
-              ? 'deepseek über supabase. was du hier schreibst, verlässt dein gerät.'
+              ? `${anbieter.find((eintrag) => eintrag.id === gewaehlt)?.name ?? 'das modell'} über supabase. was du hier schreibst, verlässt dein gerät.`
               : 'lokale stimmenprobe. noch keine modellverbindung.'}
         </p>
-
-        {/* dieselbe regel wie eine zeile höher und wie beim mikrofon: wohin
-            etwas geht, wird hingeschrieben. hier gibt es zwei verschiedene
-            wege, und sie dürfen nicht denselben satz bekommen: bei ENIs eigener
-            stimme rechnet google, was der server ohnehin schon geschrieben hat;
-            bei der eingebauten wäre es der browser-anbieter. */}
-        {vorlesen && stimme.serverBereit && (
-          <p className="mx-auto w-full max-w-[560px] pb-2 text-[10px] leading-4 text-kreide-52">
-            ENIs stimme kommt von google. gesprochen wird nur, was er selbst gesagt hat.
-          </p>
-        )}
-        {vorlesen && !stimme.serverBereit && stimme.oertlich === false && (
-          <p className="mx-auto w-full max-w-[560px] pb-2 text-[10px] leading-4 text-kreide-52">
-            diese stimme rechnet im netz. was ENI sagt, geht dafür an deinen browser-anbieter.
-          </p>
-        )}
       </header>
 
-      <div className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {/* Gespraechsbereich */}
+      <div
+        ref={scrollContainerRef}
+        className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      >
         <div className="mx-auto flex min-h-full w-full max-w-[560px] flex-col">
           <EniStrom
             zeilen={zeilen}
@@ -507,22 +567,35 @@ export function EniApp({
             spricht={stimme.spricht}
             onVorlesen={stimme.moeglich ? lieseVor : undefined}
             onAuftakt={uebernimmAuftakt}
+            duellStand={duellStand}
           />
           {hinweis && (
-            <p role="status" className="pt-5 text-[12px] leading-relaxed text-kreide-52">
+            <p role="status" className="pt-4 text-[12px] leading-relaxed text-kreide-52">
               {hinweis}
             </p>
           )}
-          <div ref={endeRef} aria-hidden="true" className="h-2" />
+          <div ref={endeRef} aria-hidden="true" className="h-3" />
         </div>
       </div>
 
+      {/* Eingabebereich */}
       <div className="vollbild-safe-x shrink-0 pb-[calc(var(--app-safe-bottom)+0.75rem)]">
         <div className="mx-auto w-full max-w-[560px]">
           {fehler && (
-            <p role="alert" className="pb-2 text-[11px]" style={{ color: 'var(--erijon)' }}>
-              {fehler}
-            </p>
+            <div className="flex items-center justify-between gap-2 pb-2">
+              <p role="alert" className="text-[11px]" style={{ color: 'var(--erijon)' }}>
+                {fehler}
+              </p>
+              {letzterFehlversuchRef.current && !prueft && (
+                <button
+                  type="button"
+                  onClick={wiederhole}
+                  className="text-[11px] font-bold underline underline-offset-2 text-kreide-60 hover:text-kreide"
+                >
+                  wiederholen
+                </button>
+              )}
+            </div>
           )}
           <EniEingabe
             gesperrt={prueft || geber === null}
@@ -532,10 +605,15 @@ export function EniApp({
             anhaenge={anhaenge}
             onAnhaengen={nimmAnhaenge}
             onAnhangEntfernen={entferneAnhang}
+            onTextChange={(t) => {
+              aktuellerTextRef.current = t
+            }}
+            onAbbrechen={brecheAb}
           />
         </div>
       </div>
 
+      {/* Verlauf Dialog */}
       <EniVerlauf
         offen={verlaufOffen}
         chats={chats}
@@ -545,6 +623,14 @@ export function EniApp({
         onNeu={neuerChat}
         onLoeschen={loescheChat}
         onSchliessen={() => setVerlaufOffen(false)}
+        onErneutLaden={ladeChats}
+      />
+
+      {/* Info Dialog */}
+      <EniInfoDialog
+        offen={infoOffen}
+        onSchliessen={() => setInfoOffen(false)}
+        modellName={anbieter.find((eintrag) => eintrag.id === gewaehlt)?.name ?? null}
       />
     </div>
   )

@@ -1,4 +1,11 @@
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
+import {
+  findeAnbieter,
+  schluesselVon,
+  STANDARD_ANBIETER,
+  verfuegbareAnbieter,
+  type Anbieter,
+} from './eniAnbieter.ts'
 import { eniSystemPrompt } from './eniCharakter.ts'
 import { baueLage } from './eniLage.ts'
 import type { Person } from './eniLage.ts'
@@ -21,7 +28,12 @@ import type { Person } from './eniLage.ts'
  *    Modell gesagt hat, und nicht das, was ein Client behauptet.
  */
 
-export const MODELL = 'deepseek-flash'
+/**
+ * Der Modellname des Standardanbieters. Bleibt exportiert, weil aeltere
+ * Clients ihn aus der Pruefung lesen; wer waehlen kann, liest stattdessen die
+ * Liste in `anbieter`. Welche Gegenstellen es gibt, steht in `eniAnbieter.ts`.
+ */
+export const MODELL = findeAnbieter(STANDARD_ANBIETER)!.modell
 
 /**
  * ENI antwortet meist knapp, darf bei einer echten Erklaerung aber weit
@@ -159,7 +171,7 @@ export type EniAbhaengigkeiten = {
   umgebung(name: string): string | undefined
   datenbank(url: string, key: string, autorisierung: string): EniDatenbank
   /** ruft das modell. injiziert, damit die tests kein netz brauchen */
-  modell(anfrage: ModellAnfrage, schluessel: string): Promise<string>
+  modell(anfrage: ModellAnfrage, anbieter: Anbieter, schluessel: string): Promise<string>
   protokoll: Pick<Console, 'error'>
   /** nur für tests. sonst die echte uhr */
   jetzt?(): Date
@@ -322,28 +334,61 @@ export async function behandleEni(
 
   const url = deps.umgebung('SUPABASE_URL')
   const oeffentlicherKey = publizierbarerSupabaseKey(deps.umgebung)
-  const modellSchluessel = deps.umgebung('DEEPSEEK_API_KEY')?.trim() ?? ''
 
   if (!url || !oeffentlicherKey) {
     return antwort(500, { error: 'server ist nicht vollständig konfiguriert' })
   }
 
-  let anfrage: { chatId?: unknown; text?: unknown; pruefen?: unknown; anhaenge?: unknown }
+  let anfrage: {
+    chatId?: unknown
+    text?: unknown
+    pruefen?: unknown
+    anhaenge?: unknown
+    /** die id des anbieters, mit dem geredet werden soll. optional. */
+    modell?: unknown
+  }
   try {
     anfrage = (await request.json()) as typeof anfrage
   } catch {
     return antwort(400, { error: 'anfrage ist kein gültiges json' })
   }
 
-  // Die Pruefung sagt nur, ob ein Schluessel gesetzt ist. Sie verraet ihn
-  // nicht und ruft das Modell nicht auf, kostet also nichts.
+  // Wofuer ein Schluessel gesetzt ist. Die Liste entscheidet gleich zweimal:
+  // was die Oberflaeche zur Wahl stellt, und worauf eine Anfrage ohne Wahl
+  // faellt. So bleibt ein Client, der von der Wahl nichts weiss, benutzbar,
+  // auch wenn nur der zweite Schluessel gesetzt ist.
+  const offen = verfuegbareAnbieter(deps.umgebung)
+
+  // Die Pruefung sagt nur, welche Schluessel gesetzt sind. Sie verraet keinen
+  // davon und ruft kein Modell auf, kostet also nichts.
   if (anfrage.pruefen === true) {
-    return antwort(200, { bereit: modellSchluessel !== '', modell: MODELL })
+    return antwort(200, {
+      bereit: offen.length > 0,
+      modell: offen[0]?.modell ?? MODELL,
+      anbieter: offen,
+    })
   }
 
-  if (modellSchluessel === '') {
+  if (offen.length === 0) {
     return antwort(503, {
       error: 'ENI hat noch keine modellverbindung. siehe ENI-SCHLUESSEL.md',
+      code: 'kein_schluessel',
+    })
+  }
+
+  // Was der Client schickt, wird nachgeschlagen, nie uebernommen: eine
+  // erfundene id darf niemals zu einer Adresse werden, an die der Schluessel
+  // getragen wird. Ohne Angabe gilt der erste Anbieter, der bereitsteht.
+  const anbieter =
+    anfrage.modell === undefined || anfrage.modell === null
+      ? findeAnbieter(offen[0]!.id)
+      : findeAnbieter(anfrage.modell)
+  if (!anbieter) return antwort(400, { error: 'dieses modell gibt es nicht' })
+
+  const modellSchluessel = schluesselVon(anbieter, deps.umgebung)
+  if (modellSchluessel === '') {
+    return antwort(503, {
+      error: `für ${anbieter.name} ist kein schlüssel gesetzt. siehe ENI-SCHLUESSEL.md`,
       code: 'kein_schluessel',
     })
   }
@@ -605,6 +650,7 @@ export async function behandleEni(
             baueNachricht({ id: meineId, rolle: 'mensch', text }),
           ],
         },
+        anbieter,
         modellSchluessel
       )
     ).trim()

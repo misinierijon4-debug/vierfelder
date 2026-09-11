@@ -10,6 +10,7 @@ import {
   type EniDatenbank,
   type ModellAnfrage,
 } from '../../supabase/functions/_shared/eniModell.ts'
+import { ANBIETER, type Anbieter } from '../../supabase/functions/_shared/eniAnbieter.ts'
 
 const JETZT = new Date('2026-09-10T17:00:00Z') // donnerstag, kw 37
 const ICH = 'konto-erijon'
@@ -128,29 +129,34 @@ function deps(
     tabellen?: Tabellen
     nutzer?: string | null
     schluessel?: string
+    /** der zweite schluessel. undefined heisst: openrouter ist nicht gesetzt. */
+    openrouter?: string
     modell?: (anfrage: ModellAnfrage) => Promise<string>
     limit?: string
   } = {}
 ) {
   const tabellen = optionen.tabellen ?? grunddaten()
   const gesehen: ModellAnfrage[] = []
+  const gerufen: Array<{ anbieter: Anbieter; schluessel: string }> = []
   const abhaengigkeiten: EniAbhaengigkeiten = {
     umgebung: (name) =>
       ({
         SUPABASE_URL: 'https://beispiel.supabase.co',
         SUPABASE_ANON_KEY: 'sb_publishable_test',
         DEEPSEEK_API_KEY: optionen.schluessel ?? 'sk-test',
+        OPENROUTER_API_KEY: optionen.openrouter,
         ENI_TAGESLIMIT: optionen.limit,
       })[name],
     datenbank: () => baueDatenbank(tabellen, optionen.nutzer === undefined ? ICH : optionen.nutzer),
-    modell: async (anfrage) => {
+    modell: async (anfrage, anbieter, schluessel) => {
       gesehen.push(anfrage)
+      gerufen.push({ anbieter, schluessel })
       return optionen.modell ? await optionen.modell(anfrage) : 'das reicht nicht.'
     },
     protokoll: { error: vi.fn() },
     jetzt: () => JETZT,
   }
-  return { abhaengigkeiten, tabellen, gesehen }
+  return { abhaengigkeiten, tabellen, gesehen, gerufen }
 }
 
 /** ein token in JWT-form, dessen nutzlast `sub` traegt. keine echte signatur */
@@ -198,6 +204,110 @@ describe('ENIs modellverbindung', () => {
     const echt = await behandleEni(anfrage({ chatId: 'c1', text: 'hallo' }), abhaengigkeiten)
     expect(echt.status).toBe(503)
     expect((await echt.json()).code).toBe('kein_schluessel')
+  })
+
+  it('bietet bei der pruefung nur die modelle an, fuer die ein schluessel steht', async () => {
+    const einer = await behandleEni(
+      anfrage({ pruefen: true }),
+      deps({ openrouter: undefined }).abhaengigkeiten
+    )
+    const nurDeepSeek = await einer.json()
+    expect(nurDeepSeek.anbieter.map((a: { id: string }) => a.id)).toEqual(['deepseek'])
+
+    const beide = await behandleEni(
+      anfrage({ pruefen: true }),
+      deps({ openrouter: 'sk-or-geheim' }).abhaengigkeiten
+    )
+    const liste = await beide.json()
+    expect(liste.anbieter.map((a: { id: string }) => a.id)).toEqual(ANBIETER.map((a) => a.id))
+    // die pruefung nennt namen und modell, nie eine adresse und nie einen schluessel
+    expect(JSON.stringify(liste)).not.toContain('sk-or-geheim')
+    expect(JSON.stringify(liste)).not.toContain('https://')
+  })
+
+  it('ruft den anbieter, den der client waehlt, mit dessen eigenem schluessel', async () => {
+    const { abhaengigkeiten, gerufen } = deps({
+      schluessel: 'sk-deepseek',
+      openrouter: 'sk-or-ling',
+    })
+
+    await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }),
+      abhaengigkeiten
+    )
+    expect(gerufen[0]!.anbieter.id).toBe('ling')
+    expect(gerufen[0]!.schluessel).toBe('sk-or-ling')
+
+    await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'deepseek' }),
+      abhaengigkeiten
+    )
+    expect(gerufen[1]!.anbieter.id).toBe('deepseek')
+    expect(gerufen[1]!.schluessel).toBe('sk-deepseek')
+  })
+
+  it('unterscheidet zwei zeilen auf demselben modell nur im vordenken', async () => {
+    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
+
+    await behandleEni(anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }), abhaengigkeiten)
+    await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling-denkt' }),
+      abhaengigkeiten
+    )
+
+    const [ohne, mit] = gerufen.map((ruf) => ruf.anbieter)
+    // dasselbe modell, dieselbe adresse, derselbe schluessel
+    expect(mit!.modell).toBe(ohne!.modell)
+    expect(mit!.endpunkt).toBe(ohne!.endpunkt)
+    expect(gerufen[1]!.schluessel).toBe(gerufen[0]!.schluessel)
+    // und genau ein unterschied: das vordenken, mit mehr luft fuer die ausgabe
+    expect(ohne!.denken).toEqual({ reasoning: { enabled: false } })
+    expect(mit!.denken).toEqual({ reasoning: { enabled: true, exclude: true } })
+    expect(mit!.maxTokens).toBeGreaterThan(ohne!.maxTokens ?? 0)
+  })
+
+  it('schaltet das vordenken ueberall ausdruecklich, statt es dem modell zu ueberlassen', () => {
+    // `ling-3.0-flash-vl` denkt von sich aus vor (`default_enabled: true` in
+    // OpenRouters modellauskunft). eine zeile ohne eigene angabe waere also
+    // nicht "wie das modell es macht", sondern unabsichtlich langsam.
+    for (const anbieter of ANBIETER) {
+      expect(Object.keys(anbieter.denken).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('nimmt ohne wahl den ersten anbieter, fuer den ein schluessel steht', async () => {
+    // nur openrouter gesetzt: ein client, der von der wahl nichts weiss, darf
+    // deswegen nicht auf einen fehlenden deepseek-schluessel laufen.
+    const { abhaengigkeiten, gerufen } = deps({ schluessel: '', openrouter: 'sk-or-ling' })
+    const antwort = await behandleEni(anfrage({ chatId: 'c1', text: 'hallo' }), abhaengigkeiten)
+
+    expect(antwort.status).toBe(200)
+    expect(gerufen[0]!.anbieter.id).toBe('ling')
+  })
+
+  it('schlaegt eine erfundene modell-id ab, statt sie irgendwohin zu tragen', async () => {
+    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
+    const antwort = await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'https://boese.example/v1' }),
+      abhaengigkeiten
+    )
+
+    expect(antwort.status).toBe(400)
+    expect(gerufen).toHaveLength(0)
+  })
+
+  it('sagt beim namen, wenn fuer das gewaehlte modell kein schluessel steht', async () => {
+    const { abhaengigkeiten, gerufen } = deps({ schluessel: 'sk-deepseek' })
+    const antwort = await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }),
+      abhaengigkeiten
+    )
+
+    expect(antwort.status).toBe(503)
+    const inhalt = await antwort.json()
+    expect(inhalt.code).toBe('kein_schluessel')
+    expect(inhalt.error).toContain('ling')
+    expect(gerufen).toHaveLength(0)
   })
 
   it('laesst niemanden ohne anmeldung an das modell', async () => {

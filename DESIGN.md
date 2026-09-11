@@ -1002,7 +1002,9 @@ daneben, und die oberfläche kennt beide nur als `Antwortgeber`.
 zurück. Kein SDK: ein npm-paket dafür wäre ein halber node-unterbau in einer
 deno-function, für nichts. Dieselbe entscheidung wie bei `webpush.ts` in
 abschnitt 10. Ein test in `edgeImports.test.ts` hält beides fest, dass kein
-LLM-SDK hereinkommt und dass genau eine adresse angesprochen wird.
+LLM-SDK hereinkommt und dass genau eine adresse angesprochen wird. (Seit
+abschnitt 34 stehen zwei modelle zur wahl; der blanke fetch und der test sind
+geblieben.)
 
 **Das denken ist aus.** DeepSeek denkt sonst mit `reasoning_effort: high` vor.
 ENI ist eine haltung, keine rechenaufgabe; die denk-token zählen gegen dasselbe
@@ -1314,3 +1316,93 @@ rechnet google an dem, was der server ohnehin schon geschrieben hat; bei der
 eingebauten wäre es der browser-anbieter. Zwei verschiedene sachverhalte dürfen
 nicht denselben satz bekommen.
 
+
+## 34. Nachtrag: zwei modelle zur wahl (11.09.2026)
+
+**ENI ist eine haltung, kein modell.** Der charakter, die lage, der verlauf und
+die regeln gehören zu ihm; welche gegenstelle daraus sätze formt, ist eine
+auswechselbare schicht darunter. Solange das nur eine war, stand sie fest im
+code. Jetzt stehen zwei zur wahl: `deepseek-flash` wie bisher, und
+`inclusionai/ling-3.0-flash-vl:free` über OpenRouter.
+
+**Die liste ist eine tabelle, kein `if`.** `_shared/eniAnbieter.ts` hält je
+anbieter eine zeile: id, name, modellname, adresse, name der umgebungsvariablen
+und der eine schalter, über den sich die beiden streiten — wie man das vordenken
+abschaltet. DeepSeek will `thinking: {type:'disabled'}`, OpenRouter
+`reasoning: {enabled:false}`. Beide sprechen sonst dasselbe OpenAI-chatformat,
+und genau deshalb ist der zweite anbieter eine zeile und keine zweite funktion.
+Ein dritter wäre wieder eine zeile plus ein secret.
+
+**Der client schickt eine id, nie eine adresse.** Was hereinkommt, wird in der
+tabelle nachgeschlagen; findet sich nichts, ist die anfrage ein 400. Der
+umgekehrte weg — der client nennt modell und endpunkt, der server nimmt es hin —
+wäre eine function, die den schlüssel auf zuruf an eine fremde adresse trägt.
+Ein test hält das fest, und `edgeImports.test.ts` zählt jetzt drei adressen statt
+zwei: die liste ist weiter die stelle, an der auffällt, wenn eine function
+anfängt, irgendwo anders hinzutelefonieren.
+
+**Zwei schlüssel, und keiner weiß vom anderen.** Jeder anbieter nennt seine
+eigene umgebungsvariable. Wer nur einen setzt, bekommt nur den einen angeboten,
+und der umschalter im kopf verschwindet: ein menü mit einem eintrag ist keine
+wahl, sondern eine fläche, die platz kostet. Die pruefung, die bisher ja oder
+nein sagte, sagt jetzt zusätzlich, welche das sind — und nur das: namen und
+modellnamen, nie eine adresse und nie einen schlüssel.
+
+**Eine anfrage ohne wahl fällt auf den ersten verfügbaren, nicht auf den
+ersten der liste.** Sonst liefe ein client, der von der wahl nichts weiß, in ein
+503, bloß weil der obere der beiden schlüssel fehlt. Dasselbe gilt für eine
+gemerkte wahl, deren schlüssel später zurückgezogen wird: sie fällt
+stillschweigend zurück, statt in einen fehler zu laufen, den niemand erklären
+kann.
+
+**Die zeile im kopf nennt jetzt das modell beim namen.** Sie ist die einzige
+stelle, an der die oberfläche sagt, ob die sätze das gerät verlassen; seit es
+zwei ziele gibt, muss sie auch sagen, welches. Der info-dialog hinter dem **i**
+sagt dasselbe, aus demselben grund. Eine datenschutzaussage, die auf ein festes
+`(DeepSeek)` in der überschrift baut, wäre ab dem ersten umschalten falsch.
+
+**Gewechselt wird mitten im gespräch, nicht in den einstellungen.** Das modell
+ist keine konfiguration, die man einmal setzt, sondern eine entscheidung pro
+gespräch: wer merkt, dass die antworten flach werden, soll umschalten können,
+ohne die ansicht zu verlassen. Der verlauf bleibt dabei stehen — es wechselt nur,
+wer die nächste antwort formt. Während ENI gerade antwortet, ist der knopf
+gesperrt.
+
+**Bilder waren die bedingung, nicht die zugabe.** `ling-3.0-flash-vl` trägt das
+VL im namen: vision-language. Ein zweites modell ohne bildeingabe hätte die
+anhänge beim umschalten stillschweigend blind gemacht, und stillschweigend ist
+hier das problem, nicht blind.
+
+## 35. Nachtrag: denken ist eine zeile, keine stufe (11.09.2026)
+
+**Ein modell kann zweimal im menü stehen.** `ling-3.0-flash-vl` ist ein hybrid:
+es antwortet sofort oder es denkt erst. Statt dafür einen zweiten schalter neben
+die modellwahl zu bauen, steht es zweimal in der anbietertabelle — dieselbe
+adresse, derselbe schlüssel, derselbe modellname, ein unterschied. Für den
+menschen sind das zwei gesprächspartner mit verschiedenem tempo, und das menü
+sagt genau das. Ein zweites bedienelement hätte dieselbe wahl in zwei
+handgriffe zerlegt.
+
+**Das feld heißt jetzt `denken` und nicht mehr `ohneVordenken`.** Der alte name
+war eine annahme, die genau so lange hielt, wie alle zeilen dasselbe wollten.
+Ein feld, das in einer zeile das gegenteil seines namens tut, ist ein
+kommentarfehler mit typprüfung.
+
+**Was nicht gebaut wurde, und warum nicht.** OpenRouters modellauskunft nennt
+für dieses modell weder `supported_efforts` noch `supports_max_tokens`, und das
+heißt laut deren doku, dass es keine abstufung anbietet. Ein menü mit
+`hoch`/`mittel`/`niedrig` hätte ausgesehen wie eine einstellung und wäre eine
+behauptung gewesen. Dieselbe regel wie bei der zeile im kopf: die oberfläche
+deutet nichts an, was es nicht gibt.
+
+**Und die auskunft hat einen fehler aufgedeckt.** `default_enabled` steht bei
+diesem modell auf `true` — es denkt von sich aus vor. Eine zeile ohne eigene
+angabe wäre also nicht „wie das modell es macht" gewesen, sondern unabsichtlich
+langsam. Ein test hält jetzt fest, dass jede zeile das vordenken ausdrücklich
+stellt, statt es der gegenstelle zu überlassen.
+
+**Der ausgabedeckel wurde je zeile.** Denk-token sind ausgabe-token und gehen
+von demselben `max_tokens` ab. Mit den 2500 aus abschnitt 30 könnte das denken
+die erklärung auffressen und den satz mittendrin abschneiden — genau der
+schaden, gegen den der deckel dort aufgestellt wurde. Die denkende zeile bekommt
+8000, und weil sie nichts kostet, bremst der deckel dort nur eine schleife.
