@@ -26,6 +26,9 @@ export type Modellstand = {
   anbieter: AnbieterInfo[]
 }
 
+/** was eine antwort zurueckbringt: die vorlage, das urteil, ggf. ein grund */
+export type Antwort = { mensch: EniZeile; eni: EniZeile | null; hinweis?: string }
+
 export type Antwortgeber = {
   art: 'modell' | 'stimmenprobe'
   /** die id des anbieters, der antwortet. null in der stimmenprobe. */
@@ -41,19 +44,38 @@ export type Antwortgeber = {
     /** bilder und dateien, die schon hochgeladen sind. leer ist der normalfall. */
     anhaenge?: AnhangVorlage[],
     signal?: AbortSignal
-  ) => Promise<{ mensch: EniZeile; eni: EniZeile | null; hinweis?: string }>
+  ) => Promise<Antwort>
+  /**
+   * Noch einmal auf die letzte Vorlage antworten, die ohne Urteil geblieben
+   * ist.
+   *
+   * Der Unterschied zu `antworte` ist, was *nicht* passiert: es wird nichts
+   * geschrieben. Die Vorlage steht schon im Verlauf — sie ist ja wirklich
+   * gesagt worden, auch wenn das Modell danach geschwiegen hat. Sie noch
+   * einmal zu schicken hiesse, denselben Satz zweimal in den Chat zu stellen.
+   */
+  nochmal: (chatId: string, signal?: AbortSignal) => Promise<Antwort>
 }
 
 export class EniModellFehler extends Error {
   constructor(
     message: string,
     /** die vorlage, wenn sie trotz des fehlers schon im verlauf steht */
-    readonly mensch: EniZeile | null = null
+    readonly mensch: EniZeile | null = null,
+    /** was die function als grund nennt, soweit sie einen nennt */
+    readonly code: string | null = null
   ) {
     super(message)
     this.name = 'EniModellFehler'
   }
 }
+
+/**
+ * Fehlschlaege, nach denen die Vorlage steht und nur das Urteil fehlt. Genau
+ * die duerfen mit `nochmal` aufgeholt werden; bei allem anderen — etwa einem
+ * Anhang, der nicht gespeichert wurde — fehlt mehr als nur die Antwort.
+ */
+export const NACHHOLBAR = new Set(['modell_fehler', 'leere_antwort', 'nicht_gespeichert'])
 
 function funktionsAdresse(name: string): { url: string; schluessel: string } | null {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -151,6 +173,26 @@ export async function modellBereit(): Promise<Modellstand> {
  * ausschließlich die Function; der Browser weiß von keinem davon.
  */
 export function modellAntwort(anbieter: string | null = null): Antwortgeber {
+  /** aus status und rumpf entweder eine antwort machen oder einen fehler werfen */
+  const lies = (status: number, inhalt: Record<string, unknown>): Antwort => {
+    const mensch = (inhalt.mensch ?? null) as EniZeile | null
+    const code = typeof inhalt.code === 'string' ? inhalt.code : null
+
+    if (status === 200 && inhalt.eni === null) {
+      if (!mensch) throw new EniModellFehler('ENI hat nicht geantwortet.')
+      return { mensch, eni: null, hinweis: String(inhalt.hinweis ?? '') }
+    }
+    if (status !== 200) {
+      throw new EniModellFehler(
+        String(inhalt.error ?? `server antwortet ${status}`),
+        mensch,
+        code
+      )
+    }
+    if (!mensch || !inhalt.eni) throw new EniModellFehler('ENI hat nicht geantwortet.')
+    return { mensch, eni: inhalt.eni as EniZeile }
+  }
+
   return {
     art: 'modell',
     anbieter,
@@ -164,20 +206,14 @@ export function modellAntwort(anbieter: string | null = null): Antwortgeber {
         },
         signal
       )
-      const mensch = (inhalt.mensch ?? null) as EniZeile | null
-
-      if (status === 200 && inhalt.eni === null) {
-        if (!mensch) throw new EniModellFehler('ENI hat nicht geantwortet.')
-        return { mensch, eni: null, hinweis: String(inhalt.hinweis ?? '') }
-      }
-      if (status !== 200) {
-        throw new EniModellFehler(
-          String(inhalt.error ?? `server antwortet ${status}`),
-          mensch
-        )
-      }
-      if (!mensch || !inhalt.eni) throw new EniModellFehler('ENI hat nicht geantwortet.')
-      return { mensch, eni: inhalt.eni as EniZeile }
+      return lies(status, inhalt)
+    },
+    async nochmal(chatId, signal) {
+      const { status, inhalt } = await rufe(
+        { chatId, wiederholen: true, ...(anbieter ? { modell: anbieter } : {}) },
+        signal
+      )
+      return lies(status, inhalt)
     },
   }
 }
@@ -198,6 +234,27 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen', mensch)
       const eni = await speicher.schreibe(chatId, 'eni', eniAntwort(text, nr, person))
       return { mensch, eni }
+    },
+    /**
+     * Die Stimmenprobe hat keine Gegenstelle, die schweigen koennte, also gibt
+     * es hier nie etwas nachzuholen. Sie kann es trotzdem — sonst muesste die
+     * Oberflaeche wissen, mit welcher Fassung sie gerade redet.
+     */
+    async nochmal(chatId, signal) {
+      if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
+      const person = await speicher.person()
+      const bisher = await speicher.nachrichten(chatId)
+      const offene = bisher[bisher.length - 1]
+      if (!offene || offene.rolle !== 'mensch') {
+        throw new EniModellFehler('da ist keine vorlage offen.')
+      }
+      const nr = bisher.filter((zeile) => zeile.rolle === 'mensch').length - 1
+      const eni = await speicher.schreibe(
+        chatId,
+        'eni',
+        eniAntwort(offene.text, Math.max(0, nr), person)
+      )
+      return { mensch: offene, eni }
     },
   }
 }

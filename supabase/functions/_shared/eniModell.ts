@@ -346,6 +346,11 @@ export async function behandleEni(
     anhaenge?: unknown
     /** die id des anbieters, mit dem geredet werden soll. optional. */
     modell?: unknown
+    /**
+     * noch einmal auf die letzte vorlage antworten, die ohne urteil geblieben
+     * ist. dann wird nichts neues geschrieben — siehe unten.
+     */
+    wiederholen?: unknown
   }
   try {
     anfrage = (await request.json()) as typeof anfrage
@@ -395,10 +400,19 @@ export async function behandleEni(
 
   const chatId = typeof anfrage.chatId === 'string' ? anfrage.chatId.trim() : ''
   const text = typeof anfrage.text === 'string' ? anfrage.text.trim() : ''
+  /**
+   * Noch einmal, auf dieselbe Vorlage.
+   *
+   * Wenn das Modell nicht antwortet, steht die Vorlage trotzdem schon im
+   * Verlauf — sie ist ja echt gesagt worden. Der Weg zurueck darf deshalb
+   * nicht sein, denselben Satz noch einmal zu schicken: dann stuende er
+   * zweimal da. Auf diesem Weg wird nichts geschrieben, nur geantwortet.
+   */
+  const wiederholen = anfrage.wiederholen === true
   // ein bild allein ist eine vorlage. wer ein foto hinhaelt, sagt damit genug,
   // und ENI kann danach fragen, was er wissen will.
   const etwasDabei = Array.isArray(anfrage.anhaenge) && anfrage.anhaenge.length > 0
-  if (!chatId || (!text && !etwasDabei)) {
+  if (!chatId || (!wiederholen && !text && !etwasDabei)) {
     return antwort(400, { error: 'chat und text sind pflicht' })
   }
   if (text.length > MAX_VORLAGE_ZEICHEN) {
@@ -464,7 +478,9 @@ export async function behandleEni(
 
   // Was der Client an Bildern und Dateien behauptet, gegen das pruefen, was er
   // darf. Erst hier, weil die Pfadregel die user_id braucht.
-  const geprueft = pruefeAnhaenge(anfrage.anhaenge, userId, chatId)
+  // Bei einer Wiederholung haengt schon alles an der Zeile, die im Verlauf
+  // steht. Was der Client jetzt noch behauptet, ist gegenstandslos.
+  const geprueft = pruefeAnhaenge(wiederholen ? undefined : anfrage.anhaenge, userId, chatId)
   if ('fehler' in geprueft) return antwort(400, { error: geprueft.fehler })
   const anhaenge = geprueft.anhaenge
 
@@ -485,13 +501,15 @@ export async function behandleEni(
   // als gar keine Antwort.
   const frueher = await db
     .from('eni_anhaenge')
-    .select('nachricht_id,art,name,pfad,inhalt')
+    .select('id,nachricht_id,art,name,pfad,inhalt,groesse')
     .eq('chat_id', chatId)
     .order('erstellt', { ascending: false })
     .limit(MAX_ANHAENGE * KONTEXT_NACHRICHTEN)
   if (frueher.error) deps.protokoll.error('eni: alte anhänge nicht lesbar', frueher.error)
 
   const jeNachricht = new Map<string, AnhangVorlage[]>()
+  /** dieselben anhaenge in der form, in der der client sie anzeigt */
+  const rohJeNachricht = new Map<string, Zeile[]>()
   for (const zeile of frueher.data ?? []) {
     const schluessel = String(zeile.nachricht_id)
     jeNachricht.set(schluessel, [
@@ -504,60 +522,86 @@ export async function behandleEni(
         groesse: 0,
       },
     ])
+    const { nachricht_id: _weg, ...ohneVerweis } = zeile
+    rohJeNachricht.set(schluessel, [...(rohJeNachricht.get(schluessel) ?? []), ohneVerweis])
   }
 
-  const meins = await db
-    .from('eni_nachrichten')
-    .insert({ chat_id: chatId, user_id: userId, rolle: 'mensch', text })
-    .select('id,rolle,text,erstellt')
-    .single()
-  // Ein fremder oder geloeschter Chat scheitert hier an der Policy, nicht an
-  // einer eigenen Pruefung. Eine Stelle weniger, an der die Regel steht.
-  if (meins.error || !meins.data) {
-    return antwort(403, { error: 'dieser chat gehört nicht zu diesem konto' })
-  }
-
-  const meineId = String(meins.data.id)
-
-  // Die Anhaenge stehen erst, wenn die Nachricht steht, an der sie haengen.
-  // Sie schreibt die Function und nicht der Client: was ENI gesehen hat, soll
-  // niemand nachtraeglich behaupten koennen. Deshalb hat `eni_anhaenge` auch
-  // gar keine insert-Policy fuer angemeldete Konten.
-  let meineAnhaenge: Zeile[] = []
-  if (anhaenge.length > 0) {
-    const gespeichert = await db
-      .from('eni_anhaenge')
-      .insert(
-        anhaenge.map((anhang) => ({
-          nachricht_id: meineId,
-          chat_id: chatId,
-          user_id: userId,
-          art: anhang.art,
-          name: anhang.name,
-          pfad: anhang.pfad ?? null,
-          inhalt: anhang.inhalt ?? null,
-          groesse: anhang.groesse,
-        }))
-      )
-      // zurueckgelesen, damit der Client dieselben Zeilen bekommt, die stehen,
-      // statt seine eigene Behauptung noch einmal anzuzeigen.
-      .select('id,art,name,pfad,inhalt,groesse')
-    if (gespeichert.error) {
-      deps.protokoll.error('eni: anhänge nicht gespeichert', gespeichert.error)
-      return antwort(500, {
-        error: 'der anhang wurde nicht gespeichert. versuch es noch einmal.',
-        code: 'anhang_nicht_gespeichert',
-        mensch: meins.data,
-      })
-    }
-    meineAnhaenge = gespeichert.data ?? []
-    jeNachricht.set(meineId, anhaenge)
-  }
-
+  /** die id der vorlage, auf die geantwortet wird */
+  let meineId: string
   /** die eigene zeile, wie sie im verlauf steht: worte plus was dabei war */
-  const menschZeile: Zeile = {
-    ...meins.data,
-    ...(meineAnhaenge.length > 0 ? { anhaenge: meineAnhaenge } : {}),
+  let menschZeile: Zeile
+  /** was der vorlage vorausging. bei einer wiederholung steht sie selbst schon drin. */
+  let kontext = vorherige
+  /** der wortlaut der vorlage. bei einer wiederholung der gespeicherte. */
+  let vorlageText = text
+
+  if (wiederholen) {
+    // Nur die letzte Zeile darf offen sein, und nur, wenn sie von einem
+    // Menschen ist. Steht ein Urteil dahinter, ist nichts offen; dann waere
+    // eine zweite Antwort auf dieselbe Vorlage keine Wiederholung, sondern
+    // eine erfundene Fortsetzung.
+    const offene = vorherige[vorherige.length - 1]
+    if (!offene || offene.rolle !== 'mensch') {
+      return antwort(400, { error: 'da ist keine vorlage offen.', code: 'nichts_offen' })
+    }
+    meineId = offene.id
+    vorlageText = offene.text
+    kontext = vorherige.slice(0, -1)
+    const dazu = rohJeNachricht.get(meineId) ?? []
+    menschZeile = { ...(offene as unknown as Zeile), ...(dazu.length > 0 ? { anhaenge: dazu } : {}) }
+  } else {
+    const meins = await db
+      .from('eni_nachrichten')
+      .insert({ chat_id: chatId, user_id: userId, rolle: 'mensch', text })
+      .select('id,rolle,text,erstellt')
+      .single()
+    // Ein fremder oder geloeschter Chat scheitert hier an der Policy, nicht an
+    // einer eigenen Pruefung. Eine Stelle weniger, an der die Regel steht.
+    if (meins.error || !meins.data) {
+      return antwort(403, { error: 'dieser chat gehört nicht zu diesem konto' })
+    }
+
+    meineId = String(meins.data.id)
+
+    // Die Anhaenge stehen erst, wenn die Nachricht steht, an der sie haengen.
+    // Sie schreibt die Function und nicht der Client: was ENI gesehen hat, soll
+    // niemand nachtraeglich behaupten koennen. Deshalb hat `eni_anhaenge` auch
+    // gar keine insert-Policy fuer angemeldete Konten.
+    let meineAnhaenge: Zeile[] = []
+    if (anhaenge.length > 0) {
+      const gespeichert = await db
+        .from('eni_anhaenge')
+        .insert(
+          anhaenge.map((anhang) => ({
+            nachricht_id: meineId,
+            chat_id: chatId,
+            user_id: userId,
+            art: anhang.art,
+            name: anhang.name,
+            pfad: anhang.pfad ?? null,
+            inhalt: anhang.inhalt ?? null,
+            groesse: anhang.groesse,
+          }))
+        )
+        // zurueckgelesen, damit der Client dieselben Zeilen bekommt, die stehen,
+        // statt seine eigene Behauptung noch einmal anzuzeigen.
+        .select('id,art,name,pfad,inhalt,groesse')
+      if (gespeichert.error) {
+        deps.protokoll.error('eni: anhänge nicht gespeichert', gespeichert.error)
+        return antwort(500, {
+          error: 'der anhang wurde nicht gespeichert. versuch es noch einmal.',
+          code: 'anhang_nicht_gespeichert',
+          mensch: meins.data,
+        })
+      }
+      meineAnhaenge = gespeichert.data ?? []
+      jeNachricht.set(meineId, anhaenge)
+    }
+
+    menschZeile = {
+      ...meins.data,
+      ...(meineAnhaenge.length > 0 ? { anhaenge: meineAnhaenge } : {}),
+    }
   }
 
   /**
@@ -569,7 +613,7 @@ export async function behandleEni(
    * selbst ab. Die Frist ist deshalb so kurz wie moeglich: zehn Minuten, und
    * eine neue Vorlage stellt neue Adressen aus.
    */
-  const reihenfolge = [...vorherige.map((zeile) => zeile.id), meineId]
+  const reihenfolge = [...kontext.map((zeile) => zeile.id), meineId]
   const bildpfade: string[] = []
   for (let i = reihenfolge.length - 1; i >= 0; i -= 1) {
     for (const anhang of jeNachricht.get(reihenfolge[i]!) ?? []) {
@@ -610,7 +654,8 @@ export async function behandleEni(
     const id = reihenfolge[i]!
     const dazu = jeNachricht.get(id)
     if (!dazu || dazu.length === 0) continue
-    const roh = id === meineId ? text : (vorherige.find((zeile) => zeile.id === id)?.text ?? '')
+    const roh =
+      id === meineId ? vorlageText : (kontext.find((zeile) => zeile.id === id)?.text ?? '')
     const ergebnis = mitAnhangText(roh, dazu, textbudget)
     textbudget -= ergebnis.verbraucht
     gefaltet.set(id, ergebnis.text)
@@ -646,8 +691,8 @@ export async function behandleEni(
         {
           system: eniSystemPrompt({ person, lage }),
           nachrichten: [
-            ...vorherige.map(baueNachricht),
-            baueNachricht({ id: meineId, rolle: 'mensch', text }),
+            ...kontext.map(baueNachricht),
+            baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
           ],
         },
         anbieter,

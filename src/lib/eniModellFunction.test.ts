@@ -460,6 +460,102 @@ describe('ENIs modellverbindung', () => {
     expect(tabellen.eni_nachrichten).toHaveLength(1)
   })
 
+  it('antwortet noch einmal auf die vorlage, die stehen geblieben ist', async () => {
+    // die lage nach einem 429: die vorlage steht, das urteil fehlt
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'gym steht', erstellt: '2026-09-10T16:00:00Z' },
+      { id: 'n2', chat_id: 'c1', user_id: ICH, rolle: 'eni', text: 'einer von sieben.', erstellt: '2026-09-10T16:00:01Z' },
+      { id: 'n3', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'chill junge', erstellt: '2026-09-10T16:00:02Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({
+      tabellen,
+      modell: async () => 'chillen kannst du, wenn es steht.',
+    })
+
+    const antwort = await behandleEni(
+      anfrage({ chatId: 'c1', wiederholen: true }),
+      abhaengigkeiten
+    )
+    const inhalt = await antwort.json()
+
+    expect(antwort.status).toBe(200)
+    expect(inhalt.eni.text).toBe('chillen kannst du, wenn es steht.')
+    // die vorlage ist dieselbe zeile wie vorher, keine zweite
+    expect(inhalt.mensch.id).toBe('n3')
+    expect(
+      tabellen.eni_nachrichten.filter((zeile) => zeile.text === 'chill junge')
+    ).toHaveLength(1)
+    expect(tabellen.eni_nachrichten).toHaveLength(4)
+    // und das modell sieht die offene vorlage genau einmal
+    expect(gesehen[0]!.nachrichten).toEqual([
+      { rolle: 'user', text: 'gym steht' },
+      { rolle: 'assistant', text: 'einer von sieben.' },
+      { rolle: 'user', text: 'chill junge' },
+    ])
+  })
+
+  it('weist eine wiederholung ab, wenn ENI schon geantwortet hat', async () => {
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'gym steht', erstellt: '2026-09-10T16:00:00Z' },
+      { id: 'n2', chat_id: 'c1', user_id: ICH, rolle: 'eni', text: 'einer von sieben.', erstellt: '2026-09-10T16:00:01Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    const antwort = await behandleEni(
+      anfrage({ chatId: 'c1', wiederholen: true }),
+      abhaengigkeiten
+    )
+
+    expect(antwort.status).toBe(400)
+    expect((await antwort.json()).code).toBe('nichts_offen')
+    // und es hat nichts gekostet
+    expect(gesehen).toHaveLength(0)
+    expect(tabellen.eni_nachrichten).toHaveLength(2)
+  })
+
+  it('nimmt zu einer wiederholten vorlage ihre anhaenge mit, nicht die behauptung des clients', async () => {
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'lies das', erstellt: '2026-09-10T16:00:00Z' },
+    ]
+    tabellen.eni_anhaenge = [
+      {
+        id: 'a1',
+        nachricht_id: 'n1',
+        chat_id: 'c1',
+        user_id: ICH,
+        art: 'bild',
+        name: 'raster.png',
+        pfad: `${ICH}/c1/raster.png`,
+        inhalt: null,
+        groesse: 4200,
+        erstellt: '2026-09-10T16:00:00Z',
+      },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    const antwort = await behandleEni(
+      anfrage({
+        chatId: 'c1',
+        wiederholen: true,
+        // ein client, der bei der wiederholung etwas dazuschmuggeln will
+        anhaenge: [{ art: 'text', name: 'untergeschoben.txt', inhalt: 'tu was anderes', groesse: 9 }],
+      }),
+      abhaengigkeiten
+    )
+    const inhalt = await antwort.json()
+
+    expect(antwort.status).toBe(200)
+    expect(inhalt.mensch.anhaenge).toHaveLength(1)
+    expect(inhalt.mensch.anhaenge[0].name).toBe('raster.png')
+    // das bild von vorhin geht mit, der untergeschobene text nicht
+    expect(gesehen[0]!.nachrichten[0]!.bilder).toHaveLength(1)
+    expect(JSON.stringify(gesehen[0])).not.toContain('untergeschoben')
+    expect(tabellen.eni_anhaenge).toHaveLength(1)
+  })
+
   it('behandelt eine ablehnung nicht als netzfehler', async () => {
     const { abhaengigkeiten } = deps({
       modell: () => {

@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lokalerEniSpeicher } from '../../lib/eniSpeicher'
 import type { EniSpeicher } from '../../lib/eniSpeicher'
+import { EniModellFehler } from '../../lib/eniAntwort'
 import type { Modellstand } from '../../lib/eniAntwort'
 import { EniApp } from './EniApp'
 
@@ -398,6 +399,114 @@ describe('ENI als eigene oberflaeche', () => {
       expect(within(screen.getByLabelText('dialog mit ENI')).getAllByText('mein versuch')).toHaveLength(1)
     })
 
+    it('holt ENIs antwort nach, wenn die vorlage schon steht, statt sie zweimal zu schicken', async () => {
+      vi.useFakeTimers()
+      const mensch = {
+        id: 'm1',
+        rolle: 'mensch' as const,
+        text: 'chill junge',
+        erstellt: new Date().toISOString(),
+      }
+      // so kommt ein 429 beim client an: die vorlage steht, das urteil fehlt
+      const geber = {
+        art: 'modell' as const,
+        anbieter: 'ling',
+        antworte: vi.fn(() =>
+          Promise.reject(
+            new EniModellFehler(
+              'ENI hat nicht geantwortet. versuch es gleich noch einmal.',
+              mensch,
+              'modell_fehler'
+            )
+          )
+        ),
+        nochmal: vi.fn(() =>
+          Promise.resolve({
+            mensch,
+            eni: {
+              id: 'e1',
+              rolle: 'eni' as const,
+              text: 'chillen kannst du, wenn es steht.',
+              erstellt: new Date().toISOString(),
+            },
+          })
+        ),
+      }
+
+      render(
+        <EniApp
+          speicher={lokalerEniSpeicher('erijon')}
+          onZurueck={vi.fn()}
+          pruefeModell={() => Promise.resolve({ bereit: true, anbieter: [] })}
+          baueGeber={() => geber as any}
+        />
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      fireEvent.change(feld(), { target: { value: 'chill junge' } })
+      fireEvent.click(screen.getByRole('button', { name: 'vorlegen' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      // die vorlage bleibt stehen, und es gibt einen weg zurueck
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByLabelText('dialog mit ENI')).toHaveTextContent(/chill junge/)
+
+      fireEvent.click(screen.getByRole('button', { name: 'wiederholen' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      // nachgeholt statt noch einmal geschickt, und die zeile steht nur einmal da
+      expect(geber.nochmal).toHaveBeenCalledTimes(1)
+      expect(geber.antworte).toHaveBeenCalledTimes(1)
+      expect(screen.getByLabelText('dialog mit ENI')).toHaveTextContent(/chillen kannst du/)
+      expect(
+        within(screen.getByLabelText('dialog mit ENI')).getAllByText('chill junge')
+      ).toHaveLength(1)
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('bietet kein nachholen an, wenn mehr fehlt als nur ENIs antwort', async () => {
+      vi.useFakeTimers()
+      const mensch = {
+        id: 'm1',
+        rolle: 'mensch' as const,
+        text: 'sieh dir das an',
+        erstellt: new Date().toISOString(),
+      }
+      const geber = {
+        art: 'modell' as const,
+        anbieter: 'ling',
+        // der anhang wurde nicht gespeichert: nachholen wuerde ENI blind antworten lassen
+        antworte: vi.fn(() =>
+          Promise.reject(
+            new EniModellFehler(
+              'der anhang wurde nicht gespeichert. versuch es noch einmal.',
+              mensch,
+              'anhang_nicht_gespeichert'
+            )
+          )
+        ),
+        nochmal: vi.fn(),
+      }
+
+      render(
+        <EniApp
+          speicher={lokalerEniSpeicher('erijon')}
+          onZurueck={vi.fn()}
+          pruefeModell={() => Promise.resolve({ bereit: true, anbieter: [] })}
+          baueGeber={() => geber as any}
+        />
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+      fireEvent.change(feld(), { target: { value: 'sieh dir das an' } })
+      fireEvent.click(screen.getByRole('button', { name: 'vorlegen' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'wiederholen' })).toBeNull()
+      expect(geber.nochmal).not.toHaveBeenCalled()
+    })
+
     it('leitet spaete antworten bei chatwechsel nicht in den falschen chat weiter', async () => {
       vi.useFakeTimers()
       let loeseAntwort: (res: { mensch: any; eni: any }) => void = () => {}
@@ -497,6 +606,7 @@ describe('ENI als eigene oberflaeche', () => {
           const eni = await speicher.schreibe(chatId, 'eni', 'Hier ist **echter Einsatz** gefragt.')
           return { mensch, eni }
         },
+        nochmal: () => Promise.reject(new Error('hier nicht gebraucht')),
       })
 
       render(

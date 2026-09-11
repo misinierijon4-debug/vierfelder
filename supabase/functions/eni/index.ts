@@ -7,6 +7,12 @@ import {
   type ModellAnfrage,
 } from '../_shared/eniModell.ts'
 import type { Anbieter } from '../_shared/eniAnbieter.ts'
+import {
+  mitWiederholung,
+  Nochmal,
+  retryAfter,
+  vorruebergehend,
+} from '../_shared/eniWiederholung.ts'
 
 /**
  * ENIs modellverbindung. Welche Gegenstellen es gibt, steht in
@@ -52,10 +58,11 @@ type ChatAntwort = {
   error?: { message?: string; code?: number }
 }
 
-async function rufeModell(
+async function einVersuch(
   anfrage: ModellAnfrage,
   anbieter: Anbieter,
-  schluessel: string
+  schluessel: string,
+  fristMs: number
 ): Promise<string> {
   const antwort = await fetch(anbieter.endpunkt, {
     method: 'POST',
@@ -63,7 +70,7 @@ async function rufeModell(
       authorization: `Bearer ${schluessel}`,
       'content-type': 'application/json',
     },
-    signal: AbortSignal.timeout(FRIST_MS),
+    signal: AbortSignal.timeout(fristMs),
     body: JSON.stringify({
       model: anbieter.modell,
       /**
@@ -118,13 +125,23 @@ async function rufeModell(
   if (!antwort.ok) {
     // Der Koerper kann den Schluessel nicht enthalten, aber sicherheitshalber
     // geht nur der Status weiter, nie die Antwort der Gegenstelle.
-    throw new Error(`${anbieter.id} antwortet ${antwort.status}`)
+    const was = `${anbieter.id} antwortet ${antwort.status}`
+    // Der Rumpf wird nicht gelesen, aber geschlossen: ein offener Koerper haelt
+    // die Verbindung, und davon soll keine in die Wartezeit mitgehen.
+    await antwort.body?.cancel()
+    if (vorruebergehend(antwort.status)) throw new Nochmal(was, retryAfter(antwort))
+    throw new Error(was)
   }
 
   const inhalt = (await antwort.json()) as ChatAntwort
   if (inhalt.error) {
     // Auch hier nur der Code, nicht der Text der Gegenstelle.
-    throw new Error(`${anbieter.id} meldet fehler ${inhalt.error.code ?? '?'}`)
+    const code = inhalt.error.code ?? 0
+    const was = `${anbieter.id} meldet fehler ${inhalt.error.code ?? '?'}`
+    // OpenRouter legt die Grenze je Minute auch mal in einen 200er-Rumpf. Sie
+    // bleibt dieselbe Grenze, also darf sie denselben zweiten Versuch haben.
+    if (vorruebergehend(code)) throw new Nochmal(was)
+    throw new Error(was)
   }
   const wahl = inhalt.choices?.[0]
 
@@ -137,13 +154,32 @@ async function rufeModell(
     wahl?.finish_reason === 'insufficient_system_resource' ||
     wahl?.finish_reason === 'aborted'
   ) {
-    throw new Error(`${anbieter.id} bricht ab: ${wahl.finish_reason}`)
+    throw new Nochmal(`${anbieter.id} bricht ab: ${wahl.finish_reason}`)
   }
 
   // `length` heisst abgeschnitten. Der angefangene satz ist trotzdem mehr wert
   // als ein fehler, also geht er durch.
-  return wahl?.message?.content ?? ''
+  const gesagt = wahl?.message?.content ?? ''
+
+  // Leer und nicht abgeschnitten heisst: die Gegenstelle hat den Zug verpasst.
+  // Bei `length` waere es kein Verpassen, sondern ein volles Denkbudget, und
+  // ein zweiter Versuch endete genauso — der geht deshalb als leer durch.
+  if (gesagt.trim() === '' && wahl?.finish_reason !== 'length') {
+    throw new Nochmal(`${anbieter.id} antwortet leer`)
+  }
+
+  return gesagt
 }
+
+/**
+ * Das Modell rufen und bei einem voruebergehenden Fehler noch einmal. Wann das
+ * gilt und wie lange gewartet wird, steht in `_shared/eniWiederholung.ts`.
+ */
+const rufeModell = (anfrage: ModellAnfrage, anbieter: Anbieter, schluessel: string) =>
+  mitWiederholung((frist) => einVersuch(anfrage, anbieter, schluessel, frist), {
+    fristMs: FRIST_MS,
+    protokoll: (was) => console.log(`eni: ${was}`),
+  })
 
 Deno.serve((request) =>
   behandleEni(request, {
