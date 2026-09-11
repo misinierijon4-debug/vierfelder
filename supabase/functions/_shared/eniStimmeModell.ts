@@ -1,3 +1,4 @@
+import { ereignisStrom } from './eniStream.ts'
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
 import { subAusToken } from './token.ts'
 
@@ -121,7 +122,7 @@ export type StimmDatenbank = {
   }
 }
 
-export type StimmAnfrage = { text: string; stimme: string }
+export type StimmAnfrage = { text: string; stimme: string; onPcm?: (pcm: Uint8Array) => void; signal?: AbortSignal }
 
 /**
  * Ein Fehlschlag der Gegenstelle, der sagt, ob es sich lohnt, es noch einmal zu
@@ -273,7 +274,9 @@ async function sprichStueck(
   stueck: string,
   stimme: string,
   schluessel: string,
-  deps: EniStimmeAbhaengigkeiten
+  deps: EniStimmeAbhaengigkeiten,
+  onPcm?: (pcm: Uint8Array) => void,
+  signal?: AbortSignal
 ): Promise<Uint8Array> {
   const warte = deps.warte ?? ((ms: number) => new Promise((fertig) => setTimeout(fertig, ms)))
   let letzter: unknown = null
@@ -283,12 +286,16 @@ async function sprichStueck(
       const eigen = letzter instanceof StimmFehler ? letzter.wartenMs : null
       await warte(Math.min(eigen ?? WARTE_MS[versuch - 1] ?? 2_000, 5_000))
     }
+    let gesendet = false
+    signal?.throwIfAborted()
     try {
-      const pcm = await deps.modell({ text: stueck, stimme }, schluessel)
+      const pcm = await deps.modell({ text: stueck, stimme, signal, ...(onPcm ? { onPcm: (teil: Uint8Array) => { gesendet = true; onPcm(teil) } } : {}) }, schluessel)
+      if (onPcm && !gesendet && pcm.byteLength) onPcm(pcm)
       if (pcm.byteLength > 0) return pcm
       letzter = new StimmFehler('gegenstelle liefert keinen ton', true)
     } catch (ursache) {
       letzter = ursache
+      if (gesendet || signal?.aborted) throw ursache
       // eine abgelehnte anfrage wird beim zweiten mal genauso abgelehnt
       if (ursache instanceof StimmFehler && !ursache.wiederholbar) break
     }
@@ -310,12 +317,26 @@ async function sprichAlle(
   stuecke: string[],
   stimme: string,
   schluessel: string,
-  deps: EniStimmeAbhaengigkeiten
+  deps: EniStimmeAbhaengigkeiten,
+  onPcm?: (pcm: Uint8Array) => void,
+  signal?: AbortSignal
 ): Promise<Uint8Array[]> {
+  const abbruch = new AbortController()
+  const aufnahmeSignal = signal ? AbortSignal.any([signal, abbruch.signal]) : abbruch.signal
   const jetzt = deps.jetzt ?? (() => Date.now())
   const beginn = jetzt()
   const teile = new Array<Uint8Array>(stuecke.length)
   let naechstes = 0
+  let dran = 0
+  const puffer = stuecke.map(() => [] as Uint8Array[])
+  const abgeschlossen = new Set<number>()
+  const sende = () => {
+    while (dran < stuecke.length) {
+      for (const teil of puffer[dran]!.splice(0)) onPcm?.(teil)
+      if (!abgeschlossen.has(dran)) break
+      dran++
+    }
+  }
 
   const arbeiter = async () => {
     for (;;) {
@@ -325,12 +346,17 @@ async function sprichAlle(
       if (jetzt() - beginn > GESAMT_FRIST_MS) {
         throw new StimmFehler('ENIs stimme hat zu lange gebraucht', false)
       }
-      teile[nr] = await sprichStueck(stuecke[nr]!, stimme, schluessel, deps)
+      aufnahmeSignal.throwIfAborted()
+      teile[nr] = await sprichStueck(stuecke[nr]!, stimme, schluessel, deps,
+        onPcm ? (pcm) => { puffer[nr]!.push(pcm); sende() } : undefined, aufnahmeSignal)
+      abgeschlossen.add(nr)
+      sende()
     }
   }
 
   const spuren = Math.min(GLEICHZEITIG, stuecke.length)
-  await Promise.all(Array.from({ length: spuren }, arbeiter))
+  try { await Promise.all(Array.from({ length: spuren }, arbeiter)) }
+  catch (ursache) { abbruch.abort(); throw ursache }
   return teile
 }
 
@@ -387,7 +413,7 @@ export async function behandleEniStimme(
     return antwort(500, { error: 'server ist nicht vollständig konfiguriert' })
   }
 
-  let anfrage: { nachrichtId?: unknown; pruefen?: unknown }
+  let anfrage: { nachrichtId?: unknown; pruefen?: unknown; stream?: unknown }
   try {
     anfrage = (await request.json()) as typeof anfrage
   } catch {
@@ -470,12 +496,13 @@ export async function behandleEniStimme(
   const gibEsSchon = await eimer.list(ordner, { search: `${nachrichtId}.wav`, limit: 1 })
   const liegtDa = (gibEsSchon.data ?? []).some((eintrag) => eintrag.name === `${nachrichtId}.wav`)
 
+  const aufnehmen = async (onPcm?: (pcm: Uint8Array) => void, signal?: AbortSignal): Promise<Response> => {
   if (!liegtDa) {
     // Die Stuecke ueberlappen sich, statt hintereinander zu warten. Die
     // Reihenfolge bleibt trotzdem die der Saetze, dafuer sorgt `sprichAlle`.
     let teile: Uint8Array[]
     try {
-      teile = await sprichAlle(teileFuerAufnahme(text), stimme, schluessel, deps)
+      teile = await sprichAlle(teileFuerAufnahme(text), stimme, schluessel, deps, onPcm, signal)
     } catch (ursache) {
       deps.protokoll.error('eni-stimme: gegenstelle nicht erreichbar', ursache)
       return antwort(502, {
@@ -529,4 +556,18 @@ export async function behandleEniStimme(
     // damit der Client sieht, ob er gerade bezahlt hat oder aus dem Regal nimmt
     ausDemRegal: liegtDa,
   })
+  }
+  if (anfrage.stream === true && !liegtDa) {
+    return ereignisStrom((sende, signal) => aufnehmen((pcm) => {
+      // Bounded frames avoid large JSON lines and excessive string arguments.
+      for (let offset = 0; offset < pcm.length; offset += 24_000) {
+        const teil = pcm.subarray(offset, offset + 24_000)
+        let roh = ''
+        for (const byte of teil) roh += String.fromCharCode(byte)
+        sende({ typ: 'audio', pcm: btoa(roh) })
+      }
+    }, signal), CORS)
+  }
+  return aufnehmen(undefined, request.signal)
+
 }

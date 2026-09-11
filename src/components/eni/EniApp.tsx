@@ -25,6 +25,8 @@ import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
 import { IconInfo } from './EniSymbole'
 import { EniEingabe } from './EniEingabe'
+import { EniWissenDialog } from './EniWissenDialog'
+import type { Erinnerung } from '../../lib/eniWissen'
 import { EniInfoDialog } from './EniInfoDialog'
 import { EniModellwahl } from './EniModellwahl'
 import { EniStrom } from './EniStrom'
@@ -66,11 +68,14 @@ export function EniApp({
   const [prueft, setPrueft] = useState(false)
   const [verlaufOffen, setVerlaufOffen] = useState(false)
   const [infoOffen, setInfoOffen] = useState(false)
+  const [wissenOffen, setWissenOffen] = useState(false)
+  const [wissensStart, setWissensStart] = useState<{ text: string; art: Erinnerung['art'] } | undefined>()
   const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
   const [wahlOffen, setWahlOffen] = useState(false)
   const [vorgabe, setVorgabe] = useState<{ text: string; nr: number } | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [teilAntwort, setTeilAntwort] = useState('')
   const [frisch, setFrisch] = useState<string | null>(null)
   const [hinweis, setHinweis] = useState<string | null>(null)
   const [anhaenge, setAnhaenge] = useState<VorbereiteterAnhang[]>([])
@@ -85,6 +90,7 @@ export function EniApp({
   const endeRef = useRef<HTMLDivElement>(null)
   const vorgabeNr = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
+  useEffect(() => () => { abortControllerRef.current?.abort() }, [])
   /**
    * Was zuletzt schiefging, und wie es aufzuholen ist.
    *
@@ -176,7 +182,7 @@ export function EniApp({
 
   useEffect(() => {
     scrolleZumEndeWennSinnvoll(prueft)
-  }, [zeilen.length, prueft, scrolleZumEndeWennSinnvoll])
+  }, [zeilen.length, teilAntwort, prueft, scrolleZumEndeWennSinnvoll])
 
   const lieseVor = useCallback(
     (zeile: EniZeile) => {
@@ -266,6 +272,7 @@ export function EniApp({
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
+      setTeilAntwort('')
       setPrueft(true)
       stimme.halt()
       if (vorlesen) weckeStimme()
@@ -320,14 +327,15 @@ export function EniApp({
             setChats((vorher) => [chat, ...vorher])
           }
 
-          await new Promise((weiter) => setTimeout(weiter, 50))
+          if (geber.art === 'stimmenprobe') await new Promise((weiter) => setTimeout(weiter, 50))
           const vorlagen = await ladeHoch(mitgeben, speicher.kontoId ?? '', chatId)
           const ergebnis = await geber.antworte(
             chatId,
             text,
             bisher,
             vorlagen,
-            controller.signal
+            controller.signal,
+            (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }
           )
 
           // Wichtig: Spaete Antworten duerfen niemals im falschen Gespraech landen!
@@ -351,6 +359,11 @@ export function EniApp({
             controller.signal.aborted ||
             (ursache instanceof Error && ursache.message.includes('abgebrochen'))
           const gespeichert = ursache instanceof EniModellFehler ? ursache.mensch : null
+          if (chatId !== null && aktiverChatRef.current !== chatId) {
+            if (!gespeichert) entwuerfeRef.current.set(chatId, { text, anhaenge: mitgeben })
+            else for (const anhang of mitgeben) gibVorschauFrei(anhang)
+            return
+          }
 
           setZeilen((vorher) => [
             ...vorher.filter((zeile) => zeile.id !== vorlaeufig.id),
@@ -389,6 +402,7 @@ export function EniApp({
             )
           }
         } finally {
+          setTeilAntwort('')
           setPrueft(false)
         }
       })()
@@ -406,6 +420,7 @@ export function EniApp({
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
+      setTeilAntwort('')
       setPrueft(true)
       stimme.halt()
       if (vorlesen) weckeStimme()
@@ -415,7 +430,7 @@ export function EniApp({
 
       void (async () => {
         try {
-          const ergebnis = await geber.nochmal(chatId, controller.signal)
+          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) })
           letzterFehlversuchRef.current = null
           if (aktiverChatRef.current === chatId) {
             setZeilen((vorher) => [
@@ -441,6 +456,7 @@ export function EniApp({
                 : 'ENI hat nicht geantwortet. versuch es gleich noch einmal.'
           )
         } finally {
+          setTeilAntwort('')
           setPrueft(false)
         }
       })()
@@ -477,6 +493,8 @@ export function EniApp({
       setHinweis(null)
       stimme.halt()
       setFrisch(null)
+      setTeilAntwort('')
+      aktiverChatRef.current = chatId
       setAktiverChat(chatId)
 
       // Gespeicherten Entwurf fuer diesen Chat wiederherstellen
@@ -508,6 +526,8 @@ export function EniApp({
     setFehler(null)
     setHinweis(null)
     setFrisch(null)
+    setTeilAntwort('')
+    aktiverChatRef.current = null
     setAktiverChat(null)
     setZeilen([])
     stimme.halt()
@@ -619,6 +639,9 @@ export function EniApp({
           </div>
         </div>
 
+        <div className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2">
+          <button type="button" className="min-h-11 text-sm text-kreide-60 hover:text-kreide" onClick={() => { setWissensStart(undefined); setWissenOffen(true) }}>Über mich & meine Schritte</button>
+        </div>
         <p className="sr-only">
           {modus === 'pruefen'
             ? 'verbindung wird geprüft …'
@@ -635,6 +658,8 @@ export function EniApp({
       >
         <div className="mx-auto flex min-h-full w-full max-w-[560px] flex-col">
           <EniStrom
+            teilAntwort={teilAntwort}
+            onMerken={(zeile, art) => { setWissensStart({ text: zeile.text.slice(0, 1000), art }); setWissenOffen(true) }}
             zeilen={zeilen}
             me={me}
             prueft={prueft}
@@ -657,6 +682,7 @@ export function EniApp({
       {/* Eingabebereich */}
       <div className="vollbild-safe-x shrink-0 pb-[calc(var(--app-safe-bottom)+0.75rem)]">
         <div className="mx-auto w-full max-w-[560px]">
+          {stimme.hinweis && <p role="status" className="pb-2 text-xs text-kreide-60">{stimme.hinweis}</p>}
           {fehler && (
             <div className="flex items-center justify-between gap-2 pb-2">
               <p role="alert" className="text-[11px]" style={{ color: 'var(--erijon)' }}>
@@ -702,6 +728,7 @@ export function EniApp({
         onErneutLaden={ladeChats}
       />
 
+      <EniWissenDialog key={speicher.kontoId} offen={wissenOffen} kontoId={speicher.kontoId} start={wissensStart} onSchliessen={() => setWissenOffen(false)} />
       {/* Info Dialog */}
       <EniInfoDialog
         offen={infoOffen}

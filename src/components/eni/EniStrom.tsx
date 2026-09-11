@@ -30,6 +30,8 @@ const WORT_VERSATZ_MS = 14
 const AUSKLAPP_MAX_MS = 500
 
 type Props = {
+  teilAntwort?: string
+  onMerken?: (zeile: EniZeile, art: 'profil' | 'aufgabe') => void
   zeilen: EniZeile[]
   me: UserId
   prueft: boolean
@@ -42,6 +44,8 @@ type Props = {
 }
 
 export function EniStrom({
+  teilAntwort,
+  onMerken,
   zeilen,
   me,
   prueft,
@@ -83,10 +87,15 @@ export function EniStrom({
                 bildAdressen={bildAdressen}
               />
             )}
+            {onMerken && <div className="flex flex-wrap gap-3">
+              <button type="button" className="min-h-11 text-xs text-kreide-60 underline underline-offset-4" onClick={() => onMerken(zeile, 'profil')}>Für später merken</button>
+              {zeile.rolle === 'eni' && <button type="button" className="min-h-11 text-xs text-kreide-60 underline underline-offset-4" onClick={() => onMerken(zeile, 'aufgabe')}>Als nächsten Schritt übernehmen</button>}
+            </div>}
           </li>
         )
       })}
-      {prueft && (
+      {prueft && teilAntwort && <li aria-busy="true"><EniWort text={teilAntwort} frisch={false} spricht={false} /><p className="mt-2 text-xs text-kreide-60">Antwort entsteht …</p></li>}
+      {prueft && !teilAntwort && (
         <li>
           <EniTakt />
         </li>

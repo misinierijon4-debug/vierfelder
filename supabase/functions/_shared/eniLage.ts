@@ -86,28 +86,80 @@ export async function baueLage(
     '',
   ]
 
-  // einheiten der laufenden woche
-  const einheiten = await db
+  // Unabhaengige Datenquellen gleichzeitig lesen; Berechnung bleibt identisch.
+  const [aufenthalte, gewicht, einheiten, schlaf, faecher, noten] = await Promise.all([
+    db
+    .from('aufenthalte')
+    .select('user_id,bereich,ankunft,abgang')
+    // Puffer fuer den Wochenbeginn in Europe/Berlin (UTC liegt am Vortag).
+    .gte('ankunft', `${minusTage(montag, 1)}T00:00:00Z`),
+    db
+    .from('gewicht')
+    .select('user_id,tag,kg')
+    .gte('tag', minusTage(tag, 13))
+    .order('tag', { ascending: false }),
+    db
     .from('einheiten')
     .select('user_id,bereich,tag,wert')
-    .gte('tag', montag)
-  if (einheiten.error) {
-    zeilen.push('Einheiten: nicht lesbar. Sag das, statt zu raten.')
+    .gte('tag', montag),
+    db
+    .from('schlafnaechte_ansicht')
+    .select('user_id,nacht,schlaf_minuten,nachtwert')
+    .gte('nacht', minusTage(tag, 6))
+    .order('nacht', { ascending: false }),
+    db.from('faecher').select('id,user_id,name'),
+    db
+    .from('noten')
+    .select('user_id,fach_id,art,punkte,datum')
+    .order('datum', { ascending: false })
+    .limit(20)
+  ])
+  // Dieselben Quellen wie im Tracker: manuelle Einheiten, Messungen und Gewicht.
+
+
+
+  if (einheiten.error || aufenthalte.error || gewicht.error) {
+    zeilen.push('Trackerstand: nicht vollstaendig lesbar. Keinen Tages- oder Wochenstand nennen und fehlende Daten nicht als null oder fehlende Leistung werten.')
   } else {
-    const zaehler = new Map<string, number>()
-    for (const eintrag of einheiten.data ?? []) {
-      const person = wer(eintrag.user_id)
-      if (!person || String(eintrag.tag) > tag) continue
-      const schluessel = `${person}:${String(eintrag.bereich)}`
-      zaehler.set(schluessel, (zaehler.get(schluessel) ?? 0) + 1)
+    const punkte = new Set<string>()
+    const addiere = (id: unknown, bereich: string, datum: string) => {
+      const person = wer(id)
+      if (!person || datum < montag || datum > tag) return
+      punkte.add(`${person}:${bereich}:${datum}`)
     }
-    zeilen.push('Diese Woche, Einheiten je Bereich:')
+    for (const eintrag of einheiten.data ?? []) {
+      const bereich = String(eintrag.bereich)
+      if (BEREICHE.some((b) => b === bereich)) {
+        addiere(eintrag.user_id, bereich, String(eintrag.tag))
+      }
+    }
+    for (const aufenthalt of aufenthalte.data ?? []) {
+      const bereich = String(aufenthalt.bereich)
+      if (!BEREICHE.some((b) => b === bereich) || !aufenthalt.abgang) continue
+      const start = new Date(String(aufenthalt.ankunft))
+      const dauer = (new Date(String(aufenthalt.abgang)).getTime() - start.getTime()) / 60_000
+      if (!Number.isFinite(dauer) || dauer < (bereich === 'lesen' ? 10 : 20)) continue
+      addiere(aufenthalt.user_id, bereich, lokaleMinute(start).tag)
+    }
+    for (const eintrag of gewicht.data ?? []) {
+      addiere(eintrag.user_id, 'gewicht', String(eintrag.tag))
+    }
+    const anzahl = (person: Person, bereich?: string, datum?: string) =>
+      [...punkte].filter((punkt) => {
+        const [p, b, t] = punkt.split(':')
+        return p === person && (!bereich || b === bereich) && (!datum || t === datum)
+      }).length
+    zeilen.push('Trackerregeln: Ein Punkt je Person, Bereich und Tag; mehrere Einheiten oder Messungen am selben Tag geben keinen Zusatzpunkt. Gewicht zaehlt als fuenftes Feld. Messungen zaehlen erst abgeschlossen ab 20 Minuten, Lesen ab 10 Minuten. Punkte sind keine Anzahl von Trainingseinheiten.')
+    zeilen.push(`Wochenstand (Erijon : Koray): ${anzahl('erijon')}:${anzahl('koray')}.`)
+    zeilen.push(`Tagesstand heute (Erijon : Koray): ${anzahl('erijon', undefined, tag)}:${anzahl('koray', undefined, tag)}.`)
+    zeilen.push('Bei Fragen nach dem Stand ohne Zeitraum den Wochenstand nennen. Die aktuelle LAGE hat Vorrang vor alten Aussagen im Chat; falsche fruehere Zahlen korrigieren.')
+    zeilen.push('Diese Woche, Tagespunkte je Bereich:')
     zeilen.push(`${spalte('', 8)}${spalte('Erijon', 8)}Koray`)
     let summeE = 0
     let summeK = 0
-    for (const bereich of BEREICHE) {
-      const e = zaehler.get(`erijon:${bereich}`) ?? 0
-      const k = zaehler.get(`koray:${bereich}`) ?? 0
+    for (const bereich of [...BEREICHE, 'gewicht']) {
+      const e = anzahl('erijon', bereich)
+      const k = anzahl('koray', bereich)
       summeE += e
       summeK += k
       zeilen.push(`${spalte(bereich, 8)}${spalte(String(e), 8)}${k}`)
@@ -117,11 +169,6 @@ export async function baueLage(
   zeilen.push('')
 
   // gewicht, letzte zwei wochen
-  const gewicht = await db
-    .from('gewicht')
-    .select('user_id,tag,kg')
-    .gte('tag', minusTage(tag, 13))
-    .order('tag', { ascending: false })
   if (gewicht.error) {
     zeilen.push('Gewicht: nicht lesbar.')
   } else {
@@ -140,11 +187,7 @@ export async function baueLage(
   // Die Basistabelle `schlafnaechte` hat keine Lese-Policy: ein Zugriff dort
   // liefert unter RLS still null Zeilen, und ENI haette den Schlaf fuer immer
   // als "nichts importiert" gemeldet. Die App liest denselben Lesemodell-View.
-  const schlaf = await db
-    .from('schlafnaechte_ansicht')
-    .select('user_id,nacht,schlaf_minuten,nachtwert')
-    .gte('nacht', minusTage(tag, 6))
-    .order('nacht', { ascending: false })
+
   if (schlaf.error) {
     zeilen.push('Schlaf: nicht lesbar.')
   } else {
@@ -163,12 +206,8 @@ export async function baueLage(
   zeilen.push('')
 
   // noten, die letzten sechs
-  const faecher = await db.from('faecher').select('id,user_id,name')
-  const noten = await db
-    .from('noten')
-    .select('user_id,fach_id,art,punkte,datum')
-    .order('datum', { ascending: false })
-    .limit(20)
+
+
   if (faecher.error || noten.error) {
     zeilen.push('Noten: nicht lesbar.')
   } else {

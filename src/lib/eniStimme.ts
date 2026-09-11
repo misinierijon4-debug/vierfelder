@@ -1,3 +1,4 @@
+import { audioWarteschlange, weckeAudioStrom } from './eniAudioStrom'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { rufeEniFunktion } from './eniAntwort'
 
@@ -180,6 +181,7 @@ export function stimmeMoeglich(): boolean {
  * auf. Auf allen anderen Geräten kostet es nichts.
  */
 export function weckeStimme() {
+  weckeAudioStrom()
   // beide wege wollen dieselbe erlaubnis, und beide bekommen sie nur jetzt
   const klang = ton()
   if (klang) {
@@ -318,9 +320,13 @@ export type Stimme = {
   name: string | null
   sprich: (id: string, text: string) => void
   halt: () => void
+  hinweis: string | null
 }
 
 export function useStimme(): Stimme {
+  const [hinweis, setHinweis] = useState<string | null>(null)
+  const stromRef = useRef<{ halt: () => void } | null>(null)
+  const generationRef = useRef(0)
   const [browserMoeglich] = useState(stimmeMoeglich)
   const [serverBereit, setServerBereit] = useState(false)
   const [spricht, setSpricht] = useState<string | null>(null)
@@ -366,6 +372,9 @@ export function useStimme(): Stimme {
   }, [])
 
   const halt = useCallback(() => {
+    generationRef.current++
+    stromRef.current?.halt()
+    stromRef.current = null
     laufendeRef.current = null
     setSpricht(null)
     ausgabe()?.cancel()
@@ -445,6 +454,10 @@ export function useStimme(): Stimme {
    */
   const sprich = useCallback(
     (id: string, text: string) => {
+      const generation = ++generationRef.current
+      stromRef.current?.halt()
+      stromRef.current = null
+      setHinweis(null)
       // was noch läuft, hört auf. zwei stimmen übereinander sind kein gespräch.
       ausgabe()?.cancel()
       if (tonElement?.src) tonElement.pause()
@@ -478,6 +491,61 @@ export function useStimme(): Stimme {
       const gemerkt = regalRef.current.get(id)
       if (gemerkt && gemerkt.bis > Date.now()) {
         spiele(gemerkt.adresse)
+        return
+      }
+
+      const ctx = weckeAudioStrom()
+      if (ctx) {
+        const controller = new AbortController()
+        let ersterTon = false
+        let fertig = false
+        const queue = audioWarteschlange(ctx, () => {
+          if (generationRef.current === generation) { laufendeRef.current = null; setSpricht(null) }
+        })
+        stromRef.current = { halt() { controller.abort(); queue.halt() } }
+        const start = performance.now()
+        const wecker = setTimeout(() => {
+          if (generationRef.current !== generation || ersterTon || fertig) return
+          controller.abort(); queue.halt()
+          setHinweis('Die eigene Stimme braucht zu lange. ENI nutzt die Gerätestimme.')
+          sprichImBrowser(id, text)
+        }, TON_FRIST_MS)
+        void (async () => {
+          try {
+            await ctx.resume()
+            const { status, inhalt } = await rufeEniFunktion('eni-stimme', { nachrichtId: id, stream: true }, controller.signal, (event) => {
+              if (generationRef.current !== generation || controller.signal.aborted) return
+              if (event.typ === 'audio' && typeof event.pcm === 'string') {
+                if (!ersterTon) {
+                  ersterTon = true
+                  clearTimeout(wecker)
+                  performance.measure('eni.audio.erster-puffer', { start, end: performance.now() })
+                }
+                setArt('server')
+                queue.anhaengen(event.pcm)
+              }
+            })
+            fertig = true
+            clearTimeout(wecker)
+            if (generationRef.current !== generation || controller.signal.aborted) return
+            if (typeof inhalt.adresse === 'string') regalRef.current.set(id, { adresse: inhalt.adresse, bis: Date.now() + ADRESSE_GILT_MS })
+            if (status !== 200) throw new Error('Stimme unterbrochen')
+            if (ersterTon) queue.abschliessen()
+            else if (typeof inhalt.adresse === 'string') spiele(inhalt.adresse)
+            else throw new Error('Kein Ton')
+          } catch {
+            clearTimeout(wecker)
+            queue.halt()
+            if (generationRef.current !== generation || controller.signal.aborted) return
+            if (ersterTon) {
+              laufendeRef.current = null; setSpricht(null)
+              setHinweis('Die Sprachausgabe wurde unterbrochen. Du kannst die Antwort erneut vorlesen lassen.')
+            } else {
+              setHinweis('Die eigene Stimme ist gerade nicht erreichbar. ENI nutzt die Gerätestimme.')
+              sprichImBrowser(id, text)
+            }
+          }
+        })()
         return
       }
 
@@ -544,6 +612,8 @@ export function useStimme(): Stimme {
   // wer die ansicht verlässt, lässt weder stimme noch ton weiterlaufen
   useEffect(
     () => () => {
+      generationRef.current++
+      stromRef.current?.halt()
       ausgabe()?.cancel()
       if (tonElement?.src) tonElement.pause()
     },
@@ -564,8 +634,9 @@ export function useStimme(): Stimme {
       name: art === 'server' ? null : (gewaehlt?.name ?? null),
       sprich,
       halt,
+      hinweis,
     }),
-    [art, browserMoeglich, gewaehlt, halt, serverBereit, spricht, sprich]
+    [art, browserMoeglich, gewaehlt, halt, serverBereit, spricht, sprich, hinweis]
   )
 }
 

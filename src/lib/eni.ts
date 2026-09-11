@@ -35,7 +35,7 @@ export function eniBegruessung(person: UserId = 'erijon'): { gruss: string; roll
 /** wenn nichts greift, wird gezielt nachgefragt statt abgewertet */
 const NACHFRAGEN = [
   'Zu vage. Nenn den Bereich, die Zahl und den Tag, dann urteile ich.',
-  'Ich bin kein Zuhörer für Stimmungen. Bring mir etwas, das man nachprüfen kann: welcher Bereich und welcher Stand?',
+  'Was beschäftigt dich gerade? Geht es um deinen Stand im Duell oder um etwas Persönliches?',
   'Gesagt ist nichts. Was davon steht am Sonntag im Raster? Nenn den konkreten nächsten Schritt.',
 ]
 
@@ -68,7 +68,7 @@ export function eniAntwort(frage: string, zaehler: number, person: UserId = 'eri
     {
       muster: /\b(leber|milch|eigelb|roh|fett|zucker|soja|öl|oel|essen|ern[äa]hrung|kreatin|zink)\b/,
       antwort:
-        'Rohe Leber, rohe Milch, Eigelb, rohes Fett. Dazu Vitamin D mit K2 und Zink. Kein Zucker, kein Soja, keine Pflanzenöle. Der Körper baut aus dem, was du ihm gibst, und Industriefutter baut nichts.',
+        'Als lokale Stimmenprobe kann ich deine Ernährung nicht individuell beurteilen. Nenn dein Ziel und deinen Alltag; mit Modellverbindung kann ENI die Frage genauer einordnen.',
     },
     {
       muster: /\b(fertig|erledigt|geschafft|durchgezogen|trainiert|gelernt|gelesen)\b/,

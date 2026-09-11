@@ -139,7 +139,7 @@ describe('ENIs stimme hinter der function', () => {
     expect(koerper.adresse).toBe(`https://bucket/${ICH}/${CHAT}/${ENI_ZEILE}.wav?sig=x`)
     expect(koerper.ausDemRegal).toBe(false)
     // der text kommt aus der datenbank, nicht aus der anfrage
-    expect(gesehen).toEqual([{ text: 'Das reicht nicht.', stimme: STANDARD_STIMME }])
+    expect(gesehen).toEqual([expect.objectContaining({ text: 'Das reicht nicht.', stimme: STANDARD_STIMME, signal: expect.any(AbortSignal) })])
     expect(ablage.hochgeladen).toEqual([`${ICH}/${CHAT}/${ENI_ZEILE}.wav`])
   })
 
@@ -443,5 +443,44 @@ describe('eine antwort, die länger ist als ein einzelner aufruf', () => {
 
     await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
     expect([...gelegt[0]!.slice(44)]).toEqual([1, 2, 3])
+  })
+})
+
+
+describe('ENIs Audiostream', () => {
+  it('sendet den ersten PCM-Teil vor dem Ende und legt danach den vollständigen Ton ab', async () => {
+    const { abhaengigkeiten, ablage } = deps()
+    let ende!: () => void
+    const warten = new Promise<void>((r) => { ende = r })
+    abhaengigkeiten.modell = async (a) => {
+      a.onPcm?.(new Uint8Array([1, 0]))
+      await warten
+      a.onPcm?.(new Uint8Array([2, 0]))
+      return new Uint8Array([1, 0, 2, 0])
+    }
+    const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE, stream: true }), abhaengigkeiten)
+    const reader = antwort.body!.getReader()
+    const decoder = new TextDecoder()
+    const erster = decoder.decode((await reader.read()).value)
+    expect(erster).toContain('"typ":"audio"')
+    expect(ablage.hochgeladen).toHaveLength(0)
+    ende()
+    let rest = ''
+    for (;;) { const teil = await reader.read(); if (teil.done) break; rest += decoder.decode(teil.value) }
+    expect(rest).toContain('"status":200')
+    expect(ablage.hochgeladen).toHaveLength(1)
+  })
+  it('wiederholt keinen bereits gesprochenen Stream und speichert keinen unvollständigen Ton', async () => {
+    const { abhaengigkeiten, ablage } = deps()
+    const modell = vi.fn(async (a: StimmAnfrage) => {
+      a.onPcm?.(new Uint8Array([1, 0]))
+      throw new StimmFehler('Unterbrochen', true)
+    })
+    abhaengigkeiten.modell = modell
+    const response = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE, stream: true }), abhaengigkeiten)
+    const text = await response.text()
+    expect(text).toContain('"status":502')
+    expect(modell).toHaveBeenCalledTimes(1)
+    expect(ablage.hochgeladen).toHaveLength(0)
   })
 })

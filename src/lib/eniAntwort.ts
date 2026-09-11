@@ -1,3 +1,4 @@
+import { streamZeilen } from '../../supabase/functions/_shared/eniStream'
 import { supabase } from './supabase'
 import { eniAntwort } from './eni'
 import type { AnhangVorlage } from './eniAnhang'
@@ -43,7 +44,8 @@ export type Antwortgeber = {
     bisher: EniZeile[],
     /** bilder und dateien, die schon hochgeladen sind. leer ist der normalfall. */
     anhaenge?: AnhangVorlage[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onText?: (text: string) => void
   ) => Promise<Antwort>
   /**
    * Noch einmal auf die letzte Vorlage antworten, die ohne Urteil geblieben
@@ -54,7 +56,7 @@ export type Antwortgeber = {
    * gesagt worden, auch wenn das Modell danach geschwiegen hat. Sie noch
    * einmal zu schicken hiesse, denselben Satz zweimal in den Chat zu stellen.
    */
-  nochmal: (chatId: string, signal?: AbortSignal) => Promise<Antwort>
+  nochmal: (chatId: string, signal?: AbortSignal, onText?: (text: string) => void) => Promise<Antwort>
 }
 
 export class EniModellFehler extends Error {
@@ -92,7 +94,8 @@ function funktionsAdresse(name: string): { url: string; schluessel: string } | n
 export async function rufeEniFunktion(
   name: string,
   rumpf: Record<string, unknown>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onEvent?: (event: Record<string, unknown>) => void
 ) {
   const adresse = funktionsAdresse(name)
   const db = supabase
@@ -103,6 +106,9 @@ export async function rufeEniFunktion(
     throw new EniModellFehler('die anmeldung ist abgelaufen. melde dich neu an.')
   }
 
+  const beginn = performance.now()
+  let ersterText = false
+  let mensch: EniZeile | null = null
   try {
     const antwort = await fetch(adresse.url, {
       method: 'POST',
@@ -115,6 +121,20 @@ export async function rufeEniFunktion(
       signal,
     })
 
+    if (antwort.headers.get('content-type')?.includes('application/x-ndjson') && antwort.body) {
+      for await (const zeile of streamZeilen(antwort.body)) {
+        if (!zeile.trim()) continue
+        const event = JSON.parse(zeile) as Record<string, unknown>
+        if (event.typ === 'mensch') mensch = event.mensch as EniZeile
+        if (event.typ === 'text' && !ersterText) { ersterText = true; performance.measure('eni.text.erster-teil', { start: beginn, end: performance.now() }) }
+        if (event.typ === 'fertig') {
+          performance.measure('eni.' + name + '.gesamt', { start: beginn, end: performance.now() })
+          return { status: Number(event.status), inhalt: { mensch, ...(event.inhalt as Record<string, unknown>) } }
+        }
+        onEvent?.(event)
+      }
+      throw new EniModellFehler('Die Übertragung wurde unterbrochen.', mensch, 'modell_fehler')
+    }
     const text = await antwort.text()
     let inhalt: Record<string, unknown>
     try {
@@ -126,14 +146,14 @@ export async function rufeEniFunktion(
   } catch (err) {
     if (err instanceof EniModellFehler) throw err
     if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
-      throw new EniModellFehler('anfrage abgebrochen')
+      throw new EniModellFehler('anfrage abgebrochen', mensch, 'modell_fehler')
     }
-    throw err
+    throw new EniModellFehler('Die Verbindung wurde unterbrochen.', mensch, 'modell_fehler')
   }
 }
 
-const rufe = (rumpf: Record<string, unknown>, signal?: AbortSignal) =>
-  rufeEniFunktion('eni', rumpf, signal)
+const rufe = (rumpf: Record<string, unknown>, signal?: AbortSignal, onText?: (text: string) => void) =>
+  rufeEniFunktion('eni', { ...rumpf, ...(onText ? { stream: true } : {}) }, signal, (e) => { if (e.typ === 'text' && typeof e.text === 'string') onText?.(e.text) })
 
 /**
  * Ob ueberhaupt ein Schluessel gesetzt ist, und welche Modelle damit zur Wahl
@@ -196,7 +216,7 @@ export function modellAntwort(anbieter: string | null = null): Antwortgeber {
   return {
     art: 'modell',
     anbieter,
-    async antworte(chatId, text, _bisher, anhaenge, signal) {
+    async antworte(chatId, text, _bisher, anhaenge, signal, onText) {
       const { status, inhalt } = await rufe(
         {
           chatId,
@@ -204,14 +224,16 @@ export function modellAntwort(anbieter: string | null = null): Antwortgeber {
           ...(anbieter ? { modell: anbieter } : {}),
           ...(anhaenge && anhaenge.length > 0 ? { anhaenge } : {}),
         },
-        signal
+        signal,
+        onText
       )
       return lies(status, inhalt)
     },
-    async nochmal(chatId, signal) {
+    async nochmal(chatId, signal, onText) {
       const { status, inhalt } = await rufe(
         { chatId, wiederholen: true, ...(anbieter ? { modell: anbieter } : {}) },
-        signal
+        signal,
+        onText
       )
       return lies(status, inhalt)
     },

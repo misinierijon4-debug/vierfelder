@@ -1,3 +1,4 @@
+import { ereignisStrom } from './eniStream.ts'
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
 import { subAusToken } from './token.ts'
 import {
@@ -9,6 +10,8 @@ import {
 } from './eniAnbieter.ts'
 import { eniSystemPrompt } from './eniCharakter.ts'
 import { baueLage } from './eniLage.ts'
+import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
+import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
 
 /**
@@ -156,6 +159,8 @@ export type EniDatenbank = {
 }
 
 export type ModellAnfrage = {
+  onText?: (text: string) => void
+  signal?: AbortSignal
   system: string
   nachrichten: Array<{
     rolle: 'user' | 'assistant'
@@ -337,6 +342,7 @@ export async function behandleEni(
   }
 
   let anfrage: {
+    stream?: unknown
     chatId?: unknown
     text?: unknown
     pruefen?: unknown
@@ -684,12 +690,24 @@ export async function behandleEni(
     lage = 'LAGE. die zahlen sind gerade nicht lesbar. nenne keine, frage nach.'
   }
 
+  let wissen = ''
+  try {
+    const gelesen = await db.from('eni_erinnerungen').select('*').order('geaendert', { ascending: false }).limit(200)
+    if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
+    wissen = wissenText(waehleWissen((gelesen.data ?? []) as unknown as Erinnerung[], userId, vorlageText, lokaleMinute(deps.jetzt?.() ?? new Date()).tag), userId)
+  } catch {
+    wissen = 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
+  }
+
+  const abschliessen = async (onText?: (text: string) => void, signal?: AbortSignal): Promise<Response> => {
   let urteil: string
   try {
     urteil = (
       await deps.modell(
         {
-          system: eniSystemPrompt({ person, lage }),
+          onText,
+          signal,
+          system: eniSystemPrompt({ person, lage }) + '\n\n' + wissen,
           nachrichten: [
             ...kontext.map(baueNachricht),
             baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
@@ -742,4 +760,12 @@ export async function behandleEni(
   }
 
   return antwort(200, { mensch: menschZeile, eni: seins.data })
+  }
+  if (anfrage.stream === true) {
+    return ereignisStrom(async (sende, signal) => {
+      sende({ typ: 'mensch', mensch: menschZeile })
+      return abschliessen((text) => sende({ typ: 'text', text }), signal)
+    }, CORS)
+  }
+  return abschliessen(undefined, request.signal)
 }

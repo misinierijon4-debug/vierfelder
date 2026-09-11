@@ -1,3 +1,4 @@
+import { streamZeilen } from '../_shared/eniStream.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import {
   behandleEniStimme,
@@ -47,6 +48,7 @@ const ENDPUNKT =
  * nicht da ist, ist ein Aussetzer, und den holt die Wiederholung schneller ein
  * als das Warten.
  */
+const STROM_ENDPUNKT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:streamGenerateContent?alt=sse'
 const FRIST_MS = 30_000
 
 /**
@@ -86,13 +88,13 @@ function ausBase64(roh: string): Uint8Array {
 async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Uint8Array> {
   let antwort: Response
   try {
-    antwort = await fetch(ENDPUNKT, {
+    antwort = await fetch(anfrage.onPcm ? STROM_ENDPUNKT : ENDPUNKT, {
       method: 'POST',
       headers: {
         'x-goog-api-key': schluessel,
         'content-type': 'application/json',
       },
-      signal: AbortSignal.timeout(FRIST_MS),
+      signal: anfrage.signal ? AbortSignal.any([anfrage.signal, AbortSignal.timeout(FRIST_MS)]) : AbortSignal.timeout(FRIST_MS),
       body: JSON.stringify({
         /**
          * Der Text geht ohne Regieanweisung hinein. Diese Modelle nehmen zwar
@@ -127,6 +129,34 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
     )
   }
 
+  if (anfrage.onPcm && antwort.headers.get('content-type')?.includes('text/event-stream')) {
+    if (!antwort.body) throw new StimmFehler('leerer strom', true)
+    const teile: Uint8Array[] = []
+    let fertig = false
+    for await (const zeile of streamZeilen(antwort.body)) {
+      if (!zeile.startsWith('data:')) continue
+      const roh = zeile.slice(5).trim()
+      if (!roh) continue
+      const event = JSON.parse(roh)
+      if (event.error) throw new StimmFehler('stimme unterbrochen', false)
+      const kandidat = event.candidates?.[0]
+      for (const part of kandidat?.content?.parts ?? []) {
+        if (!part.inlineData?.data) continue
+        const bytes = ausBase64(part.inlineData.data)
+        teile.push(bytes)
+        anfrage.onPcm(bytes)
+      }
+      if (kandidat?.finishReason) {
+        if (kandidat.finishReason !== 'STOP') throw new StimmFehler('unvollstaendiger ton', false)
+        fertig = true
+      }
+    }
+    if (!fertig) throw new StimmFehler('unvollstaendiger ton', false)
+    const pcm = new Uint8Array(teile.reduce((n, t) => n + t.length, 0))
+    let offset = 0
+    for (const teil of teile) { pcm.set(teil, offset); offset += teil.length }
+    return pcm
+  }
   const inhalt = (await antwort.json()) as GeminiAntwort
   const roh = inhalt.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data
   return roh ? ausBase64(roh) : new Uint8Array()

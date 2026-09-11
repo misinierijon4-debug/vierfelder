@@ -1,3 +1,4 @@
+import { liesModellStrom } from '../_shared/eniStream.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import {
   ABLEHNUNG,
@@ -70,9 +71,10 @@ async function einVersuch(
       authorization: `Bearer ${schluessel}`,
       'content-type': 'application/json',
     },
-    signal: AbortSignal.timeout(fristMs),
+    signal: anfrage.signal ? AbortSignal.any([anfrage.signal, AbortSignal.timeout(fristMs)]) : AbortSignal.timeout(fristMs),
     body: JSON.stringify({
       model: anbieter.modell,
+      ...(anfrage.onText ? { stream: true } : {}),
       /**
        * Eine Zeile, die vordenkt, bekommt mehr Luft: denk-token sind
        * ausgabe-token und gehen von demselben Deckel ab.
@@ -133,6 +135,10 @@ async function einVersuch(
     throw new Error(was)
   }
 
+  if (anfrage.onText && antwort.headers.get('content-type')?.includes('text/event-stream')) {
+    if (!antwort.body) throw new Error('Leerer Modellstream')
+    return liesModellStrom(antwort.body, anfrage.onText)
+  }
   const inhalt = (await antwort.json()) as ChatAntwort
   if (inhalt.error) {
     // Auch hier nur der Code, nicht der Text der Gegenstelle.

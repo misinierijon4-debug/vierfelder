@@ -35,6 +35,7 @@ describe('edge-function-abhaengigkeiten', () => {
     expect(adressen).toEqual([
       'https://api.deepseek.com/chat/completions',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:streamGenerateContent?alt=sse',
       'https://openrouter.ai/api/v1/chat/completions',
     ])
 

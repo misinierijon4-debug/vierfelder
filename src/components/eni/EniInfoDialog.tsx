@@ -71,6 +71,9 @@ export function EniInfoDialog({ offen, onSchliessen, modellName = null }: Props)
               <p className="text-[13px] leading-relaxed text-kreide-60 pl-6">
                 Deine Chats gehören dir allein. Dein Duell-Gegner kann deine Unterhaltungen mit ENI
                 nicht einsehen. Die Datenbank trennt den Verlauf über Konten und Row-Level-Security ab.
+                Persönliche Erinnerungen sind ebenfalls privat. Nur ausdrücklich freigegebene
+                Einträge werden für euch beide sichtbar. Du kannst Freigaben zurücknehmen und
+                Einträge löschen; bereits geschriebene Antworten in Chats werden dadurch nicht entfernt.
               </p>
             </section>
 
@@ -83,7 +86,8 @@ export function EniInfoDialog({ offen, onSchliessen, modellName = null }: Props)
               </div>
               <p className="text-[13px] leading-relaxed text-kreide-60 pl-6">
                 Besteht eine Modellverbindung, verlassen deine eingegebenen Nachrichten und mitgegebenen
-                Anhänge dein Gerät. Sie werden über eine Supabase Edge Function an das
+                Anhänge sowie passende gespeicherte Erinnerungen und Trackerzahlen dein Gerät.
+                Sie werden über eine Supabase Edge Function an das
                 {modellName ? ` gewählte Modell (${modellName})` : ' gewählte Modell'} übermittelt,
                 um ENIs Urteil zu berechnen. Welches Modell das ist, wählst du oben im Kopf; der
                 Schlüssel dafür liegt ausschließlich auf dem Server. In der lokalen Stimmenprobe

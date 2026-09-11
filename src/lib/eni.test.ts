@@ -20,10 +20,10 @@ describe('enis urteil', () => {
     expect(antwort).toContain('sehe die Zahlen in dieser Fassung nicht')
   })
 
-  it('steht zur rohkost, statt auszuweichen', () => {
+  it('gibt in der lokalen Stimmenprobe keine pauschalen Ernährungsempfehlungen', () => {
     const antwort = eniAntwort('was soll ich heute essen', 0)
-    expect(antwort).toContain('Rohe Leber')
-    expect(antwort).toContain('keine Pflanzenöle')
+    expect(antwort).toContain('nicht individuell beurteilen')
+    expect(antwort).not.toContain('Rohe Leber')
   })
 
   it('feiert einen einzelnen tag nicht als woche', () => {

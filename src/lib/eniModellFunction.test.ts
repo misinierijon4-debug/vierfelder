@@ -463,6 +463,53 @@ describe('ENIs modellverbindung', () => {
     expect(gesehen[0]!.nachrichten).toEqual([{ rolle: 'user', text: 'wie stehe ich' }])
   })
 
+  it('liefert den vollstaendigen Trackerstand 2:6 statt nur die manuelle Boxeinheit 0:1', async () => {
+    const tabellen = grunddaten()
+    tabellen.einheiten = [
+      { user_id: ER, bereich: 'boxen', tag: '2026-09-07' },
+      { user_id: ER, bereich: 'boxen', tag: '2026-09-07' },
+    ]
+    const messung = (user_id: string, bereich: string, tag: string, minuten: number) => ({
+      user_id, bereich, ankunft: `${tag}T12:00:00Z`,
+      abgang: new Date(Date.parse(`${tag}T12:00:00Z`) + minuten * 60_000).toISOString(),
+    })
+    tabellen.aufenthalte = [
+      messung(ICH, 'lernen', '2026-09-09', 20),
+      messung(ER, 'boxen', '2026-09-07', 60),
+      messung(ER, 'boxen', '2026-09-08', 60),
+      messung(ER, 'boxen', '2026-09-10', 98),
+      messung(ER, 'lesen', '2026-09-09', 10),
+      messung(ER, 'gym', '2026-09-10', 19),
+      messung(ER, 'lesen', '2026-09-10', 9),
+      { user_id: ER, bereich: 'gym', ankunft: '2026-09-10T13:00:00Z', abgang: null },
+      messung(ER, 'gym', '2026-09-11', 60),
+      messung(ER, 'gym', '2026-09-06', 60),
+    ]
+    tabellen.gewicht = [
+      { user_id: ICH, tag: '2026-09-09', kg: 80 },
+      { user_id: ER, tag: '2026-09-07', kg: 80 },
+      { user_id: ER, tag: '2026-09-10', kg: 80 },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen, nutzer: ER })
+    await behandleEni(anfrage({ chatId: 'c1', text: 'wie stehe ich gegen erijon' }), abhaengigkeiten)
+    expect(gesehen[0]!.system).toContain('Wochenstand (Erijon : Koray): 2:6.')
+    expect(gesehen[0]!.system).toContain('Tagesstand heute (Erijon : Koray): 0:2.')
+    expect(gesehen[0]!.system).toMatch(/boxen\s+0\s+3/)
+  })
+
+  it('ordnet Messungen am UTC-Sonntag dem Berliner Montag zu', async () => {
+    const tabellen = grunddaten()
+    tabellen.einheiten = []
+    tabellen.gewicht = []
+    tabellen.aufenthalte = [{
+      user_id: ER, bereich: 'boxen',
+      ankunft: '2026-09-06T22:10:00Z', abgang: '2026-09-06T23:10:00Z',
+    }]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+    await behandleEni(anfrage({ chatId: 'c1', text: 'stand' }), abhaengigkeiten)
+    expect(gesehen[0]!.system).toContain('Wochenstand (Erijon : Koray): 0:1.')
+  })
+
   it('nimmt den bisherigen chat aus der datenbank als kontext mit', async () => {
     const tabellen = grunddaten()
     tabellen.eni_nachrichten = [
@@ -899,5 +946,43 @@ describe('ENI mit bild und datei', () => {
 
     expect(antwort.status).toBe(200)
     expect(gesehen[0]!.nachrichten.at(-1)!.bilder).toBeUndefined()
+  })
+})
+
+
+describe('ENI: Gedaechtnis und Textstream', () => {
+  it('liefert Text vor dem Modellabschluss und speichert erst die komplette Antwort', async () => {
+    let ende!: () => void
+    const warten = new Promise<void>((r) => { ende = r })
+    const { abhaengigkeiten, tabellen } = deps({ modell: async (a) => {
+      a.onText?.('Schon da. ')
+      await warten
+      a.onText?.('Fertig.')
+      return 'Schon da. Fertig.'
+    } })
+    const response = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Hallo', stream: true }), abhaengigkeiten)
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let gelesen = ''
+    while (!gelesen.includes('Schon da')) gelesen += decoder.decode((await reader.read()).value)
+    expect(tabellen.eni_nachrichten!.filter((z) => z.rolle === 'eni')).toHaveLength(0)
+    ende()
+    for (;;) { const teil = await reader.read(); if (teil.done) break; gelesen += decoder.decode(teil.value) }
+    expect(gelesen).toContain('"typ":"fertig"')
+    expect(tabellen.eni_nachrichten!.filter((z) => z.rolle === 'eni')).toHaveLength(1)
+  })
+  it('gibt dem Modell eigene und freigegebene Erinnerungen, niemals fremde private', async () => {
+    const tabellen = grunddaten()
+    const basis = { id: '1', art: 'profil', bis: null, erledigt: false, geaendert: '2026-09-10', erstellt: '2026-09-10' }
+    tabellen.eni_erinnerungen = [
+      { ...basis, user_id: ICH, text: 'Mein Lernziel', gemeinsam: false },
+      { ...basis, user_id: ER, text: 'Fremdes Geheimnis', gemeinsam: false },
+      { ...basis, user_id: ER, text: 'Gemeinsames Vorhaben', gemeinsam: true },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was lernen?' }), abhaengigkeiten)
+    expect(gesehen[0]!.system).toContain('Mein Lernziel')
+    expect(gesehen[0]!.system).toContain('Gemeinsames Vorhaben')
+    expect(gesehen[0]!.system).not.toContain('Fremdes Geheimnis')
   })
 })

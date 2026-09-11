@@ -150,8 +150,12 @@ for (const name of jsDateien) {
 // 235722 Byte initial, 257596 Byte gesamt). Deshalb steigt hier nur die
 // Gesamtsumme, und die strengere der beiden Grenzen bleibt stehen, wo sie
 // stand. Beide bleiben verbindlich; keine Budgetabschaltung.
+// ENI-Gedaechtnis und Streaming kommen dazu: persoenliche Erinnerungen,
+// Wissensdialog, Aufgabenverwaltung, Audio-Streaming-Warteschlange fuer PCM
+// und Text-Streaming liegen restlos im ENI-Lazy-Chunk. Der initiale Startpfad
+// bleibt unveraendert; die Gesamtsumme erhaelt dafuer 5 KiB kontrollierten Spielraum.
 const INITIAL_GZIP_BUDGET = 231 * 1024
-const GESAMT_GZIP_BUDGET = 253 * 1024
+const GESAMT_GZIP_BUDGET = 258 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
