@@ -175,6 +175,22 @@ body {
   outline-offset: 3px;
 }
 
+/*
+ * Ein Feld, das sich seinen Rahmen mit anderen Bedienelementen teilt, gibt den
+ * Ring an diesen Rahmen ab. Sonst zoege er drei Pixel um das Feld herum, also
+ * mitten in den gemeinsamen Kasten, und der saehe wieder nach zwei Kaesten aus.
+ * Der Ring verschwindet dabei nicht: der Rahmen zeichnet ihn selbst, ebenfalls
+ * an `:focus-visible` gebunden. Bisher ist ENIs Eingabe der einzige Fall.
+ *
+ * Die Ausnahme steht hier und nicht als Utility-Klasse an Ort und Stelle, weil
+ * die Regel darueber ohne Layer steht und damit jede Tailwind-Klasse schlaegt.
+ * Eine Ausnahme, die man nur mit `!important` durchbekaeme, gehoert neben die
+ * Regel, die sie noetig macht.
+ */
+:focus-visible[data-ring='rahmen'] {
+  outline: none;
+}
+
 /* Ein Feld braucht auch ohne Fokus eine wahrnehmbare Grenze. Die Regel
    veraendert nur vorhandene Rahmen; bewusst rahmenlose Controls bleiben so. */
 :where(input, textarea, select, button) {
@@ -188,5 +204,39 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * ENIs antwort klappt wort fuer wort auf, statt fertig dazustehen. der versatz
+ * je wort kommt inline aus `EniStrom`, weil er sich nach der laenge des textes
+ * richtet: ein zweizeiler soll nicht so lange aufgehen wie ein absatz.
+ *
+ * `inline-block`, weil `translate` auf einem reinen inline-element nicht wirkt.
+ */
+@keyframes eni-wort-auf {
+  from {
+    opacity: 0;
+    transform: translateY(0.16em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.eni-wort {
+  display: inline-block;
+  animation: eni-wort-auf 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * Die Regel darueber kuerzt nur die Dauer, nicht den Versatz. Ohne diese Zeile
+ * troepfelte der Satz auch bei abgeschalteter Bewegung ueber eine Sekunde
+ * herein, nur unsichtbar. Wer keine Bewegung will, bekommt ihn sofort ganz.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .eni-wort {
+    animation: none;
   }
 }

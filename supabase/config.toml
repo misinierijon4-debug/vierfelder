@@ -20,5 +20,17 @@ verify_jwt = false
 verify_jwt = false
 
 # Eigener Vault-Schluessel, im Handler gegen einen serverseitigen Hash geprueft.
+# ENI laeuft immer mit dem JWT der angemeldeten Person. Der Handler prueft
+# zusaetzlich die Zwei-Personen-Mitgliedschaft; das Gateway prueft davor schon,
+# dass ueberhaupt eine gueltige Anmeldung anliegt.
+[functions.eni]
+verify_jwt = true
+
+# Wie die Modellverbindung: das Gateway laesst gar nichts ohne gueltige
+# Signatur bis zur Function durch, und alles dahinter arbeitet unter dem
+# Token des Aufrufers.
+[functions.eni-stimme]
+verify_jwt = true
+
 [functions.aktivitaets-erinnerung]
 verify_jwt = false

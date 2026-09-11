@@ -8,6 +8,7 @@ import { entscheideDuell } from '../lib/duell'
 import type { DuellMatch } from '../lib/duell'
 import { EASE_WEICH } from '../lib/motion'
 import { Zahl } from './Zahl'
+import { EniTuer } from './eni/EniTuer'
 
 type Props = {
   heute: Date
@@ -17,9 +18,11 @@ type Props = {
   /** der stand der laufenden woche, in App.tsx einmal gerechnet */
   match: DuellMatch
   bilanzzeit: boolean
+  /** der weg zu ENI. sie liegt neben der anzeigetafel, nicht darin */
+  onEni: () => void
 }
 
-export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
+export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Props) {
   const reduced = useReducedMotion()
   const kw = isoWeek(heute)
   const ich = userDef(me)
@@ -36,7 +39,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: reduced ? 0 : 0.26, ease: EASE_WEICH }}
           >
-            <Bilanz woche={woche} zustand={zustand} me={me} match={match} kw={kw} />
+            <Bilanz woche={woche} zustand={zustand} me={me} match={match} kw={kw} onEni={onEni} />
           </motion.div>
         ) : (
           <motion.div
@@ -58,16 +61,19 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit }: Props) {
                 </p>
               </div>
 
-              {/* HEUTE-SCORE BADGE */}
-              <div className="flex items-center gap-2 rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[11px] max-[239px]:w-full max-[239px]:justify-between">
-                <span className="text-kreide-52">heute</span>
-                <span className="tnum font-bold" style={{ color: ich.farbe }}>
-                  {match.heuteIch}
-                </span>
-                <span className="text-kreide-52">:</span>
-                <span className="tnum font-bold" style={{ color: er.farbe }}>
-                  {match.heuteEr}
-                </span>
+              <div className="flex items-center gap-2 max-[239px]:w-full">
+                {/* HEUTE-SCORE BADGE */}
+                <div className="flex items-center gap-2 rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[11px] max-[239px]:w-full max-[239px]:justify-between">
+                  <span className="text-kreide-52">heute</span>
+                  <span className="tnum font-bold" style={{ color: ich.farbe }}>
+                    {match.heuteIch}
+                  </span>
+                  <span className="text-kreide-52">:</span>
+                  <span className="tnum font-bold" style={{ color: er.farbe }}>
+                    {match.heuteEr}
+                  </span>
+                </div>
+                <EniTuer onOeffnen={onEni} />
               </div>
             </div>
 
@@ -172,12 +178,14 @@ function Bilanz({
   me,
   match,
   kw,
+  onEni,
 }: {
   woche: string[]
   zustand: Zustand
   me: UserId
   match: DuellMatch
   kw: number
+  onEni: () => void
 }) {
   const ich = userDef(me)
   const er = other(me)
@@ -204,9 +212,12 @@ function Bilanz({
             {sieger ? `sieger: ${sieger.name}` : 'woche unentschieden'}
           </h1>
         </div>
-        <span className="text-[11px] text-kreide-52">
-          kw <span className="tnum">{kw}</span> finale
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-kreide-52">
+            kw <span className="tnum">{kw}</span> finale
+          </span>
+          <EniTuer onOeffnen={onEni} />
+        </div>
       </div>
 
       <div className="flex items-baseline justify-between rounded-[2px] border border-linie bg-flaeche p-3">

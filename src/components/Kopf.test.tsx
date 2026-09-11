@@ -25,6 +25,7 @@ describe('Kopf Icons', () => {
         me="erijon"
         match={match}
         bilanzzeit
+        onEni={() => {}}
       />
     )
 
@@ -45,6 +46,7 @@ describe('Kopf Icons', () => {
         me="erijon"
         match={match}
         bilanzzeit={false}
+        onEni={() => {}}
       />
     )
 

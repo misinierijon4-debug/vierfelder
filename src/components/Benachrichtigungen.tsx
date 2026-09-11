@@ -11,23 +11,26 @@ import {
 } from '../lib/push'
 import type { PushZustand } from '../lib/push'
 import {
+  ladeGewichtErinnerung,
   ladeGewichtErinnerungszeit,
+  setzeGewichtAktiv,
   setzeGewichtErinnerungszeit,
 } from '../lib/erinnerung'
 import { blockiereNeustart } from '../lib/pwaBlocker'
-const AktivitaetsErinnerungen = lazy(() => import('./AktivitaetsErinnerungen')
-  .then(modul => ({ default: modul.AktivitaetsErinnerungen })))
+
+const AktivitaetsErinnerungen = lazy(() =>
+  import('./AktivitaetsErinnerungen').then((modul) => ({
+    default: modul.AktivitaetsErinnerungen,
+  }))
+)
 
 /**
  * Der Schalter fuer Benachrichtigungen.
  *
- * Er steht unten bei der Fusszeile und nicht oben bei den Bereichen, weil er
- * einmal angefasst wird und dann nie wieder. Solange er aus ist, ist er ein
- * Satz und ein Knopf; ist er an, schrumpft er auf eine Zeile mit zwei Links.
- *
- * Die Probe daneben ist kein Spielzeug: sie ist der einzige Weg, von aussen zu
- * sehen, ob die Kette bis zum Sperrbildschirm haelt. Kommt sie an, kommt jede
- * spaetere Erinnerung auch an.
+ * Er steht unten bei der Fusszeile und fasst alle Erinnerungen in einem
+ * gemeinsamen Menue zusammen. Ist Push aus, bleibt er ein Satz und ein Knopf;
+ * ist er an, oeffnet sich ein Menue mit den Aktionen (Probe, Aus) und allen
+ * vier Erinnerungen (Gewicht, Lernen, Lesen, Wochenendspurt) im selben Rhythmus.
  */
 export function Benachrichtigungen() {
   const [zustand, setZustand] = useState<PushZustand | null>(null)
@@ -35,18 +38,34 @@ export function Benachrichtigungen() {
   const [meldung, setMeldung] = useState<string | null>(null)
   const [zeit, setZeit] = useState<string | null>(null)
   const [zeitLaeuft, setZeitLaeuft] = useState(false)
+  const [gewichtAktiv, setGewichtAktiv] = useState(true)
 
   useEffect(() => {
     let aktiv = true
-    Promise.all([pushZustand(), ladeGewichtErinnerungszeit()])
-      .then(([z, erinnerungszeit]) => {
+    const ladeGewicht =
+      typeof ladeGewichtErinnerung === 'function'
+        ? ladeGewichtErinnerung
+        : async () => {
+            const z = await ladeGewichtErinnerungszeit()
+            return z ? { zeit: z, aktiv: true } : null
+          }
+
+    Promise.all([pushZustand(), ladeGewicht()])
+      .then(([z, gewicht]) => {
         if (!aktiv) return
         setZustand(z)
-        setZeit(erinnerungszeit)
+        if (gewicht) {
+          setZeit(gewicht.zeit)
+          setGewichtAktiv(gewicht.aktiv)
+        }
       })
       .catch((fehler) => {
         if (!aktiv) return
-        setMeldung(fehler instanceof Error ? fehler.message : 'einstellung konnte nicht geladen werden.')
+        setMeldung(
+          fehler instanceof Error
+            ? fehler.message
+            : 'einstellung konnte nicht geladen werden.'
+        )
       })
     return () => {
       aktiv = false
@@ -95,9 +114,41 @@ export function Benachrichtigungen() {
       setMeldung(`gewichtserinnerung ist auf ${neu} gestellt.`)
     } catch (fehler) {
       setZeit(vorher)
-      setMeldung(fehler instanceof Error ? fehler.message : 'uhrzeit konnte nicht gespeichert werden.')
+      setMeldung(
+        fehler instanceof Error
+          ? fehler.message
+          : 'uhrzeit konnte nicht gespeichert werden.'
+      )
     } finally {
       setZeitLaeuft(false)
+      loeseNeustartschutz()
+    }
+  }
+
+  async function aendereGewichtAktiv(neuAktiv: boolean) {
+    const loeseNeustartschutz = blockiereNeustart()
+    const vorher = gewichtAktiv
+    setGewichtAktiv(neuAktiv)
+    setLaeuft(true)
+    setMeldung(null)
+    try {
+      if (typeof setzeGewichtAktiv === 'function') {
+        await setzeGewichtAktiv(neuAktiv)
+      }
+      setMeldung(
+        neuAktiv
+          ? 'gewichtserinnerung eingeschaltet.'
+          : 'gewichtserinnerung ausgeschaltet.'
+      )
+    } catch (fehler) {
+      setGewichtAktiv(vorher)
+      setMeldung(
+        fehler instanceof Error
+          ? fehler.message
+          : 'einstellung konnte nicht gespeichert werden.'
+      )
+    } finally {
+      setLaeuft(false)
       loeseNeustartschutz()
     }
   }
@@ -115,11 +166,11 @@ export function Benachrichtigungen() {
         laeuft={laeuft}
         zeit={zeit}
         zeitLaeuft={zeitLaeuft}
+        gewichtAktiv={gewichtAktiv}
         onZeit={aendereZeit}
+        onGewichtAktiv={aendereGewichtAktiv}
         onAus={fuehreAus}
       />
-
-      {zustand === 'an' && <Suspense fallback={null}><AktivitaetsErinnerungen /></Suspense>}
 
       <AnimatePresence initial={false}>
         {meldung && (
@@ -145,11 +196,22 @@ type InhaltProps = {
   laeuft: boolean
   zeit: string | null
   zeitLaeuft: boolean
+  gewichtAktiv: boolean
   onZeit: (zeit: string) => void
+  onGewichtAktiv: (aktiv: boolean) => void
   onAus: (was: () => Promise<string | null>) => void
 }
 
-function Inhalt({ zustand, laeuft, zeit, zeitLaeuft, onZeit, onAus }: InhaltProps) {
+function Inhalt({
+  zustand,
+  laeuft,
+  zeit,
+  zeitLaeuft,
+  gewichtAktiv,
+  onZeit,
+  onGewichtAktiv,
+  onAus,
+}: InhaltProps) {
   if (zustand === 'ohne-schluessel') {
     return <p>benachrichtigungen sind auf dem server noch nicht eingerichtet.</p>
   }
@@ -201,59 +263,90 @@ function Inhalt({ zustand, laeuft, zeit, zeitLaeuft, onZeit, onAus }: InhaltProp
   }
 
   return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap items-center gap-x-3">
-        <span className="flex items-center gap-2 text-kreide-60">
-          <BellRinging size={14} weight="bold" aria-hidden="true" />
-          benachrichtigungen an
-        </span>
-        <button
-          type="button"
-          disabled={laeuft}
-          onClick={() =>
-            onAus(async () => {
-              const ergebnis = await pushProbe()
-              return ergebnis.gesendet > 0
-                ? 'probe ist unterwegs. sie kommt auch, wenn die app zu ist.'
-                : 'kein gerät erreicht. schalte einmal aus und wieder ein.'
-            })
-          }
-          className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
-        >
-          probe senden
-        </button>
-        <button
-          type="button"
-          disabled={laeuft}
-          aria-label="benachrichtigungen ausschalten"
-          onClick={() =>
-            onAus(async () => {
-              await pushAbmelden()
-              return null
-            })
-          }
-          className="flex min-h-11 items-center gap-1 px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
-        >
-          <BellSlash size={14} weight="bold" aria-hidden="true" />
-          aus
-        </button>
+    <details className="mt-2">
+      <summary className="min-h-11 cursor-pointer py-3 text-kreide-60 transition-colors duration-150 hover:text-kreide">
+        benachrichtigungen
+      </summary>
+
+      <div className="space-y-1 pb-2">
+        <div className="flex flex-wrap items-center gap-x-3 pb-2 border-b border-linie">
+          <span className="flex items-center gap-2 text-kreide-60">
+            <BellRinging size={14} weight="bold" aria-hidden="true" />
+            benachrichtigungen an
+          </span>
+          <button
+            type="button"
+            disabled={laeuft}
+            onClick={() =>
+              onAus(async () => {
+                const ergebnis = await pushProbe()
+                return ergebnis.gesendet > 0
+                  ? 'probe ist unterwegs. sie kommt auch, wenn die app zu ist.'
+                  : 'kein gerät erreicht. schalte einmal aus und wieder ein.'
+              })
+            }
+            className="flex min-h-11 items-center px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
+          >
+            probe senden
+          </button>
+          <button
+            type="button"
+            disabled={laeuft}
+            aria-label="benachrichtigungen ausschalten"
+            onClick={() =>
+              onAus(async () => {
+                await pushAbmelden()
+                return null
+              })
+            }
+            className="flex min-h-11 items-center gap-1 px-1 underline decoration-linie-hell underline-offset-4 disabled:opacity-50"
+          >
+            <BellSlash size={14} weight="bold" aria-hidden="true" />
+            aus
+          </button>
+        </div>
+
+        {zeit && (
+          <div className="flex min-h-11 items-center gap-3 py-2">
+            <input
+              type="checkbox"
+              checked={gewichtAktiv}
+              disabled={laeuft || zeitLaeuft}
+              onChange={(e) => void onGewichtAktiv(e.target.checked)}
+              aria-label="gewicht erinnern"
+              className="h-4 w-4 accent-current cursor-pointer"
+            />
+            <div className="flex-1">
+              <label className="flex flex-wrap items-center gap-2 cursor-pointer">
+                <span className="text-[12px] font-semibold text-kreide">gewicht</span>
+                <span className="text-kreide-52">täglich um</span>
+                <input
+                  type="time"
+                  min="06:00"
+                  max="21:59"
+                  step="300"
+                  value={zeit}
+                  disabled={!gewichtAktiv || zeitLaeuft}
+                  onChange={(ereignis) => onZeit(ereignis.target.value)}
+                  aria-label="uhrzeit der gewichtserinnerung"
+                  className="rounded-[2px] border border-linie bg-flaeche px-2 py-0.5 text-[12px] font-semibold text-kreide disabled:opacity-50"
+                />
+              </label>
+              <span className="block text-[11px] text-kreide-52">
+                wenn heute noch kein gewichtseintrag vorliegt
+              </span>
+            </div>
+          </div>
+        )}
+
+        <Suspense fallback={null}>
+          <AktivitaetsErinnerungen />
+        </Suspense>
+
+        <p className="pt-2 text-[11px] text-kreide-52 border-t border-linie/40 mt-1">
+          deutsche zeit · laufende sitzungen pausieren die jeweilige erinnerung · nach 22 uhr ruhe
+        </p>
       </div>
-      {zeit && (
-        <label className="flex min-h-11 items-center gap-2 text-kreide-60">
-          <span>„heute noch nicht gewogen“ um</span>
-          <input
-            type="time"
-            min="06:00"
-            max="21:59"
-            step="300"
-            value={zeit}
-            disabled={zeitLaeuft}
-            onChange={(ereignis) => onZeit(ereignis.target.value)}
-            aria-label="uhrzeit der gewichtserinnerung"
-            className="rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[12px] font-semibold text-kreide disabled:opacity-50"
-          />
-        </label>
-      )}
-    </div>
+    </details>
   )
 }
