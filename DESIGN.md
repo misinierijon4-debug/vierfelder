@@ -1406,3 +1406,59 @@ von demselben `max_tokens` ab. Mit den 2500 aus abschnitt 30 könnte das denken
 die erklärung auffressen und den satz mittendrin abschneiden — genau der
 schaden, gegen den der deckel dort aufgestellt wurde. Die denkende zeile bekommt
 8000, und weil sie nichts kostet, bremst der deckel dort nur eine schleife.
+
+## 36. Nachtrag: ENIs stimme ließ zu lange auf sich warten (11.09.2026)
+
+Die stimme aus abschnitt 33 funktionierte, aber sie kam oft erst nach einer
+halben minute — und manchmal gar nicht, bis man es zum dritten mal versuchte.
+Beides waren keine launen der gegenstelle, sondern zwei fehler im eigenen code.
+
+**Ein langer aufruf ist eine lange wartezeit.** Der text ging in stücken von
+dreitausendfünfhundert zeichen hinaus, eins nach dem anderen. Die dauer eines
+TTS-aufrufs hängt aber fast nur an der länge des erzeugten tons: ein stück
+dieser größe ist vier minuten sprache, und vier minuten sprache zu erzeugen
+dauert eben. Die stücke sind jetzt neunhundert zeichen — etwa eine minute — und
+drei davon laufen nebeneinander. Die reihenfolge der abtastwerte bleibt die
+reihenfolge der sätze, dafür sorgt eine feste ablage je stücknummer statt eines
+anhängens in der reihenfolge des eintreffens; ein test hält genau das fest.
+Drei und nicht mehr, weil die gegenstelle anfragen je minute zählt: wer hier
+hochdreht, tauscht wartezeit gegen drosselungen ein, und eine drosselung kostet
+mit wiederholung mehr, als die nebenläufigkeit einbringt.
+
+**Ein aussetzer wurde bis zum menschen durchgereicht.** Jeder fehlschlag der
+gegenstelle — eine drosselung, ein 500er, eine zeitüberschreitung — endete
+sofort in „ENIs stimme kam nicht durch", und der mensch hat dann selbst noch
+einmal getippt. Genau das erledigt jetzt eine wiederholung in einer sekunde.
+Sie unterscheidet dabei: `StimmFehler` trägt, ob es sich lohnt. 429, 408 und
+5xx sind gleich wieder vorbei; eine abgelehnte anfrage fällt beim zweiten mal
+genauso aus und wird nicht wiederholt. Wartet die gegenstelle selbst mit einem
+`Retry-After` auf, gilt ihre zahl statt der eigenen. Und die frist je aufruf
+ging von einer minute auf dreißig sekunden: eine minute ist keine frist, sondern
+ein aufgeben.
+
+**Ein leeres stück zählt jetzt als fehlschlag.** Bisher wurde es stillschweigend
+übersprungen. Aus einer langen antwort, deren mittleres stück die gegenstelle
+verschluckt hat, wurde so eine aufnahme mit einem loch — und die lag danach im
+regal und wurde nie wieder erzeugt.
+
+**Eine adresse hinter nichts ist die schlechteste aller antworten.** Schlug der
+upload fehl, wurde trotzdem eine adresse unterschrieben. Der browser lud sie,
+bekam 404 und fiel erst *dann* auf seine eigene stimme zurück — nach der ganzen
+wartezeit. Jetzt sagt die function an dieser stelle nein, und der browser
+spricht sofort selbst. Der upload läuft außerdem mit `upsert: true`: wer zweimal
+tippt, weil es beim ersten mal lange dauert, hat sonst zwei aufrufe, von denen
+der zweite daran scheitert, dass der erste die datei schon hingelegt hat.
+
+**Und der browser wartet nicht mehr unbegrenzt.** Kommt ENIs eigene stimme nicht
+innerhalb von acht sekunden, fängt die eingebaute an. Die anfrage läuft dabei
+weiter, ihr ton landet im regal, und beim nächsten tippen auf dieselbe antwort
+ist er sofort da. Die adresse dorthin merkt sich der hook, statt sie jedes mal
+neu zu holen. Acht sekunden stille sind warten; eine halbe minute stille ist
+ein defekt, und man tippt dann noch einmal, und noch einmal.
+
+**Was gesprochen wird, ist nicht mehr, was geschrieben steht.** Sterne, rauten,
+backticks und link-adressen liest eine neuronale stimme entweder mit oder sie
+stolpert darüber, und jedes zeichen davon ist ton, der erzeugt und übertragen
+werden will. `fuerDieStimme` nimmt die auszeichnung heraus und lässt die worte
+stehen — ein unterstrich mitten im wort bleibt dabei in ruhe, sonst hieße
+`chat_id` plötzlich anders.

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   behandleEniStimme,
+  fuerDieStimme,
+  MAX_STUECK_ZEICHEN,
   STANDARD_STIMME,
+  StimmFehler,
   tonPfad,
   teileFuerAufnahme,
   wavAusPcm,
@@ -80,6 +83,8 @@ function deps(optionen: { schluessel?: string; stimme?: string; ablage?: Ablage 
       return new Uint8Array([0x49, 0x44, 0x33, 0x04])
     },
     protokoll: { error: vi.fn() },
+    // der test wartet nicht wirklich zwischen zwei versuchen
+    warte: () => Promise.resolve(),
   }
   return { abhaengigkeiten, ablage, gesehen }
 }
@@ -196,6 +201,108 @@ describe('ENIs stimme hinter der function', () => {
     expect((await antwort.json()).code).toBe('stimme_fehler')
     expect(ablage.hochgeladen).toEqual([])
   })
+
+  it('sagt nein statt eine adresse zu unterschreiben, hinter der nichts liegt', async () => {
+    // sonst laedt der browser die adresse, bekommt 404, und faellt erst dann
+    // auf seine eigene stimme zurueck — nach der ganzen wartezeit.
+    const { abhaengigkeiten } = deps()
+    const echt = abhaengigkeiten.datenbank
+    abhaengigkeiten.datenbank = (...args) => {
+      const db = echt(...args)
+      const eimer = db.storage.from('eni-stimme')
+      db.storage.from = () => ({ ...eimer, upload: () => Promise.resolve({ data: null, error: { message: 'voll' } }) })
+      return db
+    }
+
+    const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect(antwort.status).toBe(502)
+    expect((await antwort.json()).code).toBe('nicht_abgelegt')
+  })
+
+  it('legt denselben ton ueber einen bereits liegenden, statt am doppelten zu scheitern', async () => {
+    // zweimal getippt, weil es beim ersten mal lange dauerte: der zweite ruf
+    // darf nicht daran scheitern, dass der erste die datei schon hingelegt hat.
+    const { abhaengigkeiten } = deps()
+    const echt = abhaengigkeiten.datenbank
+    let gesehen: boolean | null = null
+    abhaengigkeiten.datenbank = (...args) => {
+      const db = echt(...args)
+      const eimer = db.storage.from('eni-stimme')
+      const echterUpload = eimer.upload.bind(eimer)
+      db.storage.from = () => ({
+        ...eimer,
+        upload: (pfad: string, daten: Uint8Array, optionen: { contentType: string; upsert: boolean }) => {
+          gesehen = optionen.upsert
+          return echterUpload(pfad, daten, optionen)
+        },
+      })
+      return db
+    }
+
+    await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect(gesehen).toBe(true)
+  })
+})
+
+describe('ein aussetzer der gegenstelle', () => {
+  it('wird noch einmal versucht, statt bis zum menschen durchgereicht zu werden', async () => {
+    const { abhaengigkeiten } = deps()
+    let rufe = 0
+    abhaengigkeiten.modell = () => {
+      rufe += 1
+      if (rufe === 1) return Promise.reject(new StimmFehler('gemini antwortet 429', true))
+      return Promise.resolve(new Uint8Array([1, 2, 3, 4]))
+    }
+
+    const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect(antwort.status).toBe(200)
+    expect(rufe).toBe(2)
+  })
+
+  it('gilt auch, wenn die gegenstelle zwar antwortet, aber ohne ton', async () => {
+    // frueher wurde ein leeres stueck stillschweigend uebersprungen. aus einer
+    // langen antwort wurde so eine aufnahme mit einem loch, und die lag danach
+    // im regal.
+    const { abhaengigkeiten } = deps()
+    let rufe = 0
+    abhaengigkeiten.modell = () => {
+      rufe += 1
+      return Promise.resolve(rufe === 1 ? new Uint8Array() : new Uint8Array([7, 7]))
+    }
+
+    const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect(antwort.status).toBe(200)
+    expect(rufe).toBe(2)
+  })
+
+  it('wird bei einem nein der gegenstelle nicht wiederholt', async () => {
+    const { abhaengigkeiten } = deps()
+    let rufe = 0
+    abhaengigkeiten.modell = () => {
+      rufe += 1
+      return Promise.reject(new StimmFehler('gemini antwortet 400', false))
+    }
+
+    const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect(antwort.status).toBe(502)
+    // einmal gefragt, einmal abgelehnt, fertig
+    expect(rufe).toBe(1)
+  })
+})
+
+describe('was gesprochen wird, ist nicht was geschrieben steht', () => {
+  it('nimmt die auszeichnung heraus und laesst die worte stehen', () => {
+    expect(fuerDieStimme('## Das reicht nicht\n\n**Wirklich** nicht.')).toBe(
+      'Das reicht nicht\n\nWirklich nicht.'
+    )
+    expect(fuerDieStimme('- erstens\n- zweitens')).toBe('erstens\nzweitens')
+    expect(fuerDieStimme('siehe [den plan](https://beispiel.de/plan)')).toBe('siehe den plan')
+    expect(fuerDieStimme('ein `wert` im satz')).toBe('ein wert im satz')
+  })
+
+  it('lässt einen unterstrich im wort in ruhe', () => {
+    expect(fuerDieStimme('die spalte chat_id ist gemeint')).toBe('die spalte chat_id ist gemeint')
+  })
 })
 
 describe('rohes PCM zu einer datei machen, die ein browser abspielt', () => {
@@ -262,17 +369,14 @@ describe('eine lange antwort für die aufnahme schneiden', () => {
 })
 
 describe('eine antwort, die länger ist als ein einzelner aufruf', () => {
-  it('spricht sie in stücken und hängt die abtastwerte aneinander', async () => {
-    const lang = `${'a'.repeat(3400)}. ${'b'.repeat(3400)}.`
+  /** eine lange antwort in den speicher legen und den upload mitschreiben */
+  function baueLang(text: string) {
     const ablage = { pfade: new Set<string>(), hochgeladen: [] as string[] }
-    const { abhaengigkeiten, gesehen } = deps({ ablage })
-    abhaengigkeiten.datenbank = () =>
-      baueDatenbank([{ id: ENI_ZEILE, chat_id: CHAT, rolle: 'eni', text: lang }], ablage)
-
+    const gebaut = deps({ ablage })
     const gelegt: Uint8Array[] = []
-    const echteAblage = abhaengigkeiten.datenbank
-    abhaengigkeiten.datenbank = (...args) => {
-      const db = echteAblage(...args)
+    gebaut.abhaengigkeiten.datenbank = (...args) => {
+      const db = baueDatenbank([{ id: ENI_ZEILE, chat_id: CHAT, rolle: 'eni', text }], ablage)
+      void args
       const eimer = db.storage.from('eni-stimme')
       const echterUpload = eimer.upload.bind(eimer)
       db.storage.from = () => ({
@@ -284,6 +388,12 @@ describe('eine antwort, die länger ist als ein einzelner aufruf', () => {
       })
       return db
     }
+    return { ...gebaut, gelegt }
+  }
+
+  it('spricht sie in stücken und hängt die abtastwerte aneinander', async () => {
+    const satz = 'a'.repeat(MAX_STUECK_ZEICHEN - 100)
+    const { abhaengigkeiten, gesehen, gelegt } = baueLang(`${satz}. ${satz}.`)
 
     const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
 
@@ -293,5 +403,45 @@ describe('eine antwort, die länger ist als ein einzelner aufruf', () => {
     // und genau eine datei, mit den abtastwerten beider stuecke darin
     expect(gelegt).toHaveLength(1)
     expect(gelegt[0]!.byteLength).toBe(44 + 4 + 4)
+  })
+
+  it('spricht die stücke nebeneinander, statt eins nach dem anderen zu warten', async () => {
+    // das ist der grund, warum eine lange antwort nicht mehr eine halbe minute
+    // braucht: die wartezeiten der stuecke ueberlappen sich.
+    const satz = 'a'.repeat(MAX_STUECK_ZEICHEN - 100)
+    const { abhaengigkeiten } = baueLang(Array.from({ length: 6 }, () => `${satz}.`).join(' '))
+
+    let offen = 0
+    let hoechstens = 0
+    abhaengigkeiten.modell = async () => {
+      offen += 1
+      hoechstens = Math.max(hoechstens, offen)
+      await new Promise((fertig) => setTimeout(fertig, 5))
+      offen -= 1
+      return new Uint8Array([1, 2])
+    }
+
+    const antwort = await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect(antwort.status).toBe(200)
+    expect(hoechstens).toBeGreaterThan(1)
+  })
+
+  it('behält die reihenfolge der sätze, obwohl sie nebeneinander entstehen', async () => {
+    // die reihenfolge der abtastwerte ist die reihenfolge der saetze. wer hier
+    // in der reihenfolge des eintreffens anhaengt, bekommt eine antwort, die
+    // sich selbst ins wort faellt.
+    const satz = 'a'.repeat(MAX_STUECK_ZEICHEN - 100)
+    const { abhaengigkeiten, gelegt } = baueLang(`${satz}1. ${satz}2. ${satz}3.`)
+
+    let nr = 0
+    abhaengigkeiten.modell = async () => {
+      const meine = (nr += 1)
+      // das erste stück ist am längsten unterwegs, das letzte am kürzesten
+      await new Promise((fertig) => setTimeout(fertig, (4 - meine) * 10))
+      return new Uint8Array([meine])
+    }
+
+    await behandleEniStimme(anfrage({ nachrichtId: ENI_ZEILE }), abhaengigkeiten)
+    expect([...gelegt[0]!.slice(44)]).toEqual([1, 2, 3])
   })
 })

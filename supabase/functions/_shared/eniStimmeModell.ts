@@ -48,13 +48,38 @@ export const STIMME_BUCKET = 'eni-stimme'
 export const MAX_ZEICHEN = 12_000
 
 /**
- * So viel Text geht in einen einzelnen Aufruf. Die Gegenstelle nimmt gut
- * viertausend Zeichen; ENI darf aber weit ausholen, wenn ihn jemand wirklich
- * etwas fragt. Laengere Antworten werden deshalb in Stuecke gesprochen und
- * hinterher aneinandergehaengt — bei rohem PCM ist das nichts weiter als zwei
- * Byte-Folgen hintereinander.
+ * So viel Text geht in einen einzelnen Aufruf.
+ *
+ * Die Gegenstelle naehme gut viertausend Zeichen am Stueck, und genau so stand
+ * es hier auch. Das war der Grund, warum ENIs Stimme eine halbe Minute auf sich
+ * warten liess: die Dauer eines TTS-Aufrufs haengt fast nur an der Laenge des
+ * erzeugten Tons, und ein einzelner langer Aufruf ist eine einzelne lange
+ * Wartezeit. Neunhundert Zeichen sind etwa eine Minute Sprache — kurz genug,
+ * dass drei davon nebeneinander schneller fertig sind als eines am Stueck.
  */
-export const MAX_STUECK_ZEICHEN = 3500
+export const MAX_STUECK_ZEICHEN = 900
+
+/**
+ * So viele Stuecke werden gleichzeitig gesprochen. Drei, nicht mehr: die
+ * Gegenstelle zaehlt Anfragen je Minute, und ein Schluessel aus AI Studio zaehlt
+ * knapp. Wer hier hochdreht, tauscht Wartezeit gegen 429er ein — und ein 429
+ * kostet mit Wiederholung mehr Zeit, als die Nebenlaeufigkeit einbringt.
+ */
+export const GLEICHZEITIG = 3
+
+/** so oft wird ein einzelnes stueck hoechstens versucht */
+export const VERSUCHE = 3
+
+/** wie lange nach einem missglueckten versuch gewartet wird */
+export const WARTE_MS = [700, 2_000]
+
+/**
+ * Nach dieser Zeit wird die Erzeugung abgebrochen, egal wie weit sie ist. Eine
+ * Edge Function hat ein Zeitbudget; es abzuwarten heisst, dass der Browser gar
+ * keine Antwort bekommt und der Mensch in die Stille schaut. Lieber ein sauberer
+ * Fehlschlag, auf den der Browser mit seiner eigenen Stimme antworten kann.
+ */
+export const GESAMT_FRIST_MS = 100_000
 
 /** was die gegenstelle liefert: 24 kHz, ein kanal, 16 bit */
 export const ABTASTRATE = 24_000
@@ -98,12 +123,39 @@ export type StimmDatenbank = {
 
 export type StimmAnfrage = { text: string; stimme: string }
 
+/**
+ * Ein Fehlschlag der Gegenstelle, der sagt, ob es sich lohnt, es noch einmal zu
+ * versuchen.
+ *
+ * Das ist der Unterschied zwischen „ENIs Stimme kommt nie" und „ENIs Stimme kam
+ * gerade nicht": eine Drosselung (429) oder ein Aussetzer (5xx) sind in ein paar
+ * hundert Millisekunden vorbei, eine abgelehnte Anfrage (400) ist es nie. Ohne
+ * diese Unterscheidung wurde bisher jeder Aussetzer bis zum Menschen
+ * durchgereicht, der dann selbst noch einmal getippt hat — genau das, was eine
+ * Wiederholung hier in einer Sekunde erledigt.
+ */
+export class StimmFehler extends Error {
+  constructor(
+    message: string,
+    readonly wiederholbar: boolean,
+    /** was die gegenstelle selbst als wartezeit nennt, in millisekunden */
+    readonly wartenMs: number | null = null
+  ) {
+    super(message)
+    this.name = 'StimmFehler'
+  }
+}
+
 export type EniStimmeAbhaengigkeiten = {
   umgebung(name: string): string | undefined
   datenbank(url: string, key: string, autorisierung: string): StimmDatenbank
   /** liefert das rohe PCM eines stuecks. injiziert, damit tests kein netz brauchen */
   modell(anfrage: StimmAnfrage, schluessel: string): Promise<Uint8Array>
   protokoll: Pick<Console, 'error'>
+  /** wartet zwischen zwei versuchen. injiziert, damit tests nicht wirklich warten. */
+  warte?(ms: number): Promise<void>
+  /** die uhr, aus demselben grund injizierbar */
+  jetzt?(): number
 }
 
 const CORS = {
@@ -178,6 +230,108 @@ export function teileFuerAufnahme(text: string, grenze = MAX_STUECK_ZEICHEN): st
 
   if (offen !== '') stuecke.push(offen)
   return stuecke
+}
+
+/**
+ * Was ENI schreibt, ist fuer Augen gesetzt; was gesprochen wird, ist es nicht.
+ *
+ * Sterne, Rauten und Backticks liest eine neuronale Stimme entweder mit oder sie
+ * stolpert darueber, und jedes Zeichen, das sie liest, ist Ton, der erzeugt und
+ * uebertragen werden will. Das hier nimmt die Auszeichnung heraus und laesst die
+ * Worte stehen. Rein und exportiert, weil „was hat ENI eigentlich gesagt" eine
+ * Frage ist, die man pruefen koennen muss.
+ */
+export function fuerDieStimme(text: string): string {
+  return text
+    // ein codeblock ist nichts zum vorlesen; die zaeune fallen, der inhalt bleibt
+    .replace(/^```.*$/gm, '')
+    .replace(/`([^`]+)`/g, '$1')
+    // [wort](adresse): die adresse vorzulesen hilft niemandem
+    .replace(/\[([^\]]+)\]\((?:[^)]*)\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(?<![A-Za-zÀ-ÿ0-9])[*_](?=\S)([^*_\n]+?)(?<=\S)[*_](?![A-Za-zÀ-ÿ0-9])/g, '$1')
+    // ueberschriften, aufzaehlungen und zitatzeichen am zeilenanfang
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/^\s{0,3}[-*+]\s+/gm, '')
+    // eine trennlinie wuerde als drei bindestriche gesprochen
+    .replace(/^\s{0,3}([-*_])\s*(?:\1\s*){2,}$/gm, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * Ein einzelnes Stueck sprechen lassen, und zwar so oft, wie es sich lohnt.
+ *
+ * Ein leeres Ergebnis zaehlt wie ein Fehlschlag. Frueher wurde es stillschweigend
+ * uebersprungen: aus einer Antwort, deren mittleres Stueck die Gegenstelle
+ * verschluckt hat, wurde dann eine Aufnahme, in der mitten im Satz ein Stueck
+ * fehlt — und die lag danach im Regal und wurde nie wieder erzeugt.
+ */
+async function sprichStueck(
+  stueck: string,
+  stimme: string,
+  schluessel: string,
+  deps: EniStimmeAbhaengigkeiten
+): Promise<Uint8Array> {
+  const warte = deps.warte ?? ((ms: number) => new Promise((fertig) => setTimeout(fertig, ms)))
+  let letzter: unknown = null
+
+  for (let versuch = 0; versuch < VERSUCHE; versuch += 1) {
+    if (versuch > 0) {
+      const eigen = letzter instanceof StimmFehler ? letzter.wartenMs : null
+      await warte(Math.min(eigen ?? WARTE_MS[versuch - 1] ?? 2_000, 5_000))
+    }
+    try {
+      const pcm = await deps.modell({ text: stueck, stimme }, schluessel)
+      if (pcm.byteLength > 0) return pcm
+      letzter = new StimmFehler('gegenstelle liefert keinen ton', true)
+    } catch (ursache) {
+      letzter = ursache
+      // eine abgelehnte anfrage wird beim zweiten mal genauso abgelehnt
+      if (ursache instanceof StimmFehler && !ursache.wiederholbar) break
+    }
+    deps.protokoll.error(`eni-stimme: versuch ${versuch + 1} misslungen`, letzter)
+  }
+
+  throw letzter instanceof Error ? letzter : new StimmFehler('stimme kam nicht durch', false)
+}
+
+/**
+ * Alle Stuecke sprechen lassen, hoechstens `GLEICHZEITIG` davon nebeneinander,
+ * und in der Reihenfolge zurueckgeben, in der sie geschrieben stehen.
+ *
+ * Die Reihenfolge der Abtastwerte ist die Reihenfolge der Saetze — deshalb die
+ * feste Ablage in `teile[nr]` statt eines Anhaengens in der Reihenfolge des
+ * Eintreffens. Nebeneinander heisst hier nur: die Wartezeiten ueberlappen sich.
+ */
+async function sprichAlle(
+  stuecke: string[],
+  stimme: string,
+  schluessel: string,
+  deps: EniStimmeAbhaengigkeiten
+): Promise<Uint8Array[]> {
+  const jetzt = deps.jetzt ?? (() => Date.now())
+  const beginn = jetzt()
+  const teile = new Array<Uint8Array>(stuecke.length)
+  let naechstes = 0
+
+  const arbeiter = async () => {
+    for (;;) {
+      const nr = naechstes
+      naechstes += 1
+      if (nr >= stuecke.length) return
+      if (jetzt() - beginn > GESAMT_FRIST_MS) {
+        throw new StimmFehler('ENIs stimme hat zu lange gebraucht', false)
+      }
+      teile[nr] = await sprichStueck(stuecke[nr]!, stimme, schluessel, deps)
+    }
+  }
+
+  const spuren = Math.min(GLEICHZEITIG, stuecke.length)
+  await Promise.all(Array.from({ length: spuren }, arbeiter))
+  return teile
 }
 
 /**
@@ -263,16 +417,26 @@ export async function behandleEniStimme(
 
   const db = deps.datenbank(url, oeffentlicherKey, autorisierung)
 
-  let userId: string | null = null
-  try {
-    if (db.auth.getClaims) {
-      const anspruch = await db.auth.getClaims(token)
-      if (!anspruch.error) userId = anspruch.data?.claims?.sub ?? null
+  /**
+   * Wer da ruft. Erst der Blick ins Token selbst, dann `getClaims`.
+   *
+   * Die Reihenfolge stand andersherum und kostete bei jedem Ton einen Umweg,
+   * bevor ueberhaupt jemand gesprochen hatte. Sie ist trotzdem sicher: die
+   * user-id entscheidet hier nur, in welchem Ordner der Ton liegt. Was gesprochen
+   * werden darf, entscheidet die Policy an der Zeile — und die prueft die
+   * Unterschrift des Tokens, nicht diese Zeile hier.
+   */
+  let userId = subAusToken(token)
+  if (!userId) {
+    try {
+      if (db.auth.getClaims) {
+        const anspruch = await db.auth.getClaims(token)
+        if (!anspruch.error) userId = anspruch.data?.claims?.sub ?? null
+      }
+    } catch (ursache) {
+      deps.protokoll.error('eni-stimme: getClaims nicht nutzbar', ursache)
     }
-  } catch (ursache) {
-    deps.protokoll.error('eni-stimme: getClaims nicht nutzbar', ursache)
   }
-  userId ??= subAusToken(token)
   if (!userId) return antwort(401, { error: 'anmeldung ist ungültig oder abgelaufen' })
 
   // Was gesprochen wird, steht in der Datenbank und nicht in der Anfrage. Ein
@@ -292,7 +456,7 @@ export async function behandleEniStimme(
     return antwort(400, { error: 'nur ENIs eigene antworten werden gesprochen' })
   }
 
-  const text = String(zeile.data.text ?? '').trim()
+  const text = fuerDieStimme(String(zeile.data.text ?? ''))
   if (text === '') return antwort(400, { error: 'diese antwort hat keinen text' })
   if (text.length > MAX_ZEICHEN) {
     return antwort(400, { error: 'diese antwort ist zu lang zum vorlesen' })
@@ -307,15 +471,11 @@ export async function behandleEniStimme(
   const liegtDa = (gibEsSchon.data ?? []).some((eintrag) => eintrag.name === `${nachrichtId}.wav`)
 
   if (!liegtDa) {
-    // Stueck fuer Stueck und der Reihe nach, nicht nebeneinander: die Reihenfolge
-    // der Abtastwerte ist die Reihenfolge der Saetze, und die Gegenstelle mag
-    // keine vier gleichzeitigen Anfragen von derselben Person.
-    const teile: Uint8Array[] = []
+    // Die Stuecke ueberlappen sich, statt hintereinander zu warten. Die
+    // Reihenfolge bleibt trotzdem die der Saetze, dafuer sorgt `sprichAlle`.
+    let teile: Uint8Array[]
     try {
-      for (const stueck of teileFuerAufnahme(text)) {
-        const pcm = await deps.modell({ text: stueck, stimme }, schluessel)
-        if (pcm.byteLength > 0) teile.push(pcm)
-      }
+      teile = await sprichAlle(teileFuerAufnahme(text), stimme, schluessel, deps)
     } catch (ursache) {
       deps.protokoll.error('eni-stimme: gegenstelle nicht erreichbar', ursache)
       return antwort(502, {
@@ -324,7 +484,7 @@ export async function behandleEniStimme(
       })
     }
 
-    const gesamtlaenge = teile.reduce((summe, teil) => summe + teil.byteLength, 0)
+    const gesamtlaenge = teile.reduce((summe, teil) => summe + (teil?.byteLength ?? 0), 0)
     if (gesamtlaenge === 0) {
       return antwort(502, { error: 'ENIs stimme kam nicht durch.', code: 'leerer_ton' })
     }
@@ -337,11 +497,25 @@ export async function behandleEniStimme(
     }
     const toene = wavAusPcm(pcm)
 
-    const gelegt = await eimer.upload(pfad, toene, { contentType: 'audio/wav', upsert: false })
-    // Ein gescheiterter Upload ist kein Grund zu schweigen: der Ton ist da, er
-    // wird nur beim naechsten Mal noch einmal erzeugt. Das kostet, aber es
-    // kostet weniger als eine Stimme, die nicht kommt.
-    if (gelegt.error) deps.protokoll.error('eni-stimme: ton nicht abgelegt', gelegt.error)
+    /**
+     * `upsert: true`, und das ist kein Detail.
+     *
+     * Mit `false` scheiterte der zweite von zwei gleichzeitigen Aufrufen fuer
+     * dieselbe Nachricht daran, dass der erste die Datei schon hingelegt hatte —
+     * ein Fehlschlag, der nach einem Problem aussieht und keins ist. Wer zweimal
+     * auf den Knopf tippt, weil es beim ersten Mal lange dauert, hat genau das
+     * ausgeloest. Derselbe Pfad heisst ohnehin derselbe Ton; ihn zu ueberschreiben
+     * kann nichts kaputtmachen.
+     */
+    const gelegt = await eimer.upload(pfad, toene, { contentType: 'audio/wav', upsert: true })
+    if (gelegt.error) {
+      // Eine Adresse zu unterschreiben, hinter der nichts liegt, waere die
+      // schlechteste aller Antworten: der Browser laedt sie, bekommt 404 und
+      // faellt erst dann auf seine eigene Stimme zurueck — nach der ganzen
+      // Wartezeit. Ein Fehler hier laesst ihn sofort selbst sprechen.
+      deps.protokoll.error('eni-stimme: ton nicht abgelegt', gelegt.error)
+      return antwort(502, { error: 'ENIs stimme kam nicht durch.', code: 'nicht_abgelegt' })
+    }
   }
 
   const adresse = await eimer.createSignedUrl(pfad, FRIST_S)
