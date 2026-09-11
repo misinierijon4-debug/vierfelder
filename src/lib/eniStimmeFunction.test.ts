@@ -382,6 +382,13 @@ describe('eine lange antwort für die aufnahme schneiden', () => {
   it('lässt eine kurze antwort auch im strom in einem stück', () => {
     expect(teileFuerStrom('Das reicht nicht.')).toEqual(['Das reicht nicht.'])
   })
+
+  it('schneidet vorne genau einmal, nicht viermal', () => {
+    // ein schlüssel aus AI Studio zählt anfragen, nicht zeichen: aus einem
+    // stück vier zu machen heisst 429 statt ton
+    const lang = Array.from({ length: 200 }, () => 'Ein satz mit sieben wörtern hier.').join(' ')
+    expect(teileFuerStrom(lang).length).toBe(teileFuerAufnahme(lang).length + 1)
+  })
 })
 
 describe('eine antwort, die länger ist als ein einzelner aufruf', () => {

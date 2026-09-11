@@ -263,15 +263,24 @@ export function teileFuerAufnahme(text: string, grenze = MAX_STUECK_ZEICHEN): st
 }
 
 /**
- * Dieselben stuecke, nur vorne feiner geschnitten: was zuerst gesprochen wird,
- * ist kurz, damit der erste ton frueh da ist. Alles dahinter bleibt gross, weil
- * dort nur noch die gesamtdauer zaehlt und nicht mehr das warten.
+ * Dieselben stuecke, nur vorne einmal getrennt: was zuerst gesprochen wird, ist
+ * kurz, damit der erste ton frueh da ist. Alles dahinter bleibt gross, weil dort
+ * nur noch die gesamtdauer zaehlt und nicht mehr das warten.
+ *
+ * Genau ein schnitt mehr, nicht mehrere. Die erste fassung zerlegte das ganze
+ * erste stueck in lauter kurze — aus einer anfrage wurden vier. Ein schluessel
+ * aus AI Studio zaehlt aber anfragen, nicht zeichen, und eine vorschau-stimme
+ * zaehlt besonders knapp; wer dort viermal so oft anklopft, bekommt 429 statt
+ * ton. Der erste satz kurz, der rest wie gehabt: ein zusaetzlicher aufruf je
+ * antwort, und der fuehrt genau zu dem, worum es geht.
  */
 export function teileFuerStrom(text: string, erstes = ERSTES_STUECK_ZEICHEN): string[] {
   const stuecke = teileFuerAufnahme(text)
   const [anfang, ...rest] = stuecke
-  if (anfang === undefined) return stuecke
-  return [...teileFuerAufnahme(anfang, erstes), ...rest]
+  if (anfang === undefined || anfang.length <= erstes) return stuecke
+  const vorne = teileFuerAufnahme(anfang, erstes)
+  const [kopf, ...schwanz] = vorne
+  return schwanz.length > 0 ? [kopf!, schwanz.join(' '), ...rest] : [...vorne, ...rest]
 }
 
 /**
