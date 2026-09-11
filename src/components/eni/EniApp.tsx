@@ -8,6 +8,7 @@ import {
   merkeAnbieter,
   modellAntwort,
   modellBereit,
+  NACHHOLBAR,
   stimmenprobeAntwort,
 } from '../../lib/eniAntwort'
 import type { AnbieterInfo, Antwortgeber, Modellstand } from '../../lib/eniAntwort'
@@ -84,7 +85,20 @@ export function EniApp({
   const endeRef = useRef<HTMLDivElement>(null)
   const vorgabeNr = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const letzterFehlversuchRef = useRef<{ text: string; anhaenge: VorbereiteterAnhang[] } | null>(null)
+  /**
+   * Was zuletzt schiefging, und wie es aufzuholen ist.
+   *
+   * Zwei Faelle, und der Unterschied ist wichtig: bei `neu` steht noch nichts
+   * im Verlauf, die Vorlage muss also noch einmal geschickt werden. Bei
+   * `nochmal` steht sie schon da und nur ENIs Antwort fehlt — dann darf sie
+   * kein zweites Mal geschickt werden, sonst stuende derselbe Satz zweimal im
+   * Chat.
+   */
+  const letzterFehlversuchRef = useRef<
+    | { art: 'neu'; text: string; anhaenge: VorbereiteterAnhang[] }
+    | { art: 'nochmal'; chatId: string }
+    | null
+  >(null)
 
   // Entwurfsverwaltung je Chat: Entwuerfe bleiben beim Chatwechsel und bei Fehlern erhalten
   const aktuellerTextRef = useRef('')
@@ -296,8 +310,8 @@ export function EniApp({
 
       void (async () => {
         const zielChatId = aktiverChatRef.current
+        let chatId = zielChatId
         try {
-          let chatId = zielChatId
           if (!chatId) {
             const chat = await speicher.neuerChat(chatTitel(text))
             chatId = chat.id
@@ -345,12 +359,22 @@ export function EniApp({
 
           if (!gespeichert) {
             // Fehlversuch fuer Wiederholung vormerken und Text/Anhaenge wiederherstellen
-            letzterFehlversuchRef.current = { text, anhaenge: mitgeben }
+            letzterFehlversuchRef.current = { art: 'neu', text, anhaenge: mitgeben }
             vorgabeNr.current += 1
             setVorgabe({ text, nr: vorgabeNr.current })
             setAnhaenge((vorher) => [...mitgeben, ...vorher].slice(0, MAX_ANHAENGE))
           } else {
             for (const anhang of mitgeben) gibVorschauFrei(anhang)
+            // Die Vorlage steht. Was fehlt, ist nur ENIs Antwort, und die
+            // laesst sich nachholen, ohne den Satz noch einmal zu schicken.
+            const nachholbar =
+              !istAbbruch &&
+              chatId !== null &&
+              ursache instanceof EniModellFehler &&
+              NACHHOLBAR.has(ursache.code ?? '')
+            letzterFehlversuchRef.current = nachholbar
+              ? { art: 'nochmal', chatId: chatId! }
+              : null
           }
 
           if (istAbbruch) {
@@ -372,12 +396,64 @@ export function EniApp({
     [anhaenge, geber, prueft, speicher, stimme, vorlesen, zeilen]
   )
 
+  /**
+   * ENI noch einmal um eine Antwort bitten, auf eine Vorlage, die schon steht.
+   * Schreibt nichts: der Server greift die letzte offene Vorlage auf.
+   */
+  const holeNach = useCallback(
+    (chatId: string) => {
+      if (!geber || prueft) return
+      setFehler(null)
+      setHinweis(null)
+      setFrisch(null)
+      setPrueft(true)
+      stimme.halt()
+      if (vorlesen) weckeStimme()
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      void (async () => {
+        try {
+          const ergebnis = await geber.nochmal(chatId, controller.signal)
+          letzterFehlversuchRef.current = null
+          if (aktiverChatRef.current === chatId) {
+            setZeilen((vorher) => [
+              ...vorher.filter((zeile) => zeile.id !== ergebnis.mensch.id),
+              ergebnis.mensch,
+              ...(ergebnis.eni ? [ergebnis.eni] : []),
+            ])
+            setFrisch(ergebnis.eni?.id ?? null)
+            if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
+            if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
+          }
+        } catch (ursache) {
+          const istAbbruch =
+            controller.signal.aborted ||
+            (ursache instanceof Error && ursache.message.includes('abgebrochen'))
+          // Der Eintrag bleibt stehen: was beim zweiten Mal nicht ging, darf
+          // beim dritten noch einmal versucht werden.
+          setFehler(
+            istAbbruch
+              ? 'anfrage abgebrochen.'
+              : ursache instanceof EniModellFehler
+                ? ursache.message
+                : 'ENI hat nicht geantwortet. versuch es gleich noch einmal.'
+          )
+        } finally {
+          setPrueft(false)
+        }
+      })()
+    },
+    [geber, prueft, stimme, vorlesen]
+  )
+
   const wiederhole = useCallback(() => {
     const fehl = letzterFehlversuchRef.current
-    if (fehl && !prueft) {
-      legeVor(fehl.text, fehl.anhaenge)
-    }
-  }, [legeVor, prueft])
+    if (!fehl || prueft) return
+    if (fehl.art === 'nochmal') holeNach(fehl.chatId)
+    else legeVor(fehl.text, fehl.anhaenge)
+  }, [holeNach, legeVor, prueft])
 
   // Startvorschlag uebernehmen: setzt den gewaehlten Vorschlag direkt ins Feld, ohne zu stacken
   const uebernimmAuftakt = useCallback((text: string) => {

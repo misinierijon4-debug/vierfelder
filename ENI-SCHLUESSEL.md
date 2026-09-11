@@ -301,8 +301,14 @@ das Vordenken ausgeschaltet: ENI ist eine Haltung, keine Rechenaufgabe, und die
 Denk-Token zählen gegen dasselbe Ausgabelimit.
 
 `inclusionai/ling-3.0-flash-vl:free` kostet nichts, mit und ohne Vordenken.
-Dafür gelten OpenRouters Grenzen für kostenlose Modelle, und wenn dort
-gedrosselt wird, antwortet ENI nicht — der Umschalter ist dann der Ausweg.
+Dafür gelten OpenRouters Grenzen für kostenlose Modelle. Die häufigste davon ist
+die Grenze pro Minute, und die ist nach Sekunden wieder offen: ENI fragt deshalb
+von selbst noch einmal nach, bis zu dreimal, mit ein paar Sekunden Pause
+dazwischen. Erst wenn auch das nichts bringt, steht im Chat *ENI hat nicht
+geantwortet* — die Vorlage bleibt dann stehen, und **wiederholen** daneben holt
+nur die Antwort nach, ohne den Satz ein zweites Mal zu schicken. Hält die
+Drosselung länger an, etwa weil die Tagesgrenze des kostenlosen Kontingents
+erreicht ist, ist der Umschalter der Ausweg.
 
 `deepseek-flash` kostet. Die aktuellen Preise stehen auf platform.deepseek.com;
 DeepSeek rechnet Treffer im Kontext-Cache günstiger ab, und ENIs Charakter steht
