@@ -883,3 +883,526 @@ eine warteschlange ohne konfliktauflösung wäre genau das.
 **Er räumt sich selbst weg.** Sobald das `online`-ereignis kommt, lädt die app
 neu; der knopf oben rechts tut dasselbe von hand. Niemand soll den alten stand
 erst wegklicken müssen, um den aktuellen zu sehen.
+
+## 29. Nachtrag: ENI steht daneben, nicht darin (10.09.2026)
+
+**Der erste entwurf war ein fünfter tab, und das war falsch.** Die tabs schalten
+zwischen ansichten derselben sache um: tracker, duell, schlaf und noten zeigen
+alle dieselbe woche von zwei personen, nur aus verschiedenen winkeln. ENI ist
+keine weitere ansicht auf diese woche. ENI ist ein gegenüber. Ein tab hätte
+versprochen, dass man mit einem tippen zwischen abhaken und einem gespräch hin
+und her wechselt, als wäre beides dasselbe. Also steht ENI daneben: eigene
+adresse, eigener bildschirm, eigener weg zurück.
+
+**Der weg hinein ist eine tür, keine lasche.** Oben rechts im kopf, neben dem
+heute-stand, sitzt ein knopf mit zeichen und namen. Er sieht aus wie ein symbol
+auf einem homescreen und nicht wie ein reiter, weil er aus der app hinausführt
+statt in ihr umzuschalten. Er steht in beiden zuständen des kopfes, auch im
+sonntagsfinale; ENI ist gerade dann erreichbar, wenn die woche gerade
+entschieden wurde.
+
+**Warum der hash und kein pfad.** Die app liegt auf GitHub Pages unter
+`/vierfelder/`. Ein echter pfad `/eni` bräuchte dort eine umschreibung auf dem
+server, die es auf einem statischen host nicht gibt; den hash versteht jeder
+host, auch die installierte pwa in ihrem eigenen scope. `schliesseEni()` geht
+einen schritt im verlauf zurück, wenn wir selbst hierher navigiert sind, und
+ersetzt sonst nur die adresse. Sonst wäre der zurück-weg aus einem direkt
+geöffneten ENI ein sprung aus der app heraus.
+
+**ENI ist das einzige wort in versalien.** Die ganze app ist kleingeschrieben,
+seit abschnitt 3. Genau deshalb funktioniert die ausnahme: in einer oberfläche
+ohne großbuchstaben ist ein name in versalien kein schreien, sondern der einzige
+eigenname weit und breit.
+
+**Aber ENI redet in normaler groß- und kleinschreibung.** Das ist seit dem
+10.09.2026 die zweite ausnahme, und sie trennt zwei dinge, die vorher
+zusammengeworfen waren: die *schrift des hauses* und die *rede einer person*.
+Beschriftungen bleiben klein, weil sie leise sein sollen. ENIs sätze nicht. Ein
+mann, der urteilt, schreibt nicht durchgehend klein; das las sich nachlässig,
+und nachlässig ist das gegenteil von dem, was er verlangt. Die grenze läuft also
+nicht zwischen ENI und der app, sondern zwischen etikett und rede: kopfzeile,
+knöpfe, tagestrenner und die drei auftakte sind etiketten und bleiben klein, der
+inhalt einer nachricht ist rede und wird groß geschrieben.
+
+Der system-prompt in `eniCharakter.ts` ist selbst in großschreibung verfasst.
+Nicht aus ordnungsliebe: ein modell übernimmt die schreibweise seiner anweisung.
+Ein kleingeschriebener prompt hat ENI die kleinschreibung stärker beigebracht als
+der satz, der sie verlangte, und derselbe hebel wirkt in die andere richtung.
+
+**Die antwort klappt wort für wort auf.** Kein tippanimations-cursor, kein
+zeichenweises schreibmaschinen-echo: die wörter setzen der reihe nach auf, jedes
+mit 280 ms überblendung und 0,16 em weg von unten, wie ein text, der geschlagen
+wird. Der versatz beträgt 26 ms je wort, aber das ganze aufklappen ist bei
+1100 ms gedeckelt (`AUSKLAPP_MAX_MS`): bei einer langen erklärung rücken die
+wörter enger zusammen, statt dass man zwanzig sekunden auf den letzten satz
+wartet. Nur die gerade eingetroffene zeile läuft so auf, gesteuert über `frisch`
+in `EniApp`; ein chat aus dem verlauf steht sofort ganz da, weil man ihn liest
+und nicht empfängt.
+
+Der text steht dabei immer vollständig im dokument, jedes wort in einem eigenen
+`span`. Vorleseprogramme bekommen den satz am stück, nur das auge bekommt ihn
+nach und nach. Die abstände bleiben eigene knoten, sonst gingen absätze und
+leerzeilen verloren. Die staffelung liegt in CSS (`.eni-wort`), nicht in
+`motion`: einige hundert federn für eine lange antwort wären teurer als eine
+einzige keyframe-regel. Die globale reduced-motion-regel kürzt nur die *dauer*,
+nicht die *verzögerung*, deshalb schaltet `.eni-wort` dort ausdrücklich
+`animation: none` — sonst tröpfelte der text auch bei abgeschalteter bewegung
+über eine sekunde herein, nur unsichtbar.
+
+**Das zeichen: ein monolith.** Ein aufgerichteter stein, oben schräg
+abgeschlagen, mit einer kerbe, die nur zwei drittel hineingeht. Drei fassungen
+lagen davor: ein pfeiler mit zwei keilen las sich bei 44 px als text-cursor, ein
+trilith als griechisches pi, und eine kerbe quer hindurch machte aus dem stein
+ein kleines i. Die kerbe, die nicht durchgeht, ist der punkt: sie ist eine
+wunde, kein schnitt. Das app-zeichen aus abschnitt 23 erzählt von zweien, die
+sich verkeilen; ENI steht für sich allein, deshalb hat sein zeichen kein
+gegenstück. Alles in kreide, keine sechste farbe.
+
+**Zwei schriftbilder, ein dialog.** ENIs sätze laufen in Archivo 17px/600 über
+die volle breite, ohne rahmen, ohne blase, wie eine inschrift auf dem grund. Was
+du vorlegst, steht eingerückt hinter einer 2px-kante in deiner farbe, in Hanken
+13px, mit uhrzeit. An der schrift allein erkennt man, wer spricht. Der strom
+klebt am unteren rand (`mt-auto`), wie in jedem chat; der leere chat steht
+dagegen mittig und zeigt ENIs ersten satz und drei sätze, die man ihm hinwerfen
+kann.
+
+**Der takt statt des ladekreises.** Zwölf striche in festem versatz. Bei
+`prefers-reduced-motion` stehen sie still, der satz für screenreader steht
+unabhängig davon da.
+
+**Der verlauf gehört einer person.** Alles andere in dieser datenbank lesen
+beide und schreibt jeder nur für sich. Bei ENI lesen die policies
+`auth.uid() = user_id` auch beim select: erijon sieht korays chats nie und
+umgekehrt. Der zwei-personen-vergleich endet an der tür zu ENI, und die
+oberfläche sagt das im leeren chat ausdrücklich hin. Ein trigger zieht
+`eni_chats.zuletzt` nach, statt den client zu einem zweiten rundlauf je vorlage
+zu zwingen, der zwischendrin abbrechen könnte. Der prototyp ohne anmeldung
+bekommt dieselbe schnittstelle gegen `localStorage`.
+
+**Die fassung ist eine stimmenprobe, und sie sagt es selbst.** Jeder satz von
+ENI steht in `src/lib/eni.ts`, es gibt keine modellverbindung, und der kopf
+schreibt das hin. Eine oberfläche, die eine verbindung andeutet, die es nicht
+gibt, wäre genau die art unehrlichkeit, gegen die ENI sonst redet. Der eine
+anschlusspunkt für später ist `eniAntwort`.
+
+**Was den startpfad kostet.** Vom ganzen bereich bleiben im ersten laden nur die
+tür im kopf und die hash-route übrig, zusammen 598 byte gzip. Die ansicht, ihr
+verlauf und der dialog liegen mit 7,5 KiB gzip hinter `React.lazy`.
+
+## 30. Nachtrag: ENIs stimme und der schlüssel (10.09.2026)
+
+**Der charakter steht auf dem server, nicht im bundle.** `eniCharakter.ts` liegt
+unter `supabase/functions/_shared/`. Wer die seite öffnet, sieht ENIs
+oberfläche, nicht sein wesen. Der eine anschlusspunkt aus abschnitt 29 ist damit
+eingelöst: `eniAntwort` bleibt die lokale stimmenprobe, das modell hängt
+daneben, und die oberfläche kennt beide nur als `Antwortgeber`.
+
+**Das modell ist DeepSeek, und zwar per blankem fetch.** `deepseek-flash` über
+`https://api.deepseek.com/chat/completions`, ein POST mit JSON hin und JSON
+zurück. Kein SDK: ein npm-paket dafür wäre ein halber node-unterbau in einer
+deno-function, für nichts. Dieselbe entscheidung wie bei `webpush.ts` in
+abschnitt 10. Ein test in `edgeImports.test.ts` hält beides fest, dass kein
+LLM-SDK hereinkommt und dass genau eine adresse angesprochen wird. (Seit
+abschnitt 34 stehen zwei modelle zur wahl; der blanke fetch und der test sind
+geblieben.)
+
+**Das denken ist aus.** DeepSeek denkt sonst mit `reasoning_effort: high` vor.
+ENI ist eine haltung, keine rechenaufgabe; die denk-token zählen gegen dasselbe
+`max_tokens` und könnten eine lange erklärung mittendrin abschneiden.
+
+**Die zeile im kopf ist jetzt eine messung, keine behauptung.** Beim öffnen
+fragt ENI die function, ob überhaupt ein schlüssel gesetzt ist. Das kostet
+nichts, weil dafür kein modell läuft. Bis die antwort da ist, steht dort
+`verbindung wird geprüft` und die eingabe bleibt gesperrt; danach entweder die
+stimmenprobe oder der satz, der zählt: `was du hier schreibst, verlässt dein
+gerät`. Eine app, die daten aus dem haus gibt, muss das an der stelle sagen, an
+der man tippt, nicht in einer datenschutzerklärung.
+
+**Die zahlen kommen aus der datenbank, nie aus der anfrage.** `eniLage.ts` baut
+serverseitig einen knappen block aus der laufenden woche, den letzten
+gewichtswerten, den letzten nächten und den letzten noten. Genauso der
+gesprächsverlauf: die function liest ihn selbst unter derselben row level
+security. Beides aus demselben grund. Ein client, der ENI eine woche vorlügen
+kann, wäre genau der selbstbetrug, gegen den ENI antritt.
+
+**Beide zeilen schreibt der server.** Vorlage und urteil landen in derselben
+function im verlauf. Sonst stünde im chat, was ein client behauptet, und nicht,
+was das modell gesagt hat. Der client zeigt die eigene vorlage sofort an und
+tauscht sie gegen die echte zeile, sobald sie zurückkommt; scheitert das
+speichern ganz, verschwindet sie wieder und der satz steht zurück im feld.
+
+**Ein takt als mindestdauer, nicht als attrappe.** Der strichcode aus abschnitt
+29 läuft jetzt, bis die echte antwort da ist, mindestens aber 700 millisekunden.
+Ein urteil, das schneller kommt als ein gedanke, liest sich wie ein echo.
+
+**Zwei bremsen, die nicht verhandelbar sind.** Eine tagesgrenze je person,
+geprüft bevor das modell etwas kostet, und eine längengrenze für die vorlage.
+Ein verlorenes telefon oder eine schleife im client darf keine rechnung
+erzeugen, die niemand bemerkt.
+
+**Kurz ist der normalfall, lang ist erlaubt.** ENI urteilt in zwei bis vier
+sätzen. Fragt ihn jemand, warum etwas wirkt, darf er in absätzen ausholen; die
+länge muss aus dem inhalt kommen, nie aus höflichkeit. Deshalb rendert seine
+zeile `whitespace-pre-wrap` und der token-deckel liegt bei 2500 statt bei 1000.
+
+**Was aus der charakterbeschreibung nicht übernommen wurde.** Erijon nannte
+Andrew Tate als überzeugung. Übernommen ist der harte kern, den er meint:
+disziplin, eigenverantwortung, körperliche stärke, keine ausreden, kein
+selbstmitleid. Nicht übernommen ist dessen frauenbild, und der name steht
+nirgends als vorbild im prompt. Das ist keine weichzeichnung von ENI: er bleibt
+so hart wie beschrieben, er bezieht seine härte nur nicht von einem mann, der
+wegen menschenhandels und vergewaltigung angeklagt ist.
+
+**Die zwei stellen, an denen ENIs härte aufhört.** Akute krankheitszeichen und
+selbstverletzung. Bei allem anderen redet er wie beschrieben, ohne
+haftungsausschluss und ohne warnung. Die zwei ausnahmen stehen im prompt, weil
+rohe leber und rohe milch echte infektionsrisiken tragen und weil ein
+schiedsrichter, der an dieser stelle weiter stichelt, seinem menschen schadet
+statt ihm zu helfen.
+
+## 31. Nachtrag: was man ENI hinhalten kann (10.09.2026)
+
+**Bilder brauchten kein neues modell.** Beim bauen war die annahme, DeepSeek sei
+textblind und bilder hiessen: zweiter anbieter, zweiter schlüssel, zweite
+rechnung. Das war seit august 2026 falsch. `deepseek-flash` nimmt bildblöcke im
+chat-format an, der frühere sondername `deepseek-v4-flash-vision-exp` ist
+zurückgezogen und wird auf flash umgeleitet. Es bleibt also bei einem modell,
+einem schlüssel und einem endpunkt aus abschnitt 30. Ein bild kostet höchstens
+384 token, egal wie gross es ankommt.
+
+**Zwei arten von anhang, und die trennung fällt auf dem gerät.** Ein bild wird
+auf 1280 pixel gerechnet und als JPEG in den bucket gelegt. Eine textdatei wird
+gelesen, und nur ihr text geht mit. Beides hat denselben grund: das modell sieht
+ein bild ohnehin nur mit einem festen tokenbetrag an, und eine `.csv` durch eine
+bilderkennung zu schicken wäre unsinn, weil der text schon dasteht. Das
+herunterrechnen läuft über canvas statt über eine bibliothek, und es wirft
+nebenbei EXIF weg — der GPS-punkt eines fotos geht gar nicht erst auf die reise.
+
+**PDF geht nicht, und das steht als satz da.** DeepSeek nimmt vier bildformate
+an, PDF ist keins davon. Eine PDF-bibliothek im browser wäre rund ein achtel des
+gesamten JavaScript-budgets für etwas, das ein screenshot auch erledigt. Die
+oberfläche sagt deshalb „ein pdf kann ENI nicht lesen, mach einen screenshot
+davon" statt die datei stumm abzulehnen.
+
+**Der bucket ist privat, und der pfad trägt die regel.** Jedes bild liegt unter
+`<konto>/<chat>/`, und die storage-policy prüft genau den ersten ordner. Das ist
+dieselbe linie wie in abschnitt 29: der zwei-personen-vergleich endet an der tür
+zu ENI. Das modell bekommt eine signierte adresse mit zehn minuten frist, die
+ansicht eine mit einer stunde. Nichts davon ist öffentlich abrufbar.
+
+**Der client lädt hoch, die function schreibt.** Der browser legt die datei in
+den bucket und nennt der function nur ihren pfad; die zeile in `eni_anhaenge`
+schreibt die function, und `eni_anhaenge` hat für angemeldete konten gar keine
+insert-policy. Damit gilt für anhänge dieselbe regel wie für die nachricht
+selbst aus abschnitt 30: was ENI gesehen hat, behauptet kein client. Die
+function prüft den pfad dreifach — richtiger präfix, kein `..`, begrenzte länge
+—, obwohl schon RLS und der bucket dagegen stehen. Drei schlösser sind hier
+billig.
+
+**Eine angehängte datei ist material, nie auftrag.** Ihr text steht gerahmt
+unter der vorlage, mit einer zeile davor, die genau das sagt. Ohne diesen rahmen
+liesse sich ENI mit einer `.md` jede anweisung unterschieben, und der prompt
+könnte den unterschied zwischen dem, was der mensch gerade gesagt hat, und dem,
+was in einer datei steht, nicht mehr sehen.
+
+**Zwei deckel, weil eine rechnung sonst niemand vorher sieht.** Vierundzwanzig
+nachrichten mit je einer angehängten tabelle wären eine halbe million zeichen.
+Dateitext geht deshalb mit einem budget von 24000 zeichen mit, bilder mit
+höchstens acht stück, beides neueste zuerst. Wer gerade eine tabelle anhängt,
+schickt sie vollständig mit; bricht dafür eine datei von vor zwanzig nachrichten
+hinten ab, ist das der richtige verlust.
+
+**Ein bild allein ist eine vorlage.** Die untergrenze von einem zeichen auf
+`eni_nachrichten.text` fällt. Wer ein foto hinhält, hat genug gesagt, und ENI
+kann nachfragen, was er wissen will.
+
+**Die büroklammer ist weg, wenn sie nichts täte.** Ohne konto gibt es keinen
+bucket, und die stimmenprobe ist ein paar regeln in einer datei und hat keine
+augen. In beiden fällen wird der knopf nicht grau, sondern verschwindet. Ein
+bild hochzuladen, das nie jemand ansieht, wäre genau der schein, gegen den die
+zeile im kopf steht.
+
+**Das mikrofon sagt, wohin der ton geht.** DeepSeek hat keine transkription, und
+jede gegenstelle, die eine hätte, wäre ein zweiter schlüssel und ein zweiter
+ort, an dem eine tonaufnahme liegt. Umsonst kann es nur der browser selbst, über
+die Web Speech API. Umsonst heisst dort aber nicht auf dem gerät: chrome schickt
+den ton an google, safari an apple. Deshalb steht während der aufnahme eine
+zeile unter dem feld, die das hinschreibt — dieselbe regel wie die zeile im kopf
+aus abschnitt 29, die sagt, ob die vorlage das gerät verlässt. Aufgenommen und
+gespeichert wird nichts; was zurückkommt, ist text im feld, den man vor dem
+vorlegen noch ändern kann. Firefox hat die schnittstelle nicht, dort ist der
+knopf weg statt grau.
+
+**Die eingabe ist ein rahmen, nicht drei sachen.** Zuerst stand ein kasten für
+den text da und darunter drei lose knöpfe, und der untere rand der ansicht las
+sich wie eine aufzählung statt wie ein feld. Jetzt liegt alles, was zur vorlage
+gehört, in einem rahmen: der streifen mit den anhängen oben, der text in der
+mitte, die knopfleiste unten. Das feld hat keinen eigenen rand mehr, der rahmen
+ist seiner.
+
+**Der fokusring wandert mit.** Die regel `:focus-visible` in `index.css` steht
+ohne layer und schlägt damit jede tailwind-klasse; ein `outline-none` am feld
+blieb wirkungslos. Der ring hätte drei pixel um das feld herum gezogen, also
+mitten in den gemeinsamen kasten, und der sähe wieder nach zwei kästen aus. Die
+ausnahme steht deshalb neben der regel, die sie nötig macht: ein feld mit
+`data-ring="rahmen"` gibt den ring ab, und der rahmen zeichnet ihn selbst,
+weiterhin an `:focus-visible` gebunden. Für die maus bleibt der hellere rand.
+Die vierundvierzig pixel trefferfläche gelten unverändert für feld, mikrofon,
+büroklammer und den knopf; der test aus abschnitt 29 hält sie fest und hat den
+ersten entwurf dieser leiste prompt zurückgewiesen.
+
+**Ein pfeil statt des wortes.** „vorlegen" stand als beschriftung neben dem
+feld und sagte doch nur, was die eingabetaste ohnehin tut. Der pfeil sagt
+dasselbe in der breite eines knopfes und lässt dem diktatstreifen daneben platz.
+Gefüllt ist er dieselbe sorte handlung wie das speichern einer wette: er gibt
+etwas aus der hand, und dafür gibt es in dieser app schon ein muster, `bg-kreide`
+auf `text-grund`. Solange nichts dasteht, was man aus der hand geben könnte, ist
+er nur ein umriss; als graue fläche wäre der gesperrte knopf im leeren chat das
+lauteste nach der überschrift gewesen. Das wort ist nicht verschwunden, es steht
+im `aria-label`: wer die oberfläche vorgelesen bekommt, hört weiterhin das verb
+dieser app und nicht „senden".
+
+**Das budget steigt nur an einer stelle.** Anhänge und diktat kosten rund 5,5
+KiB gzip, und sie liegen restlos im ENI-chunk hinter `React.lazy`. Der startpfad
+hat sich nicht um ein byte bewegt. Deshalb steigt in `check-web-build.mjs` nur
+die gesamtsumme; die strengere grenze für den start bleibt stehen, wo sie stand.
+
+## 32. Nachtrag: ENI bekommt eine stimme (10.09.2026)
+
+Der plan dahinter ist grösser: mit ENI reden können wie am telefon. Das hier ist
+der erste teil davon, und der erste teil ist die stimme.
+
+**Wieder der browser, aber diesmal nicht als kompromiss.** Beim mikrofon war die
+sprachausgabe des browsers die einzige kostenlose möglichkeit, und sie hat den
+haken, dass Chrome und Safari den ton an ihre server schicken. Beim vorlesen ist
+es umgekehrt: die sprachausgabe arbeitet auf fast jedem gerät lokal. Was ENI
+sagt, wird auf dem telefon zu ton. Das ist nicht nur billiger als eine
+gegenstelle, es ist auch privater — und ein zweiter schlüssel für eine stimme,
+die schon im gerät steckt, wäre in beide richtungen ein verlust.
+
+**Die stimme wird ausgewählt, nicht genommen.** `bewerteStimme` ist eine reine
+funktion mit einer klaren rangfolge: deutsch ist bedingung, dann lokal vor netz,
+dann mann vor frau, dann de-DE vor de-AT. Die reihenfolge ist eine entscheidung
+und keine laune. Eine männerstimme aus dem netz ist den tausch gegen eine
+frauenstimme, die auf dem gerät bleibt, nicht wert — ENIs geschlecht steht in
+seinem charakter, aber wohin seine sätze gehen, steht über allem. Am echten
+gerät geprüft: unter Hedda, Katja und Stefan gewinnt Stefan.
+
+**Tiefer und langsamer, aber nur ein bisschen.** Tonhöhe 0.9, tempo 0.96. Die
+voreinstellung klingt nach ansage im bahnhof, und ENI ist ein mann, der einem
+gegenübersitzt. Unter 0.85 fängt jede stimme an zu scheppern, also bleibt es
+dabei.
+
+**Lange antworten werden geschnitten, weil Chrome sie sonst abschneidet.** Nach
+etwa fünfzehn sekunden hält Chrome eine äusserung an, ohne es zu melden. ENI
+darf aber weit ausholen, das steht in seinem charakter. Also zerlegt
+`teileFuerStimme` den text an satzenden in stücke unter 180 zeichen und legt sie
+in die warteschlange. Ein satz, der allein schon zu lang ist, bricht am letzten
+leerzeichen: lieber eine atempause an der falschen stelle als ein satz, der
+mitten im wort endet. Dazu kommt ein `resume` im zehn-sekunden-takt, eine krücke
+um denselben fehler, die nur läuft, solange wirklich gesprochen wird.
+
+**Safari braucht den finger auf dem knopf.** Die erste äusserung lässt das
+iPhone nur aus einer echten handlung heraus zu. ENIs antwort kommt aber
+sekunden nach dem tippen, und dann bliebe sie stumm. `weckeStimme` schickt
+deshalb im moment des tippens ein leeres, lautloses stück los und macht die
+ausgabe für den rest der sitzung auf. Auf allen anderen geräten kostet das
+nichts.
+
+**Zwei knöpfe für zwei verschiedene dinge.** Der lautsprecher neben ENIs namen
+liest diese eine antwort vor; er steht oben neben dem namen und nicht unter dem
+text, weil der text mal drei und mal dreissig zeilen lang ist und ein knopf, den
+man suchen muss, nicht gedrückt wird. Der schalter im kopf gilt für das ganze
+gespräch und wird gemerkt: wer ENI einmal hören wollte, will ihn beim nächsten
+mal wieder hören.
+
+**Auch hier wird hingeschrieben, wohin etwas geht.** Wenn die einzige verfügbare
+stimme im netz rechnet, steht das unter der zeile im kopf. Dieselbe regel wie in
+abschnitt 29 für die vorlage und in abschnitt 31 für das mikrofon.
+
+## 33. Nachtrag: die eingebaute stimme war nicht gut genug (10.09.2026)
+
+Die erste fassung aus abschnitt 32 klang nach anrufbeantworter. Zwei fehler
+steckten darin, und der zweite war der grössere.
+
+**Erster fehler: lokal stand vor güte.** Die rangfolge in `bewerteStimme` hat
+zuerst gefragt, ob eine stimme auf dem gerät arbeitet, und erst danach, wie sie
+klingt. Auf Windows ergibt das die alte SAPI-fassung, auf dem iPhone die
+kompakte. Beide sind lokal und beide sind blechern. Die reihenfolge steht jetzt
+andersherum: erweitert und Premium vor kompakt, danach lokal vor netz, zuletzt
+das geschlecht. Einer blechernen stimme hört niemand zu, egal wem sie gehört und
+egal wo sie rechnet.
+
+**Zweiter fehler: die annahme, das reiche.** Tut es nicht. Auf dem iPhone sind
+*alle* stimmen der Web Speech API lokal, es gibt dort gar keine bessere, die
+eine andere regel hätte finden können. Eine wirklich natürliche stimme geht nur
+über eine gegenstelle. Der satz „der browser kann es umsonst" war für das
+mikrofon richtig und für die stimme falsch, und beides in einem atemzug gesagt
+zu haben war voreilig.
+
+**Die Gemini-API, nicht Cloud Text-to-Speech.** Der erste entwurf hing an Google
+Cloud TTS, und der ist an der anmeldung gescheitert: Google verlangt dafür ein
+rechnungskonto mit fünfundzwanzig euro einzahlung. Ein satz wie „das
+freikontingent bucht nichts ab" hilft nicht, wenn man vorher trotzdem geld
+hinlegen muss — das war ein aufwand, den ich in den optionen nicht genannt
+hatte, weil ich ihn nicht kannte.
+
+Die Gemini-API hat dieselben stimmen, dieselbe qualität und braucht nur einen
+schlüssel aus AI Studio: keine karte, keine einzahlung, kein projekt in der
+cloud-konsole. Eine zweite Edge Function, `eni-stimme`, mit eigenem schlüssel in
+`GEMINI_API_KEY`. Die stimme selbst steht in `ENI_STIMME` und nicht im code,
+weil geschmack bei einer stimme nichts ist, was man in einer datei gerecht
+entscheiden kann. Vorgabe ist Charon, die ruhige tiefe männerstimme.
+
+**WAV, weil die gegenstelle rohes PCM liefert.** Vierundzwanzig kilohertz, ein
+kanal, sechzehn bit, und kein fertiges audioformat. Der WAV-kopf sind
+vierundvierzig byte, die man selbst schreibt; ein MP3-kodierer wäre eine
+bibliothek in einer deno-function. Der preis ist die grösse: rund 48 KB je
+sekunde, also etwa ein halbes megabyte für eine normale antwort. Der freie
+speicher reicht für rund tausend töne, und wird es eng, kann man den bucket
+gefahrlos leeren — die töne entstehen beim nächsten anhören neu. Die zwei
+grössenangaben im WAV-kopf zählen verschieden, und genau das prüft ein test
+einzeln: die erste alles nach den ersten acht byte, die zweite nur die
+abtastwerte.
+
+**Lange antworten werden stückweise gesprochen.** Die gegenstelle nimmt gut
+viertausend zeichen, ENI darf aber weit ausholen. Also wird an satzenden
+geschnitten, jedes stück einzeln gesprochen und das rohe PCM hinterher
+aneinandergehängt — bei unkomprimierten abtastwerten ist das nichts weiter als
+zwei byte-folgen hintereinander. Die naht liegt dort, wo ohnehin eine pause ist.
+
+**Die adresse steht ganz da.** Nicht aus modellnamen und pfad zusammengesetzt,
+sondern als eine zeichenkette, die man lesen kann. `edgeImports.test` zählt jede
+adresse auf, die eine Function nach draussen anspricht; das ergibt nur eine
+prüfung, solange sie im quelltext auch als eine adresse zu lesen ist. Ein
+modellwechsel fällt dort dann auf, statt still zu passieren.
+
+**Der client schickt eine ID, nie einen text.** Was gesprochen wird, liest die
+Function selbst aus der datenbank, unter Row Level Security und nur, wenn die
+zeile von ENI stammt. Das ist dieselbe entscheidung wie beim verlauf in
+abschnitt 30: was der server tut, richtet sich nach dem, was steht, und nicht
+nach dem, was ein client behauptet. Hier kommt ein zweiter grund dazu — ein
+client, der beliebigen text vorlesen lassen könnte, wäre eine offene rechnung.
+
+**Jeder ton entsteht genau einmal.** Der pfad im bucket ergibt sich vollständig
+aus der nachricht, also ist „gibt es das schon" dieselbe frage wie „liegt die
+datei da". Es braucht keine tabelle und keine zweite wahrheit, die mit der
+ersten aus dem tritt geraten könnte. Eine antwort zehnmal anzuhören kostet
+danach nichts. Genau deshalb braucht die stimme auch keine eigene tagesgrenze:
+der verbrauch ist durch die zahl der antworten gedeckelt, und die deckelt
+`ENI_TAGESLIMIT` schon.
+
+**Der schlüssel geht als kopfzeile, nie als `?key=`.** Beides funktioniert bei
+Google, nur eins davon ist richtig: eine adresse landet in protokollen, in
+fehlermeldungen und in weiterleitungen, eine kopfzeile nicht. Derselbe test
+prüft, dass in keiner adresse ein `key=` steht.
+
+**Die eingebaute stimme bleibt, und zwar nicht als notnagel.** Ohne schlüssel,
+ohne netz, in der stimmenprobe und bei der eigenen, noch nicht gespeicherten
+zeile gibt es serverseitig gar keinen ton, den man holen könnte. Der rückfall
+ist der normalfall dieser fälle, kein fehlerpfad. Und wenn das netz mitten im
+gespräch wegbricht, ist eine blecherne stimme immer noch besser als schweigen.
+
+**Ein einziges audio-element für die ganze sitzung.** Safari gibt die erlaubnis
+zum abspielen nicht der seite, sondern dem element, auf dem einmal aus einer
+echten handlung heraus `play()` lief. Ein element je antwort müsste jedes mal
+neu fragen und bekäme nie eine antwort, weil ENIs ton erst sekunden nach dem
+tippen da ist. `weckeStimme` spielt deshalb im moment des tippens zwei sample
+stille ab — als WAV im code gebaut, nicht als abgeschriebener base64-klumpen,
+damit man nachlesen kann, was da abgespielt wird.
+
+**Und die zeile im kopf unterscheidet jetzt zwei wege.** Bei ENIs eigener stimme
+rechnet google an dem, was der server ohnehin schon geschrieben hat; bei der
+eingebauten wäre es der browser-anbieter. Zwei verschiedene sachverhalte dürfen
+nicht denselben satz bekommen.
+
+
+## 34. Nachtrag: zwei modelle zur wahl (11.09.2026)
+
+**ENI ist eine haltung, kein modell.** Der charakter, die lage, der verlauf und
+die regeln gehören zu ihm; welche gegenstelle daraus sätze formt, ist eine
+auswechselbare schicht darunter. Solange das nur eine war, stand sie fest im
+code. Jetzt stehen zwei zur wahl: `deepseek-flash` wie bisher, und
+`inclusionai/ling-3.0-flash-vl:free` über OpenRouter.
+
+**Die liste ist eine tabelle, kein `if`.** `_shared/eniAnbieter.ts` hält je
+anbieter eine zeile: id, name, modellname, adresse, name der umgebungsvariablen
+und der eine schalter, über den sich die beiden streiten — wie man das vordenken
+abschaltet. DeepSeek will `thinking: {type:'disabled'}`, OpenRouter
+`reasoning: {enabled:false}`. Beide sprechen sonst dasselbe OpenAI-chatformat,
+und genau deshalb ist der zweite anbieter eine zeile und keine zweite funktion.
+Ein dritter wäre wieder eine zeile plus ein secret.
+
+**Der client schickt eine id, nie eine adresse.** Was hereinkommt, wird in der
+tabelle nachgeschlagen; findet sich nichts, ist die anfrage ein 400. Der
+umgekehrte weg — der client nennt modell und endpunkt, der server nimmt es hin —
+wäre eine function, die den schlüssel auf zuruf an eine fremde adresse trägt.
+Ein test hält das fest, und `edgeImports.test.ts` zählt jetzt drei adressen statt
+zwei: die liste ist weiter die stelle, an der auffällt, wenn eine function
+anfängt, irgendwo anders hinzutelefonieren.
+
+**Zwei schlüssel, und keiner weiß vom anderen.** Jeder anbieter nennt seine
+eigene umgebungsvariable. Wer nur einen setzt, bekommt nur den einen angeboten,
+und der umschalter im kopf verschwindet: ein menü mit einem eintrag ist keine
+wahl, sondern eine fläche, die platz kostet. Die pruefung, die bisher ja oder
+nein sagte, sagt jetzt zusätzlich, welche das sind — und nur das: namen und
+modellnamen, nie eine adresse und nie einen schlüssel.
+
+**Eine anfrage ohne wahl fällt auf den ersten verfügbaren, nicht auf den
+ersten der liste.** Sonst liefe ein client, der von der wahl nichts weiß, in ein
+503, bloß weil der obere der beiden schlüssel fehlt. Dasselbe gilt für eine
+gemerkte wahl, deren schlüssel später zurückgezogen wird: sie fällt
+stillschweigend zurück, statt in einen fehler zu laufen, den niemand erklären
+kann.
+
+**Die zeile im kopf nennt jetzt das modell beim namen.** Sie ist die einzige
+stelle, an der die oberfläche sagt, ob die sätze das gerät verlassen; seit es
+zwei ziele gibt, muss sie auch sagen, welches. Der info-dialog hinter dem **i**
+sagt dasselbe, aus demselben grund. Eine datenschutzaussage, die auf ein festes
+`(DeepSeek)` in der überschrift baut, wäre ab dem ersten umschalten falsch.
+
+**Gewechselt wird mitten im gespräch, nicht in den einstellungen.** Das modell
+ist keine konfiguration, die man einmal setzt, sondern eine entscheidung pro
+gespräch: wer merkt, dass die antworten flach werden, soll umschalten können,
+ohne die ansicht zu verlassen. Der verlauf bleibt dabei stehen — es wechselt nur,
+wer die nächste antwort formt. Während ENI gerade antwortet, ist der knopf
+gesperrt.
+
+**Bilder waren die bedingung, nicht die zugabe.** `ling-3.0-flash-vl` trägt das
+VL im namen: vision-language. Ein zweites modell ohne bildeingabe hätte die
+anhänge beim umschalten stillschweigend blind gemacht, und stillschweigend ist
+hier das problem, nicht blind.
+
+## 35. Nachtrag: denken ist eine zeile, keine stufe (11.09.2026)
+
+**Ein modell kann zweimal im menü stehen.** `ling-3.0-flash-vl` ist ein hybrid:
+es antwortet sofort oder es denkt erst. Statt dafür einen zweiten schalter neben
+die modellwahl zu bauen, steht es zweimal in der anbietertabelle — dieselbe
+adresse, derselbe schlüssel, derselbe modellname, ein unterschied. Für den
+menschen sind das zwei gesprächspartner mit verschiedenem tempo, und das menü
+sagt genau das. Ein zweites bedienelement hätte dieselbe wahl in zwei
+handgriffe zerlegt.
+
+**Das feld heißt jetzt `denken` und nicht mehr `ohneVordenken`.** Der alte name
+war eine annahme, die genau so lange hielt, wie alle zeilen dasselbe wollten.
+Ein feld, das in einer zeile das gegenteil seines namens tut, ist ein
+kommentarfehler mit typprüfung.
+
+**Was nicht gebaut wurde, und warum nicht.** OpenRouters modellauskunft nennt
+für dieses modell weder `supported_efforts` noch `supports_max_tokens`, und das
+heißt laut deren doku, dass es keine abstufung anbietet. Ein menü mit
+`hoch`/`mittel`/`niedrig` hätte ausgesehen wie eine einstellung und wäre eine
+behauptung gewesen. Dieselbe regel wie bei der zeile im kopf: die oberfläche
+deutet nichts an, was es nicht gibt.
+
+**Und die auskunft hat einen fehler aufgedeckt.** `default_enabled` steht bei
+diesem modell auf `true` — es denkt von sich aus vor. Eine zeile ohne eigene
+angabe wäre also nicht „wie das modell es macht" gewesen, sondern unabsichtlich
+langsam. Ein test hält jetzt fest, dass jede zeile das vordenken ausdrücklich
+stellt, statt es der gegenstelle zu überlassen.
+
+**Der ausgabedeckel wurde je zeile.** Denk-token sind ausgabe-token und gehen
+von demselben `max_tokens` ab. Mit den 2500 aus abschnitt 30 könnte das denken
+die erklärung auffressen und den satz mittendrin abschneiden — genau der
+schaden, gegen den der deckel dort aufgestellt wurde. Die denkende zeile bekommt
+8000, und weil sie nichts kostet, bremst der deckel dort nur eine schleife.

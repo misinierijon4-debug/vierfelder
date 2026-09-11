@@ -13,6 +13,10 @@ const ANMELDUNG_NICHT_PRUEFBAR =
   'die anmeldung konnte nicht geprüft werden. bitte versuche es erneut.'
 const ERINNERUNGSZEIT_UNBESTAETIGT =
   'die erinnerungszeit konnte nicht bestätigt werden. bitte versuche es erneut.'
+const EINSTELLUNG_UNBESTAETIGT =
+  'die einstellung konnte nicht bestätigt werden. bitte versuche es erneut.'
+
+export type GewichtErinnerung = { zeit: string; aktiv: boolean }
 
 function tabelleFehlt(code?: string): boolean {
   return code === '42P01' || code === 'PGRST205'
@@ -20,14 +24,59 @@ function tabelleFehlt(code?: string): boolean {
 
 /** Die eigene Uhrzeit; null solange das neue Schema noch nicht veroeffentlicht ist. */
 export async function ladeGewichtErinnerungszeit(): Promise<string | null> {
+  const e = await ladeGewichtErinnerung()
+  return e ? e.zeit : null
+}
+
+export async function ladeGewichtErinnerung(): Promise<GewichtErinnerung | null> {
   if (!supabase) return null
   const { data, error } = await supabase
     .from('erinnerungs_einstellungen')
-    .select('gewicht_zeit')
+    .select('gewicht_zeit, gewicht_aktiv')
     .maybeSingle()
   if (error && tabelleFehlt(error.code)) return null
   if (error) throw new Error(error.message)
-  return ((data as Einstellungszeile | null)?.gewicht_zeit ?? STANDARD_ERINNERUNGSZEIT).slice(0, 5)
+  const zeile = data as { gewicht_zeit?: string; gewicht_aktiv?: boolean } | null
+  return {
+    zeit: ((zeile?.gewicht_zeit ?? STANDARD_ERINNERUNGSZEIT)).slice(0, 5),
+    aktiv: zeile?.gewicht_aktiv ?? true,
+  }
+}
+
+export async function setzeGewichtAktiv(aktiv: boolean): Promise<void> {
+  const db = supabase
+  if (!db) throw new Error('kein konto')
+  const { data, error: sitzungsfehler } = await db.auth.getSession()
+  if (sitzungsfehler) throw new Error(ANMELDUNG_NICHT_PRUEFBAR)
+  const userId = data.session?.user.id
+  if (!userId) throw new Error('die anmeldung ist abgelaufen. melde dich neu an.')
+
+  const aktualisiert = new Date().toISOString()
+  const erwartet = {
+    user_id: userId,
+    gewicht_aktiv: aktiv,
+    aktualisiert,
+  }
+  const { data: bestaetigt, error } = await db
+    .from('erinnerungs_einstellungen')
+    .upsert(erwartet, { onConflict: 'user_id' })
+    .select('user_id,gewicht_aktiv,aktualisiert')
+    .maybeSingle()
+  if (error) throw new Error(EINSTELLUNG_UNBESTAETIGT)
+
+  const zeile = bestaetigt as { user_id?: string; gewicht_aktiv?: boolean; aktualisiert?: string } | null
+  const bestaetigterZeitpunkt = typeof zeile?.aktualisiert === 'string'
+    ? Date.parse(zeile.aktualisiert)
+    : Number.NaN
+  if (
+    !zeile ||
+    zeile.user_id !== userId ||
+    zeile.gewicht_aktiv !== aktiv ||
+    !Number.isFinite(bestaetigterZeitpunkt) ||
+    bestaetigterZeitpunkt !== Date.parse(aktualisiert)
+  ) {
+    throw new Error(EINSTELLUNG_UNBESTAETIGT)
+  }
 }
 
 export function istErlaubteErinnerungszeit(zeit: string): boolean {

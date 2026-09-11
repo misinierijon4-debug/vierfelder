@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AREAS, other, user as userDef } from './lib/types'
 import type { AppTab, AreaId, UserId } from './lib/types'
@@ -38,6 +38,16 @@ import {
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
+import { oeffneEni, schliesseEni, useRoute } from './lib/eniRoute'
+import type { DuellKontext } from './lib/eniSpeicher'
+/**
+ * ENI haengt am startpfad nicht mit drin. die anzeigetafel startet ohne sie,
+ * und das JavaScript-Budget in scripts/check-web-build.mjs misst genau diesen
+ * unterschied.
+ */
+const EniTor = lazy(() =>
+  import('./components/eni/EniTor').then((modul) => ({ default: modul.EniTor }))
+)
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
@@ -49,7 +59,9 @@ const UNDO_MS = 5000
 
 export function App() {
   const { status, session, fehler, erneut } = useSession()
+  const route = useRoute()
   const [wechselNr, setWechselNr] = useState(0)
+  const [duellStand, setDuellStand] = useState<DuellKontext | null>(null)
 
   /**
    * am konto festmachen, nicht am session-objekt: getSession() und
@@ -71,17 +83,36 @@ export function App() {
   if (hatSupabase && !session) return <Anmeldung />
   if (!backend) return <AppStartzustand status="fehler" fehler="anmeldung konnte nicht gelesen werden." />
 
+  // ENI liegt neben der anzeigetafel, nicht darin: eine eigene adresse, ein
+  // eigener bildschirm, ein eigener weg zurueck. die anmeldung gilt fuer beide.
+  if (route === 'eni') {
+    return (
+      <Suspense fallback={<EniStartzustand />}>
+        <EniTor art={backend.art} kontoId={kontoId} onZurueck={schliesseEni} initialDuellStand={duellStand} />
+      </Suspense>
+    )
+  }
+
   const trackerKey = backend.art === 'supabase' ? `supabase:${kontoId}` : `lokal:${wechselNr}`
   return (
     <Tracker
       key={trackerKey}
       backend={backend}
       onWechsel={() => setWechselNr((n) => n + 1)}
+      onDuellStand={setDuellStand}
     />
   )
 }
 
-function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => void }) {
+function Tracker({
+  backend,
+  onWechsel,
+  onDuellStand,
+}: {
+  backend: Backend
+  onWechsel: () => void
+  onDuellStand?: (stand: DuellKontext) => void
+}) {
   const {
     me,
     zustand,
@@ -147,6 +178,19 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
     () => berechneDuell(zustand, woche, heuteKey, me),
     [zustand, woche, heuteKey, me]
   )
+
+  useEffect(() => {
+    onDuellStand?.({
+      ich: me,
+      gegner: other(me).id,
+      ichName: userDef(me).name,
+      gegnerName: other(me).name,
+      wocheIch: match.wocheIch,
+      wocheEr: match.wocheEr,
+      diff: match.wocheDiff,
+      statusText: match.statusText,
+    })
+  }, [me, match, onDuellStand])
   const ich = userDef(me)
   const er = other(me)
   const abrechnungDerWoche = abrechnungen.find((a) => a.woche === (woche[0] ?? heuteKey)) ?? null
@@ -268,6 +312,7 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           me={me}
           match={match}
           bilanzzeit={istBilanzzeit(heute)}
+          onEni={oeffneEni}
         />
 
         {/* der offlinemodus sagt oben, was man sieht, und bietet den weg
@@ -559,6 +604,25 @@ function Tracker({ backend, onWechsel }: { backend: Backend; onWechsel: () => vo
           />
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+/**
+ * was steht, waehrend ENIs chunk laedt. kein spinner: der kopf, den ENI danach
+ * ohnehin hat, damit beim eintreffen nichts springt.
+ */
+function EniStartzustand() {
+  return (
+    <div className="flex h-[100dvh] flex-col bg-grund" aria-busy="true">
+      <div className="vollbild-safe-x border-b border-linie pt-[calc(var(--app-safe-top)+0.75rem)]">
+        <div className="mx-auto flex h-11 w-full max-w-[560px] items-center justify-center">
+          <span className="display text-[17px] font-bold leading-none tracking-[0.06em] text-kreide-52">
+            ENI
+          </span>
+        </div>
+        <div className="h-6" />
+      </div>
     </div>
   )
 }

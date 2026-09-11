@@ -15,7 +15,7 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { setzeGewichtErinnerungszeit } from './erinnerung'
+import { setzeGewichtAktiv, setzeGewichtErinnerungszeit } from './erinnerung'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -31,7 +31,7 @@ function bestaetigung(
     mock.maybeSingle.mockResolvedValue({
       data: {
         ...zeile,
-        gewicht_zeit: `${zeile.gewicht_zeit}:00`,
+        gewicht_zeit: zeile.gewicht_zeit ? `${zeile.gewicht_zeit}:00` : undefined,
         ...aenderung,
       },
       error: null,
@@ -112,5 +112,30 @@ describe('erinnerungszeit bestaetigt speichern', () => {
     await expect(setzeGewichtErinnerungszeit('20:30')).rejects.toThrow(
       'konnte nicht bestätigt werden'
     )
+  })
+})
+
+describe('gewicht_aktiv bestaetigt speichern', () => {
+  it('speichert das aktiv-flag bestätigt ab', async () => {
+    await expect(setzeGewichtAktiv(false)).resolves.toBeUndefined()
+    expect(mock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: USER_ID,
+        gewicht_aktiv: false,
+        aktualisiert: expect.any(String),
+      }),
+      { onConflict: 'user_id' }
+    )
+  })
+
+  it('verwirft abweichende Bestätigung', async () => {
+    mock.upsert.mockImplementation((zeile) => {
+      mock.maybeSingle.mockResolvedValue({
+        data: { ...zeile, gewicht_aktiv: true },
+        error: null,
+      })
+      return { select: mock.select }
+    })
+    await expect(setzeGewichtAktiv(false)).rejects.toThrow('konnte nicht bestätigt werden')
   })
 })
