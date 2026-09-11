@@ -114,7 +114,8 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
     })
   } catch (ursache) {
     // Netz weg oder Frist abgelaufen: beides ist ein Aussetzer, kein Nein.
-    throw new StimmFehler(`gemini nicht erreichbar: ${(ursache as Error)?.name ?? 'fehler'}`, true)
+    const name = (ursache as Error)?.name ?? 'fehler'
+    throw new StimmFehler(`gemini nicht erreichbar: ${name}`, true, null, `gemini-${name}`)
   }
 
   if (!antwort.ok) {
@@ -125,12 +126,13 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
     throw new StimmFehler(
       `gemini antwortet ${antwort.status}`,
       nochEinmal(antwort.status),
-      wartezeit(antwort.headers.get('retry-after'))
+      wartezeit(antwort.headers.get('retry-after')),
+      `gemini-${antwort.status}`
     )
   }
 
   if (anfrage.onPcm && antwort.headers.get('content-type')?.includes('text/event-stream')) {
-    if (!antwort.body) throw new StimmFehler('leerer strom', true)
+    if (!antwort.body) throw new StimmFehler('leerer strom', true, null, 'gemini-leer')
     const teile: Uint8Array[] = []
     let fertig = false
     for await (const zeile of streamZeilen(antwort.body)) {
@@ -138,7 +140,7 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
       const roh = zeile.slice(5).trim()
       if (!roh) continue
       const event = JSON.parse(roh)
-      if (event.error) throw new StimmFehler('stimme unterbrochen', false)
+      if (event.error) throw new StimmFehler('stimme unterbrochen', false, null, 'gemini-abbruch')
       const kandidat = event.candidates?.[0]
       for (const part of kandidat?.content?.parts ?? []) {
         if (!part.inlineData?.data) continue
@@ -147,11 +149,11 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
         anfrage.onPcm(bytes)
       }
       if (kandidat?.finishReason) {
-        if (kandidat.finishReason !== 'STOP') throw new StimmFehler('unvollstaendiger ton', false)
+        if (kandidat.finishReason !== 'STOP') throw new StimmFehler('unvollstaendiger ton', false, null, `gemini-${String(kandidat.finishReason).toLowerCase()}`)
         fertig = true
       }
     }
-    if (!fertig) throw new StimmFehler('unvollstaendiger ton', false)
+    if (!fertig) throw new StimmFehler('unvollstaendiger ton', false, null, 'gemini-unvollstaendig')
     const pcm = new Uint8Array(teile.reduce((n, t) => n + t.length, 0))
     let offset = 0
     for (const teil of teile) { pcm.set(teil, offset); offset += teil.length }
