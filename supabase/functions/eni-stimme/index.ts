@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import {
   behandleEniStimme,
+  StimmFehler,
   type EniStimmeAbhaengigkeiten,
   type StimmAnfrage,
   type StimmDatenbank,
@@ -37,8 +38,32 @@ import {
 const ENDPUNKT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent'
 
-/** eine haengende gegenstelle darf die function nicht festhalten */
-const FRIST_MS = 60_000
+/**
+ * Eine haengende Gegenstelle darf die Function nicht festhalten.
+ *
+ * Eine Minute stand hier, und eine Minute ist keine Frist, sondern ein Aufgeben:
+ * wer so lange wartet, wartet auf etwas, das nicht mehr kommt. Ein Stueck dieser
+ * Laenge ist in fuenf bis fuenfzehn Sekunden gesprochen; was nach dreissig noch
+ * nicht da ist, ist ein Aussetzer, und den holt die Wiederholung schneller ein
+ * als das Warten.
+ */
+const FRIST_MS = 30_000
+
+/**
+ * Welche Antworten es noch einmal wert sind. 429 ist eine Drosselung, 5xx ein
+ * Aussetzer, 408 eine Zeitueberschreitung drueben — alle drei sind gleich wieder
+ * vorbei. Alles andere ist ein Nein, das beim zweiten Mal genauso ausfaellt.
+ */
+function nochEinmal(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500
+}
+
+/** was die gegenstelle selbst als wartezeit nennt, in millisekunden */
+function wartezeit(kopf: string | null): number | null {
+  if (!kopf) return null
+  const sekunden = Number(kopf.trim())
+  return Number.isFinite(sekunden) && sekunden >= 0 ? Math.min(sekunden, 5) * 1000 : null
+}
 
 type GeminiAntwort = {
   candidates?: Array<{
@@ -59,35 +84,47 @@ function ausBase64(roh: string): Uint8Array {
  * beisammen sind.
  */
 async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Uint8Array> {
-  const antwort = await fetch(ENDPUNKT, {
-    method: 'POST',
-    headers: {
-      'x-goog-api-key': schluessel,
-      'content-type': 'application/json',
-    },
-    signal: AbortSignal.timeout(FRIST_MS),
-    body: JSON.stringify({
-      /**
-       * Der Text geht ohne Regieanweisung hinein. Diese Modelle nehmen zwar
-       * eine entgegen („sag das kalt und knapp"), aber ENIs Haltung steht schon
-       * in seinen Worten. Sie ein zweites Mal in eine Anweisung zu schreiben
-       * hiesse, sie an zwei Stellen zu pflegen, und die zweite waere die, die
-       * man vergisst.
-       */
-      contents: [{ parts: [{ text: anfrage.text }] }],
-      generationConfig: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: anfrage.stimme } },
-        },
+  let antwort: Response
+  try {
+    antwort = await fetch(ENDPUNKT, {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': schluessel,
+        'content-type': 'application/json',
       },
-    }),
-  })
+      signal: AbortSignal.timeout(FRIST_MS),
+      body: JSON.stringify({
+        /**
+         * Der Text geht ohne Regieanweisung hinein. Diese Modelle nehmen zwar
+         * eine entgegen („sag das kalt und knapp"), aber ENIs Haltung steht schon
+         * in seinen Worten. Sie ein zweites Mal in eine Anweisung zu schreiben
+         * hiesse, sie an zwei Stellen zu pflegen, und die zweite waere die, die
+         * man vergisst.
+         */
+        contents: [{ parts: [{ text: anfrage.text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: anfrage.stimme } },
+          },
+        },
+      }),
+    })
+  } catch (ursache) {
+    // Netz weg oder Frist abgelaufen: beides ist ein Aussetzer, kein Nein.
+    throw new StimmFehler(`gemini nicht erreichbar: ${(ursache as Error)?.name ?? 'fehler'}`, true)
+  }
 
   if (!antwort.ok) {
     // Nur der Status geht weiter, nie die Antwort der Gegenstelle: die koennte
-    // die Anfrage samt Schluessel spiegeln.
-    throw new Error(`gemini antwortet ${antwort.status}`)
+    // die Anfrage samt Schluessel spiegeln. Der Rumpf wird trotzdem geleert,
+    // sonst haelt Deno die Verbindung offen.
+    void antwort.body?.cancel()
+    throw new StimmFehler(
+      `gemini antwortet ${antwort.status}`,
+      nochEinmal(antwort.status),
+      wartezeit(antwort.headers.get('retry-after'))
+    )
   }
 
   const inhalt = (await antwort.json()) as GeminiAntwort

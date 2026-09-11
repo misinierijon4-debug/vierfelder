@@ -12,6 +12,7 @@ const gespielt: string[] = []
 import {
   bewerteStimme,
   MAX_STUECK,
+  TON_FRIST_MS,
   stimmeMoeglich,
   teileFuerStimme,
   useStimme,
@@ -361,6 +362,80 @@ describe('die echte stimme vor der eingebauten', () => {
 
     expect(result.current.serverBereit).toBe(true)
     expect(result.current.spricht).toBeNull()
+  })
+
+  it('holt dieselbe adresse kein zweites mal', async () => {
+    mitAusgabe()
+    ruf.mockResolvedValueOnce({ status: 200, inhalt: { bereit: true } })
+    ruf.mockResolvedValue({ status: 200, inhalt: { adresse: 'https://bucket/ton.wav' } })
+
+    const { result } = renderHook(() => useStimme())
+    await act(async () => {})
+    await act(async () => {
+      result.current.sprich(ECHTE_ID, 'Das reicht nicht.')
+    })
+    act(() => result.current.halt())
+    await act(async () => {
+      result.current.sprich(ECHTE_ID, 'Das reicht nicht.')
+    })
+
+    // die prüfung beim aufgehen und genau ein ruf nach dem ton
+    expect(ruf).toHaveBeenCalledTimes(2)
+    expect(gespielt.filter((quelle) => quelle === 'https://bucket/ton.wav')).toHaveLength(2)
+  })
+
+  it('lässt den browser reden, wenn die echte stimme zu lange braucht', async () => {
+    // eine halbe minute stille ist kein warten mehr, sondern ein defekt
+    vi.useFakeTimers()
+    const synth = mitAusgabe()
+    ruf.mockResolvedValueOnce({ status: 200, inhalt: { bereit: true } })
+    ruf.mockReturnValueOnce(new Promise(() => {}))
+
+    const { result } = renderHook(() => useStimme())
+    await act(async () => {})
+    await act(async () => {
+      result.current.sprich(ECHTE_ID, 'Das reicht nicht.')
+    })
+    expect(synth.gesprochen).toHaveLength(0)
+
+    await act(async () => {
+      vi.advanceTimersByTime(TON_FRIST_MS + 1)
+    })
+
+    expect(synth.gesprochen).toHaveLength(1)
+    expect(result.current.art).toBe('browser')
+    expect(result.current.spricht).toBe(ECHTE_ID)
+  })
+
+  it('redet nicht zweimal übereinander, wenn der ton nach der frist doch kommt', async () => {
+    vi.useFakeTimers()
+    const synth = mitAusgabe()
+    let liefere: ((wert: unknown) => void) | null = null
+    ruf.mockResolvedValueOnce({ status: 200, inhalt: { bereit: true } })
+    ruf.mockReturnValueOnce(new Promise((fertig) => (liefere = fertig)))
+
+    const { result } = renderHook(() => useStimme())
+    await act(async () => {})
+    await act(async () => {
+      result.current.sprich(ECHTE_ID, 'Das reicht nicht.')
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(TON_FRIST_MS + 1)
+    })
+    await act(async () => {
+      liefere?.({ status: 200, inhalt: { adresse: 'https://bucket/spaet.wav' } })
+    })
+
+    // der späte ton wird nicht mehr abgespielt ...
+    expect(gespielt).not.toContain('https://bucket/spaet.wav')
+    expect(synth.gesprochen).toHaveLength(1)
+
+    // ... aber er ist gemerkt, und beim nächsten mal ist er sofort da
+    act(() => result.current.halt())
+    await act(async () => {
+      result.current.sprich(ECHTE_ID, 'Das reicht nicht.')
+    })
+    expect(gespielt).toContain('https://bucket/spaet.wav')
   })
 
   it('nimmt die eingebaute, solange keine echte stimme eingerichtet ist', async () => {

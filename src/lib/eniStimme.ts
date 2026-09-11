@@ -216,7 +216,12 @@ let tonElement: HTMLAudioElement | null = null
 
 function ton(): HTMLAudioElement | null {
   if (typeof Audio !== 'function') return null
-  tonElement ??= new Audio()
+  if (!tonElement) {
+    tonElement = new Audio()
+    // sobald eine adresse gesetzt ist, soll geladen werden und nicht erst beim
+    // `play()`. das spart genau die zeit, die zwischen beidem liegt.
+    tonElement.preload = 'auto'
+  }
   return tonElement
 }
 
@@ -261,6 +266,26 @@ export async function holeTonAdresse(nachrichtId: string): Promise<string | null
 }
 
 /**
+ * So lange darf ENIs eigene Stimme auf sich warten lassen, bevor die eingebaute
+ * anfängt.
+ *
+ * Beim ersten Mal muss der Ton drüben wirklich gesprochen werden, und das dauert
+ * — bei einer langen Antwort auch mal eine halbe Minute. Eine halbe Minute in
+ * die Stille zu schauen ist aber kein Warten mehr, sondern ein Defekt: man tippt
+ * noch einmal, und noch einmal. Also redet nach diesen Sekunden der Browser
+ * selbst. Die Anfrage läuft dabei weiter, ihr Ton landet im Regal, und beim
+ * nächsten Tippen auf dieselbe Antwort ist er sofort da.
+ */
+export const TON_FRIST_MS = 8_000
+
+/**
+ * Wie lange eine einmal geholte Adresse hier gilt. Der Server unterschreibt sie
+ * für eine Stunde; fünfzig Minuten lassen Luft, damit nie eine Adresse benutzt
+ * wird, die unterwegs abläuft.
+ */
+const ADRESSE_GILT_MS = 50 * 60 * 1000
+
+/**
  * Zeilen, die noch gar nicht in der Datenbank stehen: die vorläufige eigene
  * Zeile und alles aus der lokalen Stimmenprobe. Für die kann es serverseitig
  * keinen Ton geben, und es lohnt nicht, danach zu fragen.
@@ -303,6 +328,15 @@ export function useStimme(): Stimme {
   const [gewaehlt, setGewaehlt] = useState<SpeechSynthesisVoice | null>(null)
   /** welche zeile gerade laufen soll. gegen ein spätes `onend` der vorherigen. */
   const laufendeRef = useRef<string | null>(null)
+  /**
+   * Adressen, die schon einmal geholt wurden.
+   *
+   * Der Ton selbst liegt drüben im Regal, aber die Adresse dorthin kostet jedes
+   * Mal einen Ruf an die Function — bei einer Antwort, die man zweimal hören
+   * will, eine Sekunde Warten für etwas, das man schon hat. Am Hook und nicht am
+   * Modul, damit zwei Ansichten sich nicht gegenseitig etwas unterschieben.
+   */
+  const regalRef = useRef(new Map<string, { adresse: string; bis: number }>())
 
   // einmal fragen, ob eine echte stimme eingerichtet ist. das kostet nichts:
   // die function ruft dafür google nicht auf.
@@ -361,6 +395,13 @@ export function useStimme(): Stimme {
       }
 
       synth.cancel()
+      /**
+       * Chrome bleibt gelegentlich stehen, wenn direkt nach einem `cancel` ein
+       * `speak` kommt: die Ausgabe gilt dann als angehalten und sagt nie wieder
+       * etwas. Ein `resume` auf eine Ausgabe, die gar nicht angehalten ist, tut
+       * nichts — genau deshalb steht es hier unbedingt.
+       */
+      synth.resume()
       const stuecke = teileFuerStimme(text)
       if (stuecke.length === 0) {
         laufendeRef.current = null
@@ -417,30 +458,63 @@ export function useStimme(): Stimme {
         return
       }
 
+      const spiele = (adresse: string) => {
+        setArt('server')
+        klang.src = adresse
+        klang.onended = () => {
+          if (laufendeRef.current !== id) return
+          laufendeRef.current = null
+          setSpricht(null)
+        }
+        klang.onerror = () => {
+          if (laufendeRef.current === id) sprichImBrowser(id, text)
+        }
+        void klang.play()?.catch(() => {
+          if (laufendeRef.current === id) sprichImBrowser(id, text)
+        })
+      }
+
+      // schon einmal geholt und noch gültig: dann gibt es nichts zu warten
+      const gemerkt = regalRef.current.get(id)
+      if (gemerkt && gemerkt.bis > Date.now()) {
+        spiele(gemerkt.adresse)
+        return
+      }
+
       void (async () => {
+        /**
+         * Zwei Uhren laufen gegeneinander: die Function, die den Ton holt, und
+         * die Frist, nach der stattdessen der Browser anfängt. Wer zuerst
+         * ankommt, spricht; der andere hält dann still. `gefallen` ist die
+         * Notiz darüber, damit ENI nicht zweimal übereinander redet.
+         */
+        let gefallen = false
+        const wecker = setTimeout(() => {
+          if (laufendeRef.current !== id) return
+          gefallen = true
+          sprichImBrowser(id, text)
+        }, TON_FRIST_MS)
+
         try {
           const adresse = await holeTonAdresse(id)
+          clearTimeout(wecker)
+          // auch wenn hier niemand mehr zuhört: gemerkt wird sie. genau dafür
+          // hat sich das warten dann wenigstens gelohnt.
+          if (adresse) {
+            regalRef.current.set(id, { adresse, bis: Date.now() + ADRESSE_GILT_MS })
+          }
           // in der zwischenzeit kann längst etwas anderes drankommen sein
-          if (laufendeRef.current !== id) return
+          if (laufendeRef.current !== id || gefallen) return
           if (!adresse) {
             sprichImBrowser(id, text)
             return
           }
-          setArt('server')
-          klang.src = adresse
-          klang.onended = () => {
-            if (laufendeRef.current !== id) return
-            laufendeRef.current = null
-            setSpricht(null)
-          }
-          klang.onerror = () => {
-            if (laufendeRef.current === id) sprichImBrowser(id, text)
-          }
-          await klang.play()
+          spiele(adresse)
         } catch {
           // netz weg, adresse abgelaufen, abspielen verweigert: alles derselbe
           // fall, und die antwort darauf ist dieselbe.
-          if (laufendeRef.current === id) sprichImBrowser(id, text)
+          clearTimeout(wecker)
+          if (laufendeRef.current === id && !gefallen) sprichImBrowser(id, text)
         }
       })()
     },
