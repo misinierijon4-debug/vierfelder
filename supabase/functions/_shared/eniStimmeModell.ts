@@ -1,5 +1,5 @@
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
-import { subAusToken } from './eniModell.ts'
+import { subAusToken } from './token.ts'
 
 /**
  * ENIs Stimme, wenn eine echte dahintersteht.

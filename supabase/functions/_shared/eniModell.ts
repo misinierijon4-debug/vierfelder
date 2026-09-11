@@ -1,4 +1,5 @@
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
+import { subAusToken } from './token.ts'
 import {
   findeAnbieter,
   schluesselVon,
@@ -215,35 +216,10 @@ function antwort(status: number, body: Record<string, unknown>) {
 }
 
 /**
- * Liest `sub` aus dem JWT, ohne die Signatur selbst zu pruefen.
- *
- * Das ist hier kein Vertrauensvorschuss, sondern arbeitsteilig. Zwei Instanzen
- * pruefen bereits, und beide sitzen naeher an der Wahrheit als diese Zeile:
- *
- *   1. Das Gateway. `verify_jwt = true` in supabase/config.toml laesst eine
- *      Anfrage mit ungueltiger Signatur gar nicht bis hierher; sie endet mit
- *      UNAUTHORIZED_INVALID_JWT_FORMAT, bevor die Function startet.
- *   2. Die Datenbank. Jede Abfrage laeuft mit dem Token des Aufrufers unter
- *      Row Level Security. Waere `sub` falsch, scheiterte spaetestens das
- *      Insert an `auth.uid() = user_id` und die Antwort waere ein 403.
- *
- * Frueher stand hier `getUser()`, ein Netzaufruf beim Auth-Server je Nachricht.
- * Der lieferte in dieser Umgebung eine HTML-Fehlerseite statt JSON und legte
- * damit die ganze Function lahm. Ein Aufruf, der nichts pruefen kann, was nicht
- * ohnehin schon geprueft ist, gehoert nicht in den heissen Pfad.
+ * `subAusToken` steht in `token.ts` und wird hier nur weitergereicht: die
+ * Aufrufer dieser Datei sollen nicht wissen muessen, dass sie umgezogen ist.
  */
-export function subAusToken(token: string): string | null {
-  const teile = token.split('.')
-  if (teile.length !== 3) return null
-  try {
-    const roh = teile[1].replace(/-/g, '+').replace(/_/g, '/')
-    const aufgefuellt = roh.padEnd(Math.ceil(roh.length / 4) * 4, '=')
-    const sub = (JSON.parse(atob(aufgefuellt)) as { sub?: unknown }).sub
-    return typeof sub === 'string' && sub !== '' ? sub : null
-  } catch {
-    return null
-  }
-}
+export { subAusToken } from './token.ts'
 
 /**
  * Was der Client ueber seine Anhaenge behauptet, gegen das pruefen, was er

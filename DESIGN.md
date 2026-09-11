@@ -1462,3 +1462,12 @@ stolpert darüber, und jedes zeichen davon ist ton, der erzeugt und übertragen
 werden will. `fuerDieStimme` nimmt die auszeichnung heraus und lässt die worte
 stehen — ein unterstrich mitten im wort bleibt dabei in ruhe, sonst hieße
 `chat_id` plötzlich anders.
+
+**Und das bündel der stimme wurde ein viertel so groß.** `eniStimmeModell.ts`
+brauchte aus `eniModell.ts` genau eine kurze funktion: `subAusToken`. Der import
+zog dafür die ganze anbietertabelle, ENIs charakter und den lagebericht mit —
+siebenundsiebzigtausend zeichen, von denen die stimme keins benutzt, jedes mal
+mitgeladen beim kaltstart. Die funktion steht jetzt in `token.ts`, beide
+functions holen sie dort, und `eniModell.ts` reicht sie weiter, damit die
+aufrufer nichts davon merken. Das bündel der stimme ist damit bei knapp
+dreißigtausend zeichen.
