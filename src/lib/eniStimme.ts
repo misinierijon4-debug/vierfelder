@@ -499,22 +499,43 @@ export function useStimme(): Stimme {
         const controller = new AbortController()
         let ersterTon = false
         let fertig = false
+        /**
+         * Ob hier niemand mehr auf diesen ton wartet, weil die frist abgelaufen
+         * und der browser eingesprungen ist. Die anfrage laeuft dann trotzdem
+         * weiter — siehe unten, das ist der ganze punkt.
+         */
+        let verworfen = false
         const queue = audioWarteschlange(ctx, () => {
-          if (generationRef.current === generation) { laufendeRef.current = null; setSpricht(null) }
+          if (generationRef.current === generation && !verworfen) { laufendeRef.current = null; setSpricht(null) }
         })
         stromRef.current = { halt() { controller.abort(); queue.halt() } }
         const start = performance.now()
         const wecker = setTimeout(() => {
           if (generationRef.current !== generation || ersterTon || fertig) return
-          controller.abort(); queue.halt()
-          setHinweis('Die eigene Stimme braucht zu lange. ENI nutzt die Gerätestimme.')
+          /**
+           * Hier stand `controller.abort()`, und genau das war der grund, warum
+           * ENI immer mit der geraetestimme sprach.
+           *
+           * Der abbruch schlaegt bis zur Function durch: die aufnahme bricht
+           * mitten im satz ab, es landet nichts im regal, und beim naechsten
+           * antippen faengt alles wieder von vorn an — wieder acht sekunden,
+           * wieder die geraetestimme. Ein fehler, der sich selbst am leben
+           * haelt. Jetzt laeuft die anfrage im hintergrund zu ende, ihr ton
+           * legt sich ins regal, und das naechste antippen hat ihn sofort.
+           * Gehoert wird davon nichts mehr: die warteschlange ist gestoppt,
+           * und `verworfen` haelt jede spaete ausgabe zurueck.
+           */
+          verworfen = true
+          queue.halt()
+          stromRef.current = null
+          setHinweis('ENI nutzt gerade die Gerätestimme. Seine eigene wird im Hintergrund fertig und ist beim nächsten Antippen sofort da.')
           sprichImBrowser(id, text)
         }, TON_FRIST_MS)
         void (async () => {
           try {
             await ctx.resume()
             const { status, inhalt } = await rufeEniFunktion('eni-stimme', { nachrichtId: id, stream: true }, controller.signal, (event) => {
-              if (generationRef.current !== generation || controller.signal.aborted) return
+              if (verworfen || generationRef.current !== generation || controller.signal.aborted) return
               if (event.typ === 'audio' && typeof event.pcm === 'string') {
                 if (!ersterTon) {
                   ersterTon = true
@@ -527,8 +548,11 @@ export function useStimme(): Stimme {
             })
             fertig = true
             clearTimeout(wecker)
-            if (generationRef.current !== generation || controller.signal.aborted) return
+            if (controller.signal.aborted) return
+            // die adresse wird auch gemerkt, wenn niemand mehr zuhoert: genau
+            // dafuer hat sich das weiterlaufen ja gelohnt.
             if (typeof inhalt.adresse === 'string') regalRef.current.set(id, { adresse: inhalt.adresse, bis: Date.now() + ADRESSE_GILT_MS })
+            if (verworfen || generationRef.current !== generation) return
             if (status !== 200) throw new Error('Stimme unterbrochen')
             if (ersterTon) queue.abschliessen()
             else if (typeof inhalt.adresse === 'string') spiele(inhalt.adresse)
@@ -536,7 +560,7 @@ export function useStimme(): Stimme {
           } catch {
             clearTimeout(wecker)
             queue.halt()
-            if (generationRef.current !== generation || controller.signal.aborted) return
+            if (verworfen || generationRef.current !== generation || controller.signal.aborted) return
             if (ersterTon) {
               laufendeRef.current = null; setSpricht(null)
               setHinweis('Die Sprachausgabe wurde unterbrochen. Du kannst die Antwort erneut vorlesen lassen.')

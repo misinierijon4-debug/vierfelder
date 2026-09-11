@@ -6,7 +6,9 @@ import {
   STANDARD_STIMME,
   StimmFehler,
   tonPfad,
+  ERSTES_STUECK_ZEICHEN,
   teileFuerAufnahme,
+  teileFuerStrom,
   wavAusPcm,
   type EniStimmeAbhaengigkeiten,
   type StimmAnfrage,
@@ -365,6 +367,19 @@ describe('eine lange antwort für die aufnahme schneiden', () => {
     const stuecke = teileFuerAufnahme(lang, 50)
     for (const stueck of stuecke) expect(stueck.length).toBeLessThanOrEqual(50)
     expect(stuecke.join(' ')).toBe(lang)
+  })
+
+  it('macht das erste stück kurz, wenn jemand mithört', () => {
+    // die stille vor dem ersten ton ist das einzige, was beim zuhören zählt
+    const lang = Array.from({ length: 200 }, () => 'Ein satz mit sieben wörtern hier.').join(' ')
+    const strom = teileFuerStrom(lang)
+    expect(strom[0]!.length).toBeLessThanOrEqual(ERSTES_STUECK_ZEICHEN)
+    // und kein wort geht dabei verloren
+    expect(strom.join(' ')).toBe(teileFuerAufnahme(lang).join(' '))
+  })
+
+  it('lässt eine kurze antwort auch im strom in einem stück', () => {
+    expect(teileFuerStrom('Das reicht nicht.')).toEqual(['Das reicht nicht.'])
   })
 })
 
