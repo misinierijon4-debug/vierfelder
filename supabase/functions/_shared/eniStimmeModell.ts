@@ -68,6 +68,19 @@ export const MAX_STUECK_ZEICHEN = 900
  */
 export const GLEICHZEITIG = 3
 
+/**
+ * So kurz ist das erste stueck, wenn mitgehoert wird.
+ *
+ * Beim strom zaehlt nur eins: wie lange es still bleibt, bevor der erste ton
+ * kommt. Die dauer eines aufrufs haengt an der laenge des erzeugten tons, also
+ * ist das erste stueck der ganze wartebalken. Zweihundertsechzig zeichen sind
+ * etwa fuenfzehn sekunden sprache — genug, um nicht nach einem halben satz zu
+ * stocken, und kurz genug, dass ENI anfaengt, bevor die frist im browser
+ * ablaeuft und die geraetestimme einspringt. Der rest wird in den grossen
+ * stuecken weitergesprochen, die ohnehin nebeneinander laufen.
+ */
+export const ERSTES_STUECK_ZEICHEN = 260
+
 /** so oft wird ein einzelnes stueck hoechstens versucht */
 export const VERSUCHE = 3
 
@@ -231,6 +244,18 @@ export function teileFuerAufnahme(text: string, grenze = MAX_STUECK_ZEICHEN): st
 
   if (offen !== '') stuecke.push(offen)
   return stuecke
+}
+
+/**
+ * Dieselben stuecke, nur vorne feiner geschnitten: was zuerst gesprochen wird,
+ * ist kurz, damit der erste ton frueh da ist. Alles dahinter bleibt gross, weil
+ * dort nur noch die gesamtdauer zaehlt und nicht mehr das warten.
+ */
+export function teileFuerStrom(text: string, erstes = ERSTES_STUECK_ZEICHEN): string[] {
+  const stuecke = teileFuerAufnahme(text)
+  const [anfang, ...rest] = stuecke
+  if (anfang === undefined) return stuecke
+  return [...teileFuerAufnahme(anfang, erstes), ...rest]
 }
 
 /**
@@ -502,7 +527,8 @@ export async function behandleEniStimme(
     // Reihenfolge bleibt trotzdem die der Saetze, dafuer sorgt `sprichAlle`.
     let teile: Uint8Array[]
     try {
-      teile = await sprichAlle(teileFuerAufnahme(text), stimme, schluessel, deps, onPcm, signal)
+      const stuecke = onPcm ? teileFuerStrom(text) : teileFuerAufnahme(text)
+      teile = await sprichAlle(stuecke, stimme, schluessel, deps, onPcm, signal)
     } catch (ursache) {
       deps.protokoll.error('eni-stimme: gegenstelle nicht erreichbar', ursache)
       return antwort(502, {

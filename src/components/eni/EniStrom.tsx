@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
-import { IconFileText, IconSpeakerHigh, IconStop } from './EniSymbole'
+import { IconFileText, IconPlus, IconSpeakerHigh, IconStop } from './EniSymbole'
 import { IconChart, IconFood, IconMoon, IconTarget } from './EniSymbole'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
@@ -56,6 +56,18 @@ export function EniStrom({
   onAuftakt,
   duellStand,
 }: Props) {
+  /**
+   * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
+   *
+   * Vorher standen „Fuer spaeter merken" und „Als naechsten Schritt uebernehmen"
+   * unter jeder einzelnen zeile, also auch unter jeder eigenen frage. Bei
+   * zwanzig zeilen sind das vierzig angebote, die niemand angenommen hat: der
+   * verlauf las sich wie ein formular. Der weg dorthin bleibt einen tipp weit
+   * entfernt — der kleine knopf in der kopfzeile —, nur steht die frage nicht
+   * mehr ungefragt da.
+   */
+  const [notizFuer, setNotizFuer] = useState<string | null>(null)
+
   if (zeilen.length === 0 && !prueft) {
     return <EniLeer me={me} duellStand={duellStand} onAuftakt={onAuftakt} />
   }
@@ -77,6 +89,8 @@ export function EniStrom({
                 frisch={zeile.id === frisch}
                 spricht={spricht === zeile.id}
                 onVorlesen={onVorlesen && (() => onVorlesen(zeile))}
+                notizOffen={notizFuer === zeile.id}
+                onNotiz={onMerken && (() => setNotizFuer((offen) => (offen === zeile.id ? null : zeile.id)))}
               />
             ) : (
               <MenschWort
@@ -85,12 +99,19 @@ export function EniStrom({
                 zeit={zeile.erstellt}
                 anhaenge={zeile.anhaenge}
                 bildAdressen={bildAdressen}
+                notizOffen={notizFuer === zeile.id}
+                onNotiz={onMerken && (() => setNotizFuer((offen) => (offen === zeile.id ? null : zeile.id)))}
               />
             )}
-            {onMerken && <div className="flex flex-wrap gap-3">
-              <button type="button" className="min-h-11 text-xs text-kreide-60 underline underline-offset-4" onClick={() => onMerken(zeile, 'profil')}>Für später merken</button>
-              {zeile.rolle === 'eni' && <button type="button" className="min-h-11 text-xs text-kreide-60 underline underline-offset-4" onClick={() => onMerken(zeile, 'aufgabe')}>Als nächsten Schritt übernehmen</button>}
-            </div>}
+            {onMerken && notizFuer === zeile.id && (
+              <Notizknoepfe
+                nurProfil={zeile.rolle !== 'eni'}
+                onWahl={(art) => {
+                  setNotizFuer(null)
+                  onMerken(zeile, art)
+                }}
+              />
+            )}
           </li>
         )
       })}
@@ -128,11 +149,15 @@ function EniWort({
   frisch,
   spricht,
   onVorlesen,
+  notizOffen,
+  onNotiz,
 }: {
   text: string
   frisch: boolean
   spricht: boolean
   onVorlesen?: () => void
+  notizOffen?: boolean
+  onNotiz?: () => void
 }) {
   return (
     <div className="pt-5">
@@ -153,6 +178,7 @@ function EniWort({
             )}
           </button>
         )}
+        {onNotiz && <NotizKnopf offen={notizOffen === true} onKlick={onNotiz} />}
       </div>
 
       <div className="mt-2 text-kreide">
@@ -274,6 +300,58 @@ function rendereWoerter(
   })
 }
 
+/**
+ * Der kleine knopf, hinter dem die notizknoepfe stecken.
+ *
+ * Ein zeichen statt zweier saetze: er sitzt in der kopfzeile, die es ohnehin
+ * gibt, und kostet deshalb keine zeile im verlauf. Was er oeffnet, steht dann
+ * ausgeschrieben da — aber erst, wenn jemand danach gefragt hat.
+ */
+function NotizKnopf({ offen, onKlick }: { offen: boolean; onKlick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onKlick}
+      aria-expanded={offen}
+      aria-label={offen ? 'notieren schliessen' : 'diese zeile notieren'}
+      className="-my-3 flex size-11 shrink-0 items-center justify-center self-center transition-colors"
+      style={{ color: offen ? 'var(--kreide)' : 'var(--kreide-52)' }}
+    >
+      <IconPlus size={13} />
+    </button>
+  )
+}
+
+/** die beiden wege, eine zeile zu behalten. nur sichtbar, wenn danach gefragt wird. */
+function Notizknoepfe({
+  nurProfil,
+  onWahl,
+}: {
+  nurProfil: boolean
+  onWahl: (art: 'profil' | 'aufgabe') => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-3 pt-1">
+      <button
+        type="button"
+        className="min-h-11 text-xs text-kreide-60 underline underline-offset-4"
+        onClick={() => onWahl('profil')}
+      >
+        Für später merken
+      </button>
+      {!nurProfil && (
+        <button
+          type="button"
+          className="min-h-11 text-xs text-kreide-60 underline underline-offset-4"
+          onClick={() => onWahl('aufgabe')}
+        >
+          Als nächsten Schritt übernehmen
+        </button>
+      )}
+    </div>
+  )
+}
+
 /** was du vorlegst, steht praesent und klar lesbar */
 function MenschWort({
   text,
@@ -281,12 +359,16 @@ function MenschWort({
   zeit,
   anhaenge,
   bildAdressen,
+  notizOffen,
+  onNotiz,
 }: {
   text: string
   me: UserId
   zeit: string
   anhaenge?: EniAnhang[]
   bildAdressen?: Map<string, string>
+  notizOffen?: boolean
+  onNotiz?: () => void
 }) {
   const farbe = userDef(me).farbe
   return (
@@ -302,6 +384,7 @@ function MenschWort({
           <span className="tnum text-[11px] text-kreide-52">
             {UHRZEIT.format(new Date(zeit))}
           </span>
+          {onNotiz && <NotizKnopf offen={notizOffen === true} onKlick={onNotiz} />}
         </p>
         {text !== '' && (
           <p className="mt-1.5 whitespace-pre-wrap text-pretty text-[15px] leading-relaxed text-kreide">
