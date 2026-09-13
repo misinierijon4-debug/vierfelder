@@ -31,6 +31,7 @@ import { EniInfoDialog } from './EniInfoDialog'
 import { EniModellwahl } from './EniModellwahl'
 import { EniStrom } from './EniStrom'
 import { EniVerlauf } from './EniVerlauf'
+import { useEniViewport } from './useEniViewport'
 
 type Modus = 'pruefen' | 'modell' | 'stimmenprobe'
 
@@ -57,6 +58,7 @@ export function EniApp({
   baueGeber = STANDARD_GEBER,
   initialDuellStand = null,
 }: Props) {
+  const viewportRef = useEniViewport()
   const [me, setMe] = useState<UserId>('erijon')
   const [duellStand, setDuellStand] = useState<DuellKontext | null>(initialDuellStand)
   const [chats, setChats] = useState<EniChat[]>([])
@@ -176,7 +178,8 @@ export function EniApp({
     const abstandUnten = el.scrollHeight - el.scrollTop - el.clientHeight
     const amEnde = abstandUnten < 120
     if (erzwingen || amEnde) {
-      endeRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
+      // Nur den Verlauf bewegen, niemals die iOS-Seite samt Kopf und Eingabe.
+      el.scrollTo?.({ top: el.scrollHeight, behavior: 'smooth' })
     }
   }, [])
 
@@ -560,7 +563,7 @@ export function EniApp({
   )
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-grund">
+    <div ref={viewportRef} className="fixed inset-x-0 top-0 flex h-[100dvh] flex-col overflow-hidden bg-grund">
       <header className="vollbild-safe-x shrink-0 border-b border-linie pt-[calc(var(--app-safe-top)+0.75rem)]">
         <div className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2 pb-2.5">
           {/* Ruecknavigation */}

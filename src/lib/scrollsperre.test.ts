@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const wurzel = { style: { overflow: '', overscrollBehavior: '' } }
+const app = { style: { overflow: '', overscrollBehavior: '' } }
 
 beforeEach(() => {
   wurzel.style.overflow = ''
   wurzel.style.overscrollBehavior = ''
+  app.style.overflow = ''
+  app.style.overscrollBehavior = ''
   Object.defineProperty(globalThis, 'document', {
-    value: { documentElement: wurzel },
+    value: { documentElement: wurzel, getElementById: () => app },
     configurable: true,
     writable: true,
   })
@@ -27,9 +30,11 @@ describe('scrollsperre', () => {
     const scrollSperre = await frisch()
     const loesen = scrollSperre()
     expect(wurzel.style.overflow).toBe('hidden')
+    expect(app.style.overflow).toBe('hidden')
     expect(wurzel.style.overscrollBehavior).toBe('none')
     loesen()
     expect(wurzel.style.overflow).toBe('')
+    expect(app.style.overflow).toBe('')
     expect(wurzel.style.overscrollBehavior).toBe('')
   })
 

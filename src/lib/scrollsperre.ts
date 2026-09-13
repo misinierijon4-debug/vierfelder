@@ -11,23 +11,30 @@ import { useEffect } from 'react'
  * nur die Kette nach draussen ist unterbrochen.
  */
 let sperren = 0
-let vorher: { overflow: string; overscroll: string } | null = null
+let vorher: { element: HTMLElement; overflow: string; overscroll: string }[] | null = null
 
 function anziehen(): void {
   sperren += 1
   if (sperren > 1) return
-  const wurzel = document.documentElement
-  vorher = { overflow: wurzel.style.overflow, overscroll: wurzel.style.overscrollBehavior }
-  wurzel.style.overflow = 'hidden'
-  wurzel.style.overscrollBehavior = 'none'
+  const elemente = [document.documentElement, document.getElementById('root')].filter(
+    (element): element is HTMLElement => element !== null
+  )
+  vorher = elemente.map((element) => ({
+    element, overflow: element.style.overflow, overscroll: element.style.overscrollBehavior,
+  }))
+  elemente.forEach((element) => {
+    element.style.overflow = 'hidden'
+    element.style.overscrollBehavior = 'none'
+  })
 }
 
 function loesen(): void {
   sperren = Math.max(0, sperren - 1)
   if (sperren > 0 || !vorher) return
-  const wurzel = document.documentElement
-  wurzel.style.overflow = vorher.overflow
-  wurzel.style.overscrollBehavior = vorher.overscroll
+  vorher.forEach(({ element, overflow, overscroll }) => {
+    element.style.overflow = overflow
+    element.style.overscrollBehavior = overscroll
+  })
   vorher = null
 }
 
