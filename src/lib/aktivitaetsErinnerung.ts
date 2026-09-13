@@ -4,18 +4,56 @@ export const AKTIVITAETS_ERINNERUNGEN = [
   { art: 'lernen', label: 'lernen', beschreibung: 'mo–fr · 18:30 · wenn noch kein lerneintrag vorliegt' },
   { art: 'lesen', label: 'lesen', beschreibung: 'täglich · 20:45 · wenn noch kein leseeintrag vorliegt' },
   { art: 'wochenblick', label: 'wochenendspurt', beschreibung: 'sonntag · 18:00 · euer aktueller wochenstand' },
+  { art: 'partner', label: 'partnerfortschritt', beschreibung: 'täglich · 09:00–21:00 · wenn dein Partner Punkte sammelt oder vorzieht' },
+  { art: 'wochenrueckblick', label: 'wochenrückblick', beschreibung: 'sonntag · 20:00 · Eni fasst deine Woche zusammen' },
 ] as const
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>
-const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv'
-const STANDARD: AktivitaetsEinstellungen = { lernen_aktiv: true, lesen_aktiv: true, wochenblick_aktiv: true }
+const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv'
+const ALTE_SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv'
+const STANDARD: AktivitaetsEinstellungen = {
+  lernen_aktiv: true,
+  lesen_aktiv: true,
+  wochenblick_aktiv: true,
+  partner_aktiv: true,
+  wochenrueckblick_aktiv: true,
+}
+
+const FEHLENDE_SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'])
+
+function istFehlendesSchema(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' && FEHLENDE_SCHEMA_CODES.has(code)
+}
+
+function vervollstaendigeEinstellungen(roh: unknown): AktivitaetsEinstellungen {
+  const daten = roh && typeof roh === 'object' ? roh as Record<string, unknown> : {}
+  return {
+    lernen_aktiv: typeof daten.lernen_aktiv === 'boolean' ? daten.lernen_aktiv : STANDARD.lernen_aktiv,
+    lesen_aktiv: typeof daten.lesen_aktiv === 'boolean' ? daten.lesen_aktiv : STANDARD.lesen_aktiv,
+    wochenblick_aktiv: typeof daten.wochenblick_aktiv === 'boolean' ? daten.wochenblick_aktiv : STANDARD.wochenblick_aktiv,
+    partner_aktiv: typeof daten.partner_aktiv === 'boolean' ? daten.partner_aktiv : STANDARD.partner_aktiv,
+    wochenrueckblick_aktiv: typeof daten.wochenrueckblick_aktiv === 'boolean' ? daten.wochenrueckblick_aktiv : STANDARD.wochenrueckblick_aktiv,
+  }
+}
 
 export async function ladeAktivitaetsErinnerungen(): Promise<AktivitaetsEinstellungen | null> {
   if (!supabase) return null
-  const { data, error } = await supabase.from('erinnerungs_einstellungen').select(SPALTEN).maybeSingle()
-  if (error && ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(error.code)) return null
-  if (error) throw new Error('erinnerungen konnten nicht geladen werden.')
-  return data as AktivitaetsEinstellungen | null ?? STANDARD
+  const aktuelle = await supabase.from('erinnerungs_einstellungen').select(SPALTEN).maybeSingle()
+  if (!aktuelle.error) return vervollstaendigeEinstellungen(aktuelle.data)
+
+  // Die UI bleibt auch zwischen App- und Migrations-Release brauchbar: fehlen
+  // nur die neuen Spalten, lesen wir den alten Vertrag und setzen die beiden
+  // neuen Schalter auf ihren sicheren Standard. Fehlt die Tabelle selbst,
+  // bleibt der bisherige Null-Fallback unverändert.
+  if (!istFehlendesSchema(aktuelle.error)) {
+    throw new Error('erinnerungen konnten nicht geladen werden.')
+  }
+  const alte = await supabase.from('erinnerungs_einstellungen').select(ALTE_SPALTEN).maybeSingle()
+  if (alte.error && istFehlendesSchema(alte.error)) return null
+  if (alte.error) throw new Error('erinnerungen konnten nicht geladen werden.')
+  return vervollstaendigeEinstellungen(alte.data)
 }
 
 export async function setzeAktivitaetsErinnerung(art: AktivitaetsArt, aktiv: boolean): Promise<void> {

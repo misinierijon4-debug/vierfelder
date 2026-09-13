@@ -2,7 +2,14 @@ import type { sende } from '../../supabase/functions/_shared/webpush'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { versendeAktivitaeten } from '../../supabase/functions/_shared/aktivitaetsVersand'
 
-const kandidat = { user_id: 'test', art: 'lesen', tag: '2026-09-07', nachricht: 'lesen?' }
+const kandidat = {
+  user_id: 'test',
+  art: 'lesen' as const,
+  tag: '2026-09-07',
+  sendetag: '2026-09-07',
+  nachricht: 'lesen?',
+  url: './' as const,
+}
 const key = { oeffentlich: '', privat: '', kontakt: '' }
 let rpc: ReturnType<typeof vi.fn>
 let senden: ReturnType<typeof vi.fn<typeof sende>>

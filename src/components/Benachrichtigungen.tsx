@@ -30,7 +30,8 @@ const AktivitaetsErinnerungen = lazy(() =>
  * Er steht unten bei der Fusszeile und fasst alle Erinnerungen in einem
  * gemeinsamen Menue zusammen. Ist Push aus, bleibt er ein Satz und ein Knopf;
  * ist er an, oeffnet sich ein Menue mit den Aktionen (Probe, Aus) und allen
- * vier Erinnerungen (Gewicht, Lernen, Lesen, Wochenendspurt) im selben Rhythmus.
+ * sechs Erinnerungen (Gewicht, Lernen, Lesen, Wochenendspurt, Partnerfortschritt
+ * und Wochenrückblick) im selben Rhythmus.
  */
 export function Benachrichtigungen() {
   const [zustand, setZustand] = useState<PushZustand | null>(null)

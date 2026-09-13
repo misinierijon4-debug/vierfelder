@@ -1,7 +1,14 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ENI_HASH, oeffneEni, routeZuruecksetzen, schliesseEni } from './eniRoute'
+import {
+  ENI_HASH,
+  istEniWochenbeginn,
+  oeffneEni,
+  oeffneEniWoche,
+  routeZuruecksetzen,
+  schliesseEni,
+} from './eniRoute'
 
 beforeEach(() => {
   routeZuruecksetzen()
@@ -44,5 +51,28 @@ describe('der weg zu ENI', () => {
     schliesseEni()
     schliesseEni()
     expect(zurueck).toHaveBeenCalledTimes(1)
+  })
+
+  it('oeffnet eine gueltige Montagwoche als ENI-Kontext', () => {
+    oeffneEniWoche('2026-09-14')
+    expect(window.location.hash).toBe('#/eni?woche=2026-09-14')
+  })
+
+  it('weist ungueltige Montage, Fantasiedaten und Nicht-Montage zurueck', () => {
+    expect(istEniWochenbeginn('2026-09-14')).toBe(true)
+    expect(istEniWochenbeginn('2026-02-30')).toBe(false)
+    expect(istEniWochenbeginn('2026-09-13')).toBe(false)
+    oeffneEniWoche('2026-09-13')
+    expect(window.location.hash).toBe('')
+  })
+
+  it('liest den Wochenkontext aus dem Hash und laesst ihn bei einer anderen Woche wechseln', () => {
+    window.location.hash = '#/eni?woche=2026-09-14'
+    expect(window.location.hash).toBe('#/eni?woche=2026-09-14')
+    oeffneEniWoche('2026-09-21')
+    expect(window.location.hash).toBe('#/eni?woche=2026-09-21')
+    // Der Hook wird im Browser ueber hashchange invalidiert; die reine
+    // Auslese prueft dieselbe strikte Grundlage fuer Deep Links.
+    expect(istEniWochenbeginn(new URLSearchParams(window.location.hash.slice(ENI_HASH.length)).get('woche'))).toBe(true)
   })
 })

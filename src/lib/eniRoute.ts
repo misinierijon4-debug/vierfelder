@@ -10,6 +10,8 @@ import { useSyncExternalStore } from 'react'
  * homescreen-pwa mit ihrem eigenen scope.
  */
 export const ENI_HASH = '#/eni'
+const ENI_WOCHE_PARAM = 'woche'
+const DATUM_MUSTER = /^\d{4}-\d{2}-\d{2}$/
 
 export type Route = 'zweikampf' | 'eni'
 
@@ -18,7 +20,28 @@ let selbstGeoeffnet = false
 
 function lies(): Route {
   if (typeof window === 'undefined') return 'zweikampf'
-  return window.location.hash.startsWith(ENI_HASH) ? 'eni' : 'zweikampf'
+  return istEniHash(window.location.hash) ? 'eni' : 'zweikampf'
+}
+
+function istEniHash(hash: string): boolean {
+  return hash === ENI_HASH || hash.startsWith(`${ENI_HASH}?`)
+}
+
+/** Ein Wochenmontag wird ohne lokale Zeitzone geprueft, damit es auf jedem
+ * Geraet dieselbe Adresse ist und Fantasiedaten wie der 31.02. nicht gelten. */
+export function istEniWochenbeginn(wert: unknown): wert is string {
+  if (typeof wert !== 'string' || !DATUM_MUSTER.test(wert)) return false
+  const datum = new Date(`${wert}T00:00:00.000Z`)
+  return !Number.isNaN(datum.getTime())
+    && datum.toISOString().slice(0, 10) === wert
+    && datum.getUTCDay() === 1
+}
+
+function liesEniWochenbeginn(): string | null {
+  if (typeof window === 'undefined' || !istEniHash(window.location.hash)) return null
+  const query = window.location.hash.slice(ENI_HASH.length)
+  const wert = new URLSearchParams(query).get(ENI_WOCHE_PARAM)
+  return istEniWochenbeginn(wert) ? wert : null
 }
 
 function abonniere(melde: () => void) {
@@ -30,9 +53,21 @@ export function useRoute(): Route {
   return useSyncExternalStore(abonniere, lies, () => 'zweikampf')
 }
 
+/** Der optionale Wochenkontext lebt auf demselben Hash wie ENI. */
+export function useEniWochenbeginn(): string | null {
+  return useSyncExternalStore(abonniere, liesEniWochenbeginn, () => null)
+}
+
 export function oeffneEni() {
   selbstGeoeffnet = true
   window.location.hash = ENI_HASH
+}
+
+/** Oeffnet ENI fuer einen serverseitig bestaetigten Wochenmontag. */
+export function oeffneEniWoche(wochenbeginn: string): void {
+  if (!istEniWochenbeginn(wochenbeginn)) return
+  selbstGeoeffnet = true
+  window.location.hash = `${ENI_HASH}?${ENI_WOCHE_PARAM}=${encodeURIComponent(wochenbeginn)}`
 }
 
 /**

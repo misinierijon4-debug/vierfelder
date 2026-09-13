@@ -19,6 +19,12 @@ Deno.serve(async request => {
     const { data: erlaubt, error } = await db.rpc('pruefe_aktivitaets_scheduler', { p_token: token })
     if (error) return antwort(503, { error: 'autorisierung nicht pruefbar' })
     if (erlaubt !== true) return antwort(401, { error: 'nicht autorisiert' })
+    // Die ENI-Einladung ist fachlich unabhaengig von Push-Abos, Einstellungen
+    // und VAPID. Deshalb wird sie zuerst mit der echten Datenbankzeit gesichert;
+    // ein fehlender Push-Schluessel darf den spaeteren App-Catch-up nicht
+    // verhindern.
+    const { error: einladungsFehler } = await db.rpc('sichere_faellige_eni_wochen_einladungen')
+    if (einladungsFehler) return antwort(503, { error: 'wochen-einladung nicht speicherbar' })
     const schluessel = {
       oeffentlich: Deno.env.get('VAPID_PUBLIC_KEY') ?? '',
       privat: Deno.env.get('VAPID_PRIVATE_KEY') ?? '',

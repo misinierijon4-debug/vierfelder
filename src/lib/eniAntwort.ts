@@ -57,6 +57,16 @@ export type Antwortgeber = {
    * einmal zu schicken hiesse, denselben Satz zweimal in den Chat zu stellen.
    */
   nochmal: (chatId: string, signal?: AbortSignal, onText?: (text: string) => void) => Promise<Antwort>
+  /**
+   * Erzeugt oder laedt den persistenten Wochenrueckblick fuer einen gebundenen
+   * Wochenchat.
+   */
+  wochenbericht?: (
+    chatId: string,
+    wochenbeginn: string,
+    signal?: AbortSignal,
+    onText?: (text: string) => void
+  ) => Promise<Antwort>
 }
 
 export class EniModellFehler extends Error {
@@ -237,6 +247,18 @@ export function modellAntwort(anbieter: string | null = null): Antwortgeber {
       )
       return lies(status, inhalt)
     },
+    async wochenbericht(chatId, wochenbeginn, signal, onText) {
+      const { status, inhalt } = await rufe(
+        {
+          chatId,
+          wochenbeginn,
+          ...(anbieter ? { modell: anbieter } : {}),
+        },
+        signal,
+        onText
+      )
+      return lies(status, inhalt)
+    },
   }
 }
 
@@ -277,6 +299,19 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
         eniAntwort(offene.text, Math.max(0, nr), person)
       )
       return { mensch: offene, eni }
+    },
+    async wochenbericht(chatId, _wochenbeginn, signal) {
+      if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
+      const person = await speicher.person()
+      const bisher = await speicher.nachrichten(chatId)
+      const offene = bisher.find(
+        (z) => z.rolle === 'mensch' && z.text === 'Willst du, dass Eni deine Woche zusammenfasst?'
+      )
+      const mensch = offene ?? (await speicher.schreibe(chatId, 'mensch', 'Willst du, dass Eni deine Woche zusammenfasst?'))
+      if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen', mensch)
+      const urteil = 'Erfolge\nSolide Woche. Du hast deine Punkte im Blick behalten.\n\nAktivitäten\nEinheiten und Training wurden erfasst.\n\nSchlaf\nSchlafdaten liegen für die Woche vor.\n\nVergleich\nDer Zweikampf bleibt spannend.\n\nNächste Woche\nBleib bei deinen festen Gewohnheiten. Leg die Einheiten früh fest.'
+      const eni = await speicher.schreibe(chatId, 'eni', urteil)
+      return { mensch, eni }
     },
   }
 }

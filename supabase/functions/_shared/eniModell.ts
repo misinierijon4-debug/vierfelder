@@ -10,6 +10,11 @@ import {
 } from './eniAnbieter.ts'
 import { eniSystemPrompt } from './eniCharakter.ts'
 import { baueLage } from './eniLage.ts'
+import {
+  baueWochenlage,
+  istWochenMontag,
+  type WochenDatenbank,
+} from './eniWochenlage.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
@@ -83,6 +88,12 @@ export const ANHANG_BUCKET = 'eni-anhaenge'
 /** `Error.name`, mit dem der Modellaufruf eine Ablehnung meldet */
 export const ABLEHNUNG = 'EniAblehnung'
 
+/** Die Vorlage des woechentlichen ENI-Chats bleibt deterministisch. */
+export const WOCHENBERICHT_VORLAGE = 'Willst du, dass Eni deine Woche zusammenfasst?'
+
+/** Zusatzanweisung fuer den explizit gebundenen Wochen-Chat. */
+export const WOCHENBERICHT_ANWEISUNG = `WOCHENBERICHT-MODUS. Beantworte diesen Wochenrueckblick anhand des serverseitigen WOCHENLAGE-Datenblocks. Verwende kurze Abschnitte mit den Ueberschriften Erfolge, Aktivitäten, Schlaf, Vergleich und Nächste Woche. Nenne konkrete belegte Datensaetze, Tagespunkte, Tage, Werte und Minuten nur aus dem Datenblock. Trenne echte Rohdatensaetze von deduplizierten Tagespunkten. Fehlt eine Quelle oder Zahl, sage ausdrücklich "unbekannt" und ersetze sie nicht durch null. Unter Nächste Woche stehen genau zwei realistische, kleine Verbesserungen. Erfinde keine Termine, Diagnosen, Ursachen, Absichten oder Leistungen. Schreibe normal gross und klein, direkt und respektvoll. Dieser Bericht darf laenger als der normale Zwei-bis-vier-Satz-Modus sein, bleibt aber kompakt.`
+
 export type EniRolle = 'eni' | 'mensch'
 
 export type EniZeile = {
@@ -103,6 +114,21 @@ export type AnhangVorlage = {
   /** text: der auf dem geraet ausgelesene inhalt */
   inhalt?: string
   groesse: number
+}
+
+export type WochenSystemKontext = {
+  person: Person
+  lage: string
+  wochenlage: string
+}
+
+/** Kombiniert den unveraenderten ENI-Charakter mit dem Wochenmodus. */
+export function eniWochenSystemPrompt({
+  person,
+  lage,
+  wochenlage,
+}: WochenSystemKontext): string {
+  return `${eniSystemPrompt({ person, lage })}\n\n${WOCHENBERICHT_ANWEISUNG}\n\n${wochenlage}`
 }
 
 type Fehler = { code?: string; message?: string; status?: number }
@@ -327,6 +353,258 @@ function bearerToken(autorisierung: string): string | null {
   return token === '' ? null : token
 }
 
+/**
+ * Ein Wochenbericht ist ein idempotenter Ablauf: eine Vorlage, hoechstens ein
+ * Urteil. Die Datenbank schuetzt den Chat selbst ueber den Wochen-Unique-Key,
+ * Nachrichten haben aber keinen solchen Schluessel. Dieser kleine Prozesslock
+ * schliesst deshalb parallele Requests in derselben Edge-Function-Instanz; der
+ * erneute Verlaufslauf innerhalb des Locks ist der Persistenzschutz fuer
+ * Wiederholungen und fuer einen abgebrochenen Modellaufruf.
+ */
+const wochenSperren = new Map<string, Promise<void>>()
+
+async function mitWochenSperre<T>(schluessel: string, arbeit: () => Promise<T>): Promise<T> {
+  const vorher = wochenSperren.get(schluessel) ?? Promise.resolve()
+  let freigeben!: () => void
+  const naechster = new Promise<void>((resolve) => {
+    freigeben = resolve
+  })
+  const reihe = vorher.then(() => naechster)
+  wochenSperren.set(schluessel, reihe)
+  await vorher
+  try {
+    return await arbeit()
+  } finally {
+    freigeben()
+    if (wochenSperren.get(schluessel) === reihe) wochenSperren.delete(schluessel)
+  }
+}
+
+type WochenberichtOptionen = {
+  db: EniDatenbank
+  personen: Map<string, Person>
+  person: Person
+  userId: string
+  chatId: string
+  wochenbeginn: string
+  anbieter: Anbieter
+  modellSchluessel: string
+  deps: EniAbhaengigkeiten
+  jetzt: Date
+  stream: boolean
+  signal?: AbortSignal
+}
+
+function wochenFehler(status: number, error: string, code: string): Response {
+  return antwort(status, { error, code })
+}
+
+function wochenZeile(roh: unknown): Zeile | null {
+  if (typeof roh !== 'object' || roh === null) return null
+  const zeile = roh as Record<string, unknown>
+  if (zeile.rolle !== 'mensch' && zeile.rolle !== 'eni') return null
+  return {
+    ...zeile,
+    id: String(zeile.id ?? ''),
+    rolle: zeile.rolle,
+    text: String(zeile.text ?? ''),
+    erstellt: String(zeile.erstellt ?? ''),
+  }
+}
+
+async function behandleWochenbericht(optionen: WochenberichtOptionen): Promise<Response> {
+  const {
+    db,
+    personen,
+    person,
+    userId,
+    chatId,
+    wochenbeginn,
+    anbieter,
+    modellSchluessel,
+    deps,
+    jetzt,
+    stream,
+    signal,
+  } = optionen
+
+  if (!istWochenMontag(wochenbeginn)) {
+    return wochenFehler(400, 'wochenbeginn muss ein Montag sein', 'ungueltiger_wochenbeginn')
+  }
+  const lokal = lokaleMinute(jetzt)
+  if (wochenbeginn > lokal.tag) {
+    return wochenFehler(400, 'diese Woche liegt in der Zukunft', 'woche_in_zukunft')
+  }
+
+  const chat = await db
+    .from('eni_chats')
+    .select('id,user_id,wochenbeginn')
+    .eq('id', chatId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (chat.error) return wochenFehler(500, 'der Wochenchat konnte nicht gelesen werden', 'chat_nicht_lesbar')
+  if (!chat.data || String(chat.data.wochenbeginn ?? '') !== wochenbeginn) {
+    return wochenFehler(403, 'dieser Chat gehört nicht zu dieser Woche', 'wochenbindung_falsch')
+  }
+
+  // Eine geschlossene Einladung bleibt absichtlich oeffnbar: sie archiviert
+  // den bereits bestaetigten Prompt, statt einen neuen Chat zu erzwingen.
+  const einladung = await db
+    .from('eni_wochen_einladungen')
+    .select('user_id,wochenbeginn,faellig_am,geschlossen_am,erstellt')
+    .eq('user_id', userId)
+    .eq('wochenbeginn', wochenbeginn)
+    .maybeSingle()
+  if (einladung.error) return wochenFehler(500, 'die Wochen-Einladung konnte nicht gelesen werden', 'einladung_nicht_lesbar')
+  if (!einladung.data) return wochenFehler(403, 'für diese Woche gibt es keine Einladung', 'keine_einladung')
+  const faelligMs = new Date(String(einladung.data.faellig_am ?? '')).getTime()
+  if (!Number.isFinite(faelligMs)) return wochenFehler(500, 'die Wochen-Einladung hat keinen gültigen Fälligkeitszeitpunkt', 'einladung_ungueltig')
+  if (faelligMs > jetzt.getTime()) {
+    return wochenFehler(409, 'der Wochenrückblick ist noch nicht fällig', 'noch_nicht_faellig')
+  }
+
+  const sperrschluessel = `${userId}:${chatId}:${wochenbeginn}`
+  return mitWochenSperre(sperrschluessel, async () => {
+    const verlauf = await db
+      .from('eni_nachrichten')
+      .select('id,chat_id,user_id,rolle,text,erstellt')
+      .eq('chat_id', chatId)
+      .eq('user_id', userId)
+      .order('erstellt', { ascending: false })
+      .limit(KONTEXT_NACHRICHTEN)
+    if (verlauf.error) return wochenFehler(500, 'der Wochenchat konnte nicht gelesen werden', 'chat_nicht_lesbar')
+    const vorherige = (verlauf.data ?? [])
+      .map(wochenZeile)
+      .filter((zeile): zeile is Zeile => zeile !== null)
+      .reverse()
+    const letzter = vorherige[vorherige.length - 1]
+    const istWochenVorlage = (zeile: Zeile | undefined) =>
+      zeile?.rolle === 'mensch' && zeile.text === WOCHENBERICHT_VORLAGE
+    const letzteVorlage = vorherige.filter(istWochenVorlage).at(-1)
+    const letztesUrteil = letzter?.rolle === 'eni' && letzteVorlage ? letzter : null
+
+    const liefere = (mensch: Zeile, eni: Zeile | null): Response => {
+      if (!stream) return antwort(200, { mensch, eni })
+      return ereignisStrom(async (sende) => {
+        sende({ typ: 'mensch', mensch })
+        return antwort(200, { mensch, eni })
+      }, CORS)
+    }
+
+    // Ein bereits gespeichertes Urteil wird direkt geliefert. So kostet ein
+    // erneutes Oeffnen des Archivs keinen Modellaufruf und legt keine Zeile an.
+    if (letztesUrteil && letzteVorlage) return liefere(letzteVorlage, letztesUrteil)
+
+    let mensch: Zeile
+    let kontext: Zeile[]
+    if (istWochenVorlage(letzter)) {
+      mensch = letzter!
+      kontext = vorherige.slice(0, -1)
+    } else {
+      const eingefuegt = await db
+        .from('eni_nachrichten')
+        .insert({ chat_id: chatId, user_id: userId, rolle: 'mensch', text: WOCHENBERICHT_VORLAGE })
+        .select('id,chat_id,user_id,rolle,text,erstellt')
+        .single()
+      if (eingefuegt.error || !eingefuegt.data) {
+        return wochenFehler(403, 'die Wochen-Vorlage konnte nicht gespeichert werden', 'vorlage_nicht_gespeichert')
+      }
+      mensch = wochenZeile(eingefuegt.data) ?? {
+        ...eingefuegt.data,
+        id: String(eingefuegt.data.id ?? ''),
+        rolle: 'mensch',
+        text: WOCHENBERICHT_VORLAGE,
+      }
+      kontext = vorherige
+    }
+
+    let lage: string
+    try {
+      lage = await baueLage(db as unknown as Parameters<typeof baueLage>[0], personen, jetzt)
+    } catch (ursache) {
+      deps.protokoll.error('eni: laufende lage nicht lesbar', ursache)
+      lage = 'LAGE. Die aktuellen Trackerzahlen sind gerade nicht lesbar. Erfinde keine laufenden Zahlen.'
+    }
+    let wochenlage: string
+    try {
+      wochenlage = await baueWochenlage(
+        db as unknown as WochenDatenbank,
+        personen,
+        wochenbeginn,
+        jetzt,
+      )
+    } catch (ursache) {
+      deps.protokoll.error('eni: wochenlage nicht lesbar', ursache)
+      wochenlage = `WOCHENLAGE. Zeitraum ${wochenbeginn} bis zum naechsten Montag ist nicht lesbar. Sage das offen und erfinde keine Zahlen.`
+    }
+
+    const nachrichten = [
+      ...kontext.map((zeile) => ({
+        rolle: zeile.rolle === 'eni' ? ('assistant' as const) : ('user' as const),
+        text: String(zeile.text ?? ''),
+      })),
+      { rolle: 'user' as const, text: WOCHENBERICHT_VORLAGE },
+    ]
+    const abschliessen = async (onText?: (text: string) => void, abortSignal?: AbortSignal): Promise<Response> => {
+      let urteil: string
+      try {
+        urteil = (
+          await deps.modell(
+            {
+              onText,
+              signal: abortSignal,
+              system: eniWochenSystemPrompt({ person, lage, wochenlage }),
+              nachrichten,
+            },
+            anbieter,
+            modellSchluessel,
+          )
+        ).trim()
+      } catch (ursache) {
+        if (ursache instanceof Error && ursache.name === ABLEHNUNG) {
+          return antwort(200, {
+            mensch,
+            eni: null,
+            hinweis: 'dazu sagt ENI nichts. formulier es anders oder frag einen menschen.',
+            code: 'abgelehnt',
+          })
+        }
+        deps.protokoll.error('eni: wochenmodell nicht erreichbar', ursache)
+        return antwort(502, {
+          error: 'ENI hat nicht geantwortet. versuch es gleich noch einmal.',
+          code: 'modell_fehler',
+          mensch,
+        })
+      }
+      if (!urteil) {
+        return antwort(502, {
+          error: 'ENI hat nicht geantwortet. versuch es gleich noch einmal.',
+          code: 'leere_antwort',
+          mensch,
+        })
+      }
+      const gespeichert = await db
+        .from('eni_nachrichten')
+        .insert({ chat_id: chatId, user_id: userId, rolle: 'eni', text: urteil })
+        .select('id,chat_id,user_id,rolle,text,erstellt')
+        .single()
+      if (gespeichert.error || !gespeichert.data) {
+        return antwort(500, {
+          error: 'ENIs Wochenantwort wurde nicht gespeichert.',
+          code: 'nicht_gespeichert',
+          mensch,
+        })
+      }
+      return antwort(200, { mensch, eni: gespeichert.data })
+    }
+    if (!stream) return abschliessen(undefined, signal)
+    return ereignisStrom(async (sende, abortSignal) => {
+      sende({ typ: 'mensch', mensch })
+      return abschliessen((text) => sende({ typ: 'text', text }), abortSignal)
+    }, CORS)
+  })
+}
+
 export async function behandleEni(
   request: Request,
   deps: EniAbhaengigkeiten
@@ -345,6 +623,8 @@ export async function behandleEni(
     stream?: unknown
     chatId?: unknown
     text?: unknown
+    /** Sonderweg fuer den persistenten, an einen Montag gebundenen Rueckblick. */
+    wochenbeginn?: unknown
     pruefen?: unknown
     anhaenge?: unknown
     /** die id des anbieters, mit dem geredet werden soll. optional. */
@@ -403,6 +683,8 @@ export async function behandleEni(
 
   const chatId = typeof anfrage.chatId === 'string' ? anfrage.chatId.trim() : ''
   const text = typeof anfrage.text === 'string' ? anfrage.text.trim() : ''
+  const wochenbeginn = typeof anfrage.wochenbeginn === 'string' ? anfrage.wochenbeginn.trim() : ''
+  const wochenbericht = anfrage.wochenbeginn !== undefined
   /**
    * Noch einmal, auf dieselbe Vorlage.
    *
@@ -415,10 +697,10 @@ export async function behandleEni(
   // ein bild allein ist eine vorlage. wer ein foto hinhaelt, sagt damit genug,
   // und ENI kann danach fragen, was er wissen will.
   const etwasDabei = Array.isArray(anfrage.anhaenge) && anfrage.anhaenge.length > 0
-  if (!chatId || (!wiederholen && !text && !etwasDabei)) {
+  if (!chatId || (!wochenbericht && !wiederholen && !text && !etwasDabei)) {
     return antwort(400, { error: 'chat und text sind pflicht' })
   }
-  if (text.length > MAX_VORLAGE_ZEICHEN) {
+  if (!wochenbericht && text.length > MAX_VORLAGE_ZEICHEN) {
     return antwort(400, { error: 'die vorlage ist zu lang' })
   }
 
@@ -459,6 +741,26 @@ export async function behandleEni(
   }
   const person = personen.get(userId)
   if (!person) return antwort(403, { error: 'dieses konto gehört nicht zum duell' })
+
+  // Der Wochenpfad hat bewusst keine Text- oder Tageslimit-Pruefung. Er legt
+  // genau die eine feste Vorlage an und wird nach Einladung, Chatbindung und
+  // Faelligkeit separat idempotent verarbeitet.
+  if (wochenbericht) {
+    return behandleWochenbericht({
+      db,
+      personen,
+      person,
+      userId,
+      chatId,
+      wochenbeginn,
+      anbieter,
+      modellSchluessel,
+      deps,
+      jetzt: deps.jetzt?.() ?? new Date(),
+      stream: anfrage.stream === true,
+      signal: request.signal,
+    })
+  }
 
   // Ein verlorenes Telefon oder eine Schleife im Client darf keine Rechnung
   // erzeugen, die niemand bemerkt. Die Grenze zaehlt nur die eigenen Vorlagen;

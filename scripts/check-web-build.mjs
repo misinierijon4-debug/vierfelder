@@ -154,8 +154,12 @@ for (const name of jsDateien) {
 // Wissensdialog, Aufgabenverwaltung, Audio-Streaming-Warteschlange fuer PCM
 // und Text-Streaming liegen restlos im ENI-Lazy-Chunk. Der initiale Startpfad
 // bleibt unveraendert; die Gesamtsumme erhaelt dafuer 5 KiB kontrollierten Spielraum.
-const INITIAL_GZIP_BUDGET = 231 * 1024
-const GESAMT_GZIP_BUDGET = 258 * 1024
+// ENI-Wochenrueckblick und Einladungskarte kommen dazu: dauerhafte
+// Einladungskarte, Schliessen-RPC, gebundener Wochenchat und die erweiterte
+// Aktivitaetssteuerung. Die Gesamtsumme erhaelt kontrolliert 4 KiB Spielraum;
+// der initiale Einstiegspfad traegt zusaetzlich den iOS-Viewport-Schutz.
+const INITIAL_GZIP_BUDGET = 232 * 1024
+const GESAMT_GZIP_BUDGET = 264 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`

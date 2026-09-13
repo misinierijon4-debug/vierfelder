@@ -38,7 +38,7 @@ import {
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
-import { oeffneEni, schliesseEni, useRoute } from './lib/eniRoute'
+import { oeffneEni, oeffneEniWoche, schliesseEni, useRoute } from './lib/eniRoute'
 import type { DuellKontext } from './lib/eniSpeicher'
 /**
  * ENI haengt am startpfad nicht mit drin. die anzeigetafel startet ohne sie,
@@ -47,6 +47,11 @@ import type { DuellKontext } from './lib/eniSpeicher'
  */
 const EniTor = lazy(() =>
   import('./components/eni/EniTor').then((modul) => ({ default: modul.EniTor }))
+)
+const WochenRueckblickEinladung = lazy(() =>
+  import('./components/WochenRueckblickEinladung').then((modul) => ({
+    default: modul.WochenRueckblickEinladung,
+  }))
 )
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Benachrichtigungen } from './components/Benachrichtigungen'
@@ -98,6 +103,7 @@ export function App() {
     <Tracker
       key={trackerKey}
       backend={backend}
+      kontoId={kontoId}
       onWechsel={() => setWechselNr((n) => n + 1)}
       onDuellStand={setDuellStand}
     />
@@ -106,10 +112,12 @@ export function App() {
 
 function Tracker({
   backend,
+  kontoId,
   onWechsel,
   onDuellStand,
 }: {
   backend: Backend
+  kontoId: string | null
   onWechsel: () => void
   onDuellStand?: (stand: DuellKontext) => void
 }) {
@@ -314,6 +322,15 @@ function Tracker({
           bilanzzeit={istBilanzzeit(heute)}
           onEni={oeffneEni}
         />
+
+        {backend.art === 'supabase' && kontoId && (
+          <Suspense fallback={null}>
+            <WochenRueckblickEinladung
+              kontoId={kontoId}
+              onWocheOeffnen={oeffneEniWoche}
+            />
+          </Suspense>
+        )}
 
         {/* der offlinemodus sagt oben, was man sieht, und bietet den weg
             zurueck an. sichtbar ist er nur, solange er gilt. */}

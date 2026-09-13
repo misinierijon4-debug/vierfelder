@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconCaretLeft, IconClock, IconPlus, IconSpeakerHigh, IconSpeakerSlash } from './EniSymbole'
+import { useEniWochenbeginn } from '../../lib/eniRoute'
+import { oeffneEniWochenchat } from '../../lib/wochenEinladung'
 import { chatTitel } from '../../lib/eniSpeicher'
 import type { DuellKontext, EniChat, EniSpeicher, EniZeile } from '../../lib/eniSpeicher'
 import {
@@ -105,8 +107,11 @@ export function EniApp({
   const letzterFehlversuchRef = useRef<
     | { art: 'neu'; text: string; anhaenge: VorbereiteterAnhang[] }
     | { art: 'nochmal'; chatId: string }
+    | { art: 'woche'; chatId: string; wochenbeginn: string }
     | null
   >(null)
+  const wochenbeginn = useEniWochenbeginn()
+  const wocheInitialisiertRef = useRef<string | null>(null)
 
   // Entwurfsverwaltung je Chat: Entwuerfe bleiben beim Chatwechsel und bei Fehlern erhalten
   const aktuellerTextRef = useRef('')
@@ -467,12 +472,150 @@ export function EniApp({
     [geber, prueft, stimme, vorlesen]
   )
 
+  const holeWochenbericht = useCallback(
+    (chatId: string, zielWoche: string) => {
+      if (!geber || prueft) return
+      setFehler(null)
+      setHinweis(null)
+      setFrisch(null)
+      setTeilAntwort('')
+      setPrueft(true)
+      stimme.halt()
+      if (vorlesen) weckeStimme()
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      const vorlaeufig: EniZeile = {
+        id: `vorlaeufig-${Date.now()}`,
+        rolle: 'mensch',
+        text: 'Willst du, dass Eni deine Woche zusammenfasst?',
+        erstellt: new Date().toISOString(),
+      }
+
+      setZeilen((vorher) => {
+        const schonDa = vorher.some(
+          (z) => z.rolle === 'mensch' && z.text === vorlaeufig.text
+        )
+        return schonDa ? vorher : [...vorher, vorlaeufig]
+      })
+
+      void (async () => {
+        try {
+          const ergebnis = geber.wochenbericht
+            ? await geber.wochenbericht(
+                chatId,
+                zielWoche,
+                controller.signal,
+                (teil) => {
+                  if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                    setTeilAntwort((vorher) => vorher + teil)
+                  }
+                }
+              )
+            : await geber.antworte(
+                chatId,
+                'Willst du, dass Eni deine Woche zusammenfasst?',
+                zeilen,
+                undefined,
+                controller.signal
+              )
+
+          letzterFehlversuchRef.current = null
+          if (aktiverChatRef.current === chatId) {
+            setZeilen((vorher) => [
+              ...vorher.filter((z) => z.id !== vorlaeufig.id && z.id !== ergebnis.mensch.id),
+              ergebnis.mensch,
+              ...(ergebnis.eni ? [ergebnis.eni] : []),
+            ])
+            setFrisch(ergebnis.eni?.id ?? null)
+            if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
+            if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
+          }
+        } catch (ursache) {
+          const istAbbruch =
+            controller.signal.aborted ||
+            (ursache instanceof Error && ursache.message.includes('abgebrochen'))
+          letzterFehlversuchRef.current = !istAbbruch
+            ? { art: 'woche', chatId, wochenbeginn: zielWoche }
+            : null
+          setFehler(
+            istAbbruch
+              ? 'anfrage abgebrochen.'
+              : ursache instanceof EniModellFehler
+                ? ursache.message
+                : 'der Wochenrückblick konnte nicht geladen werden.'
+          )
+        } finally {
+          setTeilAntwort('')
+          setPrueft(false)
+        }
+      })()
+    },
+    [geber, prueft, stimme, vorlesen, zeilen]
+  )
+
+  useEffect(() => {
+    if (!wochenbeginn || !geber || chatsZustand !== 'bereit' || wocheInitialisiertRef.current === wochenbeginn) return
+    wocheInitialisiertRef.current = wochenbeginn
+
+    let aktiv = true
+    void (async () => {
+      try {
+        let zielChat: { id: string; titel: string } | null = null
+        if (speicher.art === 'supabase') {
+          const wChat = await oeffneEniWochenchat(wochenbeginn)
+          if (wChat) {
+            zielChat = { id: wChat.id, titel: wChat.titel }
+          }
+        }
+        if (!zielChat) {
+          const vorhandene = await speicher.chats()
+          const passend = vorhandene.find((c) => c.titel.includes(wochenbeginn))
+          if (passend) {
+            zielChat = passend
+          } else {
+            const neu = await speicher.neuerChat(`ENI-Wochenrückblick ${wochenbeginn}`)
+            zielChat = neu
+          }
+        }
+        if (!aktiv || !zielChat) return
+
+        const chatId = zielChat.id
+        aktiverChatRef.current = chatId
+        setAktiverChat(chatId)
+        setChats((vorher) => (vorher.some((c) => c.id === chatId) ? vorher : [zielChat!, ...vorher]))
+
+        const nachrichten = await speicher.nachrichten(chatId)
+        if (!aktiv || aktiverChatRef.current !== chatId) return
+        setZeilen(nachrichten)
+
+        const hatAntwort = nachrichten.some((z) => z.rolle === 'eni')
+        if (hatAntwort) return
+
+        holeWochenbericht(chatId, wochenbeginn)
+      } catch (ursache) {
+        if (!aktiv) return
+        setFehler(
+          ursache instanceof Error
+            ? ursache.message
+            : 'der Wochenrückblick konnte nicht geöffnet werden.'
+        )
+      }
+    })()
+
+    return () => {
+      aktiv = false
+    }
+  }, [chatsZustand, geber, holeWochenbericht, speicher, wochenbeginn])
+
   const wiederhole = useCallback(() => {
     const fehl = letzterFehlversuchRef.current
     if (!fehl || prueft) return
-    if (fehl.art === 'nochmal') holeNach(fehl.chatId)
+    if (fehl.art === 'woche') holeWochenbericht(fehl.chatId, fehl.wochenbeginn)
+    else if (fehl.art === 'nochmal') holeNach(fehl.chatId)
     else legeVor(fehl.text, fehl.anhaenge)
-  }, [holeNach, legeVor, prueft])
+  }, [holeNach, holeWochenbericht, legeVor, prueft])
 
   // Startvorschlag uebernehmen: setzt den gewaehlten Vorschlag direkt ins Feld, ohne zu stacken
   const uebernimmAuftakt = useCallback((text: string) => {
