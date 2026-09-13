@@ -76,13 +76,13 @@ export async function baueLage(
   personen: Map<string, Person>,
   jetzt: Date = new Date()
 ): Promise<string> {
-  const { tag } = lokaleMinute(jetzt)
+  const { tag, minute } = lokaleMinute(jetzt)
   const montag = montagVon(tag)
   const wochentag = WOCHENTAG[new Date(`${tag}T12:00:00Z`).getUTCDay()] ?? ''
   const wer = (id: unknown): Person | null => personen.get(String(id)) ?? null
 
   const zeilen: string[] = [
-    `LAGE. Heute ist ${wochentag}, der ${kurz(tag)} Die laufende Woche beginnt am ${kurz(montag)}`,
+    `LAGE. Heute ist ${wochentag}, der ${kurz(tag)}, ${minute} Uhr Ortszeit. Die laufende Woche beginnt am ${kurz(montag)}`,
     '',
   ]
 
