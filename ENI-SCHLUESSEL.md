@@ -366,6 +366,12 @@ Die Tagesgrenze aus Schritt 2 ist die harte Bremse, falls ein Handy verloren
 geht oder ein Client in eine Schleife läuft. Sie zählt Vorlagen, nicht Modelle:
 umschalten umgeht sie nicht.
 
+**Die Websuche hat einen eigenen Schlüssel, und der kostet nichts.**
+`TAVILY_API_KEY` gibt 1.000 Suchen im Monat, ohne hinterlegte Karte. Ist er
+nicht gesetzt, sucht ENI über das OpenRouter-Web-Plugin, und das kostet
+Guthaben — auch beim kostenlosen Modell. Einrichtung und Grenzen stehen in
+[ENI-INTERNET.md](ENI-INTERNET.md).
+
 ## Wenn du einen Schlüssel zurückziehen willst
 
 ```bash
@@ -380,3 +386,13 @@ Nimmst du einen weg, verschwindet nur dieses Modell aus der Liste. Nimmst du
 beide weg, fällt ENI von selbst auf die lokale Stimmenprobe zurück, und die
 Zeile im Kopf sagt es wieder. Kaputt geht dabei nichts, der Verlauf bleibt
 stehen.
+
+Der Suchschlüssel steht für sich:
+
+```bash
+npx supabase secrets unset TAVILY_API_KEY
+```
+
+Damit sucht ENI wieder über OpenRouter, solange dessen Schlüssel steht — und
+ohne beide verschwindet nur der Internet-Schalter. Das Reden bleibt davon
+unberührt.
