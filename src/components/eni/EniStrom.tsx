@@ -40,8 +40,6 @@ type Props = {
   onVorlesen?: (zeile: EniZeile) => void
   onAuftakt: (text: string) => void
   duellStand?: DuellKontext | null
-  /** wer gerade fuer ENI spricht. steht im auftakt als herkunftsangabe */
-  modellName?: string | null
 }
 
 export function EniStrom({
@@ -56,7 +54,6 @@ export function EniStrom({
   onVorlesen,
   onAuftakt,
   duellStand,
-  modellName,
 }: Props) {
   /**
    * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
@@ -71,7 +68,7 @@ export function EniStrom({
   const [notizFuer, setNotizFuer] = useState<string | null>(null)
 
   if (zeilen.length === 0 && !prueft) {
-    return <EniLeer me={me} duellStand={duellStand} modellName={modellName} onAuftakt={onAuftakt} />
+    return <EniLeer me={me} duellStand={duellStand} onAuftakt={onAuftakt} />
   }
 
   let letzterTag = ''
@@ -486,12 +483,10 @@ export function EniTakt() {
 function EniLeer({
   me,
   duellStand,
-  modellName,
   onAuftakt,
 }: {
   me: UserId
   duellStand?: DuellKontext | null
-  modellName?: string | null
   onAuftakt: (text: string) => void
 }) {
   const { gruss, gegner } = eniBegruessung(me)
@@ -582,18 +577,6 @@ function EniLeer({
           </div>
         ))}
       </div>
-
-      {/*
-        Herkunft als Text, nicht als Symbol, und an der Stelle, an der man sie
-        liest — der Datenschutzdialog daneben wurde nie geoeffnet. Zwei Saetze:
-        wer nicht mitliest, und wohin die Saetze gehen.
-      */}
-      <p className="mt-5 text-[11px] leading-relaxed text-kreide-52">
-        privat. {gegnerKlein} sieht deinen verlauf nicht.
-        {modellName
-          ? ` was du schreibst, geht über supabase an ${modellName.toLowerCase()}.`
-          : ' ohne modellverbindung rechnet nichts im netz.'}
-      </p>
     </div>
   )
 }

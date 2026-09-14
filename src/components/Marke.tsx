@@ -22,20 +22,6 @@ export function Marke({ gesetzt, halb, farbe }: Props) {
         className="relative block h-7 w-10 rounded-[2px] border transition-colors duration-200"
         style={{ borderColor: gesetzt ? farbe : "var(--marke-rand)" }}
       >
-        {/*
-          Die App hat zwei Identitaetsfarben, und im Ruhezustand sah man keine:
-          der Rahmen der leeren Marke ist bewusst neutral, weil er gegen Grund
-          und Flaeche 3:1 halten muss. Der Fuss traegt die Farbe stattdessen —
-          er muss nichts abgrenzen, also darf er gedaempft sein. Die Marke
-          gehoert damit sichtbar dir, bevor du sie setzt.
-        */}
-        {!gesetzt && (
-          <span
-            aria-hidden="true"
-            className="absolute inset-x-[3px] bottom-[-1px] block h-[2px]"
-            style={{ background: farbe }}
-          />
-        )}
         <AnimatePresence initial={false}>
           {gesetzt && (
             <motion.span

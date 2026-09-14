@@ -1490,9 +1490,11 @@ seine ursache verschweigt, kostet genau die zeit, die man ohne ihn braucht.
 **Die datenschutzseite ist weg.** Sie war ein vollbilddialog mit vier
 abschnitten hinter einem `i` in der werkzeugleiste — also vier absätze, die
 niemand öffnet, für eine app mit zwei nutzern, die beide wissen, was sie gebaut
-haben. Was wirklich zählt, steht jetzt im auftakt, wo man es liest: wer nicht
-mitliest, und an welches modell die sätze gehen. Eine aussage an der stelle,
-an der sie gilt, ist mehr wert als vier hinter einem knopf.
+haben. Der erste ersatz war eine zeile im auftakt: wer nicht mitliest, und an
+welches modell die sätze gehen. Auch die ist auf ansage wieder raus — **die app
+sagt zur verarbeitung jetzt nichts mehr.** Das ist eine bewusste entscheidung
+für genau diesen fall: zwei nutzer, die beide wissen, wohin ihre sätze gehen,
+und keine dritten. Sobald ein dritter dazukommt, gehört die aussage zurück.
 
 **Der kopf von ENI trug zwei zeilen für fünf bedienelemente.** Unter der
 werkzeugleiste stand eine zweite, volle 44-pixel-zeile für einen einzigen
@@ -1525,9 +1527,11 @@ sagen jetzt `heute 1/5` statt `(1/5)`. Die siebzig zellen des rasters trugen
 alle dieselbe haarlinie, auch die der zukunft, und die eine gefüllte zelle ging
 in dem teppich unter; die zukunft hat einen eigenen, schwächeren ton
 (`--linie-zukunft`), weil sie kein zustand ist, sondern dessen abwesenheit. Die
-leere marke war neutral umrandet und die app damit im ruhezustand farblos —
-sie behält ihren neutralen rahmen, denn der muss 3:1 halten, bekommt aber einen
-fuß in der personenfarbe: sie gehört sichtbar dir, bevor du sie setzt. Und der
+leere marke bleibt neutral umrandet: ein versuch, ihr einen fuß in der
+personenfarbe zu geben, hat die ruhige zeile in vier gelbe balken verwandelt
+und ist wieder zurückgebaut. Die zweifarbigkeit trägt das raster, wo sie
+tatsächlich zwei personen gegenüberstellt; die eintragszeile kennt ohnehin nur
+dich, und eine farbe, die nichts unterscheidet, ist dekoration. Und der
 gewichtsverlauf ohne eine einzige messung kostete einen halben bildschirm für
 fünf beschriftete achsenlinien, drei gleich leere fenster und eine legende für
 punkte, die es nicht gibt; er ist ein satz, bis gewogen wurde.

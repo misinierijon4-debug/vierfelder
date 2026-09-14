@@ -810,7 +810,6 @@ export function EniApp({
             onVorlesen={stimme.moeglich ? lieseVor : undefined}
             onAuftakt={uebernimmAuftakt}
             duellStand={duellStand}
-            modellName={anbieter.find((eintrag) => eintrag.id === gewaehlt)?.name ?? null}
           />
           {hinweis && (
             <p role="status" className="pt-4 text-[12px] leading-relaxed text-kreide-52">
