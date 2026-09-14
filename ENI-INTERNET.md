@@ -13,7 +13,7 @@ Die Suche läuft über Tavily. Der freie Tarif gibt 1.000 Suchen im Monat, verla
 npx supabase secrets set TAVILY_API_KEY=tvly-DEIN-SCHLUESSEL
 ```
 
-Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**. Ein Deploy ist danach nicht nötig, die Function liest das Secret beim nächsten Aufruf.
+Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**. Der Code muss einmal draußen sein (`npx supabase functions deploy eni`); steht er, ist das Setzen oder Wechseln des Secrets kein weiterer Deploy — die Function liest es beim nächsten Aufruf.
 
 Ohne diesen Schlüssel bleibt der alte Weg über das OpenRouter-Web-Plugin (Exa) stehen; er verwendet den vorhandenen `OPENROUTER_API_KEY`. Der kostet Guthaben: Exa Auto 0,007 USD je Suchanfrage laut Dokumentation vom 14.09.2026, und OpenRouter-Guthaben ist dafür auch bei einem kostenlosen Modell nötig. Sind beide Schlüssel gesetzt, sucht Tavily — der freie Weg geht vor, ohne dass jemand dafür einen Schalter finden muss. Der Schalter im Chat steht, sobald einer der beiden Schlüssel gesetzt ist.
 
