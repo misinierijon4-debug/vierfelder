@@ -2,6 +2,7 @@ import { ereignisStrom } from './eniStream.ts'
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
 import { subAusToken } from './token.ts'
 import {
+  anbieterFehlertext,
   findeAnbieter,
   schluesselVon,
   STANDARD_ANBIETER,
@@ -1034,7 +1035,7 @@ export async function behandleEni(
     }
     deps.protokoll.error('eni: modell nicht erreichbar', ursache)
     return antwort(502, {
-      error: 'ENI hat nicht geantwortet. versuch es gleich noch einmal.',
+      error: anbieterFehlertext(anbieter, ursache),
       code: 'modell_fehler',
       mensch: menschZeile,
     })

@@ -120,6 +120,34 @@ export const ANBIETER: readonly Anbieter[] = [
 /** der anbieter, den eine anfrage ohne wahl bekommt */
 export const STANDARD_ANBIETER = ANBIETER[0]!.id
 
+/** Nur eigene Statusmeldungen auswerten, nie Texte oder Secrets der Gegenstelle. */
+export function anbieterFehlertext(anbieter: Anbieter, ursache: unknown): string {
+  const allgemein = 'ENI hat nicht geantwortet. versuch es gleich noch einmal.'
+  if (!(ursache instanceof Error)) return allgemein
+  if (ursache.name === 'TimeoutError') {
+    return `${anbieter.name} braucht zu lange. Versuch es später oder wähle ein anderes Modell.`
+  }
+  const status = ursache.message.match(/^([a-z0-9-]+) (?:antwortet|meldet fehler) (\d{3})$/)
+  if (!status || status[1] !== anbieter.id) return allgemein
+  const name = anbieter.id === 'qwen-infron' ? 'Infron' : anbieter.name
+  switch (Number(status[2])) {
+    case 400: case 422:
+      return `${name} lehnt das Anfrageformat ab (HTTP ${status[2]}). Die Modellanbindung muss geprüft werden.`
+    case 401:
+      return `${name} akzeptiert den API-Key nicht (HTTP 401). Prüfe den hinterlegten Schlüssel.`
+    case 402:
+      return `${name} verlangt Guthaben oder eine Zahlungsfreigabe (HTTP 402). Prüfe dein Anbieterkonto.`
+    case 403:
+      return `${name} verweigert den Modellzugriff (HTTP 403). Prüfe die Freigaben im Anbieterkonto.`
+    case 404:
+      return `${name} findet das Modell oder den Endpunkt nicht (HTTP 404). Die Anbindung muss geprüft werden.`
+    case 429:
+      return `${name} meldet ein Anfrage- oder Kontingentlimit (HTTP 429). Warte etwas oder wähle ein anderes Modell.`
+    default:
+      return `${name} antwortet mit HTTP ${status[2]}. Versuch es später oder wähle ein anderes Modell.`
+  }
+}
+
 /**
  * Den Anbieter zu einer id finden. `null` heisst: der Client hat sich etwas
  * ausgedacht, und das ist ein Fehler, kein stiller Rueckfall auf den Standard.
