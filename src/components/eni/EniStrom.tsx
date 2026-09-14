@@ -125,7 +125,8 @@ export function EniStrom({
           <EniWort text={teilAntwort} frisch={false} spricht={false} linksAktiv={false} />
           <div className="mt-2 flex items-center gap-2">
             <span className="relative flex size-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-kreide opacity-75" />
+              {/* der Puls bleibt aus, wo Bewegung abbestellt ist */}
+              <span className="absolute inline-flex h-full w-full rounded-full bg-kreide opacity-75 motion-safe:animate-ping" />
               <span className="relative inline-flex size-1.5 rounded-full bg-kreide" />
             </span>
             <p className="text-[11px] font-medium text-kreide-60">Antwort entsteht …</p>

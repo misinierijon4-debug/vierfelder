@@ -95,6 +95,28 @@ describe("ENI Streaming", () => {
     expect(text).toBe("Die Lösung ist 42.");
     expect(teile).toEqual(["Die Lösung ist ", "42."]);
   });
+  it("verliert die Antwort nicht, wenn <think> nie geschlossen wird", async () => {
+    // Reisst der Strom mitten im Denken ab, war der Gedanke der einzige Text.
+    // Ihn zu verwerfen hiesse: leerer Bildschirm und leere Zeile im Verlauf.
+    const teile: string[] = [];
+    const payload = [
+      'data: {"choices":[{"delta":{"content":"<think>Ich rechne nach"}}]}',
+      'data: {"choices":[{"delta":{"content":" und komme auf 42."},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n');
+    const text = await liesModellStrom(strom(payload), (teil) => teile.push(teil));
+    expect(text).toBe("Ich rechne nach und komme auf 42.");
+    expect(teile.join("")).toBe("Ich rechne nach und komme auf 42.");
+  });
+  it("wirft einen unvollstaendigen Gedanken weg, wenn danach echter Text kam", async () => {
+    const payload = [
+      'data: {"choices":[{"delta":{"content":"<think>egal</think>Die Antwort ist 42."}}]}',
+      'data: {"choices":[{"delta":{"content":" <think>noch ein Rest"},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n');
+    const text = await liesModellStrom(strom(payload), () => {});
+    expect(text).toBe("Die Antwort ist 42. ");
+  });
   it("behält normale spitze Klammern bei, die keine <think>-Tags sind", async () => {
     const teile: string[] = [];
     const payload = [

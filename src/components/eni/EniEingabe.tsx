@@ -234,7 +234,7 @@ export function EniEingabe({
             transition={STEMPEL}
             disabled={!etwasDabei || gesperrt}
             aria-label="vorlegen"
-            className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
+            className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 disabled:shadow-none bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
           >
             <IconArrowUp size={18} />
           </motion.button>

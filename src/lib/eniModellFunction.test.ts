@@ -805,6 +805,19 @@ describe('ENIs modellverbindung', () => {
     expect(gesehen).toHaveLength(1)
   })
 
+  it('setzt die tagesgrenze auch an den beiden umstellungstagen richtig', () => {
+    // 25.10.2026, 12:00 Berlin (CET, +01:00). Mitternacht galt aber noch CEST
+    // (+02:00) — der Tag beginnt also um 22:00 UTC des Vortags, nicht 23:00.
+    expect(berlinerTagesbeginnIso(new Date('2026-10-25T11:00:00Z'))).toBe(
+      '2026-10-24T22:00:00.000Z'
+    )
+    // 29.03.2026, 12:00 Berlin (CEST, +02:00). Mitternacht war noch CET
+    // (+01:00): der Tag beginnt um 23:00 UTC des Vortags.
+    expect(berlinerTagesbeginnIso(new Date('2026-03-29T10:00:00Z'))).toBe(
+      '2026-03-28T23:00:00.000Z'
+    )
+  })
+
   it('weist eine uebergrosse vorlage ab, bevor sie irgendwo landet', async () => {
     const { abhaengigkeiten, tabellen } = deps()
     const antwort = await behandleEni(
