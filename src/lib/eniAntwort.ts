@@ -119,6 +119,13 @@ export async function rufeEniFunktion(
   const beginn = performance.now()
   let ersterText = false
   let mensch: EniZeile | null = null
+  // Der Server hat insgesamt 100 Sekunden Modellbudget. Auch eine danach
+  // haengende Verbindung muss mit einer sichtbaren Meldung enden.
+  const frist = new AbortController()
+  const timer = setTimeout(() => frist.abort(), 120_000)
+  const abbruch = () => frist.abort()
+  if (signal?.aborted) frist.abort()
+  signal?.addEventListener('abort', abbruch, { once: true })
   try {
     const antwort = await fetch(adresse.url, {
       method: 'POST',
@@ -128,7 +135,7 @@ export async function rufeEniFunktion(
         'content-type': 'application/json',
       },
       body: JSON.stringify(rumpf),
-      signal,
+      signal: frist.signal,
     })
 
     if (antwort.headers.get('content-type')?.includes('application/x-ndjson') && antwort.body) {
@@ -155,10 +162,16 @@ export async function rufeEniFunktion(
     return { status: antwort.status, inhalt }
   } catch (err) {
     if (err instanceof EniModellFehler) throw err
+    if (frist.signal.aborted && !signal?.aborted) {
+      throw new EniModellFehler('Das Modell hat innerhalb von zwei Minuten keine vollständige Antwort geliefert. Versuch es erneut oder wähle ein anderes Modell.', mensch, 'modell_fehler')
+    }
     if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
       throw new EniModellFehler('anfrage abgebrochen', mensch, 'modell_fehler')
     }
     throw new EniModellFehler('Die Verbindung wurde unterbrochen.', mensch, 'modell_fehler')
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abbruch)
   }
 }
 

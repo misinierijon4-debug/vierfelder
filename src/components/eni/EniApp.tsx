@@ -830,15 +830,14 @@ export function EniApp({
         <div className="mx-auto w-full max-w-[560px]">
           {stimme.hinweis && <p role="status" className="pb-2 text-xs text-kreide-60">{stimme.hinweis}</p>}
           {fehler && (
-            <div className="flex items-center justify-between gap-2 pb-2">
-              <p role="alert" className="text-[11px]" style={{ color: 'var(--erijon)' }}>
-                {fehler}
-              </p>
+            <div role="alert" aria-atomic="true" className="mb-3 max-h-[30dvh] overflow-y-auto rounded-xl border border-linie bg-flaeche p-3 text-kreide">
+              <p className="text-sm font-bold">Das hat nicht geklappt</p>
+              <p className="mt-1 break-words text-sm leading-relaxed">{fehler}</p>
               {letzterFehlversuchRef.current && !prueft && (
                 <button
                   type="button"
                   onClick={wiederhole}
-                  className="text-[11px] font-bold underline underline-offset-2 text-kreide-60 hover:text-kreide"
+                  className="mt-2 min-h-11 px-2 text-sm font-bold underline underline-offset-2 text-kreide"
                 >
                   wiederholen
                 </button>
