@@ -24,6 +24,13 @@ type Props = {
   onAnhangEntfernen: (id: string) => void
   onTextChange?: (text: string) => void
   onAbbrechen?: () => void
+  /**
+   * Die wahl des modells, unten statt oben. Sie steht in dem feld, das sonst
+   * das diktat und das „wird verarbeitet" trägt: dieses feld sagt, was gerade
+   * läuft — und wenn nichts läuft, sagt es, wer spricht. Als slot übergeben,
+   * damit die eingabe nichts über anbieter und modelle wissen muss.
+   */
+  modellwahl?: React.ReactNode
 }
 
 export function EniEingabe({
@@ -36,6 +43,7 @@ export function EniEingabe({
   onAnhangEntfernen,
   onTextChange,
   onAbbrechen,
+  modellwahl,
 }: Props) {
   const [text, setText] = useState('')
   const [absendeNr, setAbsendeNr] = useState(0)
@@ -206,7 +214,9 @@ export function EniEingabe({
                   abbrechen
                 </button>
               </div>
-            ) : null}
+            ) : (
+              modellwahl ?? null
+            )}
           </div>
 
           <motion.button

@@ -8,6 +8,7 @@ import {
 import type { Erinnerung, WissensEntwurf } from '../../lib/eniWissen'
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { IconX } from './EniSymbole'
+import { useDialogNachlauf } from '../../lib/dialogNachlauf'
 
 const LEER: WissensEntwurf = {
   text: '',
@@ -116,6 +117,9 @@ export function EniWissenDialog({
     }
   }
 
+  // inhalt bleibt stehen, solange das blatt ausblendet
+  const sichtbar = useDialogNachlauf(offen)
+
   return (
     <dialog
       ref={dialog}
@@ -126,7 +130,7 @@ export function EniWissenDialog({
       }}
       className="m-0 h-[100dvh] max-h-none w-screen max-w-none bg-grund p-0 text-kreide backdrop:bg-grund/80"
     >
-      {offen && (
+      {sichtbar && (
         <div className="vollbild-safe-x flex h-full flex-col pb-[calc(var(--app-safe-bottom)+1rem)] pt-[calc(var(--app-safe-top)+1rem)]">
           <header className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2 border-b border-linie pb-3">
             <h2 className="display text-[16px] font-bold lowercase leading-none">

@@ -41,6 +41,22 @@ function feld() {
   return screen.getByLabelText('was du ENI vorlegst')
 }
 
+/** das kopfmenue auf: dahinter liegen verlauf, vorlesen und gedaechtnis */
+function oeffneMenue() {
+  fireEvent.click(screen.getByRole('button', { name: 'menü' }))
+}
+
+/** ist die modellwahl zugeklappt? der knopf weiss es, das DOM blendet nur aus */
+function zu() {
+  return screen.getByRole('button', { name: /modell wählen/i })
+    .getAttribute('aria-expanded') === 'false'
+}
+
+function oeffneVerlauf() {
+  oeffneMenue()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'verlauf' }))
+}
+
 function lege(text: string) {
   fireEvent.change(feld(), { target: { value: text } })
   fireEvent.click(screen.getByRole('button', { name: 'vorlegen' }))
@@ -148,7 +164,7 @@ describe('ENI als eigene oberflaeche', () => {
     zeigeEni(speicher)
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
-    fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+    oeffneVerlauf()
     const verlauf = screen.getByRole('dialog', { name: 'verlauf' })
     fireEvent.click(within(verlauf).getByText('alte sache'))
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
@@ -166,7 +182,7 @@ describe('ENI als eigene oberflaeche', () => {
 
     zeigeEni(speicher)
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
-    fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+    oeffneVerlauf()
 
     const verlauf = screen.getByRole('dialog', { name: 'verlauf' })
     fireEvent.click(within(verlauf).getByRole('button', { name: /chat weg damit löschen/i }))
@@ -185,7 +201,7 @@ describe('ENI als eigene oberflaeche', () => {
 
     expect(feld().className).toContain('min-h-11')
     expect(screen.getByRole('button', { name: 'vorlegen' }).className).toContain('min-h-11')
-    expect(screen.getByRole('button', { name: 'verlauf öffnen' }).className).toContain('size-11')
+    expect(screen.getByRole('button', { name: 'menü' }).className).toContain('size-11')
     expect(screen.getByRole('button', { name: 'neuer chat' }).className).toContain('size-11')
   })
 
@@ -263,14 +279,16 @@ describe('ENI als eigene oberflaeche', () => {
 
     expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling')
     expect(screen.getByText(/ling 3\.0 flash über supabase/i)).toBeInTheDocument()
-    // das menü ist wieder zu
-    expect(screen.queryByRole('menuitemradio')).toBeNull()
+    // das menü ist wieder zu. das sagt der knopf, nicht das DOM: die hülle
+    // blendet aus und haengt so lange noch im dokument.
+    expect(zu()).toBe(true)
+
     fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: /qwen 3\.8 27b/i }))
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
     expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'qwen-infron')
     expect(screen.getByText(/qwen 3\.8 27b über supabase/i)).toBeInTheDocument()
-    expect(screen.queryByRole('menuitemradio')).toBeNull()
+    expect(zu()).toBe(true)
   })
 
   it('legt das wort am rückweg unter 416 pixeln ab, damit der kopf nicht überläuft', async () => {
@@ -284,7 +302,7 @@ describe('ENI als eigene oberflaeche', () => {
     expect(screen.getByText('zweikampf')).toHaveClass('max-[415px]:hidden')
   })
 
-  it('zeigt keine modellwahl, wenn es nur einen anbieter gibt', async () => {
+  it('zeigt im namensmenü keine modellwahl, wenn es nur einen anbieter gibt', async () => {
     vi.useFakeTimers()
     render(
       <EniApp
@@ -300,7 +318,57 @@ describe('ENI als eigene oberflaeche', () => {
     )
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
+    // eine wahl mit einer möglichkeit ist keine wahl: dann steht sie gar nicht da
     expect(screen.queryByRole('button', { name: /modell wählen/i })).toBeNull()
+  })
+
+  it('trägt oben rechts nur noch das menü und den neuen chat', async () => {
+    vi.useFakeTimers()
+    zeigeEni(lokalerEniSpeicher('erijon'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    const kopf = screen.getByRole('banner')
+    expect(within(kopf).getAllByRole('button')).toHaveLength(3) // rückweg, menü, neuer chat
+    expect(within(kopf).getByRole('button', { name: 'menü' })).toBeInTheDocument()
+    expect(within(kopf).getByRole('button', { name: 'neuer chat' })).toBeInTheDocument()
+
+    // verlauf, vorlesen und gedächtnis stehen nicht mehr offen in der leiste,
+    // sondern ausgeschrieben im menü
+    oeffneMenue()
+    expect(screen.getByRole('menuitem', { name: 'verlauf' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /das weiß eni über mich/i })).toBeInTheDocument()
+  })
+
+  it('legt die modellwahl an die eingabe, nicht in den kopf', async () => {
+    vi.useFakeTimers()
+    const modelle = [
+      { id: 'deepseek', name: 'deepseek flash', hinweis: 'schnell', modell: 'deepseek-flash' },
+      { id: 'ling', name: 'ling 3.0 flash', hinweis: 'kostenlos', modell: 'inclusionai/ling' },
+    ]
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: modelle })}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // oben steht, mit wem du redest; unten, womit er antwortet
+    const wahl = screen.getByRole('button', { name: /modell wählen/i })
+    expect(within(screen.getByRole('banner')).queryByRole('button', { name: /modell wählen/i }))
+      .toBeNull()
+    expect(wahl.closest('form')).not.toBeNull()
+  })
+
+  it('stellt ENIs namen wirklich in die mitte und nicht nur zwischen die nachbarn', async () => {
+    vi.useFakeTimers()
+    zeigeEni(lokalerEniSpeicher('erijon'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // gleich breite aussenspalten, sonst schiebt die breitere seite den namen weg
+    const zeile = screen.getByRole('banner').querySelector('.grid')
+    expect(zeile?.className).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]')
   })
 
   it('nimmt nichts an, solange die verbindung noch geprüft wird', async () => {
@@ -336,7 +404,7 @@ describe('ENI als eigene oberflaeche', () => {
       fireEvent.change(feld(), { target: { value: 'entwurf fuer neuen chat' } })
 
       // Zu Chat 1 wechseln
-      fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+      oeffneVerlauf()
       const verlauf = screen.getByRole('dialog', { name: 'verlauf' })
       fireEvent.click(within(verlauf).getByText('chat eins'))
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
@@ -353,7 +421,7 @@ describe('ENI als eigene oberflaeche', () => {
       expect(feld()).toHaveValue('entwurf fuer neuen chat')
 
       // Wieder zurueck zu Chat 1 wechseln
-      fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+      oeffneVerlauf()
       fireEvent.click(within(screen.getByRole('dialog', { name: 'verlauf' })).getByText('chat eins'))
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
@@ -546,7 +614,7 @@ describe('ENI als eigene oberflaeche', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(60) })
 
       // Waehrend Anfrage laeuft, wechseln wir zu Chat a
-      fireEvent.click(screen.getByRole('button', { name: 'verlauf öffnen' }))
+      oeffneVerlauf()
       fireEvent.click(within(screen.getByRole('dialog', { name: 'verlauf' })).getByText('chat a'))
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
@@ -654,13 +722,15 @@ describe('ENI als eigene oberflaeche', () => {
       render(<EniApp speicher={speicher} onZurueck={vi.fn()} />)
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
-      const audioBtn = screen.getByRole('button', { name: 'antworten vorlesen' })
-      expect(audioBtn).toHaveAttribute('aria-pressed', 'false')
+      // das vorlesen liegt jetzt im kopfmenü, nicht mehr offen in der leiste
+      oeffneMenue()
+      const audioBtn = screen.getByRole('menuitemcheckbox', { name: 'antworten vorlesen' })
+      expect(audioBtn).toHaveAttribute('aria-checked', 'false')
 
-      // Einschalten
+      // Einschalten — das menü bleibt offen, damit man das umspringen sieht
       fireEvent.click(audioBtn)
-      expect(audioBtn).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByRole('button', { name: 'nicht mehr vorlesen' })).toBeInTheDocument()
+      expect(audioBtn).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('menuitemcheckbox', { name: 'antworten vorlesen' })).toBeInTheDocument()
 
       window.speechSynthesis = altSynth
       window.SpeechSynthesisUtterance = altUtt

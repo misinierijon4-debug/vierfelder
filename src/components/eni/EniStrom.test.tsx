@@ -64,3 +64,51 @@ describe('notizen im verlauf', () => {
     expect(screen.queryByRole('button', { name: 'diese zeile notieren' })).not.toBeInTheDocument()
   })
 })
+
+describe('die auftakte im leeren chat', () => {
+  function leer(feldBelegt: boolean, onAuftakt = vi.fn()) {
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={false}
+        onAuftakt={onAuftakt}
+        feldBelegt={feldBelegt}
+      />
+    )
+    return onAuftakt
+  }
+
+  it('bietet sie an, solange das feld leer ist', () => {
+    leer(false)
+    expect(screen.getByRole('button', { name: 'wie stehe ich gegen koray' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'abend planen' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'was soll ich heute essen' })).toBeInTheDocument()
+  })
+
+  /*
+    Sie sind ein angebot fuer den fall, dass einem nichts einfaellt. Steht
+    etwas im feld — angetippt oder selbst geschrieben —, ist das angebot
+    angenommen und die uebrigen stehen nur noch im weg.
+  */
+  it('steht nicht mehr da, sobald etwas im feld steht', () => {
+    leer(true)
+    expect(screen.queryByRole('button', { name: 'wie stehe ich gegen koray' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'abend planen' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'was soll ich heute essen' })).toBeNull()
+  })
+
+  it('laesst den gruss und den stand stehen, die sind kein angebot', () => {
+    leer(true)
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+  })
+
+  it('reicht den vollen satz weiter, nicht die beschriftung', async () => {
+    const nutzer = userEvent.setup()
+    const onAuftakt = leer(false)
+    await nutzer.click(screen.getByRole('button', { name: 'abend planen' }))
+    expect(onAuftakt).toHaveBeenCalledWith(
+      'hilf mir den abend planen: schlaf, essen und regeneration'
+    )
+  })
+})

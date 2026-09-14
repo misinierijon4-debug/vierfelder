@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { IconCaretLeft, IconClock, IconPlus, IconSpeakerHigh, IconSpeakerSlash } from './EniSymbole'
+import { motion, useReducedMotion } from 'motion/react'
+import { BILDSCHIRM, EASE } from '../../lib/motion'
+import { IconCaretLeft, IconPlus } from './EniSymbole'
 import { useEniWochenbeginn } from '../../lib/eniRoute'
 import { oeffneEniWochenchat } from '../../lib/wochenEinladung'
 import { chatTitel } from '../../lib/eniSpeicher'
@@ -25,10 +27,11 @@ import {
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
 import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
-import { IconGedaechtnis } from './EniSymbole'
 import { EniEingabe } from './EniEingabe'
 import { EniWissenDialog } from './EniWissenDialog'
 import type { Erinnerung } from '../../lib/eniWissen'
+import { EniMarke } from './EniMarke'
+import { EniKopfmenue } from './EniKopfmenue'
 import { EniModellwahl } from './EniModellwahl'
 import { EniStrom } from './EniStrom'
 import { EniVerlauf } from './EniVerlauf'
@@ -60,6 +63,7 @@ export function EniApp({
   initialDuellStand = null,
 }: Props) {
   const viewportRef = useEniViewport()
+  const reduziert = useReducedMotion() ?? false
   const [me, setMe] = useState<UserId>('erijon')
   const [duellStand, setDuellStand] = useState<DuellKontext | null>(initialDuellStand)
   const [chats, setChats] = useState<EniChat[]>([])
@@ -75,7 +79,17 @@ export function EniApp({
   const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
   const [wahlOffen, setWahlOffen] = useState(false)
+  const [menueOffen, setMenueOffen] = useState(false)
   const [vorgabe, setVorgabe] = useState<{ text: string; nr: number } | null>(null)
+  /**
+   * Steht etwas im feld? Die auftakte im leeren chat treten dann ab.
+   *
+   * Sie sind ein angebot für den fall, dass einem nichts einfällt. Sobald
+   * etwas im feld steht — angetippt oder selbst geschrieben —, ist das angebot
+   * angenommen und die übrigen drei sind nur noch drei zeilen, die im weg
+   * stehen. Wird das feld wieder leer, stehen sie wieder da.
+   */
+  const [feldBelegt, setFeldBelegt] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
   const [teilAntwort, setTeilAntwort] = useState('')
   const [frisch, setFrisch] = useState<string | null>(null)
@@ -704,74 +718,84 @@ export function EniApp({
   )
 
   return (
-    <div ref={viewportRef} className="fixed inset-x-0 top-0 flex h-[100dvh] flex-col overflow-hidden bg-grund">
+    /*
+      ENI kommt herein, statt umgeschaltet zu werden. Der Wechsel von der
+      Anzeigetafel hierher war ein harter Schnitt: eben noch das Raster, dann
+      ohne Zwischenschritt der Chat. Ein kurzer Weg von unten sagt, dass hier
+      etwas hochgeholt wird und nicht die Seite ausgetauscht wurde.
+
+      Nur der Eingang. Der Rückweg räumt den Bildschirm sofort ab, weil die
+      Route wechselt und der ganze Baum mit ihr geht — dafür bräuchte es ein
+      AnimatePresence um beide Bildschirme herum, und das liegt in App.tsx
+      hinter mehreren frühen Rückgaben.
+    */
+    <motion.div
+      ref={viewportRef}
+      initial={reduziert ? { opacity: 0 } : { opacity: 0, y: BILDSCHIRM.weg }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduziert ? 0.12 : BILDSCHIRM.dauer, ease: EASE }}
+      className="fixed inset-x-0 top-0 flex h-[100dvh] flex-col overflow-hidden bg-grund"
+    >
       <header className="vollbild-safe-x shrink-0 border-b border-linie pt-[calc(var(--app-safe-top)+0.75rem)]">
-        <div className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2 pb-2.5">
+        {/*
+          Drei Zonen als Raster, nicht als justify-between: die beiden
+          Aussenspalten sind gleich breit (1fr), also steht die Mittelspalte
+          wirklich in der Mitte des Kopfes und nicht dort, wohin zwei ungleich
+          breite Nachbarn sie gerade schieben. Vorher hing ENIs Name sichtbar
+          links der Mitte, weil rechts vier Werkzeuge standen und links nur ein
+          Rückweg.
+        */}
+        <div className="mx-auto grid w-full max-w-[560px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 pb-2.5">
           {/* Ruecknavigation */}
           <button
             type="button"
             onClick={onZurueck}
             aria-label="zurück zum zweikampf"
-            className="-ml-2 flex min-h-11 items-center gap-1.5 px-2 text-[12px] text-kreide-60 transition-colors hover:text-kreide"
+            className="-ml-2 flex min-h-11 min-w-0 items-center gap-1.5 justify-self-start px-2 text-[12px] text-kreide-60 transition-colors hover:text-kreide"
           >
             <IconCaretLeft size={16} aria-hidden="true" />
             {/*
-              Unter 416 Pixeln geht das Wort, der Pfeil bleibt. Die Kopfleiste
-              trägt links den Rückweg, in der Mitte ENIs Namen und rechts vier
-              Werkzeugflächen zu 44 Pixeln; auf einem 375er-Display passt das
-              zusammen nicht mehr, und dann schob es bisher den Knopf für den
-              neuen Chat über den Rand. Ein Pfeil ohne Wort ist verständlich,
-              ein halb abgeschnittener Knopf nicht. Das Wort bleibt im
-              aria-label stehen, damit der Screenreader es weiter vorliest.
+              Unter 416 Pixeln geht das Wort, der Pfeil bleibt. Ein Pfeil ohne
+              Wort ist verständlich, ein abgeschnittenes Wort nicht. Das Wort
+              bleibt im aria-label stehen, damit der Screenreader es weiter
+              vorliest.
             */}
-            <span className="max-[415px]:hidden">zweikampf</span>
+            <span className="truncate max-[415px]:hidden">zweikampf</span>
           </button>
 
-          {/* Eni-Identitaet, und dahinter die wahl des modells */}
-          <EniModellwahl
-            anbieter={modus === 'modell' ? anbieter : []}
-            gewaehlt={gewaehlt}
-            offen={wahlOffen}
-            gesperrt={prueft}
-            onUmschalten={() => setWahlOffen((vorher) => !vorher)}
-            onSchliessen={() => setWahlOffen(false)}
-            onWaehlen={waehleAnbieter}
-          />
+          {/*
+            Eni-Identitaet: nur noch der name. Kein Klappzeichen, kein Menue
+            dahinter — wer hier steht, wird nicht gewaehlt.
+          */}
+          <div className="flex items-center gap-2">
+            <EniMarke groesse={20} grund="var(--grund)" />
+            <span className="display text-[17px] font-bold leading-none tracking-[0.06em] text-kreide">
+              ENI
+            </span>
+          </div>
 
-          {/* Werkzeugleiste: einheitliche 44px-Flaechen */}
-          <div className="-mr-2 flex items-center gap-0.5">
-            {stimme.moeglich && (
-              <button
-                type="button"
-                onClick={schalteVorlesen}
-                aria-pressed={vorlesen}
-                aria-label={vorlesen ? 'nicht mehr vorlesen' : 'antworten vorlesen'}
-                className="flex size-11 items-center justify-center transition-colors"
-                style={{ color: vorlesen ? 'var(--kreide)' : 'var(--kreide-52)' }}
-              >
-                {vorlesen ? (
-                  <IconSpeakerHigh size={18} />
-                ) : (
-                  <IconSpeakerSlash size={18} />
-                )}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => { setWissensStart(undefined); setWissenOffen(true) }}
-              aria-label="das weiß eni über mich"
-              className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
-            >
-              <IconGedaechtnis size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setVerlaufOffen(true)}
-              aria-label="verlauf öffnen"
-              className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
-            >
-              <IconClock size={18} />
-            </button>
+          {/*
+            Zwei Griffe: alles Uebrige hinter einem Menue, und der neue Chat
+            offen daneben — er ist der einzige, den man mitten im Reden braucht.
+          */}
+          <div className="-mr-2 flex items-center justify-end gap-0.5 justify-self-end">
+            <EniKopfmenue
+              offen={menueOffen}
+              stimmeMoeglich={stimme.moeglich}
+              vorlesen={vorlesen}
+              onVorlesen={schalteVorlesen}
+              onVerlauf={() => {
+                setVerlaufOffen(true)
+                setMenueOffen(false)
+              }}
+              onGedaechtnis={() => {
+                setWissensStart(undefined)
+                setWissenOffen(true)
+                setMenueOffen(false)
+              }}
+              onUmschalten={() => setMenueOffen((vorher) => !vorher)}
+              onSchliessen={() => setMenueOffen(false)}
+            />
             <button
               type="button"
               onClick={neuerChat}
@@ -809,6 +833,7 @@ export function EniApp({
             spricht={stimme.spricht}
             onVorlesen={stimme.moeglich ? lieseVor : undefined}
             onAuftakt={uebernimmAuftakt}
+            feldBelegt={feldBelegt}
             duellStand={duellStand}
           />
           {hinweis && (
@@ -856,8 +881,22 @@ export function EniApp({
             onAnhangEntfernen={entferneAnhang}
             onTextChange={(t) => {
               aktuellerTextRef.current = t
+              // nur am übergang leer/belegt neu zeichnen, nicht bei jedem zeichen
+              const belegt = t.trim().length > 0
+              setFeldBelegt((vorher) => (vorher === belegt ? vorher : belegt))
             }}
             onAbbrechen={brecheAb}
+            modellwahl={
+              <EniModellwahl
+                anbieter={modus === 'modell' ? anbieter : []}
+                gewaehlt={gewaehlt}
+                offen={wahlOffen}
+                gesperrt={prueft}
+                onUmschalten={() => setWahlOffen((vorher) => !vorher)}
+                onSchliessen={() => setWahlOffen(false)}
+                onWaehlen={waehleAnbieter}
+              />
+            }
           />
         </div>
       </div>
@@ -876,6 +915,6 @@ export function EniApp({
       />
 
       <EniWissenDialog key={speicher.kontoId} offen={wissenOffen} kontoId={speicher.kontoId} start={wissensStart} onSchliessen={() => setWissenOffen(false)} />
-    </div>
+    </motion.div>
   )
 }

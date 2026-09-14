@@ -7,6 +7,7 @@ import { kalenderMonate } from '../lib/kalender'
 import { fokusRingLoesen } from '../lib/dialogFokus'
 import { useScrollSperre } from '../lib/scrollsperre'
 import { erledigteFelder, tageMitDaten } from '../lib/tracker'
+import { useDialogNachlauf } from '../lib/dialogNachlauf'
 
 const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
 const DATUM = new Intl.DateTimeFormat('de-DE', {
@@ -76,6 +77,9 @@ export function TrackerKalender({
     return () => window.cancelAnimationFrame(frame)
   }, [gewaehlterTag, offen])
 
+  // inhalt bleibt stehen, solange das blatt ausblendet
+  const sichtbar = useDialogNachlauf(offen)
+
   return (
     <dialog
       ref={dialogRef}
@@ -83,7 +87,7 @@ export function TrackerKalender({
       onClose={onSchliessen}
       className="m-0 size-full max-h-none max-w-none overflow-hidden bg-grund p-0 text-kreide backdrop:bg-grund"
     >
-      {offen && (
+      {sichtbar && (
       <div className="flex h-dvh flex-col bg-grund">
         <header
           className="vollbild-safe-x grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-linie pb-3"

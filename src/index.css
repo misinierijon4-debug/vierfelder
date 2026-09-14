@@ -148,6 +148,71 @@ dialog:modal {
   max-height: var(--app-viewport-height, 100dvh);
 }
 
+/*
+ * Vollbilddialoge standen bisher schlagartig da und waren ebenso schlagartig
+ * wieder weg — Kalender, Verlauf, Gedächtnis. Ein Blatt, das ohne Weg
+ * erscheint, liest sich wie ein Seitenwechsel; hier soll es sich über die App
+ * legen. Deshalb ein kurzer Weg von unten mit der Deckkraft.
+ *
+ * Das steht in CSS statt in `motion`, weil ein `<dialog>` im Top-Layer liegt:
+ * React kann das Element beim Schließen nicht so lange stehen lassen, wie eine
+ * Ausblendbewegung braucht. `@starting-style` gibt dem Browser den Zustand vor
+ * dem Öffnen, `allow-discrete` lässt ihn `display` und `overlay` mitfahren,
+ * statt sie sofort umzuschalten — erst damit ist auch das Zugehen sichtbar.
+ *
+ * Wo das noch nicht unterstützt wird, bleibt es beim harten Auftauchen von
+ * vorher. Nichts geht kaputt, es fehlt nur die Bewegung.
+ */
+/*
+ * Der Haken an `:modal`: sobald `close()` laeuft, ist das Element nicht mehr
+ * modal, und damit faellt die Regel samt Uebergang schlagartig weg — das
+ * Zugehen sprang. Deshalb haengt der Uebergang an `dialog` und nur der
+ * offene Zustand an `[open]`.
+ *
+ * Die 0.24s stehen als Zahl auch in `lib/dialogNachlauf.ts`, das den Inhalt so
+ * lange stehen laesst. Wer eine aendert, aendert die andere mit.
+ */
+dialog {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    overlay 0.24s allow-discrete,
+    display 0.24s allow-discrete;
+}
+
+dialog[open] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* Der Grund hinter dem Blatt zieht mit, sonst schaltet er hart um. */
+dialog::backdrop {
+  opacity: 0;
+  transition:
+    opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    overlay 0.24s allow-discrete,
+    display 0.24s allow-discrete;
+}
+
+dialog[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
 @media (pointer: coarse) {
   /* Kleine Formularschrift löst auf iPhones beim Fokussieren Auto-Zoom aus. */
   input, textarea, select {

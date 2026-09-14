@@ -24,6 +24,33 @@ export const TAKT = {
   sweep: 0.42,
 }
 
+/**
+ * menüs klappen aus der ecke ihres knopfes auf: kurz, ohne überschwingen.
+ * das zugehen ist schneller als das aufgehen — ein menü, das sich zeit lässt
+ * zu verschwinden, steht im weg.
+ */
+export const MENUE = {
+  auf: 0.17,
+  zu: 0.11,
+  /** weg, den die hülle aus der ecke heraus zurücklegt */
+  weg: 6,
+  /** die zeilen kommen knapp hinterher, damit man das öffnen liest */
+  staffel: 0.035,
+  vorlauf: 0.04,
+}
+
+/**
+ * ENI ist ein eigener bildschirm, kein reiter. er kommt herein statt
+ * umzuschalten — knapp von unten, wie etwas, das hochgeholt wird.
+ */
+export const BILDSCHIRM = { dauer: 0.26, weg: 10 }
+
+/**
+ * die tastatur verkleinert den sichtbaren bereich. das soll gleiten statt
+ * springen; länger als die tastatur selbst braucht darf es nicht dauern.
+ */
+export const TASTATUR = 0.22
+
 /** beim laden kommen die vier zeilen gestaffelt herein, das raster als ein block */
 export const EINGANG = {
   dauer: 0.2,

@@ -16,6 +16,20 @@ export function IconCaretDown({ size = 12, className = '', ...props }: Props) {
   )
 }
 
+/**
+ * Das Menue: drei Quadrate, keine drei Punkte. Kreise sind in dieser App die
+ * Ausnahme und keine Regel — die Anzeigetafel kennt Haarlinien und Kanten.
+ */
+export function IconMenue({ size = 18, className = '', ...props }: Props) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true" {...props}>
+      <rect x="3" y="10.25" width="3.5" height="3.5" />
+      <rect x="10.25" y="10.25" width="3.5" height="3.5" />
+      <rect x="17.5" y="10.25" width="3.5" height="3.5" />
+    </svg>
+  )
+}
+
 export function IconClock({ size = 18, className = '', ...props }: Props) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true" {...props}>

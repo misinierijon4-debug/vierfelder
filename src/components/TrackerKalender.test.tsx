@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { useState } from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -111,7 +111,7 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Kalender schließen' }))
-    expect(container.querySelector('dialog')).toBeEmptyDOMElement()
+    await waitFor(() => expect(container.querySelector('dialog')).toBeEmptyDOMElement())
     expect(kalenderMonateSpion).toHaveBeenCalledTimes(1)
 
     await user.click(oeffnen)
@@ -120,7 +120,7 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
     expect(screen.getByRole('status', { name: 'gewählter tracker-tag' })).toHaveTextContent(
       '2026-09-05'
     )
-    expect(container.querySelector('dialog')).toBeEmptyDOMElement()
+    await waitFor(() => expect(container.querySelector('dialog')).toBeEmptyDOMElement())
 
     await user.click(oeffnen)
     expect(screen.getByRole('button', { name: /^Samstag, 5\. September 2026,/ })).toHaveAttribute(

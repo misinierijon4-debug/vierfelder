@@ -1548,3 +1548,137 @@ iPhone genau die 34 punkte, die Apple für den home-indicator vorsieht. Addiert
 ergab das 46, und die zeile stand sichtbar zu hoch. `max(0.75rem, var(--app-safe-bottom))` gibt beiden fällen ihren wert: ohne safe-area zwölf
 pixel, mit safe-area genau sie. Dazu hatte der platzhalter der sendelinie acht
 pixel abstand für eine haarlinie. Zusammen 55 auf 39 pixel.
+
+## 38. Nachtrag: ENIs kopf trug vier werkzeuge und einen namen daneben (14.09.2026)
+
+**Der name stand nicht in der mitte, er stand dazwischen.** Die kopfleiste war
+ein `justify-between` aus drei kindern: links der rückweg, in der mitte ENIs
+name, rechts vier flächen zu 44 pixeln. `justify-between` verteilt aber nur die
+lücken gleichmäßig, nicht die kinder — und wenn rechts 176 pixel stehen und
+links 36, landet die „mitte" sichtbar links von der mitte. Es ist jetzt ein
+raster aus drei spalten, `minmax(0,1fr) auto minmax(0,1fr)`: die beiden
+außenspalten sind gleich breit, also steht die mittlere wirklich mittig, auf
+375 wie auf 430 pixeln, egal was in den außenspalten liegt.
+
+**Vier werkzeuge waren drei zu viel.** Vorlesen, gedächtnis, verlauf, neuer
+chat — vier gleich große, gleich graue symbole in einer leiste, die vor allem
+eines sagen soll: hier redest du mit ENI. Offen geblieben ist der neue chat,
+weil er der einzige griff ist, den man mitten im reden braucht. Verlauf,
+vorlesen und gedächtnis liegen hinter einem menü, und zwar ausgeschrieben: ein
+symbol allein muss geraten werden, eine zeile mit wort nicht, und im menü ist
+platz keiner mehr knapp.
+
+**Das menüzeichen sind drei quadrate, keine drei punkte.** Kreise sind in
+dieser app die ausnahme und keine regel; die farbpunkte im kopf sind aus
+demselben grund schon quadrate geworden.
+
+**Die modellwahl ist von oben nach unten gewandert.** Sie hing am namen, mit
+der begründung: das modell ist nicht ENI, es ist nur die stimme, mit der er
+gerade redet. Die begründung stimmt, der ort war trotzdem falsch. Sie gehört
+dorthin, wo man ihn zum reden bringt. Oben steht jetzt, mit wem du redest;
+unten an der eingabe, womit er antwortet. Der name im kopf ist damit wieder
+ein name und kein knopf.
+
+Konkret sitzt die wahl in dem feld der eingabezeile, das sonst das diktat und
+das „wird verarbeitet" trägt. Dieses feld sagt ohnehin, was gerade läuft —
+wenn nichts läuft, sagt es, wer spricht. Das menü klappt nach oben auf, denn
+unter der eingabe ist der rand des bildschirms und auf dem telefon die
+tastatur. Steht nur ein anbieter zur wahl, steht dort nichts: eine wahl mit
+einer möglichkeit ist keine wahl, und eine herkunftszeile, die niemand
+braucht, war schon einmal da und ist auf ansage wieder rausgeflogen.
+
+**Das vorlesen bleibt beim umschalten offen.** Ein schalter, der das menü
+schließt, lässt einen vor einer geschlossenen leiste raten, ob es angekommen
+ist; hier springt das symbol von der durchgestrichenen zur offenen membran, und
+man sieht es. Aus `aria-pressed` an einem freistehenden knopf ist ein
+`menuitemcheckbox` mit `aria-checked` geworden, und die beschriftung bleibt
+stehen statt zwischen „antworten vorlesen" und „nicht mehr vorlesen" zu
+wechseln: bei einem kästchen sagt der zustand, was los ist, nicht der text.
+
+**Zwei menüs, eine regel zum schließen.** Klick daneben und Escape hingen
+vorher als kopie in der modellwahl. Sie stehen jetzt in `useMenueDaneben` und
+werden vom kopfmenü und von der modellwahl benutzt — zweimal dasselbe
+abzuschreiben heißt, es beim nächsten mal nur an einer stelle zu reparieren.
+
+## 39. Nachtrag: drei stellen, an denen nichts sprang (14.09.2026)
+
+Die app hatte einen takt für das raster und keinen für ENI. Drei bewegungen
+fehlten, und alle drei fehlten auf dieselbe art: es war nicht langsam, es war
+gar nichts da. Die werte stehen wie alle anderen in `src/lib/motion.ts`.
+
+**Die menüs gehen aus der ecke ihres knopfes auf.** Hülle mit `scale 0.96` und
+sechs pixeln versatz, 170 ms hinein, 110 ms hinaus — zugehen schneller als
+aufgehen, ein menü, das sich zeit lässt zu verschwinden, steht im weg. Der
+`transform-origin` sitzt an der ecke, an der der knopf steht: oben rechts beim
+kopfmenü, unten links bei der modellwahl, die nach oben klappt. Die zeilen
+kommen mit 35 ms versatz hinterher, beim schließen nicht — das menü geht als
+ein stück, sonst zerfällt es.
+
+Vier prozent `scale` klingt nach nichts und ist genau die absicht. Ein menü,
+das aus dem nichts aufspringt, sieht nach spielzeug aus; es soll nur die
+richtung lesbar sein, aus der es kommt.
+
+**ENI kommt herein, statt umgeschaltet zu werden.** Der weg von der
+anzeigetafel in den chat war ein harter schnitt: eben noch das raster, dann
+ohne zwischenschritt ENI. Jetzt zehn pixel von unten mit der deckkraft, 260 ms.
+Nur der eingang — der rückweg wechselt die route und nimmt den ganzen baum mit,
+dafür bräuchte es ein `AnimatePresence` um beide bildschirme, und das liegt in
+`App.tsx` hinter mehreren frühen rückgaben.
+
+**Die tastatur schiebt, statt zu springen.** `useEniViewport` setzte höhe und
+`top` der hülle bei jedem `visualViewport`-ereignis hart. Auf dem telefon hieß
+das: feld antippen, tastatur kommt, bildschirm rastet. Beide werte wandern
+jetzt über 220 ms. Der verlauf darin steht dabei still — seine sichtbare höhe
+schrumpft bild für bild mit, und ein `scrollTop`, das nur am anfang gesetzt
+wurde, liegt am ende daneben; am `transitionend` wird deshalb noch einmal ans
+ende gezogen.
+
+**`prefers-reduced-motion` nimmt überall nur die deckkraft.** Die bewegung ist
+die zugabe; die auskunft steht auch ohne sie da.
+
+**Zwei nebenbefunde.** Die menühülle brauchte einen festen `key`: ohne ihn
+setzt `AnimatePresence` beim wiederöffnen eine zweite kopie neben die noch
+ausblendende erste, und wer schnell tippt, sieht beide. Und die tests durften
+nicht länger am verschwinden aus dem DOM ablesen, ob ein menü zu ist — es
+blendet aus und hängt so lange noch da. `aria-expanded` am knopf sagt dasselbe
+und hängt an der zustandsentscheidung statt an einer laufzeit.
+
+## 40. Nachtrag: blätter, die auftauchen, und ein angebot, das stehen blieb (14.09.2026)
+
+**Die vollbilddialoge tauchten auf und waren weg.** Kalender, verlauf,
+gedächtnis: `showModal()`, fertig. Ein blatt, das ohne weg erscheint, liest
+sich wie ein seitenwechsel — es soll sich aber über die app legen. Jetzt zehn
+pixel von unten mit der deckkraft, 240 ms, der grund dahinter zieht mit.
+
+Das steht in CSS und nicht in `motion`, weil ein `<dialog>` im top-layer liegt:
+React kann das element beim schließen nicht so lange stehen lassen, wie eine
+ausblendbewegung braucht. `@starting-style` gibt dem browser den zustand vor
+dem öffnen, `allow-discrete` lässt ihn `display` und `overlay` mitfahren statt
+sie sofort umzuschalten — erst damit ist auch das zugehen sichtbar. Wo das noch
+nicht unterstützt wird, bleibt es beim harten auftauchen von vorher; es fehlt
+nur die bewegung.
+
+Zwei fallen dabei. Erstens: der übergang darf nicht an `dialog:modal` hängen.
+Sobald `close()` läuft, ist das element nicht mehr modal, die regel fällt
+schlagartig weg, und das zugehen sprang weiter — er hängt jetzt an `dialog`,
+nur der offene zustand an `[open]`. Zweitens: alle vier dialoge zeichnen ihren
+inhalt mit `{offen && …}` und nahmen ihn damit im selben schritt heraus, in dem
+`close()` lief; das blatt wäre leer ausgeblendet, als dunkle fläche ohne
+inhalt. `lib/dialogNachlauf.ts` hält ihn so lange stehen, wie das ausblenden
+dauert.
+
+**Die auftakte im leeren chat blieben stehen, nachdem man einen genommen
+hatte.** Vier zeilen, man tippt eine an, der satz steht im feld — und die
+anderen drei stehen weiter da, obwohl die frage beantwortet ist. Sie sind ein
+angebot für den fall, dass einem nichts einfällt; ist die wahl getroffen, sind
+sie nur noch drei zeilen im weg.
+
+Sie treten jetzt ab, sobald etwas im feld steht. Nicht nur beim antippen —
+auch wer selbst zu schreiben anfängt, braucht sie nicht mehr. Wird das feld
+wieder leer, stehen sie wieder da; der maßstab ist der zustand des feldes, nicht
+ein einmaliger klick.
+
+Der genommene geht als letzter: die drei anderen fahren sofort zusammen, er
+mit 120 ms verzug hinterher. Das liest sich als „dieser hier ist es geworden"
+statt als „alle vier sind weg". Gruß und wochenstand bleiben — die sind kein
+angebot, sondern auskunft.

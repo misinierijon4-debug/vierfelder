@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import React, { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { EASE } from '../../lib/motion'
 import { IconFileText, IconPlus, IconSpeakerHigh, IconStop } from './EniSymbole'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
@@ -40,6 +41,8 @@ type Props = {
   onVorlesen?: (zeile: EniZeile) => void
   onAuftakt: (text: string) => void
   duellStand?: DuellKontext | null
+  /** steht etwas im eingabefeld? dann treten die auftakte ab */
+  feldBelegt?: boolean
 }
 
 export function EniStrom({
@@ -54,6 +57,7 @@ export function EniStrom({
   onVorlesen,
   onAuftakt,
   duellStand,
+  feldBelegt = false,
 }: Props) {
   /**
    * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
@@ -68,7 +72,9 @@ export function EniStrom({
   const [notizFuer, setNotizFuer] = useState<string | null>(null)
 
   if (zeilen.length === 0 && !prueft) {
-    return <EniLeer me={me} duellStand={duellStand} onAuftakt={onAuftakt} />
+    return (
+      <EniLeer me={me} duellStand={duellStand} onAuftakt={onAuftakt} feldBelegt={feldBelegt} />
+    )
   }
 
   let letzterTag = ''
@@ -484,11 +490,23 @@ function EniLeer({
   me,
   duellStand,
   onAuftakt,
+  feldBelegt,
 }: {
   me: UserId
   duellStand?: DuellKontext | null
   onAuftakt: (text: string) => void
+  feldBelegt: boolean
 }) {
+  const reduziert = useReducedMotion() ?? false
+  /*
+    Welchen auftakt man genommen hat. Er geht als letzter — die drei anderen
+    raeumen zuerst das feld, dann folgt der gewaehlte. Das liest sich als
+    „dieser hier ist es geworden" statt als „alle vier sind weg".
+  */
+  const [genommen, setGenommen] = useState<string | null>(null)
+  useEffect(() => {
+    if (!feldBelegt) setGenommen(null)
+  }, [feldBelegt])
   const { gruss, gegner } = eniBegruessung(me)
   const ichFarbe = userDef(me).farbe
   const gegnerDef = userDef(me === 'koray' ? 'erijon' : 'koray')
@@ -557,25 +575,60 @@ function EniLeer({
           </div>
         )}
 
-        {vorschlaege.map((item) => (
-          <div key={item.id}>
-            <button
-              type="button"
-              onClick={() => onAuftakt(item.prompt)}
-              className="group flex min-h-12 w-full items-center justify-between gap-3 py-2.5 text-left transition-colors"
-            >
-              <span className="min-w-0 flex-1 truncate text-[15px] text-kreide-60 transition-colors group-hover:text-kreide">
-                {item.titel}
-              </span>
-              <span
-                aria-hidden="true"
-                className="shrink-0 text-[13px] leading-none text-kreide-52 transition-colors group-hover:text-kreide"
+        {/*
+          Die auftakte treten ab, sobald etwas im feld steht. Sie sind ein
+          angebot für den fall, dass einem nichts einfällt — ist die wahl
+          getroffen, sind die übrigen nur noch zeilen, die im weg stehen.
+          Wird das feld wieder leer, kommen sie zurück.
+        */}
+        <AnimatePresence initial={false}>
+          {!feldBelegt &&
+            vorschlaege.map((item) => (
+              <motion.div
+                key={item.id}
+                initial={reduziert ? { opacity: 0 } : { opacity: 0, height: 0 }}
+                animate={
+                  reduziert
+                    ? { opacity: 1, transition: { duration: 0.12 } }
+                    : { opacity: 1, height: 'auto', transition: { duration: 0.22, ease: EASE } }
+                }
+                exit={
+                  reduziert
+                    ? { opacity: 0, transition: { duration: 0.1 } }
+                    : {
+                        opacity: 0,
+                        height: 0,
+                        transition: {
+                          duration: 0.22,
+                          ease: EASE,
+                          // der genommene geht als letzter
+                          delay: item.id === genommen ? 0.12 : 0,
+                        },
+                      }
+                }
+                style={{ overflow: 'hidden' }}
               >
-                ›
-              </span>
-            </button>
-          </div>
-        ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGenommen(item.id)
+                    onAuftakt(item.prompt)
+                  }}
+                  className="group flex min-h-12 w-full items-center justify-between gap-3 py-2.5 text-left transition-colors"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-kreide-60 transition-colors group-hover:text-kreide">
+                    {item.titel}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-[13px] leading-none text-kreide-52 transition-colors group-hover:text-kreide"
+                  >
+                    ›
+                  </span>
+                </button>
+              </motion.div>
+            ))}
+        </AnimatePresence>
       </div>
     </div>
   )

@@ -3,6 +3,7 @@ import { IconPlus, IconTrash, IconX } from './EniSymbole'
 import { fokusRingLoesen } from '../../lib/dialogFokus'
 import { useScrollSperre } from '../../lib/scrollsperre'
 import type { EniChat } from '../../lib/eniSpeicher'
+import { useDialogNachlauf } from '../../lib/dialogNachlauf'
 
 const DATUM = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' })
 const UHRZEIT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
@@ -53,6 +54,9 @@ export function EniVerlauf({
 
   useScrollSperre(offen)
 
+  // inhalt bleibt stehen, solange das blatt ausblendet
+  const sichtbar = useDialogNachlauf(offen)
+
   return (
     <dialog
       ref={dialogRef}
@@ -63,7 +67,7 @@ export function EniVerlauf({
       }}
       className="m-0 h-[100dvh] max-h-none w-screen max-w-none bg-grund p-0 text-kreide backdrop:bg-grund/80"
     >
-      {offen && (
+      {sichtbar && (
         <div className="vollbild-safe-x flex h-full flex-col pb-[calc(var(--app-safe-bottom)+1rem)] pt-[calc(var(--app-safe-top)+1rem)]">
           <div className="mx-auto flex w-full max-w-[560px] min-h-11 items-center justify-between gap-2 border-b border-linie pb-3">
             <h2 className="display text-[16px] font-bold lowercase leading-none">verlauf</h2>
