@@ -58,13 +58,26 @@ function schluessel(umgebung: (name: string) => string | undefined, name: string
   return umgebung(name)?.trim() ?? ''
 }
 
+/** welcher Weg nach draussen gilt */
+export type Suchweg = 'tavily' | 'openrouter'
+
 /**
- * Ein Schluessel genuegt, und welcher es ist, entscheidet nur den Weg nach
- * draussen. Geprueft wird hier nichts: jede Pruefung waere eine Suche, und eine
- * Suche ist entweder ein Credit oder Guthaben.
+ * Welcher Weg gilt, oder keiner. Die eine Stelle, die das entscheidet: die
+ * Suche selbst fragt sie, und die Oberflaeche erfaehrt darueber, ob sie
+ * „kostenlos“ oder „kostet Guthaben“ unter den Schalter schreiben muss.
+ *
+ * Geprueft wird nichts: jede Pruefung waere eine Suche, und eine Suche ist
+ * entweder ein Credit oder Guthaben.
  */
+export function webWeg(umgebung: (name: string) => string | undefined): Suchweg | null {
+  if (schluessel(umgebung, 'TAVILY_API_KEY')) return 'tavily'
+  if (schluessel(umgebung, 'OPENROUTER_API_KEY')) return 'openrouter'
+  return null
+}
+
+/** ein Schluessel genuegt; welcher, sagt `webWeg` */
 export function webBereit(umgebung: (name: string) => string | undefined): boolean {
-  return !!schluessel(umgebung, 'TAVILY_API_KEY') || !!schluessel(umgebung, 'OPENROUTER_API_KEY')
+  return webWeg(umgebung) !== null
 }
 
 /**
@@ -118,17 +131,16 @@ export async function sucheWeb(
   signal?: AbortSignal,
   http: typeof fetch = fetch,
 ): Promise<WebQuelle[]> {
-  const tavily = schluessel(umgebung, 'TAVILY_API_KEY')
-  const openrouter = schluessel(umgebung, 'OPENROUTER_API_KEY')
-  if (!tavily && !openrouter) throw new EniWebFehler('Internet ist noch nicht eingerichtet: TAVILY_API_KEY fehlt.')
+  const weg = webWeg(umgebung)
+  if (!weg) throw new EniWebFehler('Internet ist noch nicht eingerichtet: TAVILY_API_KEY fehlt.')
   if (!frage.trim()) throw new EniWebFehler('Schreibe eine Suchfrage dazu, damit ENI weiß, wonach es suchen soll.')
   const abbruch = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
   try {
     // Der freie Weg zuerst: sind beide Schluessel gesetzt, soll die Suche
     // nichts kosten, ohne dass jemand dafuer einen Schalter findet.
-    const quellen = tavily
-      ? await beiTavily(frage, tavily, abbruch, http)
-      : await beiOpenRouter(frage, openrouter, abbruch, http)
+    const quellen = weg === 'tavily'
+      ? await beiTavily(frage, schluessel(umgebung, 'TAVILY_API_KEY'), abbruch, http)
+      : await beiOpenRouter(frage, schluessel(umgebung, 'OPENROUTER_API_KEY'), abbruch, http)
     if (!quellen.length) throw new EniWebFehler('Die Suche hat keine auswertbaren Quellen geliefert. Formuliere die Frage genauer oder schalte Internet aus.')
     return quellen
   } catch (fehler) {

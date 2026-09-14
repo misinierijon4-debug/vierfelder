@@ -17,7 +17,7 @@ import {
   NACHHOLBAR,
   stimmenprobeAntwort,
 } from '../../lib/eniAntwort'
-import type { AnbieterInfo, Antwortgeber, Modellstand } from '../../lib/eniAntwort'
+import type { AnbieterInfo, Antwortgeber, Lage, Modellstand, Suchweg } from '../../lib/eniAntwort'
 import {
   bereiteVor,
   bildAdressen as holeBildAdressen,
@@ -63,6 +63,19 @@ const STANDARD_GEBER = (
   denkt: boolean
 ): Antwortgeber => (bereit ? modellAntwort(anbieter, denkt) : stimmenprobeAntwort(speicher))
 
+/**
+ * Was dasteht, solange noch kein satz da ist.
+ *
+ * Ohne quellen heisst denken nur denken. Mit quellen liest er auch — und
+ * genau diese unterscheidung ist das, was die stille erklärt: fünf auszüge
+ * mehr im systemtext sind fünf auszüge, die erst gelesen werden wollen.
+ */
+const lageText = (schritt: Lage['schritt'], anzahl: number) => {
+  if (schritt === 'sucht') return 'Eni sucht im Web …'
+  if (schritt === 'gefunden') return `${anzahl} ${anzahl === 1 ? 'Quelle' : 'Quellen'} gefunden`
+  return anzahl > 0 ? 'Eni liest und denkt nach …' : 'Eni denkt nach …'
+}
+
 export function EniApp({
   speicher,
   onZurueck,
@@ -95,6 +108,17 @@ export function EniApp({
   const [denkt, setDenkt] = useState(false)
   const [internet, setInternet] = useState(false)
   const [internetBereit, setInternetBereit] = useState(false)
+  /** worüber gesucht wird — entscheidet nur, was unter dem schalter steht */
+  const [suchweg, setSuchweg] = useState<Suchweg | null>(null)
+  /**
+   * Woran ENI gerade ist, solange kein textstück da ist.
+   *
+   * Die gefundenen quellen bleiben stehen, wenn der schritt weiterspringt:
+   * sie sind das eigentliche lebenszeichen. Zwischen „gefunden" und dem ersten
+   * satz liegt die denkzeit, und die ist mit vordenken die längste stille im
+   * ganzen ablauf.
+   */
+  const [lage, setLage] = useState<{ schritt: Lage['schritt']; quellen: Array<{ titel: string; url: string }> } | null>(null)
   const [wahlOffen, setWahlOffen] = useState(false)
   const [menueOffen, setMenueOffen] = useState(false)
   const [vorgabe, setVorgabe] = useState<{ text: string; nr: number } | null>(null)
@@ -181,6 +205,7 @@ export function EniApp({
       if (abgemeldet) return
       setModus(stand.bereit ? 'modell' : 'stimmenprobe')
       setInternetBereit(stand.internet === true)
+      setSuchweg(stand.suche ?? null)
       setAnbieter(stand.anbieter)
       /**
        * Die gemerkte Wahl gilt nur, solange der Server sie noch anbietet.
@@ -342,7 +367,7 @@ export function EniApp({
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
-      setTeilAntwort('')
+      setTeilAntwort(''); setLage(null)
       setPrueft(true)
       stimme.halt()
       if (vorlesen) weckeStimme()
@@ -406,7 +431,8 @@ export function EniApp({
             vorlagen,
             controller.signal,
             (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) },
-            internet
+            internet,
+            (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) }
           )
 
           // Wichtig: Spaete Antworten duerfen niemals im falschen Gespraech landen!
@@ -473,7 +499,7 @@ export function EniApp({
             )
           }
         } finally {
-          setTeilAntwort('')
+          setTeilAntwort(''); setLage(null)
           setPrueft(false)
         }
       })()
@@ -491,7 +517,7 @@ export function EniApp({
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
-      setTeilAntwort('')
+      setTeilAntwort(''); setLage(null)
       setPrueft(true)
       stimme.halt()
       if (vorlesen) weckeStimme()
@@ -501,7 +527,7 @@ export function EniApp({
 
       void (async () => {
         try {
-          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }, internet)
+          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }, internet, (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) })
           letzterFehlversuchRef.current = null
           if (aktiverChatRef.current === chatId) {
             setZeilen((vorher) => [
@@ -527,7 +553,7 @@ export function EniApp({
                 : 'ENI hat nicht geantwortet. versuch es gleich noch einmal.'
           )
         } finally {
-          setTeilAntwort('')
+          setTeilAntwort(''); setLage(null)
           setPrueft(false)
         }
       })()
@@ -541,7 +567,7 @@ export function EniApp({
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
-      setTeilAntwort('')
+      setTeilAntwort(''); setLage(null)
       setPrueft(true)
       stimme.halt()
       if (vorlesen) weckeStimme()
@@ -610,7 +636,7 @@ export function EniApp({
                 : 'der Wochenrückblick konnte nicht geladen werden.'
           )
         } finally {
-          setTeilAntwort('')
+          setTeilAntwort(''); setLage(null)
           setPrueft(false)
         }
       })()
@@ -704,7 +730,7 @@ export function EniApp({
       setHinweis(null)
       stimme.halt()
       setFrisch(null)
-      setTeilAntwort('')
+      setTeilAntwort(''); setLage(null)
       aktiverChatRef.current = chatId
       setAktiverChat(chatId)
 
@@ -739,7 +765,7 @@ export function EniApp({
     setFehler(null)
     setHinweis(null)
     setFrisch(null)
-    setTeilAntwort('')
+    setTeilAntwort(''); setLage(null)
     aktiverChatRef.current = null
     setAktiverChat(null)
     setZeilen([])
@@ -934,13 +960,26 @@ export function EniApp({
                 Internet: {internet ? 'an' : 'aus'}
               </button>
               <span className="text-[10px] text-kreide-60">
-                {!internetBereit ? 'Websuche noch nicht verfügbar' : internet
-                  ? 'Suchfrage geht an OpenRouter · Suche kostet Guthaben'
-                  : 'Websuche mit Quellen · kostet OpenRouter-Guthaben'}
+                {!internetBereit
+                  ? 'Websuche noch nicht verfügbar'
+                  : suchweg === 'tavily'
+                    ? 'Websuche mit Quellen · kostenlos'
+                    : 'Websuche mit Quellen · kostet OpenRouter-Guthaben'}
               </span>
             </div>
           )}
-          {prueft && internet && !teilAntwort && <p role="status" className="pb-2 text-xs text-kreide-60">Eni recherchiert und bereitet die Antwort vor …</p>}
+          {prueft && !teilAntwort && lage && (
+            <div role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">
+              <p>{lageText(lage.schritt, lage.quellen.length)}</p>
+              {lage.quellen.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {lage.quellen.map((quelle) => (
+                    <li key={quelle.url} className="truncate">· {quelle.titel}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {anhangStatus && <p role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">{anhangStatus}</p>}
           <EniEingabe
             gesperrt={prueft || geber === null || anhangStatus !== null}

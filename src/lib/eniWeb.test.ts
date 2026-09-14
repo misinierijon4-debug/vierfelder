@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   sucheWeb,
   webBereit,
+  webWeg,
   webQuellen,
   tavilyQuellen,
   mitWebQuellen,
@@ -99,6 +100,14 @@ describe('Eni Websuche', () => {
     expect(webBereit(NUR_OPENROUTER)).toBe(true)
     expect(webBereit(mit({ TAVILY_API_KEY: '   ' }))).toBe(false)
     expect(webBereit(() => undefined)).toBe(false)
+  })
+
+  /* Die Oberflaeche schreibt „kostenlos" oder „kostet Guthaben" darunter. */
+  it('nennt den Weg, nicht nur dass es einen gibt', () => {
+    expect(webWeg(NUR_TAVILY)).toBe('tavily')
+    expect(webWeg(NUR_OPENROUTER)).toBe('openrouter')
+    expect(webWeg(mit({ TAVILY_API_KEY: 'tvly-test', OPENROUTER_API_KEY: 'sk-or-test' }))).toBe('tavily')
+    expect(webWeg(() => undefined)).toBe(null)
   })
 
   it('haengt gepruefte quellen an und zaehlt nichts doppelt auf', () => {

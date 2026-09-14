@@ -24,9 +24,26 @@ export type AnbieterInfo = {
   denkHinweis: string
 }
 
+/** worüber die websuche läuft, sobald sie eingerichtet ist */
+export type Suchweg = 'tavily' | 'openrouter'
+
+/**
+ * Was ENI gerade tut, solange noch nichts zu lesen ist.
+ *
+ * Dasselbe wie im Server, nur hier noch einmal: der Browser baut nicht gegen
+ * die Edge Function, und ein gemeinsamer Import zöge Deno-Typen ins Bundle.
+ * Wandert ein Schritt, wandert er an beiden Stellen.
+ */
+export type Lage =
+  | { schritt: 'sucht' }
+  | { schritt: 'gefunden'; quellen: Array<{ titel: string; url: string }> }
+  | { schritt: 'denkt' }
+
 /** was die pruefung zurueckgibt: ob überhaupt, und wenn ja, wer zur wahl steht */
 export type Modellstand = {
   internet?: boolean
+  /** null, solange kein suchschlüssel gesetzt ist */
+  suche?: Suchweg | null
   bereit: boolean
   anbieter: AnbieterInfo[]
 }
@@ -52,7 +69,9 @@ export type Antwortgeber = {
     anhaenge?: AnhangVorlage[],
     signal?: AbortSignal,
     onText?: (text: string) => void,
-    internet?: boolean
+    internet?: boolean,
+    /** woran ENI gerade ist, bevor das erste textstück da ist */
+    onLage?: (lage: Lage) => void
   ) => Promise<Antwort>
   /**
    * Noch einmal auf die letzte Vorlage antworten, die ohne Urteil geblieben
@@ -63,7 +82,13 @@ export type Antwortgeber = {
    * gesagt worden, auch wenn das Modell danach geschwiegen hat. Sie noch
    * einmal zu schicken hiesse, denselben Satz zweimal in den Chat zu stellen.
    */
-  nochmal: (chatId: string, signal?: AbortSignal, onText?: (text: string) => void, internet?: boolean) => Promise<Antwort>
+  nochmal: (
+    chatId: string,
+    signal?: AbortSignal,
+    onText?: (text: string) => void,
+    internet?: boolean,
+    onLage?: (lage: Lage) => void
+  ) => Promise<Antwort>
   /**
    * Erzeugt oder laedt den persistenten Wochenrueckblick fuer einen gebundenen
    * Wochenchat.
@@ -182,8 +207,39 @@ export async function rufeEniFunktion(
   }
 }
 
-const rufe = (rumpf: Record<string, unknown>, signal?: AbortSignal, onText?: (text: string) => void) =>
-  rufeEniFunktion('eni', { ...rumpf, ...(onText ? { stream: true } : {}) }, signal, (e) => { if (e.typ === 'text' && typeof e.text === 'string') onText?.(e.text) })
+/**
+ * Ein Lage-Ereignis vom Server in einen bekannten Schritt übersetzen.
+ *
+ * Nur die drei Schritte, die es wirklich gibt, und von einer Quelle nur Titel
+ * und Adresse als Text. Ein Server, der etwas Neueres schickt, als dieser
+ * Client kennt, darf die Anzeige nicht durcheinanderbringen: dann steht eben
+ * kein Schritt da.
+ */
+function lageAus(e: Record<string, unknown>): Lage | null {
+  if (e.schritt === 'sucht' || e.schritt === 'denkt') return { schritt: e.schritt }
+  if (e.schritt !== 'gefunden' || !Array.isArray(e.quellen)) return null
+  return {
+    schritt: 'gefunden',
+    quellen: e.quellen
+      .filter((q): q is { titel?: unknown; url: string } => typeof (q as { url?: unknown })?.url === 'string')
+      .slice(0, 10)
+      .map((q) => ({ titel: String(q.titel ?? q.url).slice(0, 180), url: q.url })),
+  }
+}
+
+const rufe = (
+  rumpf: Record<string, unknown>,
+  signal?: AbortSignal,
+  onText?: (text: string) => void,
+  onLage?: (lage: Lage) => void
+) =>
+  rufeEniFunktion('eni', { ...rumpf, ...(onText ? { stream: true } : {}) }, signal, (e) => {
+    if (e.typ === 'text' && typeof e.text === 'string') onText?.(e.text)
+    if (e.typ === 'lage' && onLage) {
+      const lage = lageAus(e)
+      if (lage) onLage(lage)
+    }
+  })
 
 /**
  * Ob ueberhaupt ein Schluessel gesetzt ist, und welche Modelle damit zur Wahl
@@ -216,7 +272,15 @@ export async function modellBereit(): Promise<Modellstand> {
         denkbar: eintrag.denkbar === true,
         denkHinweis: String(eintrag.denkHinweis ?? ''),
       }))
-    return { bereit: true, anbieter, internet: inhalt.internet === true }
+    const weg = inhalt.suche
+    return {
+      bereit: true,
+      anbieter,
+      internet: inhalt.internet === true,
+      // Ein alter Server kennt das Feld nicht. Dann steht unter dem Schalter
+      // die vorsichtigere der beiden Zeilen, nie eine erfundene.
+      suche: weg === 'tavily' || weg === 'openrouter' ? weg : null,
+    }
   } catch {
     return { bereit: false, anbieter: [] }
   }
@@ -262,7 +326,7 @@ export function modellAntwort(
     art: 'modell',
     anbieter,
     denkt,
-    async antworte(chatId, text, _bisher, anhaenge, signal, onText, internet) {
+    async antworte(chatId, text, _bisher, anhaenge, signal, onText, internet, onLage) {
       const { status, inhalt } = await rufe(
         {
           chatId,
@@ -272,15 +336,17 @@ export function modellAntwort(
           ...(anhaenge && anhaenge.length > 0 ? { anhaenge } : {}),
         },
         signal,
-        onText
+        onText,
+        onLage
       )
       return lies(status, inhalt)
     },
-    async nochmal(chatId, signal, onText, internet) {
+    async nochmal(chatId, signal, onText, internet, onLage) {
       const { status, inhalt } = await rufe(
         { chatId, wiederholen: true, ...wahl, ...(internet ? { internet: true } : {}) },
         signal,
-        onText
+        onText,
+        onLage
       )
       return lies(status, inhalt)
     },

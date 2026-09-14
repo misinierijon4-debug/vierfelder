@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'test-token' } }, error: null }) } } }))
 import { EniModellFehler, modellAntwort } from './eniAntwort'
+import type { Lage } from './eniAntwort'
 const mensch = { id: 'm1', rolle: 'mensch', text: 'Hallo', erstellt: '2026-09-11' }
 function antwort(zeilen: unknown[]) {
   return new Response(zeilen.map((e) => JSON.stringify(e)).join('\n') + '\n', { headers: { 'content-type': 'application/x-ndjson' } })
@@ -35,6 +36,25 @@ describe('ENI client streaming protocol', () => {
     const ergebnis = await modellAntwort().antworte('c1', 'Hallo', [], [], undefined, (teil) => teile.push(teil))
     expect(teile).toEqual(['Hallo'])
     expect(ergebnis.eni?.text).toBe('Hallo!')
+  })
+  it('macht aus lage-ereignissen sichtbare schritte und überspringt, was es nicht kennt', async () => {
+    vorbereiten(antwort([
+      { typ: 'mensch', mensch },
+      { typ: 'lage', schritt: 'sucht' },
+      {
+        typ: 'lage',
+        schritt: 'gefunden',
+        quellen: [{ titel: 'Quelle', url: 'https://example.org/a' }, { titel: 'Ohne Adresse' }],
+      },
+      // ein neuerer server darf schritte kennen, die dieser client nicht kennt
+      { typ: 'lage', schritt: 'tanzt' },
+      { typ: 'lage', schritt: 'denkt' },
+      { typ: 'fertig', status: 200, inhalt: { mensch, eni: { ...mensch, id: 'e1', rolle: 'eni', text: 'Hallo!' } } },
+    ]))
+    const lagen: Lage[] = []
+    await modellAntwort().antworte('c1', 'Hallo', [], [], undefined, () => {}, true, (l) => lagen.push(l))
+    expect(lagen.map((l) => l.schritt)).toEqual(['sucht', 'gefunden', 'denkt'])
+    expect(lagen[1]).toEqual({ schritt: 'gefunden', quellen: [{ titel: 'Quelle', url: 'https://example.org/a' }] })
   })
   it('behält nach Verbindungsabbruch die gespeicherte Vorlage für einen sicheren erneuten Versuch', async () => {
     vorbereiten(antwort([{ typ: 'mensch', mensch }, { typ: 'text', text: 'Halb' }]))

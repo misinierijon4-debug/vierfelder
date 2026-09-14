@@ -154,6 +154,8 @@ function deps(
     schluessel?: string
     /** der zweite schluessel. undefined heisst: openrouter ist nicht gesetzt. */
     openrouter?: string
+    /** der suchschluessel. gesetzt heisst: die suche laeuft kostenlos. */
+    tavily?: string
     infron?: string
     modell?: (anfrage: ModellAnfrage) => Promise<string>
     limit?: string
@@ -176,6 +178,7 @@ function deps(
         SUPABASE_ANON_KEY: 'sb_publishable_test',
         DEEPSEEK_API_KEY: optionen.schluessel ?? 'sk-test',
         OPENROUTER_API_KEY: optionen.openrouter,
+        TAVILY_API_KEY: optionen.tavily,
         INFRON_API_KEY: optionen.infron,
         ENI_TAGESLIMIT: optionen.limit,
       })[name],
@@ -1109,6 +1112,55 @@ describe('Internet im authentifizierten Chat', () => {
     expect(tabellen.eni_nachrichten.at(-1)?.text).toContain('https://example.org/artikel')
     await behandleEni(anfrage({ chatId: 'chat-1', text: 'Ohne Internet' }), abhaengigkeiten)
     expect(suche).toHaveBeenCalledTimes(1)
+  })
+  /*
+    Zwischen der Vorlage und dem ersten Satz lagen bisher die Suche und die
+    ganze Denkzeit, und der Bildschirm sah dabei aus wie ein haengender Aufruf.
+    Diese drei Meldungen sind der Unterschied zwischen „es passiert nichts" und
+    „er ist bei den Quellen".
+  */
+  it('meldet suche, treffer und denkzeit, bevor der erste satz da ist', async () => {
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test' })
+    abhaengigkeiten.webSuche = vi
+      .fn()
+      .mockResolvedValue([{ titel: 'Quelle', url: 'https://example.org/artikel', text: 'Geheimer Auszug' }])
+    const response = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Aktuelle Frage', internet: true, stream: true }),
+      abhaengigkeiten
+    )
+    const gelesen = await new Response(response.body).text()
+    const lagen = gelesen
+      .trim()
+      .split('\n')
+      .map((zeile) => JSON.parse(zeile))
+      .filter((e) => e.typ === 'lage')
+    expect(lagen.map((e) => e.schritt)).toEqual(['sucht', 'gefunden', 'denkt'])
+    expect(lagen[1].quellen).toEqual([{ titel: 'Quelle', url: 'https://example.org/artikel' }])
+    // Der Auszug ist fremder Text. Er gehoert in den Systemtext, nicht auf den
+    // Bildschirm — und schon gar nicht, bevor ENI ihn gelesen hat.
+    expect(gelesen).not.toContain('Geheimer Auszug')
+  })
+  it('meldet ohne internet nur die denkzeit', async () => {
+    const { abhaengigkeiten } = deps()
+    const response = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Hallo', stream: true }),
+      abhaengigkeiten
+    )
+    const lagen = (await new Response(response.body).text())
+      .trim()
+      .split('\n')
+      .map((zeile) => JSON.parse(zeile))
+      .filter((e) => e.typ === 'lage')
+    expect(lagen.map((e) => e.schritt)).toEqual(['denkt'])
+  })
+  it('sagt der oberflaeche, worueber gesucht wird', async () => {
+    const stand = async (optionen: Parameters<typeof deps>[0]) =>
+      await (await behandleEni(anfrage({ pruefen: true }), deps(optionen).abhaengigkeiten)).json()
+    expect(await stand({ tavily: 'tvly-test' })).toMatchObject({ internet: true, suche: 'tavily' })
+    expect(await stand({ openrouter: 'sk-or-test' })).toMatchObject({ internet: true, suche: 'openrouter' })
+    // Beide gesetzt: der freie Weg gilt, und die Zeile darunter sagt es auch.
+    expect(await stand({ tavily: 'tvly-test', openrouter: 'sk-or-test' })).toMatchObject({ suche: 'tavily' })
+    expect(await stand({})).toMatchObject({ internet: false, suche: null })
   })
   it('sucht bei fehlender Anmeldung oder Tageslimit nicht', async () => {
     const { abhaengigkeiten } = deps({ limit: '0' })

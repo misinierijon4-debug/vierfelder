@@ -1,6 +1,7 @@
 import {
   sucheWeb,
   webBereit,
+  webWeg,
   mitWebQuellen,
   nurGepruefteLinks,
   webLage,
@@ -197,6 +198,23 @@ export type EniDatenbank = {
     }
   }
 }
+
+/**
+ * Was ENI gerade tut, solange noch nichts zu lesen ist.
+ *
+ * Die Antwort kommt als Strom getippter Ereignisse herein, und bis zum ersten
+ * Textstueck sah der Bildschirm bisher genauso aus wie ein haengender Aufruf:
+ * leer. Bei angeschaltetem Internet waren das die Suche und, mit Vordenken,
+ * die gesamte Denkzeit — Minuten, in denen niemand wusste, ob ueberhaupt etwas
+ * passiert. Diese Meldungen fuellen genau diese Luecke.
+ *
+ * `gefunden` traegt Titel und Adresse, nie den Auszug: der Auszug ist fremder
+ * Text und gehoert in den Systemtext, nicht auf den Bildschirm.
+ */
+export type Lage =
+  | { schritt: 'sucht' }
+  | { schritt: 'gefunden'; quellen: Array<{ titel: string; url: string }> }
+  | { schritt: 'denkt' }
 
 export type ModellAnfrage = {
   onText?: (text: string) => void
@@ -679,6 +697,9 @@ export async function behandleEni(
       modell: offen[0]?.modell ?? MODELL,
       anbieter: offen,
       internet: webBereit(deps.umgebung),
+      // Nicht nur ob, sondern worueber: die Oberflaeche schreibt „kostenlos“
+      // oder „kostet Guthaben“ unter den Schalter, und raten darf sie nicht.
+      suche: webWeg(deps.umgebung),
     })
   }
 
@@ -1089,14 +1110,23 @@ export async function behandleEni(
    */
   const bekannteQuellen: WebQuelle[] = frueherImChat.flatMap((lauf) => lauf.quellen)
 
-  const abschliessen = async (onText?: (text: string) => void, signal?: AbortSignal): Promise<Response> => {
+  const abschliessen = async (
+    onText?: (text: string) => void,
+    melde?: (lage: Lage) => void,
+    signal?: AbortSignal
+  ): Promise<Response> => {
   let urteil: string
   /** was diese Antwort selbst gefunden hat. steht hier, weil es nach dem Urteil noch gespeichert wird. */
   let web: WebQuelle[] = []
   try {
-    web = anfrage.internet === true
-      ? await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
-      : []
+    if (anfrage.internet === true) {
+      melde?.({ schritt: 'sucht' })
+      web = await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
+      // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
+      // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
+      melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
+    }
+    melde?.({ schritt: 'denkt' })
 
     urteil = (
       await deps.modell(
@@ -1196,8 +1226,12 @@ export async function behandleEni(
   if (anfrage.stream === true) {
     return ereignisStrom(async (sende, signal) => {
       sende({ typ: 'mensch', mensch: menschZeile })
-      return abschliessen((text) => sende({ typ: 'text', text }), signal)
+      return abschliessen(
+        (text) => sende({ typ: 'text', text }),
+        (lage) => sende({ typ: 'lage', ...lage }),
+        signal
+      )
     }, CORS)
   }
-  return abschliessen(undefined, request.signal)
+  return abschliessen(undefined, undefined, request.signal)
 }

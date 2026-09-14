@@ -13,9 +13,23 @@ Die Suche läuft über Tavily. Der freie Tarif gibt 1.000 Suchen im Monat, verla
 npx supabase secrets set TAVILY_API_KEY=tvly-DEIN-SCHLUESSEL
 ```
 
-Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**. Der Code muss einmal draußen sein (`npx supabase functions deploy eni`); steht er, ist das Setzen oder Wechseln des Secrets kein weiterer Deploy — die Function liest es beim nächsten Aufruf.
+Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**. Der Code muss einmal draußen sein (`npx supabase functions deploy eni`); steht er, ist das Setzen oder Wechseln des Secrets kein weiterer Deploy — die Function liest es beim nächsten Aufruf. Welcher Weg gilt, sagt die Function der Oberfläche selbst: unter dem Schalter steht **kostenlos** bei Tavily und **kostet OpenRouter-Guthaben** ohne ihn.
 
 Ohne diesen Schlüssel bleibt der alte Weg über das OpenRouter-Web-Plugin (Exa) stehen; er verwendet den vorhandenen `OPENROUTER_API_KEY`. Der kostet Guthaben: Exa Auto 0,007 USD je Suchanfrage laut Dokumentation vom 14.09.2026, und OpenRouter-Guthaben ist dafür auch bei einem kostenlosen Modell nötig. Sind beide Schlüssel gesetzt, sucht Tavily — der freie Weg geht vor, ohne dass jemand dafür einen Schalter finden muss. Der Schalter im Chat steht, sobald einer der beiden Schlüssel gesetzt ist.
+
+## Was während des Wartens dasteht
+
+Zwischen der Frage und dem ersten Satz liegen die Suche und die Denkzeit. Beides war bisher unsichtbar: der Bildschirm sah aus wie ein hängender Aufruf, und mit eingeschaltetem Vordenken konnte das Minuten dauern, ohne dass irgendetwas darauf hindeutete, dass gearbeitet wird. Der Chat meldet deshalb drei Schritte, bevor der erste Satz kommt:
+
+1. **Eni sucht im Web …**
+2. **N Quellen gefunden** — mit den Titeln, die gefunden wurden.
+3. **Eni liest und denkt nach …** — die Titel bleiben dabei stehen.
+
+Ohne Internet steht dort nur **Eni denkt nach …**; das gilt für jede Nachricht, nicht nur für die mit Suche. Sobald das erste Textstück eintrifft, verschwindet die Meldung und die Antwort übernimmt.
+
+Die Schritte gehen als eigene Ereignisse (`typ: "lage"`) durch denselben Strom wie der Antworttext. Mitgeschickt werden von einer Quelle nur Titel und Adresse, nie der Auszug: der Auszug ist fremder Text und gehört in den Systemtext, nicht auf den Bildschirm. Ein Client, der einen Schritt nicht kennt, überspringt ihn, statt die Anzeige zu verlieren. Der Wochenbericht sucht nicht und meldet auch nichts.
+
+**Das Vordenken ist die längste Stille.** Denk-Token werden nicht auf den Bildschirm gestreamt, nur die Antwort selbst. Dauert es zu lang, ist der Umschalter neben der Modellwahl der Ausweg — nach zweieinhalb Minuten bricht die Anfrage sonst ab.
 
 ## Was eine Suche mitbringt
 
