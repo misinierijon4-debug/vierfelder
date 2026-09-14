@@ -12,6 +12,10 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 it('folgt Tastaturhöhe und iOS-Versatz und stellt nach Schließen die Höhe wieder her', () => {
   vi.useFakeTimers()
+  // Das Fenster ist die volle Geraetehoehe. Der VisualViewport weicht davon ab,
+  // sobald eine Tastatur davorliegt — und in der iOS-PWA auch ohne sie, um die
+  // Safe-Area. Nur der erste Fall darf die Huelle verkleinern.
+  vi.stubGlobal('innerHeight', 844)
   const viewport = Object.assign(new EventTarget(), { height: 844, offsetTop: 0, scale: 1 })
   vi.stubGlobal('visualViewport', viewport)
   const { getByTestId, unmount } = render(<Shell />)
@@ -48,4 +52,22 @@ it('funktioniert ohne VisualViewport und respektiert vorherige Scrollregeln', ()
   unmount()
   expect(document.body.style.overflow).toBe('clip')
   document.body.style.overflow = ''
+})
+
+/*
+ * Der Fall, der den leeren Streifen unter ENIs Eingabe gemacht hat: die
+ * Homescreen-PWA zeichnet wegen `viewport-fit=cover` bis unter den
+ * Home-Indicator, der VisualViewport laesst diesen Streifen aber weg. Die
+ * Huelle muss trotzdem bis zum Fensterrand reichen — sonst legt das
+ * Safe-Area-Polster der Eingabe denselben Abstand ein zweites Mal an.
+ */
+it('nimmt in der Homescreen-PWA das Fenster, wenn nur die Safe-Area fehlt', () => {
+  vi.stubGlobal('innerHeight', 852)
+  const viewport = Object.assign(new EventTarget(), { height: 818, offsetTop: 0, scale: 1 })
+  vi.stubGlobal('visualViewport', viewport)
+  const { getByTestId, unmount } = render(<Shell />)
+  const shell = getByTestId('shell')
+
+  expect(shell.style.height).toBe('852px')
+  unmount()
 })

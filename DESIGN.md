@@ -1682,3 +1682,32 @@ Der genommene geht als letzter: die drei anderen fahren sofort zusammen, er
 mit 120 ms verzug hinterher. Das liest sich als „dieser hier ist es geworden"
 statt als „alle vier sind weg". Gruß und wochenstand bleiben — die sind kein
 angebot, sondern auskunft.
+
+## 41. Nachtrag: der leere streifen unter ENIs eingabe (14.09.2026)
+
+**Die eingabe stand in der homescreen-PWA dauerhaft über dem unteren rand.** Der
+erste verdacht war das polster selbst, und der war zur hälfte richtig:
+`calc(var(--app-safe-bottom) + 0.75rem)` liest sich wie „safe-area plus etwas
+luft", rechnet den abstand aber doppelt — die safe-area *ist* die luft, auf einem
+iPhone genau die 34 punkte für den home-indicator. `max(0.75rem,
+var(--app-safe-bottom))` gibt beiden fällen ihren wert. Das waren 16 pixel.
+
+**Die anderen sechzig lagen tiefer.** `index.html` setzt `viewport-fit=cover`
+und `black-translucent`, die app zeichnet also bis unter den home-indicator.
+`useEniViewport` setzte die hüllenhöhe aber auf `visualViewport.height`, und der
+zählt diesen streifen in der homescreen-PWA nicht mit. Die hülle endete
+oberhalb davon, das polster der eingabe legte denselben abstand ein zweites mal
+an, und darunter lag der body in derselben farbe: ein leerer streifen, der wie
+zu viel padding aussah. Ohne tastatur gilt jetzt `window.innerHeight`, mit
+tastatur weiter der sichtbare bereich; die grenze liegt bei 120 pixeln, weil die
+kleinste iOS-tastatur rund 250 misst und beide safe-areas zusammen höchstens 95.
+Wo beide werte gleich sind — jeder browser außerhalb dieses iOS-falls — ändert
+die unterscheidung nichts.
+
+**Was nicht gebaut wurde.** Bei offener tastatur ist der home-indicator verdeckt,
+das safe-area-polster wäre dann nur noch luft zwischen eingabe und tastenfeld.
+Ein versuch, das über ein `data`-attribut und danach über eine custom-property an
+der hülle abzuschalten, ist zweimal daran gescheitert, dass React und Motion
+beides beim nächsten rendern wieder abräumen — die höhe im `style` überlebt, der
+rest nicht. Ein schalter, der unbemerkt auf seinen rückfall zurückfällt, ist
+schlechter als keiner; die 34 punkte über der tastatur bleiben stehen.
