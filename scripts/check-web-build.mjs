@@ -158,8 +158,15 @@ for (const name of jsDateien) {
 // Einladungskarte, Schliessen-RPC, gebundener Wochenchat und die erweiterte
 // Aktivitaetssteuerung. Die Gesamtsumme erhaelt kontrolliert 4 KiB Spielraum;
 // der initiale Einstiegspfad traegt zusaetzlich den iOS-Viewport-Schutz.
+// ENIs Websuche kommt dazu: der Internet-Schalter ueber der Eingabe, der
+// Recherchehinweis, die Weitergabe des Flags an die Function und die gepruefte
+// Linkdarstellung im Verlauf. Alles davon liegt im ENI-Lazy-Chunk; der
+// Startpfad hat sich dabei nicht bewegt (gemessen 236807 Byte initial vorher,
+// 236806 danach; Gesamtsumme 269996 auf 270446 Byte). Deshalb steigt nur die
+// Gesamtsumme um ein KiB, und die strengere initiale Grenze bleibt stehen, wo
+// sie stand. Beide bleiben verbindlich; keine Budgetabschaltung.
 const INITIAL_GZIP_BUDGET = 232 * 1024
-const GESAMT_GZIP_BUDGET = 264 * 1024
+const GESAMT_GZIP_BUDGET = 265 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
