@@ -97,6 +97,7 @@ function endung(name: string): string {
 export function erkenneArt(typ: string, name: string): AnhangArt | null {
   const sauber = typ.split(';')[0]!.trim().toLowerCase()
   if (BILD_TYPEN.includes(sauber)) return 'bild'
+  if (sauber === 'application/pdf' || endung(name) === 'pdf') return 'text'
   if (sauber.startsWith('text/')) return 'text'
   if (sauber === 'application/json' || sauber === 'application/xml') return 'text'
   // der typ hat nichts gesagt, also entscheidet die endung
@@ -135,7 +136,8 @@ export function kuerzeText(
   // \r\n und einsame \r kosten platz und sagen nichts
   const sauber = roh.replace(/\r\n?/g, '\n')
   if (sauber.length <= grenze) return { inhalt: sauber, gekuerzt: false }
-  return { inhalt: `${sauber.slice(0, grenze)}\n[… hier war die datei zu ende für ENI]`, gekuerzt: true }
+  const hinweis = '\n[… gekürzt: weiterer Dateiinhalt wurde nicht übertragen]'
+  return { inhalt: sauber.slice(0, Math.max(0, grenze - hinweis.length)) + hinweis.slice(0, grenze), gekuerzt: true }
 }
 
 /**
@@ -190,14 +192,24 @@ async function rechneBildHerunter(datei: File): Promise<Blob> {
  * Eine ausgewaehlte Datei zu einem Anhang machen. Wirft mit einem Satz, den man
  * jemandem zeigen kann, statt mit einem Code.
  */
-export async function bereiteVor(datei: File): Promise<VorbereiteterAnhang> {
+export async function bereiteVor(datei: File, fortschritt?: (text: string) => void): Promise<VorbereiteterAnhang> {
   const art = erkenneArt(datei.type, datei.name)
   if (!art) {
     throw new EniAnhangFehler(
-      endung(datei.name) === 'pdf'
-        ? 'ein pdf kann ENI nicht lesen. mach einen screenshot davon.'
-        : 'das kann ENI nicht lesen. bilder und textdateien gehen.'
+      'das kann ENI nicht lesen. bilder, PDFs und textdateien gehen.'
     )
+  }
+
+  if (art === 'text' && (datei.type.split(';')[0]?.trim().toLowerCase() === 'application/pdf' || endung(datei.name) === 'pdf')) {
+    try {
+      const { liesPdf } = await import('./eniPdf')
+      const { inhalt, gekuerzt } = kuerzeText(await liesPdf(datei, fortschritt))
+      return { id: crypto.randomUUID(), art: 'text', name: datei.name, groesse: datei.size, inhalt, gekuerzt }
+    } catch (fehler) {
+      throw new EniAnhangFehler(fehler instanceof Error && fehler.name !== 'TypeError'
+        ? fehler.message
+        : 'PDF konnte nicht gelesen werden. Prüfe die Internetverbindung und versuche es erneut.')
+    }
   }
 
   if (art === 'text') {

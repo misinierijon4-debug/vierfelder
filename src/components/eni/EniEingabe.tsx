@@ -4,7 +4,7 @@ import { IconArrowUp, IconMicrophone, IconPaperclip } from './EniSymbole'
 import { STEMPEL, TAKT } from '../../lib/motion'
 import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { fuegeAn, useDiktat } from '../../lib/eniDiktat'
-import { MAX_ANHAENGE } from '../../lib/eniAnhang'
+import { MAX_ANHAENGE, erkenneArt } from '../../lib/eniAnhang'
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
 import { EniAnhangStreifen } from './EniAnhangStreifen'
 
@@ -12,7 +12,7 @@ import { EniAnhangStreifen } from './EniAnhangStreifen'
 const MAX_ZEILEN = 5
 
 const ANNEHMBAR =
-  'image/*,text/*,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.xml,.log,.ts,.tsx,.js,.jsx,.css,.html,.sql,.py,.sh,.toml,.ini'
+  'application/pdf,.pdf,image/*,text/*,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.xml,.log,.ts,.tsx,.js,.jsx,.css,.html,.sql,.py,.sh,.toml,.ini'
 
 type Props = {
   gesperrt: boolean
@@ -140,7 +140,7 @@ export function EniEingabe({
           onPaste={(event) => {
             if (!anhaengenMoeglich || frei <= 0) return
             const bilder = [...event.clipboardData.files].filter((datei) =>
-              datei.type.startsWith('image/')
+              erkenneArt(datei.type, datei.name) !== null
             )
             if (bilder.length === 0) return
             event.preventDefault()
@@ -175,7 +175,7 @@ export function EniEingabe({
                 aria-label={
                   frei <= 0
                     ? `mehr als ${MAX_ANHAENGE} anhänge gehen nicht`
-                    : 'bild oder datei anhängen'
+                    : 'bild, PDF oder datei anhängen'
                 }
                 className="flex size-11 shrink-0 items-center justify-center rounded-[2px] text-kreide-60 transition-colors hover:text-kreide disabled:opacity-40"
               >

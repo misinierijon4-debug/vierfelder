@@ -29,7 +29,8 @@ describe('was ENI angehängt bekommen kann', () => {
   })
 
   it('lehnt ab, was ENI nicht lesen kann', () => {
-    expect(erkenneArt('application/pdf', 'zeugnis.pdf')).toBeNull()
+    expect(erkenneArt('application/pdf', 'zeugnis.pdf')).toBe('text')
+    expect(erkenneArt('', 'SCAN.PDF')).toBe('text')
     expect(erkenneArt('application/zip', 'alles.zip')).toBeNull()
     expect(erkenneArt('video/mp4', 'runde.mp4')).toBeNull()
   })
@@ -60,10 +61,11 @@ describe('der text einer angehängten datei', () => {
   })
 
   it('schreibt den schnitt hin, statt ihn zu verschweigen', () => {
-    const ergebnis = kuerzeText('a'.repeat(50), 10)
+    const ergebnis = kuerzeText('a'.repeat(21_000))
     expect(ergebnis.gekuerzt).toBe(true)
     expect(ergebnis.inhalt.startsWith('aaaaaaaaaa')).toBe(true)
-    expect(ergebnis.inhalt).toContain('zu ende für ENI')
+    expect(ergebnis.inhalt.length).toBeLessThanOrEqual(20_000)
+    expect(ergebnis.inhalt).toContain('weiterer Dateiinhalt wurde nicht übertragen')
   })
 })
 

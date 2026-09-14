@@ -109,6 +109,10 @@ export function EniApp({
   const [teilAntwort, setTeilAntwort] = useState('')
   const [frisch, setFrisch] = useState<string | null>(null)
   const [hinweis, setHinweis] = useState<string | null>(null)
+  const [anhangStatus, setAnhangStatus] = useState<string | null>(null)
+  const anhangLaeuft = useRef(false)
+  const anhangGeneration = useRef(0)
+  useEffect(() => () => { anhangGeneration.current += 1 }, [])
   const [anhaenge, setAnhaenge] = useState<VorbereiteterAnhang[]>([])
   // Standardmaessig ist Audio aus. ENI spricht nur, wenn man es einschaltet.
   const [vorlesen, setVorlesen] = useState(false)
@@ -279,26 +283,38 @@ export function EniApp({
   }, [zeilen, adressen])
 
   const nimmAnhaenge = useCallback((dateien: File[]) => {
+    if (anhangLaeuft.current || prueft) return
+    anhangLaeuft.current = true
+    const generation = anhangGeneration.current
     setFehler(null)
+    setAnhangStatus('Datei wird gelesen …')
     void (async () => {
       const fertig: VorbereiteterAnhang[] = []
       let abgelehnt: string | null = null
-      for (const datei of dateien) {
-        try {
-          fertig.push(await bereiteVor(datei))
-        } catch (ursache) {
-          abgelehnt =
-            ursache instanceof EniAnhangFehler
-              ? ursache.message
-              : 'die datei ließ sich nicht anhängen.'
+      try {
+        for (const datei of dateien.slice(0, MAX_ANHAENGE - anhaenge.length)) {
+          if (generation !== anhangGeneration.current) break
+          try {
+            fertig.push(await bereiteVor(datei, (status) => {
+              if (generation === anhangGeneration.current) setAnhangStatus(status)
+            }))
+          } catch (ursache) {
+            abgelehnt = ursache instanceof EniAnhangFehler
+              ? ursache.message : 'die datei ließ sich nicht anhängen.'
+          }
         }
+        if (generation !== anhangGeneration.current) {
+          fertig.forEach(gibVorschauFrei)
+          return
+        }
+        if (fertig.length > 0) setAnhaenge((vorher) => [...vorher, ...fertig])
+        if (abgelehnt) setFehler(abgelehnt)
+      } finally {
+        anhangLaeuft.current = false
+        if (generation === anhangGeneration.current) setAnhangStatus(null)
       }
-      if (fertig.length > 0) {
-        setAnhaenge((vorher) => [...vorher, ...fertig].slice(0, MAX_ANHAENGE))
-      }
-      if (abgelehnt) setFehler(abgelehnt)
     })()
-  }, [])
+  }, [anhaenge.length, prueft])
 
   const entferneAnhang = useCallback((id: string) => {
     setAnhaenge((vorher) => {
@@ -319,7 +335,7 @@ export function EniApp({
   // Vorlage abschicken
   const legeVor = useCallback(
     (text: string, wiederholungsAnhaenge?: VorbereiteterAnhang[]) => {
-      if (!geber || prueft) return
+      if (!geber || prueft || anhangLaeuft.current) return
       setFehler(null)
       setHinweis(null)
       setFrisch(null)
@@ -676,6 +692,8 @@ export function EniApp({
 
   const oeffneChat = useCallback(
     (chatId: string) => {
+      anhangGeneration.current += 1
+      setAnhangStatus(null)
       speichereAktuellenEntwurf()
       setVerlaufOffen(false)
       setFehler(null)
@@ -710,6 +728,8 @@ export function EniApp({
   )
 
   const neuerChat = useCallback(() => {
+    anhangGeneration.current += 1
+    setAnhangStatus(null)
     speichereAktuellenEntwurf()
     setVerlaufOffen(false)
     setFehler(null)
@@ -902,8 +922,9 @@ export function EniApp({
               )}
             </div>
           )}
+          {anhangStatus && <p role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">{anhangStatus}</p>}
           <EniEingabe
-            gesperrt={prueft || geber === null}
+            gesperrt={prueft || geber === null || anhangStatus !== null}
             onVorlegen={legeVor}
             vorgabe={vorgabe}
             anhaengenMoeglich={anhaengenMoeglich}
@@ -916,7 +937,7 @@ export function EniApp({
               const belegt = t.trim().length > 0
               setFeldBelegt((vorher) => (vorher === belegt ? vorher : belegt))
             }}
-            onAbbrechen={brecheAb}
+            onAbbrechen={prueft ? brecheAb : undefined}
             modellwahl={
               <EniModellwahl
                 anbieter={modus === 'modell' ? anbieter : []}
