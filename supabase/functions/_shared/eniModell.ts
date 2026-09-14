@@ -641,6 +641,21 @@ async function behandleWochenbericht(optionen: WochenberichtOptionen): Promise<R
   })
 }
 
+export function berlinerTagesbeginnIso(jetzt: Date = new Date()): string {
+  const teile = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZoneName: 'longOffset',
+  }).formatToParts(jetzt)
+  const wert = (art: Intl.DateTimeFormatPartTypes) =>
+    teile.find((t) => t.type === art)?.value ?? ''
+  const tag = `${wert('year')}-${wert('month')}-${wert('day')}`
+  const tz = wert('timeZoneName').replace('GMT', '') || '+01:00'
+  return new Date(`${tag}T00:00:00${tz}`).toISOString()
+}
+
 export async function behandleEni(
   request: Request,
   deps: EniAbhaengigkeiten
@@ -823,13 +838,12 @@ export async function behandleEni(
   // erzeugen, die niemand bemerkt. Die Grenze zaehlt nur die eigenen Vorlagen;
   // RLS sorgt dafuer, dass sie das ohnehin nur fuer sich selbst kann.
   const grenze = Number(deps.umgebung('ENI_TAGESLIMIT') ?? STANDARD_TAGESLIMIT)
-  const tagesbeginn = new Date(deps.jetzt?.() ?? new Date())
-  tagesbeginn.setUTCHours(0, 0, 0, 0)
+  const tagesbeginnIso = berlinerTagesbeginnIso(deps.jetzt?.() ?? new Date())
   const heute = await db
     .from('eni_nachrichten')
     .select('id', { count: 'exact', head: true })
     .eq('rolle', 'mensch')
-    .gte('erstellt', tagesbeginn.toISOString())
+    .gte('erstellt', tagesbeginnIso)
   if (heute.error) return antwort(500, { error: 'tagesgrenze konnte nicht geprüft werden' })
   if (Number.isFinite(grenze) && (heute.count ?? 0) >= grenze) {
     return antwort(429, {
@@ -1118,13 +1132,24 @@ export async function behandleEni(
   let urteil: string
   /** was diese Antwort selbst gefunden hat. steht hier, weil es nach dem Urteil noch gespeichert wird. */
   let web: WebQuelle[] = []
+  let webHinweis = ''
   try {
     if (anfrage.internet === true) {
       melde?.({ schritt: 'sucht' })
-      web = await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
-      // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
-      // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
-      melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
+      try {
+        web = await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
+        // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
+        // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
+        melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
+      } catch (webFehler) {
+        if (webFehler instanceof EniWebFehler) {
+          deps.protokoll.error('eni: websuche nicht erreichbar, fahre ohne internet fort', webFehler)
+          webHinweis =
+            '\n\n[Hinweis: Die Websuche war vorübergehend nicht erreichbar. Antworte mit deinem vorhandenen Wissen und weise den Nutzer kurz darauf hin.]'
+        } else {
+          throw webFehler
+        }
+      }
     }
     melde?.({ schritt: 'denkt' })
 
@@ -1137,7 +1162,8 @@ export async function behandleEni(
             eniSystemPrompt({ person, lage }) +
             '\n\n' +
             wissen +
-            (web.length || frueherImChat.length ? '\n\n' + webLage(web, frueherImChat) : ''),
+            (web.length || frueherImChat.length ? '\n\n' + webLage(web, frueherImChat) : '') +
+            webHinweis,
           nachrichten: [
             ...kontext.map(baueNachricht),
             baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),

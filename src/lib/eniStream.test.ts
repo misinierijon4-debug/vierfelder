@@ -70,4 +70,40 @@ describe("ENI Streaming", () => {
     expect(signal.aborted).toBe(true);
     fertig();
   });
+  it("überspringt fehlerhafte oder unvollständige JSON-Zeilen im Stream", async () => {
+    const teile: string[] = [];
+    const payload = [
+      'data: {defektes json',
+      'data: {"choices":[{"delta":{"content":"Klar"}}]}',
+      'data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n');
+    const text = await liesModellStrom(strom(payload), (teil) => teile.push(teil));
+    expect(text).toBe("Klar!");
+    expect(teile).toEqual(["Klar", "!"]);
+  });
+  it("filtert Inline-<think>-Blöcke vollständig aus Stream und Gesamtergebnis", async () => {
+    const teile: string[] = [];
+    const payload = [
+      'data: {"choices":[{"delta":{"content":"<th"}}]}',
+      'data: {"choices":[{"delta":{"content":"ink>Interne Überlegungen</th"}}]}',
+      'data: {"choices":[{"delta":{"content":"ink>\\n\\nDie Lösung ist "}}]}',
+      'data: {"choices":[{"delta":{"content":"42."},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n');
+    const text = await liesModellStrom(strom(payload), (teil) => teile.push(teil));
+    expect(text).toBe("Die Lösung ist 42.");
+    expect(teile).toEqual(["Die Lösung ist ", "42."]);
+  });
+  it("behält normale spitze Klammern bei, die keine <think>-Tags sind", async () => {
+    const teile: string[] = [];
+    const payload = [
+      'data: {"choices":[{"delta":{"content":"Ist 3 <"}}]}',
+      'data: {"choices":[{"delta":{"content":" 5?"}}]}',
+      'data: {"choices":[{"delta":{"content":" Ja."},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n');
+    const text = await liesModellStrom(strom(payload), (teil) => teile.push(teil));
+    expect(text).toBe("Ist 3 < 5? Ja.");
+  });
 });

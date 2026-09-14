@@ -139,7 +139,12 @@ async function einVersuch(
     if (!antwort.body) throw new Error('Leerer Modellstream')
     return liesModellStrom(antwort.body, anfrage.onText)
   }
-  const inhalt = (await antwort.json()) as ChatAntwort
+  let inhalt: ChatAntwort
+  try {
+    inhalt = (await antwort.json()) as ChatAntwort
+  } catch {
+    throw new Nochmal(`${anbieter.id} antwortet mit unlesbarem JSON`)
+  }
   if (inhalt.error) {
     // Auch hier nur der Code, nicht der Text der Gegenstelle.
     const code = inhalt.error.code ?? 0

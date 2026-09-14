@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   ABLEHNUNG,
   behandleEni,
+  berlinerTagesbeginnIso,
   MAX_ANHAENGE,
   MAX_TOKENS,
   mitAnhangText,
@@ -779,6 +780,31 @@ describe('ENIs modellverbindung', () => {
     expect(gesehen).toHaveLength(0)
   })
 
+  it('berechnet die tagesgrenze nach Berliner Ortszeit auch zwischen 00:00 und 02:00 Uhr', async () => {
+    // Sommerzeit (CEST, UTC+2): 00:30 in Berlin ist 22:30 UTC des Vortags.
+    const sommer0030 = new Date('2026-07-15T22:30:00Z')
+    expect(berlinerTagesbeginnIso(sommer0030)).toBe('2026-07-15T22:00:00.000Z')
+
+    // Winterzeit (CET, UTC+1): 00:30 in Berlin ist 23:30 UTC des Vortags.
+    const winter0030 = new Date('2026-01-15T23:30:00Z')
+    expect(berlinerTagesbeginnIso(winter0030)).toBe('2026-01-15T23:00:00.000Z')
+
+    // Nachricht um 23:55 Berlin (21:55 UTC) = Vortag in Berlin -> zählt NICHT zum heutigen Limit.
+    // Nachricht um 00:10 Berlin (22:10 UTC) = heute in Berlin -> zählt zum Limit.
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'alt', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'gestern abend', erstellt: '2026-07-15T21:55:00Z' },
+      { id: 'neu', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'heute nacht', erstellt: '2026-07-15T22:10:00Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen, limit: '2' })
+    abhaengigkeiten.jetzt = () => sommer0030
+
+    // Limit ist 2. Heute gibt es erst 1 Nachricht ('neu'). Dritte Nachricht sollte durchgehen.
+    const antwort = await behandleEni(anfrage({ chatId: 'c1', text: 'noch eine' }), abhaengigkeiten)
+    expect(antwort.status).toBe(200)
+    expect(gesehen).toHaveLength(1)
+  })
+
   it('weist eine uebergrosse vorlage ab, bevor sie irgendwo landet', async () => {
     const { abhaengigkeiten, tabellen } = deps()
     const antwort = await behandleEni(
@@ -1170,16 +1196,17 @@ describe('Internet im authentifizierten Chat', () => {
     await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
     expect(suche).not.toHaveBeenCalled()
   })
-  it('speichert bei einem Suchfehler keine vermeintliche Internetantwort', async () => {
+  it('fällt bei einem Websuchfehler gracefully auf das modell ohne internetquellen zurück', async () => {
     const { abhaengigkeiten, tabellen, gesehen } = deps()
     abhaengigkeiten.webSuche = vi.fn().mockRejectedValue(new EniWebFehler('Suche nicht verfügbar'))
     const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
-    const json = await res.json()
-    expect(res.status).toBe(502)
-    expect(json.error).toBe('Suche nicht verfügbar')
-    expect(json.mensch).toBeTruthy()
-    expect(gesehen).toHaveLength(0)
-    expect(tabellen.eni_nachrichten).toHaveLength(1)
+    expect(res.status).toBe(200)
+    expect(gesehen).toHaveLength(1)
+    expect(gesehen[0]?.system).toContain(
+      '[Hinweis: Die Websuche war vorübergehend nicht erreichbar. Antworte mit deinem vorhandenen Wissen und weise den Nutzer kurz darauf hin.]'
+    )
+    expect(tabellen.eni_quellen ?? []).toHaveLength(0)
+    expect(tabellen.eni_nachrichten).toHaveLength(2)
   })
 })
 

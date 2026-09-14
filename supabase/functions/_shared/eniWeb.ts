@@ -125,22 +125,42 @@ export function tavilyQuellen(ergebnisse: unknown): WebQuelle[] {
   return quellen
 }
 
+/**
+ * Bereinigt eine Suchanfrage vor dem Versenden an Suchmaschinen.
+ *
+ * Suchmaschinen kennen unseren Assistenten nicht: fuer sie ist "Eni" der
+ * italienische Energiekonzern Eni S.p.A. Eine Anrede wie "Eni, ..." oder
+ * "... Eni" fuehrt sonst verlaesslich zu Enis Sustainability Report statt
+ * zu dem, wonach eigentlich gesucht wird.
+ */
+export function bereinigeSuchfrage(frage: string): string {
+  let text = frage.trim()
+  // Anrede am Anfang: "Eni, ...", "Hey Eni, ...", "Hallo Eni: ..."
+  text = text.replace(/^(?:hey|hallo|hi|moin|servus)?\s*\beni\b[\s,:;—–-]*/i, '')
+  // Anrede am Ende: "... Eni", "... bitte Eni"
+  text = text.replace(/[\s,:;—–-]*(?:bitte\s+)?\beni\b[.!?]*$/i, '')
+  // Isoliertes "Eni" mitten im Satz, z. B. "kannst du Eni mal..."
+  text = text.replace(/(^|[\s,;])\beni\b([\s,;!?.]|$)/gi, '$1$2')
+  return text.replace(/\s+/g, ' ').trim() || frage.trim()
+}
+
 export async function sucheWeb(
   frage: string,
   umgebung: (name: string) => string | undefined,
   signal?: AbortSignal,
   http: typeof fetch = fetch,
 ): Promise<WebQuelle[]> {
+  const suchfrage = bereinigeSuchfrage(frage)
   const weg = webWeg(umgebung)
   if (!weg) throw new EniWebFehler('Internet ist noch nicht eingerichtet: TAVILY_API_KEY fehlt.')
-  if (!frage.trim()) throw new EniWebFehler('Schreibe eine Suchfrage dazu, damit ENI weiß, wonach es suchen soll.')
+  if (!suchfrage.trim()) throw new EniWebFehler('Schreibe eine Suchfrage dazu, damit ENI weiß, wonach es suchen soll.')
   const abbruch = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
   try {
     // Der freie Weg zuerst: sind beide Schluessel gesetzt, soll die Suche
     // nichts kosten, ohne dass jemand dafuer einen Schalter findet.
     const quellen = weg === 'tavily'
-      ? await beiTavily(frage, schluessel(umgebung, 'TAVILY_API_KEY'), abbruch, http)
-      : await beiOpenRouter(frage, schluessel(umgebung, 'OPENROUTER_API_KEY'), abbruch, http)
+      ? await beiTavily(suchfrage, schluessel(umgebung, 'TAVILY_API_KEY'), abbruch, http)
+      : await beiOpenRouter(suchfrage, schluessel(umgebung, 'OPENROUTER_API_KEY'), abbruch, http)
     if (!quellen.length) throw new EniWebFehler('Die Suche hat keine auswertbaren Quellen geliefert. Formuliere die Frage genauer oder schalte Internet aus.')
     return quellen
   } catch (fehler) {

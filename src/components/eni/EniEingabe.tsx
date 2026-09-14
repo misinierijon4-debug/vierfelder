@@ -150,7 +150,7 @@ export function EniEingabe({
           enterKeyHint="send"
           data-ring="rahmen"
           autoComplete="off"
-          className="block min-h-11 w-full resize-none border-0 bg-transparent px-3 pt-3 text-[16px] leading-6 text-kreide placeholder:text-kreide-52 focus:outline-none"
+          className="block min-h-11 w-full resize-none border-0 bg-transparent px-3 pt-3 text-[16px] leading-6 text-kreide placeholder:text-kreide-52 focus:outline-none transition-[height] duration-150 ease-out"
         />
 
         <div className="flex items-center gap-1 px-1.5 pb-1">
@@ -191,9 +191,18 @@ export function EniEingabe({
               disabled={gesperrt}
               aria-pressed={diktat.laeuft}
               aria-label={diktat.laeuft ? 'diktat beenden' : 'diktieren'}
-              className="flex size-11 shrink-0 items-center justify-center rounded-[2px] transition-colors disabled:opacity-40"
+              className="relative flex size-11 shrink-0 items-center justify-center rounded-[2px] transition-colors disabled:opacity-40"
               style={{ color: diktat.laeuft ? 'var(--erijon)' : 'var(--kreide-60)' }}
             >
+              {diktat.laeuft && (
+                <motion.span
+                  aria-hidden="true"
+                  className="absolute inset-1.5 rounded-full border border-[var(--erijon)]"
+                  initial={{ scale: 0.8, opacity: 0.8 }}
+                  animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.8, 0.1, 0.8] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
               <IconMicrophone size={18} />
             </button>
           )}
@@ -225,7 +234,7 @@ export function EniEingabe({
             transition={STEMPEL}
             disabled={!etwasDabei || gesperrt}
             aria-label="vorlegen"
-            className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border border-transparent bg-kreide text-grund transition-all hover:bg-white active:bg-kreide-60 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40"
+            className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
           >
             <IconArrowUp size={18} />
           </motion.button>

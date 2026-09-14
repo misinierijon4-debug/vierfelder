@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   sucheWeb,
+  bereinigeSuchfrage,
   webBereit,
   webWeg,
   webQuellen,
@@ -196,5 +197,13 @@ describe('Eni Rueckblick auf eigene Suchlaeufe', () => {
     const ergebnis = mitWebQuellen('wie gesagt, [Quelle 1](https://example.org/1).', [], bekannt)
     expect(ergebnis.text).toContain('[Quelle 1](https://example.org/1)')
     expect(ergebnis.anhang).toBe('')
+  })
+
+  it('bereinigt den Botnamen Eni aus der Suchanfrage, damit Suchmaschinen nicht nach der Erdoelfirma suchen', () => {
+    expect(bereinigeSuchfrage('Schau dir bitte die datei erstmal an Eni')).toBe('Schau dir bitte die datei erstmal an')
+    expect(bereinigeSuchfrage('Eni, wie viele Kalorien hat ein Ei?')).toBe('wie viele Kalorien hat ein Ei?')
+    expect(bereinigeSuchfrage('Hey Eni: was kostet Kreatin?')).toBe('was kostet Kreatin?')
+    expect(bereinigeSuchfrage('kannst du Eni mal nachschauen')).toBe('kannst du mal nachschauen')
+    expect(bereinigeSuchfrage('Eni')).toBe('Eni')
   })
 })

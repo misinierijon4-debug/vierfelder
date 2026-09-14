@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { IconPlus, IconTrash, IconX } from './EniSymbole'
 import { fokusRingLoesen } from '../../lib/dialogFokus'
@@ -56,6 +57,7 @@ export function EniVerlauf({
 
   // inhalt bleibt stehen, solange das blatt ausblendet
   const sichtbar = useDialogNachlauf(offen)
+  const reduziert = useReducedMotion() ?? false
 
   return (
     <dialog
@@ -65,10 +67,16 @@ export function EniVerlauf({
         event.preventDefault()
         onSchliessen()
       }}
-      className="m-0 h-[100dvh] max-h-none w-screen max-w-none bg-grund p-0 text-kreide backdrop:bg-grund/80"
+      className="m-0 h-[100dvh] max-h-none w-screen max-w-none bg-grund p-0 text-kreide backdrop:bg-grund/80 backdrop:backdrop-blur-sm"
     >
       {sichtbar && (
-        <div className="vollbild-safe-x flex h-full flex-col pb-[calc(var(--app-safe-bottom)+1rem)] pt-[calc(var(--app-safe-top)+1rem)]">
+        <motion.div
+          initial={reduziert ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className="vollbild-safe-x flex h-full flex-col pb-[calc(var(--app-safe-bottom)+1rem)] pt-[calc(var(--app-safe-top)+1rem)]"
+        >
           <div className="mx-auto flex w-full max-w-[560px] min-h-11 items-center justify-between gap-2 border-b border-linie pb-3">
             <h2 className="display text-[16px] font-bold lowercase leading-none">verlauf</h2>
             <div className="flex items-center gap-1">
@@ -120,8 +128,9 @@ export function EniVerlauf({
                   const istAktiv = chat.id === aktiverChat
                   const wann = new Date(chat.zuletzt)
                   return (
-                    <li
+                    <motion.li
                       key={chat.id}
+                      layout={!reduziert}
                       className={`flex items-stretch gap-1 rounded-[2px] border transition-colors ${
                         istAktiv
                           ? 'border-linie-hell bg-flaeche/60 pl-2.5'
@@ -184,13 +193,13 @@ export function EniVerlauf({
                           <IconTrash size={16} />
                         </button>
                       )}
-                    </li>
+                    </motion.li>
                   )
                 })}
               </ul>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
     </dialog>
   )

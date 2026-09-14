@@ -150,9 +150,9 @@ export function EniModellwahl({
                     <span
                       aria-hidden="true"
                       className="flex w-3 shrink-0 justify-center text-[11px] leading-none"
-                      style={{ color: dran ? 'var(--kreide)' : 'transparent' }}
+                      style={{ color: dran ? 'var(--kreide)' : 'transparent', opacity: dran ? 1 : 0 }}
                     >
-                      ›
+                      •
                     </span>
                     <span
                       className="min-w-0 flex-1 truncate text-[12px] font-bold leading-tight"
@@ -160,6 +160,12 @@ export function EniModellwahl({
                     >
                       {eintrag.name}
                     </span>
+                    {dran && (
+                      <span
+                        aria-hidden="true"
+                        className="mr-1 inline-block size-1.5 shrink-0 rounded-full bg-kreide"
+                      />
+                    )}
                   </motion.button>
                 )
               })}

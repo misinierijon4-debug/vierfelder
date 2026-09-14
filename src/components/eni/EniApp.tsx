@@ -828,13 +828,19 @@ export function EniApp({
         */}
         <div className="mx-auto grid w-full max-w-[560px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 pb-2.5">
           {/* Ruecknavigation */}
-          <button
+          <motion.button
             type="button"
             onClick={onZurueck}
             aria-label="zurück zum zweikampf"
-            className="-ml-2 flex min-h-11 min-w-0 items-center gap-1.5 justify-self-start px-2 text-[12px] text-kreide-60 transition-colors hover:text-kreide"
+            whileTap={reduziert ? undefined : { scale: 0.96 }}
+            className="group -ml-2 flex min-h-11 min-w-0 items-center gap-1.5 justify-self-start px-2 text-[12px] text-kreide-60 transition-colors hover:text-kreide"
           >
-            <IconCaretLeft size={16} aria-hidden="true" />
+            <span
+              aria-hidden="true"
+              className="flex shrink-0 items-center transition-transform duration-150 ease-out group-hover:-translate-x-0.5"
+            >
+              <IconCaretLeft size={16} />
+            </span>
             {/*
               Unter 416 Pixeln geht das Wort, der Pfeil bleibt. Ein Pfeil ohne
               Wort ist verständlich, ein abgeschnittenes Wort nicht. Das Wort
@@ -842,7 +848,7 @@ export function EniApp({
               vorliest.
             */}
             <span className="truncate max-[415px]:hidden">zweikampf</span>
-          </button>
+          </motion.button>
 
           {/*
             Eni-Identitaet: nur noch der name. Kein Klappzeichen, kein Menue

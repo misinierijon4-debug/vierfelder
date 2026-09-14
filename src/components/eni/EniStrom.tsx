@@ -120,7 +120,18 @@ export function EniStrom({
           </li>
         )
       })}
-      {prueft && teilAntwort && <li aria-busy="true"><EniWort text={teilAntwort} frisch={false} spricht={false} linksAktiv={false} /><p className="mt-2 text-xs text-kreide-60">Antwort entsteht …</p></li>}
+      {prueft && teilAntwort && (
+        <li aria-busy="true">
+          <EniWort text={teilAntwort} frisch={false} spricht={false} linksAktiv={false} />
+          <div className="mt-2 flex items-center gap-2">
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-kreide opacity-75" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-kreide" />
+            </span>
+            <p className="text-[11px] font-medium text-kreide-60">Antwort entsteht …</p>
+          </div>
+        </li>
+      )}
       {prueft && !teilAntwort && (
         <li>
           <EniTakt />
@@ -396,7 +407,10 @@ function MenschWort({
   const farbe = userDef(me).farbe
   return (
     <div className="pt-5">
-      <div className="border-l-2 pl-3.5 py-0.5" style={{ borderColor: farbe }}>
+      <div
+        className="rounded-[2px] border-l-2 bg-flaeche/30 pl-3.5 pr-3 py-2 transition-colors"
+        style={{ borderColor: farbe }}
+      >
         <p className="flex items-baseline gap-2">
           <span
             className="text-[11px] font-bold uppercase tracking-wider"
@@ -473,23 +487,33 @@ export function EniTakt() {
   const striche = [12, 20, 8, 26, 14, 22, 10, 28, 16, 20, 8, 24]
 
   return (
-    <div role="status" className="flex items-end gap-[3px] pt-5 pb-1" style={{ height: 38 }}>
-      <span className="sr-only">ENI prüft</span>
-      {striche.map((hoehe, index) => (
-        <motion.span
-          key={index}
-          aria-hidden="true"
-          className="block w-[2px] bg-kreide"
-          style={{ height: hoehe, originY: 1 }}
-          initial={{ scaleY: 0.3 }}
-          animate={reduced ? { scaleY: 0.65 } : { scaleY: [0.3, 1, 0.3] }}
-          transition={
-            reduced
-              ? { duration: 0 }
-              : { duration: 0.8, repeat: Infinity, delay: index * 0.05, ease: 'easeInOut' }
-          }
-        />
-      ))}
+    <div role="status" className="pt-5 pb-1">
+      <div className="flex items-end gap-[3px]" style={{ height: 38 }}>
+        <span className="sr-only">ENI prüft</span>
+        {striche.map((hoehe, index) => (
+          <motion.span
+            key={index}
+            aria-hidden="true"
+            className="block w-[2px] bg-kreide"
+            style={{ height: hoehe, originY: 1 }}
+            initial={{ scaleY: 0.3 }}
+            animate={reduced ? { scaleY: 0.65 } : { scaleY: [0.3, 1, 0.3] }}
+            transition={
+              reduced
+                ? { duration: 0 }
+                : { duration: 0.8, repeat: Infinity, delay: index * 0.05, ease: 'easeInOut' }
+            }
+          />
+        ))}
+      </div>
+      <motion.p
+        initial={reduced ? undefined : { opacity: 0.5 }}
+        animate={reduced ? undefined : { opacity: [0.5, 0.9, 0.5] }}
+        transition={reduced ? undefined : { duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        className="mt-2 text-[11px] tracking-wide text-kreide-52"
+      >
+        denkt nach …
+      </motion.p>
     </div>
   )
 }

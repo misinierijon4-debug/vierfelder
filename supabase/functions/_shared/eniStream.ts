@@ -78,11 +78,90 @@ export function ereignisStrom(
   });
 }
 
+export function erstelleThinkFilter(onText: (teil: string) => void) {
+  let inThink = false;
+  let puffer = "";
+  let akkumuliert = "";
+
+  function gibFrei(text: string) {
+    if (!text) return;
+    akkumuliert += text;
+    onText(text);
+  }
+
+  function verarbeite(teil: string) {
+    puffer += teil;
+    while (puffer.length > 0) {
+      if (!inThink) {
+        const lower = puffer.toLowerCase();
+        const startIdx = lower.indexOf("<think>");
+        if (startIdx !== -1) {
+          gibFrei(puffer.slice(0, startIdx));
+          puffer = puffer.slice(startIdx + "<think>".length);
+          if (akkumuliert === "") {
+            puffer = puffer.replace(/^\n+/, "");
+          }
+          inThink = true;
+        } else {
+          const matchPrefix = ["<think", "<thin", "<thi", "<th", "<t", "<"].find((p) =>
+            lower.endsWith(p)
+          );
+          if (matchPrefix) {
+            const sichererText = puffer.slice(0, puffer.length - matchPrefix.length);
+            gibFrei(sichererText);
+            puffer = puffer.slice(puffer.length - matchPrefix.length);
+            break;
+          } else {
+            gibFrei(puffer);
+            puffer = "";
+          }
+        }
+      } else {
+        const lower = puffer.toLowerCase();
+        const endeIdx = lower.indexOf("</think>");
+        if (endeIdx !== -1) {
+          puffer = puffer.slice(endeIdx + "</think>".length);
+          if (akkumuliert === "") {
+            puffer = puffer.replace(/^\n+/, "");
+          }
+          inThink = false;
+        } else {
+          const matchPrefix = [
+            "</think",
+            "</thin",
+            "</thi",
+            "</th",
+            "</t",
+            "</",
+            "<",
+          ].find((p) => lower.endsWith(p));
+          if (matchPrefix) {
+            puffer = puffer.slice(puffer.length - matchPrefix.length);
+            break;
+          } else {
+            puffer = "";
+          }
+        }
+      }
+    }
+  }
+
+  function abschliessen(): string {
+    if (!inThink && puffer.length > 0) {
+      gibFrei(puffer);
+      puffer = "";
+    }
+    return akkumuliert;
+  }
+
+  return { verarbeite, abschliessen };
+}
+
 export async function liesModellStrom(
   body: ReadableStream<Uint8Array>,
   onText: (text: string) => void,
 ): Promise<string> {
-  let text = "";
+  const filter = erstelleThinkFilter(onText);
   let fertig = false;
   for await (const zeile of streamZeilen(body)) {
     if (!zeile.startsWith("data:")) continue;
@@ -92,7 +171,12 @@ export async function liesModellStrom(
       break;
     }
     if (!roh) continue;
-    const event = JSON.parse(roh);
+    let event: Record<string, any>;
+    try {
+      event = JSON.parse(roh);
+    } catch {
+      continue;
+    }
     if (event.error) throw new Error("Modellstream fehlgeschlagen");
     const wahl = event.choices?.[0];
     if (wahl?.finish_reason === "content_filter")
@@ -102,10 +186,10 @@ export async function liesModellStrom(
     if (wahl?.finish_reason) fertig = true;
     const teil = wahl?.delta?.content;
     if (typeof teil === "string" && teil) {
-      text += teil;
-      onText(teil);
+      filter.verarbeite(teil);
     }
   }
+  const text = filter.abschliessen();
   if (!fertig) throw new Error("Unvollstaendiger Modellstream");
   return text;
 }

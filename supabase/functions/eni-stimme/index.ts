@@ -139,7 +139,13 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
       if (!zeile.startsWith('data:')) continue
       const roh = zeile.slice(5).trim()
       if (!roh) continue
-      const event = JSON.parse(roh)
+      let event: any
+      try {
+        event = JSON.parse(roh)
+      } catch (err) {
+        console.warn('eni-stimme: fehlerhafte SSE-Zeile ignoriert', err)
+        continue
+      }
       if (event.error) throw new StimmFehler('stimme unterbrochen', false, null, 'gemini-abbruch')
       const kandidat = event.candidates?.[0]
       for (const part of kandidat?.content?.parts ?? []) {
@@ -159,7 +165,12 @@ async function rufeStimme(anfrage: StimmAnfrage, schluessel: string): Promise<Ui
     for (const teil of teile) { pcm.set(teil, offset); offset += teil.length }
     return pcm
   }
-  const inhalt = (await antwort.json()) as GeminiAntwort
+  let inhalt: GeminiAntwort
+  try {
+    inhalt = (await antwort.json()) as GeminiAntwort
+  } catch {
+    throw new StimmFehler('gemini antwortet mit unlesbarem JSON', true, null, 'gemini-unlesbar')
+  }
   const roh = inhalt.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data
   return roh ? ausBase64(roh) : new Uint8Array()
 }

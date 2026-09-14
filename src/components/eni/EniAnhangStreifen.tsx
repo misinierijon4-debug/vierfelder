@@ -1,6 +1,8 @@
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FileText, X } from '@phosphor-icons/react'
 import { lesbareGroesse } from '../../lib/eniAnhang'
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
+import { EASE } from '../../lib/motion'
 
 type Props = {
   anhaenge: VorbereiteterAnhang[]
@@ -20,12 +22,22 @@ type Props = {
  * dasselbe wie du, bei einer Datei liest er den Text, nicht das Symbol.
  */
 export function EniAnhangStreifen({ anhaenge, gesperrt, onEntfernen }: Props) {
+  const reduziert = useReducedMotion() ?? false
   if (anhaenge.length === 0) return null
 
   return (
     <ul aria-label="was du mitschickst" className="flex flex-wrap gap-2 px-3 pt-3">
-      {anhaenge.map((anhang) => (
-        <li key={anhang.id} className="relative">
+      <AnimatePresence initial={false}>
+        {anhaenge.map((anhang) => (
+          <motion.li
+            key={anhang.id}
+            layout={!reduziert}
+            initial={reduziert ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={reduziert ? { opacity: 0 } : { opacity: 0, scale: 0.85, transition: { duration: 0.12 } }}
+            transition={{ duration: 0.18, ease: EASE }}
+            className="relative"
+          >
           {anhang.art === 'bild' ? (
             <img
               src={anhang.vorschau}
@@ -56,8 +68,9 @@ export function EniAnhangStreifen({ anhaenge, gesperrt, onEntfernen }: Props) {
           >
             <X size={11} weight="bold" aria-hidden="true" />
           </button>
-        </li>
-      ))}
+          </motion.li>
+        ))}
+      </AnimatePresence>
     </ul>
   )
 }

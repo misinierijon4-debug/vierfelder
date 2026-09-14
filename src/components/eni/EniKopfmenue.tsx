@@ -89,7 +89,7 @@ export function EniKopfmenue({
               type="button"
               role="menuitem"
               onClick={onVerlauf}
-              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide"
+              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
             >
               <span aria-hidden="true" className="flex w-[16px] shrink-0 justify-center">
                 <IconClock size={16} />
@@ -109,7 +109,7 @@ export function EniKopfmenue({
                   raten, ob es angekommen ist.
                 */
                 onClick={onVorlesen}
-                className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-grund"
+                className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-grund active:bg-grund/80"
               >
                 <span
                   aria-hidden="true"
@@ -124,6 +124,12 @@ export function EniKopfmenue({
                 >
                   antworten vorlesen
                 </span>
+                {vorlesen && (
+                  <span
+                    aria-hidden="true"
+                    className="ml-auto inline-block size-1.5 shrink-0 rounded-full bg-kreide"
+                  />
+                )}
               </motion.button>
             )}
 
@@ -132,7 +138,7 @@ export function EniKopfmenue({
               type="button"
               role="menuitem"
               onClick={onGedaechtnis}
-              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide"
+              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
             >
               <span aria-hidden="true" className="flex w-[16px] shrink-0 justify-center">
                 <IconGedaechtnis size={16} />
