@@ -71,3 +71,35 @@ it('nimmt in der Homescreen-PWA das Fenster, wenn nur die Safe-Area fehlt', () =
   expect(shell.style.height).toBe('852px')
   unmount()
 })
+
+it('verhindert aeusseres Fokusscrollen und raeumt die Sperre wieder auf', () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('innerHeight', 844)
+  const viewport = Object.assign(new EventTarget(), { height: 420, offsetTop: 54, scale: 1 })
+  vi.stubGlobal('visualViewport', viewport)
+  const app = document.createElement('div')
+  app.id = 'root'
+  app.scrollTop = 90
+  document.body.append(app)
+  const { getByTestId, unmount } = render(<Shell />, { container: app })
+  const shell = getByTestId('shell')
+  expect(shell.style.overflow).toBe('clip')
+  expect(shell.style.transition).toBe('')
+  expect(app.scrollTop).toBe(0)
+  act(() => {
+    app.scrollTop = 250
+    app.dispatchEvent(new Event('scroll'))
+    vi.advanceTimersByTime(20)
+  })
+  expect(app.scrollTop).toBe(0)
+  act(() => {
+    viewport.height = 844
+    viewport.offsetTop = 20
+    viewport.dispatchEvent(new Event('resize'))
+    vi.advanceTimersByTime(20)
+  })
+  expect(shell.style.top).toBe('20px')
+  unmount()
+  expect(app.scrollTop).toBe(90)
+  app.remove()
+})
