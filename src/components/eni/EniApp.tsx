@@ -93,6 +93,8 @@ export function EniApp({
    * hat, dass er lieber wartet, meint das nicht nur für eine Stimme.
    */
   const [denkt, setDenkt] = useState(false)
+  const [internet, setInternet] = useState(false)
+  const [internetBereit, setInternetBereit] = useState(false)
   const [wahlOffen, setWahlOffen] = useState(false)
   const [menueOffen, setMenueOffen] = useState(false)
   const [vorgabe, setVorgabe] = useState<{ text: string; nr: number } | null>(null)
@@ -178,6 +180,7 @@ export function EniApp({
       const stand = await pruefeModell()
       if (abgemeldet) return
       setModus(stand.bereit ? 'modell' : 'stimmenprobe')
+      setInternetBereit(stand.internet === true)
       setAnbieter(stand.anbieter)
       /**
        * Die gemerkte Wahl gilt nur, solange der Server sie noch anbietet.
@@ -402,7 +405,8 @@ export function EniApp({
             bisher,
             vorlagen,
             controller.signal,
-            (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }
+            (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) },
+            internet
           )
 
           // Wichtig: Spaete Antworten duerfen niemals im falschen Gespraech landen!
@@ -474,7 +478,7 @@ export function EniApp({
         }
       })()
     },
-    [anhaenge, geber, prueft, speicher, stimme, vorlesen, zeilen]
+    [anhaenge, geber, internet, prueft, speicher, stimme, vorlesen, zeilen]
   )
 
   /**
@@ -497,7 +501,7 @@ export function EniApp({
 
       void (async () => {
         try {
-          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) })
+          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }, internet)
           letzterFehlversuchRef.current = null
           if (aktiverChatRef.current === chatId) {
             setZeilen((vorher) => [
@@ -528,7 +532,7 @@ export function EniApp({
         }
       })()
     },
-    [geber, prueft, stimme, vorlesen]
+    [geber, internet, prueft, stimme, vorlesen]
   )
 
   const holeWochenbericht = useCallback(
@@ -922,6 +926,21 @@ export function EniApp({
               )}
             </div>
           )}
+          {modus === 'modell' && (
+            <div className="flex flex-wrap items-center gap-x-3 pb-1">
+              <button type="button" aria-pressed={internet} disabled={prueft || !internetBereit}
+                onClick={() => setInternet((an) => !an)}
+                className="min-h-11 px-1 text-xs font-semibold text-kreide disabled:opacity-40">
+                Internet: {internet ? 'an' : 'aus'}
+              </button>
+              <span className="text-[10px] text-kreide-60">
+                {!internetBereit ? 'Websuche noch nicht verfügbar' : internet
+                  ? 'Suchfrage geht an OpenRouter · Suche kostet Guthaben'
+                  : 'Websuche mit Quellen · kostet OpenRouter-Guthaben'}
+              </span>
+            </div>
+          )}
+          {prueft && internet && !teilAntwort && <p role="status" className="pb-2 text-xs text-kreide-60">Eni recherchiert und bereitet die Antwort vor …</p>}
           {anhangStatus && <p role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">{anhangStatus}</p>}
           <EniEingabe
             gesperrt={prueft || geber === null || anhangStatus !== null}

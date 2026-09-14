@@ -112,3 +112,54 @@ describe('die auftakte im leeren chat', () => {
     )
   })
 })
+
+describe('quellenlinks aus der websuche', () => {
+  const mitQuelle: EniZeile[] = [
+    {
+      id: 'q1',
+      rolle: 'eni',
+      text: 'Der Bericht steht seit gestern.\n\nQuellen der Websuche\n\n- [1. Beispiel](https://example.org/artikel)',
+      erstellt: '2026-09-11T18:00:05.000Z',
+    },
+  ]
+
+  it('macht die quelle der gespeicherten antwort anklickbar, ohne das fenster zu verleihen', () => {
+    render(<EniStrom zeilen={mitQuelle} me="erijon" prueft={false} onAuftakt={vi.fn()} />)
+    const link = screen.getByRole('link', { name: '1. Beispiel' })
+    expect(link).toHaveAttribute('href', 'https://example.org/artikel')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  /*
+    Waehrend des Streams steht die Antwort noch nicht in der Datenbank, also hat
+    auch niemand die Adresse gegen die gefundenen Quellen gehalten. Eine Seite,
+    die dem Modell einen Link untergeschoben hat, darf in diesem Moment nicht
+    schon anklickbar dastehen.
+  */
+  it('zeigt im laufenden strom nur die beschriftung, kein ziel', () => {
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={true}
+        teilAntwort="Laut [Beispiel](https://untergeschoben.example) ist es so."
+        onAuftakt={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByText(/Beispiel/)).toBeInTheDocument()
+    expect(screen.queryByText(/untergeschoben\.example/)).toBeNull()
+  })
+
+  it('laesst eine adresse mit fremdem schema als text stehen', () => {
+    render(
+      <EniStrom
+        zeilen={[{ id: 'q2', rolle: 'eni', text: 'Sieh [hier](javascript:alert(1)) nach.', erstellt: '2026-09-11T18:00:05.000Z' }]}
+        me="erijon"
+        prueft={false}
+        onAuftakt={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+})

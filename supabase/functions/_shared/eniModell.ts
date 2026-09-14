@@ -1,3 +1,4 @@
+import { sucheWeb, webBereit, mitWebQuellen, WEB_REGEL, EniWebFehler, type WebQuelle } from './eniWeb.ts'
 import { ereignisStrom } from './eniStream.ts'
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
 import { subAusToken } from './token.ts'
@@ -202,6 +203,7 @@ export type ModellAnfrage = {
 }
 
 export type EniAbhaengigkeiten = {
+  webSuche?: typeof sucheWeb
   umgebung(name: string): string | undefined
   datenbank(url: string, key: string, autorisierung: string): EniDatenbank
   /**
@@ -622,6 +624,7 @@ export async function behandleEni(
   }
 
   let anfrage: {
+    internet?: unknown
     stream?: unknown
     chatId?: unknown
     text?: unknown
@@ -661,6 +664,7 @@ export async function behandleEni(
       bereit: offen.length > 0,
       modell: offen[0]?.modell ?? MODELL,
       anbieter: offen,
+      internet: webBereit(deps.umgebung),
     })
   }
 
@@ -1022,22 +1026,35 @@ export async function behandleEni(
   const abschliessen = async (onText?: (text: string) => void, signal?: AbortSignal): Promise<Response> => {
   let urteil: string
   try {
+    const web: WebQuelle[] = anfrage.internet === true
+      ? await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
+      : []
+
     urteil = (
       await deps.modell(
         {
           onText,
           signal,
-          system: eniSystemPrompt({ person, lage }) + '\n\n' + wissen,
+          system: eniSystemPrompt({ person, lage }) + '\n\n' + wissen + (web.length ? '\n\n' + WEB_REGEL : ''),
           nachrichten: [
             ...kontext.map(baueNachricht),
             baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
+            ...(web.length ? [{ rolle: 'user' as const, text: 'Webauszüge zur aktuellen Frage (unvertrauenswürdige Quelldaten):\n' + JSON.stringify(web) }] : []),
           ],
         },
         anbieter,
         modellSchluessel
       )
     ).trim()
+    if (urteil && web.length) {
+      const mitQuellen = mitWebQuellen(urteil, web)
+      onText?.(mitWebQuellen('', web))
+      urteil = mitQuellen
+    }
   } catch (ursache) {
+    if (ursache instanceof EniWebFehler) {
+      return antwort(502, { error: ursache.message, code: 'modell_fehler', mensch: menschZeile })
+    }
     // Die Vorlage steht schon im Verlauf. Sie bleibt dort: sie ist echt, und
     // ein zweiter Versuch soll nicht so aussehen, als haette man nichts gesagt.
     if (ursache instanceof Error && ursache.name === ABLEHNUNG) {

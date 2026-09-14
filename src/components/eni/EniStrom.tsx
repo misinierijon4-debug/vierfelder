@@ -120,7 +120,7 @@ export function EniStrom({
           </li>
         )
       })}
-      {prueft && teilAntwort && <li aria-busy="true"><EniWort text={teilAntwort} frisch={false} spricht={false} /><p className="mt-2 text-xs text-kreide-60">Antwort entsteht …</p></li>}
+      {prueft && teilAntwort && <li aria-busy="true"><EniWort text={teilAntwort} frisch={false} spricht={false} linksAktiv={false} /><p className="mt-2 text-xs text-kreide-60">Antwort entsteht …</p></li>}
       {prueft && !teilAntwort && (
         <li>
           <EniTakt />
@@ -153,6 +153,7 @@ function EniWort({
   text,
   frisch,
   spricht,
+  linksAktiv = true,
   onVorlesen,
   notizOffen,
   onNotiz,
@@ -160,6 +161,8 @@ function EniWort({
   text: string
   frisch: boolean
   spricht: boolean
+  /** nur gespeicherte Antworten: dort hat der Server die Links gegen die Quellen geprueft */
+  linksAktiv?: boolean
   onVorlesen?: () => void
   notizOffen?: boolean
   onNotiz?: () => void
@@ -187,7 +190,7 @@ function EniWort({
       </div>
 
       <div className="mt-2 text-kreide">
-        <StrukturierterText text={text} frisch={frisch} />
+        <StrukturierterText text={text} frisch={frisch} linksAktiv={linksAktiv} />
       </div>
     </div>
   )
@@ -198,7 +201,7 @@ function EniWort({
  * frische antworten durchlaufen dieselbe struktur und typografie wie
  * gespeicherte chats, wobei woerter fuer das aufklappen staffelbar sind.
  */
-function StrukturierterText({ text, frisch = false }: { text: string; frisch?: boolean }) {
+function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text: string; frisch?: boolean; linksAktiv?: boolean }) {
   const absaetze = text.split(/\n\s*\n/).map((a) => a.trim()).filter(Boolean)
   const istKurz = absaetze.length <= 1 && text.length < 180
 
@@ -209,7 +212,7 @@ function StrukturierterText({ text, frisch = false }: { text: string; frisch?: b
   if (istKurz) {
     return (
       <p className="display whitespace-pre-wrap text-pretty text-[16px] sm:text-[17px] font-semibold leading-[1.35] text-kreide">
-        {formatiereTextTeile(text, counter, schritt, frisch)}
+        {formatiereTextTeile(text, counter, schritt, frisch, linksAktiv)}
       </p>
     )
   }
@@ -228,7 +231,7 @@ function StrukturierterText({ text, frisch = false }: { text: string; frisch?: b
                 return (
                   <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
                     <span className="mt-2 block size-1 shrink-0 rounded-full bg-kreide-52" aria-hidden="true" />
-                    <span>{formatiereTextTeile(bereinigt, counter, schritt, frisch)}</span>
+                    <span>{formatiereTextTeile(bereinigt, counter, schritt, frisch, linksAktiv)}</span>
                   </li>
                 )
               })}
@@ -240,14 +243,14 @@ function StrukturierterText({ text, frisch = false }: { text: string; frisch?: b
         if (idx === 0) {
           return (
             <p key={idx} className="display whitespace-pre-wrap text-pretty text-[15px] sm:text-[16px] font-semibold leading-[1.4] text-kreide">
-              {formatiereTextTeile(absatz, counter, schritt, frisch)}
+              {formatiereTextTeile(absatz, counter, schritt, frisch, linksAktiv)}
             </p>
           )
         }
 
         return (
           <p key={idx} className="font-body whitespace-pre-wrap text-pretty text-[14px] sm:text-[15px] leading-relaxed text-kreide">
-            {formatiereTextTeile(absatz, counter, schritt, frisch)}
+            {formatiereTextTeile(absatz, counter, schritt, frisch, linksAktiv)}
           </p>
         )
       })}
@@ -259,10 +262,25 @@ function formatiereTextTeile(
   text: string,
   counter: { current: number },
   schritt: number,
-  frisch: boolean
+  frisch: boolean,
+  linksAktiv: boolean
 ): React.ReactNode {
-  const teile = text.split(/(\*\*[^*]+\*\*)/g)
+  const teile = text.split(/(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*)/g)
   return teile.map((teil, i) => {
+    const link = teil.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
+    if (link) {
+      // Waehrend des Streams steht die Antwort noch nicht in der Datenbank, also
+      // hat auch niemand die Adresse gegen die gefundenen Quellen gehalten. Bis
+      // dahin bleibt nur die Beschriftung stehen, nie ein anklickbares Ziel.
+      if (!linksAktiv) return <React.Fragment key={i}>{link[1]}</React.Fragment>
+      try {
+        const url = new URL(link[2]!)
+        if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) {
+          return <a key={i} href={url.href} target="_blank" rel="noopener noreferrer"
+            className="break-words underline underline-offset-2">{link[1]}</a>
+        }
+      } catch { /* fehlerhafte Links als Text zeigen */ }
+    }
     if (teil.startsWith('**') && teil.endsWith('**')) {
       const kern = teil.slice(2, -2)
       return (

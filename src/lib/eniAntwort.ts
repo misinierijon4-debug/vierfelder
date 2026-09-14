@@ -26,6 +26,7 @@ export type AnbieterInfo = {
 
 /** was die pruefung zurueckgibt: ob überhaupt, und wenn ja, wer zur wahl steht */
 export type Modellstand = {
+  internet?: boolean
   bereit: boolean
   anbieter: AnbieterInfo[]
 }
@@ -50,7 +51,8 @@ export type Antwortgeber = {
     /** bilder und dateien, die schon hochgeladen sind. leer ist der normalfall. */
     anhaenge?: AnhangVorlage[],
     signal?: AbortSignal,
-    onText?: (text: string) => void
+    onText?: (text: string) => void,
+    internet?: boolean
   ) => Promise<Antwort>
   /**
    * Noch einmal auf die letzte Vorlage antworten, die ohne Urteil geblieben
@@ -61,7 +63,7 @@ export type Antwortgeber = {
    * gesagt worden, auch wenn das Modell danach geschwiegen hat. Sie noch
    * einmal zu schicken hiesse, denselben Satz zweimal in den Chat zu stellen.
    */
-  nochmal: (chatId: string, signal?: AbortSignal, onText?: (text: string) => void) => Promise<Antwort>
+  nochmal: (chatId: string, signal?: AbortSignal, onText?: (text: string) => void, internet?: boolean) => Promise<Antwort>
   /**
    * Erzeugt oder laedt den persistenten Wochenrueckblick fuer einen gebundenen
    * Wochenchat.
@@ -127,7 +129,7 @@ export async function rufeEniFunktion(
   // Der Server hat insgesamt 100 Sekunden Modellbudget. Auch eine danach
   // haengende Verbindung muss mit einer sichtbaren Meldung enden.
   const frist = new AbortController()
-  const timer = setTimeout(() => frist.abort(), 120_000)
+  const timer = setTimeout(() => frist.abort(), rumpf.internet === true ? 150_000 : 120_000)
   const abbruch = () => frist.abort()
   if (signal?.aborted) frist.abort()
   signal?.addEventListener('abort', abbruch, { once: true })
@@ -168,7 +170,7 @@ export async function rufeEniFunktion(
   } catch (err) {
     if (err instanceof EniModellFehler) throw err
     if (frist.signal.aborted && !signal?.aborted) {
-      throw new EniModellFehler('Das Modell hat innerhalb von zwei Minuten keine vollständige Antwort geliefert. Versuch es erneut oder wähle ein anderes Modell.', mensch, 'modell_fehler')
+      throw new EniModellFehler(rumpf.internet === true ? 'Websuche und Modell haben innerhalb von zweieinhalb Minuten keine vollständige Antwort geliefert. Versuch es erneut.' : 'Das Modell hat innerhalb von zwei Minuten keine vollständige Antwort geliefert. Versuch es erneut oder wähle ein anderes Modell.', mensch, 'modell_fehler')
     }
     if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
       throw new EniModellFehler('anfrage abgebrochen', mensch, 'modell_fehler')
@@ -214,7 +216,7 @@ export async function modellBereit(): Promise<Modellstand> {
         denkbar: eintrag.denkbar === true,
         denkHinweis: String(eintrag.denkHinweis ?? ''),
       }))
-    return { bereit: true, anbieter }
+    return { bereit: true, anbieter, internet: inhalt.internet === true }
   } catch {
     return { bereit: false, anbieter: [] }
   }
@@ -260,12 +262,13 @@ export function modellAntwort(
     art: 'modell',
     anbieter,
     denkt,
-    async antworte(chatId, text, _bisher, anhaenge, signal, onText) {
+    async antworte(chatId, text, _bisher, anhaenge, signal, onText, internet) {
       const { status, inhalt } = await rufe(
         {
           chatId,
           text,
           ...wahl,
+          ...(internet ? { internet: true } : {}),
           ...(anhaenge && anhaenge.length > 0 ? { anhaenge } : {}),
         },
         signal,
@@ -273,9 +276,9 @@ export function modellAntwort(
       )
       return lies(status, inhalt)
     },
-    async nochmal(chatId, signal, onText) {
+    async nochmal(chatId, signal, onText, internet) {
       const { status, inhalt } = await rufe(
-        { chatId, wiederholen: true, ...wahl },
+        { chatId, wiederholen: true, ...wahl, ...(internet ? { internet: true } : {}) },
         signal,
         onText
       )

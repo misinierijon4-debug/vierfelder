@@ -1,3 +1,4 @@
+import { EniWebFehler } from '../../supabase/functions/_shared/eniWeb'
 import { describe, expect, it, vi } from 'vitest'
 import {
   ABLEHNUNG,
@@ -1088,5 +1089,39 @@ describe('ENI: Gedaechtnis und Textstream', () => {
     expect(gesehen[0]!.system).toContain('Mein Lernziel')
     expect(gesehen[0]!.system).toContain('Gemeinsames Vorhaben')
     expect(gesehen[0]!.system).not.toContain('Fremdes Geheimnis')
+  })
+})
+
+describe('Internet im authentifizierten Chat', () => {
+  it('recherchiert nur bei eingeschaltetem Internet und speichert Quellen am Urteil', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ openrouter: 'test' })
+    const suche = vi.fn().mockResolvedValue([{ titel: 'Quelle', url: 'https://example.org/artikel', text: 'Aktueller Beleg' }])
+    abhaengigkeiten.webSuche = suche
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Aktuelle Frage', internet: true }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(suche).toHaveBeenCalledTimes(1)
+    expect(gesehen[0]?.nachrichten.at(-1)?.text).toContain('Aktueller Beleg')
+    expect(tabellen.eni_nachrichten.at(-1)?.text).toContain('https://example.org/artikel')
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Ohne Internet' }), abhaengigkeiten)
+    expect(suche).toHaveBeenCalledTimes(1)
+  })
+  it('sucht bei fehlender Anmeldung oder Tageslimit nicht', async () => {
+    const { abhaengigkeiten } = deps({ limit: '0' })
+    const suche = vi.fn()
+    abhaengigkeiten.webSuche = suche
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }, ''), abhaengigkeiten)
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
+    expect(suche).not.toHaveBeenCalled()
+  })
+  it('speichert bei einem Suchfehler keine vermeintliche Internetantwort', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps()
+    abhaengigkeiten.webSuche = vi.fn().mockRejectedValue(new EniWebFehler('Suche nicht verfügbar'))
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
+    const json = await res.json()
+    expect(res.status).toBe(502)
+    expect(json.error).toBe('Suche nicht verfügbar')
+    expect(json.mensch).toBeTruthy()
+    expect(gesehen).toHaveLength(0)
+    expect(tabellen.eni_nachrichten).toHaveLength(1)
   })
 })
