@@ -72,12 +72,12 @@ const vorlegen = () => screen.getByRole('button', { name: 'vorlegen' })
 describe('die büroklammer', () => {
   it('fehlt ganz, wo es keinen bucket gibt, statt grau dazustehen', () => {
     zeige({ anhaengenMoeglich: false })
-    expect(screen.queryByLabelText('bild oder datei anhängen')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('bild, PDF oder datei anhängen')).not.toBeInTheDocument()
   })
 
   it('steht bereit, sobald ein konto da ist', () => {
     zeige()
-    expect(screen.getByLabelText('bild oder datei anhängen')).toBeInTheDocument()
+    expect(screen.getByLabelText('bild, PDF oder datei anhängen')).toBeInTheDocument()
   })
 
   it('sagt hin, wenn die vier voll sind, statt still nichts zu tun', () => {
