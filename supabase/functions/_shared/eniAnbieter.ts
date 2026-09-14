@@ -111,28 +111,90 @@ export const ANBIETER: readonly Anbieter[] = [
     modell: 'qwen/qwen3.8-27b:free',
     endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
     schluessel: 'INFRON_API_KEY',
-    // Infrons dokumentierter Reasoning-Schalter; keine DeepSeek-spezifischen
-    // Parameter. Die :free-ID bleibt fest, auch bei Limits kein Bezahl-Fallback.
-    denken: { reasoning: { effort: 'none' } },
+    /**
+     * Derselbe Schalter wie bei OpenRouter, und aus demselben Grund derselbe
+     * Wortlaut: Infron ist eine OpenAI-kompatible Durchleitung und normalisiert
+     * `reasoning` auf das, was das Modell dahinter versteht. `enabled: false`
+     * ist die Stellung, die dieselbe Datei beim freien Ling-Modell schon
+     * benutzt; `effort: 'none'` stand vorher hier und ist keine Stufe, die
+     * OpenRouters Format kennt — eine Gegenstelle, die streng liest, lehnt sie
+     * ab, und Qwen3.8 denkt von sich aus vor.
+     *
+     * Bleibt das Vordenken trotzdem an, faellt das nicht mehr still aus: eine
+     * Antwort, die nur aus Gedanken besteht, meldet sich als solche.
+     */
+    denken: { reasoning: { enabled: false } },
   },
 ]
 
 /** der anbieter, den eine anfrage ohne wahl bekommt */
 export const STANDARD_ANBIETER = ANBIETER[0]!.id
 
-/** Nur eigene Statusmeldungen auswerten, nie Texte oder Secrets der Gegenstelle. */
-export function anbieterFehlertext(anbieter: Anbieter, ursache: unknown): string {
-  const allgemein = 'ENI hat nicht geantwortet. versuch es gleich noch einmal.'
-  if (!(ursache instanceof Error)) return allgemein
-  if (ursache.name === 'TimeoutError') {
-    return `${anbieter.name} braucht zu lange. Versuch es später oder wähle ein anderes Modell.`
+/**
+ * Was die Gegenstelle gemeldet hat — als Feld, nicht als Satz.
+ *
+ * Ihr *Text* darf nie in eine Meldung wandern: er kann alles enthalten, bis
+ * hin zur eigenen Anfrage. Ihr *Status* darf es. Deshalb steht er hier als
+ * Zahl neben der Anbieter-id, statt in eine Fehlernachricht geschrieben und
+ * spaeter wieder aus ihr herausgelesen zu werden. Eine Nachricht kann jeder
+ * erfinden, ein Feld, das nur diese Function setzt, nicht.
+ *
+ * `art` traegt die Faelle ohne Status. Genau daran ist die Diagnose bisher
+ * gescheitert: ein Fehler im 200er-Rumpf, ein abgebrochener Strom oder eine
+ * Antwort, die nur aus Denken bestand, hatten keine Zahl — und wurden deshalb
+ * alle zu demselben "ENI hat nicht geantwortet", das nichts erklaert.
+ */
+export type Gemeldet = {
+  /** wer gemeldet hat. nur die eigene id zaehlt. */
+  anbieterId: string
+  /** http-status oder code aus dem rumpf. 0 heisst: keinen genannt. */
+  status: number
+  /** was es war, wenn es keinen status gibt */
+  art?: Art
+}
+
+/**
+ * Die Fehlschlaege ohne Status, benannt. Sie brauchen verschiedene Saetze,
+ * weil sie verschiedene naechste Schritte haben: warten, wechseln, nachsehen.
+ */
+export type Art = 'leer' | 'gedacht' | 'strom' | 'fehler'
+
+/** ein fehler, der bleibt. wer wiederholen darf, wirft `Nochmal`. */
+export class GegenstelleFehler extends Error implements Gemeldet {
+  constructor(
+    readonly anbieterId: string,
+    readonly status: number,
+    readonly art?: Art,
+    nachricht?: string
+  ) {
+    super(nachricht ?? `${anbieterId} ${art ?? 'antwortet'} ${status || ''}`.trim())
+    this.name = 'EniGegenstelle'
   }
-  const status = ursache.message.match(/^([a-z0-9-]+) (?:antwortet|meldet fehler) (\d{3})$/)
-  if (!status || status[1] !== anbieter.id) return allgemein
-  const name = anbieter.id === 'qwen-infron' ? 'Infron' : anbieter.name
-  switch (Number(status[2])) {
+}
+
+/** wie der anbieter in einer meldung heisst */
+const anzeigename = (anbieter: Anbieter) =>
+  anbieter.id === 'qwen-infron' ? 'Infron' : anbieter.name
+
+/**
+ * Die Meldung, die an dem Fehler haengt — aber nur, wenn sie von genau diesem
+ * Anbieter stammt. Ein fremdes Feld ist kein Beleg.
+ */
+function gemeldet(anbieter: Anbieter, ursache: Error): Gemeldet | null {
+  const roh = ursache as Error & Partial<Gemeldet>
+  if (roh.anbieterId !== anbieter.id) return null
+  return {
+    anbieterId: anbieter.id,
+    status: typeof roh.status === 'number' && Number.isFinite(roh.status) ? roh.status : 0,
+    art: roh.art,
+  }
+}
+
+/** derselbe status, ein satz, den man lesen und danach etwas tun kann */
+function statustext(name: string, status: number): string {
+  switch (status) {
     case 400: case 422:
-      return `${name} lehnt das Anfrageformat ab (HTTP ${status[2]}). Die Modellanbindung muss geprüft werden.`
+      return `${name} lehnt das Anfrageformat ab (HTTP ${status}). Die Modellanbindung muss geprüft werden.`
     case 401:
       return `${name} akzeptiert den API-Key nicht (HTTP 401). Prüfe den hinterlegten Schlüssel.`
     case 402:
@@ -144,8 +206,48 @@ export function anbieterFehlertext(anbieter: Anbieter, ursache: unknown): string
     case 429:
       return `${name} meldet ein Anfrage- oder Kontingentlimit (HTTP 429). Warte etwas oder wähle ein anderes Modell.`
     default:
-      return `${name} antwortet mit HTTP ${status[2]}. Versuch es später oder wähle ein anderes Modell.`
+      return `${name} antwortet mit HTTP ${status}. Versuch es später oder wähle ein anderes Modell.`
   }
+}
+
+/** Nur eigene Statusmeldungen auswerten, nie Texte oder Secrets der Gegenstelle. */
+export function anbieterFehlertext(anbieter: Anbieter, ursache: unknown): string {
+  const allgemein = 'ENI hat nicht geantwortet. versuch es gleich noch einmal.'
+  if (!(ursache instanceof Error)) return allgemein
+  if (ursache.name === 'TimeoutError') {
+    return `${anbieter.name} braucht zu lange. Versuch es später oder wähle ein anderes Modell.`
+  }
+  const name = anzeigename(anbieter)
+  /**
+   * Ein `fetch`, das gar nicht erst zustande kommt, wirft `TypeError`: Adresse
+   * unbekannt, TLS abgelehnt, Verbindung verweigert. Das ist kein Schweigen
+   * des Modells, sondern gar keine Leitung, und beides zu verwechseln kostet
+   * einen Abend Suche an der falschen Stelle.
+   */
+  if (ursache instanceof TypeError) {
+    return `Die Verbindung zu ${name} kam nicht zustande. Prüfe Endpunkt und Netz oder wähle ein anderes Modell.`
+  }
+
+  const meldung = gemeldet(anbieter, ursache)
+  if (meldung) {
+    if (meldung.status > 0) return statustext(name, meldung.status)
+    switch (meldung.art) {
+      case 'gedacht':
+        return `${name} hat nur nachgedacht und nichts gesagt. Wähle ein anderes Modell oder schalte das Vordenken ab.`
+      case 'leer':
+        return `${name} hat leer geantwortet. Versuch es gleich noch einmal oder wähle ein anderes Modell.`
+      case 'strom':
+        return `${name} hat die Antwort mittendrin abgebrochen. Versuch es gleich noch einmal oder wähle ein anderes Modell.`
+      case 'fehler':
+        return `${name} meldet einen Fehler ohne Status. Der Grund steht im Protokoll der Function.`
+    }
+  }
+
+  // Rueckfall fuer Fehler, die nur eine Nachricht tragen. Streng verankert:
+  // was nicht genau so aussieht, gilt als fremder Text und wird nicht gezeigt.
+  const status = ursache.message.match(/^([a-z0-9-]+) (?:antwortet|meldet fehler) (\d{3})$/)
+  if (!status || status[1] !== anbieter.id) return allgemein
+  return statustext(name, Number(status[2]))
 }
 
 /**

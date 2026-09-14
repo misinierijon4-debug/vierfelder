@@ -11,7 +11,7 @@ Function, und die läuft auf dem Server. Im Browser-Bundle taucht er nie auf.
 
 ## 1. Schlüssel holen
 
-Drei Anbieter stehen zur Wahl. Du brauchst nicht alle.
+Drei Anbieter stehen zur Wahl, vier Einträge im Menü. Du brauchst nicht alle.
 
 **DeepSeek Flash.** Auf platform.deepseek.com anmelden, unter **API keys** einen
 neuen Schlüssel erzeugen. Er beginnt mit `sk-`. Du siehst ihn genau einmal.
@@ -28,14 +28,33 @@ Dieser eine Schlüssel bringt **zwei** Einträge ins Menü: `ling 3.0 flash` und
 `ling 3.0 flash (denkt)`. Dasselbe Modell, derselbe Schlüssel, ein Unterschied —
 siehe *Vordenken* weiter unten.
 
+**Qwen 3.8 27B über Infron.** Auf infron.ai anmelden und einen API-Key erzeugen.
+Das Modell `qwen/qwen3.8-27b:free` kostet nichts und liest Bilder — aber Infron
+lässt freie Modelle nur an Konten mit **mindestens 5 $ Guthaben** heran.
+Abgezogen wird davon nichts. Steht das Guthaben nicht da, ist der Schlüssel
+richtig und das Modell trotzdem stumm; siehe Schritt 2.
+
 ## 2. Schlüssel setzen
 
-### Qwen über Infron: nur den vorhandenen Key einfügen
+### Qwen über Infron: Key einfügen — und Guthaben prüfen
 
 1. [Secrets im Vierfelder-Projekt öffnen](https://supabase.com/dashboard/project/ogxwazageufvalkocywh/functions/secrets).
 2. Als **Name** `INFRON_API_KEY` und als **Value** deinen Infron-Key eintragen.
 3. **Save** drücken und ENI neu öffnen (gegebenenfalls die App neu laden).
 4. Oben auf **ENI** tippen und **qwen 3.8 27b** auswählen.
+
+**Der Key allein reicht bei Infron nicht.** Für die kostenlosen Modelle, also
+für alles mit `:free`, verlangt Infron ein Kontoguthaben von **mindestens 5 $**.
+Verbraucht wird davon nichts — es muss nur dastehen. Steht es nicht da, lehnt
+Infron jede Anfrage an `qwen/qwen3.8-27b:free` ab, mit genau diesem Satz:
+*"Free model requires account balance greater than $4.999999."* Der Schlüssel
+ist dann richtig und das Modell trotzdem stumm. Dazu kommt eine Grenze von
+**1000 Anfragen am Tag** über alle freien Modelle zusammen; sie geht um 00:00
+UTC wieder auf.
+
+Das ist die erste Stelle zum Nachsehen, wenn ENI bei Qwen nichts sagt: das
+Guthaben im Infron-Konto. Die zweite steht unter *Wenn ein Modell nicht
+antwortet*.
 
 Die Function muss die Infron-Erweiterung aus `eniAnbieter.ts` enthalten. Nach
 deren Deployment ist beim Setzen oder Wechseln des Secrets kein weiterer
@@ -49,7 +68,12 @@ nicht automatisch auf ein kostenpflichtiges Modell. Der Key wird weder im
 Browser noch in einer Datenbank gespeichert, sondern als Server-Secret.
 Ohne gesetzten Key erscheint Qwen nicht in der Auswahl.
 
+Das Vordenken steht auf `reasoning: { enabled: false }` — dieselbe Stellung wie
+beim freien Ling-Modell. `effort: 'none'` stand vorher dort und ist keine Stufe,
+die dieses Format kennt.
+
 Quellen: [Infron Quickstart](https://infron.ai/docs),
+[Freie Modelle](https://infron.ai/docs/overview/free-models),
 [Modellliste](https://llm.onerouter.pro/v1/models),
 [Reasoning-Konfiguration](https://infronai.gitbook.io/docs/llm-apis/openai-compatible-api/reasoning-configuration),
 [Supabase Secrets](https://supabase.com/docs/guides/functions/secrets).
@@ -316,6 +340,37 @@ laufen, den niemand erklären kann.
 Der Browser kennt dabei nur eine Kurz-id und einen Namen. Adresse, Modellname
 und Schlüssel kennt ausschließlich die Edge Function, und eine id, die es nicht
 gibt, beantwortet sie mit 400, statt irgendwohin zu telefonieren.
+
+## 4b. Wenn ein Modell nicht antwortet
+
+Im Chat steht dann eine Meldung, und die sagt seit dem Infron-Anschluss, **wer**
+geschwiegen hat und **warum**. Die Sätze sind der schnellste Weg zur Ursache:
+
+| Was dasteht | Was es heißt | Was du tust |
+| --- | --- | --- |
+| `… verlangt Guthaben … (HTTP 402)` | Infrons 5-$-Regel für freie Modelle, oder ein leeres Konto | Guthaben aufladen |
+| `… akzeptiert den API-Key nicht (HTTP 401)` | falscher oder abgelaufener Schlüssel | Secret neu setzen |
+| `… verweigert den Modellzugriff (HTTP 403)` | Konto darf dieses Modell nicht | Freigaben im Anbieterkonto |
+| `… findet das Modell oder den Endpunkt nicht (HTTP 404)` | Modellname oder Adresse stimmt nicht mehr | Zeile in `eniAnbieter.ts` prüfen |
+| `… meldet ein Anfrage- oder Kontingentlimit (HTTP 429)` | Grenze je Minute oder Tagesgrenze des Anbieters | warten oder Modell wechseln |
+| `Die Verbindung zu … kam nicht zustande` | gar keine Leitung: Adresse, DNS, TLS | Endpunkt prüfen |
+| `… hat nur nachgedacht und nichts gesagt` | das Vordenken ließ sich nicht abschalten | anderes Modell, oder `denken` in der Zeile ändern |
+| `… hat leer geantwortet` | die Gegenstelle hat den Zug verpasst | **wiederholen** im Chat |
+| `… meldet einen Fehler ohne Status` | Fehler im Rumpf, ohne Zahl daran | Protokoll lesen (gleich darunter) |
+
+**Der Wortlaut der Gegenstelle steht nie in der App.** Fremder Text gehört nicht
+in ein Gespräch, in dem sonst nur ENI und du reden. Er steht im Protokoll der
+Function, und zwar vollständig genug, um daran zu erkennen, was los ist:
+
+[Logs der `eni`-Function öffnen](https://supabase.com/dashboard/project/ogxwazageufvalkocywh/functions/eni/logs)
+und nach Zeilen suchen, die mit `eni:` beginnen. Dort steht dann etwa
+`eni: qwen-infron antwortet 402: {"error":{"message":"Free model requires
+account balance…"}}`. Das ist die Antwort auf *warum*, und sie kostet keinen
+zweiten Versuch.
+
+Dasselbe gilt für die Datenbank: Meldungen wie *die tagesgrenze konnte nicht
+geprüft werden* oder *mitgliedschaft konnte nicht geprüft werden* stehen jetzt
+mit ihrem echten Grund im selben Protokoll. Vorher endeten sie dort im Nichts.
 
 ## Was das kostet
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ereignisStrom,
   liesModellStrom,
+  StromFehler,
   streamZeilen,
 } from "../../supabase/functions/_shared/eniStream";
 function strom(text: string) {
@@ -38,6 +39,27 @@ describe("ENI Streaming", () => {
         () => {},
       ),
     ).rejects.toThrow("abgelehnt");
+  });
+  it("traegt den Code aus einem Fehler im 200er-Strom weiter", async () => {
+    // Eine Durchleitung legt den Fehler eines freien Modells gern in einen
+    // Strom mit Status 200. Ohne den Code daraus waere jeder dieser Faelle
+    // dasselbe nichtssagende Schweigen.
+    const ursache = await liesModellStrom(
+      strom('data: {"error":{"code":402,"message":"balance too low"}}\n'),
+      () => {},
+    ).catch((f) => f);
+    expect(ursache).toBeInstanceOf(StromFehler);
+    expect((ursache as StromFehler).status).toBe(402);
+    expect((ursache as StromFehler).message).not.toContain("balance");
+  });
+  it("erkennt eine Antwort, die nur aus Gedanken besteht", async () => {
+    const ursache = await liesModellStrom(
+      strom(
+        'data: {"choices":[{"delta":{"reasoning":"hm"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+      ),
+      () => {},
+    ).catch((f) => f);
+    expect((ursache as StromFehler).art).toBe("gedacht");
   });
   it("gibt Teile vor Abschluss frei und transportiert Fehler im fertigen Ereignis", async () => {
     let fertig!: () => void;
