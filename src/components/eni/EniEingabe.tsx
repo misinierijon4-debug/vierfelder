@@ -78,7 +78,7 @@ export function EniEingabe({
     if (!vorgabe) return
     setText(vorgabe.text)
     onTextChange?.(vorgabe.text)
-    feldRef.current?.focus()
+    feldRef.current?.focus({ preventScroll: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vorgabe?.nr])
 
