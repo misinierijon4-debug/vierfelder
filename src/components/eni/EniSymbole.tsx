@@ -161,38 +161,18 @@ export function IconFood({ size = 16, className = '', ...props }: Props) {
   )
 }
 
-export function IconInfo({ size = 18, className = '', ...props }: Props) {
+/**
+ * Das Gedaechtnis: ein Merkzettel mit drei Zeilen und einer Eselsohr-Ecke.
+ * Steht fuer bewusst hingeschriebenes Wissen, nicht fuer einen Kopf oder ein
+ * Gehirn — ENI denkt nicht mit, er liest nach, was hier steht.
+ */
+export function IconGedaechtnis({ size = 18, className = '', ...props }: Props) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true" {...props}>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4" />
-      <path d="M12 8h.01" />
-    </svg>
-  )
-}
-
-export function IconShield({ size = 18, className = '', ...props }: Props) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true" {...props}>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
-  )
-}
-
-export function IconCpu({ size = 18, className = '', ...props }: Props) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true" {...props}>
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <rect x="9" y="9" width="6" height="6" />
-      <path d="M15 2v2" />
-      <path d="M15 20v2" />
-      <path d="M2 15h2" />
-      <path d="M2 9h2" />
-      <path d="M20 15h2" />
-      <path d="M20 9h2" />
-      <path d="M9 2v2" />
-      <path d="M9 20v2" />
+      <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 12h6" />
+      <path d="M9 16h4" />
     </svg>
   )
 }

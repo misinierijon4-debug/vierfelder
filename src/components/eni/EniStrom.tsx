@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { IconFileText, IconPlus, IconSpeakerHigh, IconStop } from './EniSymbole'
-import { IconChart, IconFood, IconMoon, IconTarget } from './EniSymbole'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
 import { toKey } from '../../lib/dates'
@@ -41,6 +40,8 @@ type Props = {
   onVorlesen?: (zeile: EniZeile) => void
   onAuftakt: (text: string) => void
   duellStand?: DuellKontext | null
+  /** wer gerade fuer ENI spricht. steht im auftakt als herkunftsangabe */
+  modellName?: string | null
 }
 
 export function EniStrom({
@@ -55,6 +56,7 @@ export function EniStrom({
   onVorlesen,
   onAuftakt,
   duellStand,
+  modellName,
 }: Props) {
   /**
    * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
@@ -69,7 +71,7 @@ export function EniStrom({
   const [notizFuer, setNotizFuer] = useState<string | null>(null)
 
   if (zeilen.length === 0 && !prueft) {
-    return <EniLeer me={me} duellStand={duellStand} onAuftakt={onAuftakt} />
+    return <EniLeer me={me} duellStand={duellStand} modellName={modellName} onAuftakt={onAuftakt} />
   }
 
   let letzterTag = ''
@@ -472,74 +474,53 @@ export function EniTakt() {
 }
 
 /**
- * Der neue Gesprächseinstieg:
- * Kompakte Begrüßung, klare Rolle, Bezug zur angemeldeten Person,
- * echte Duell-Daten und 4 strukturierte, klickbare Themen-Chips.
+ * Der Gesprächseinstieg liest sich wie die Anzeigetafel, nicht wie ein
+ * Chatbot-Startbildschirm: Haarlinien statt Karten, Kleinschreibung in der
+ * Bedienung, die Zahlen tabellarisch und in den Personenfarben.
+ *
+ * Die vier Vorschläge waren Kacheln mit Icons — genau das Muster, das jede
+ * KI-App benutzt, und das einzige Element der App mit einem Icon je Eintrag.
+ * Als Zeilenliste sind sie dieselbe Form wie `Bereichszeile` im Tracker: man
+ * tippt eine Zeile an, und etwas passiert.
  */
 function EniLeer({
   me,
   duellStand,
+  modellName,
   onAuftakt,
 }: {
   me: UserId
   duellStand?: DuellKontext | null
+  modellName?: string | null
   onAuftakt: (text: string) => void
 }) {
   const { gruss, gegner } = eniBegruessung(me)
   const ichFarbe = userDef(me).farbe
   const gegnerDef = userDef(me === 'koray' ? 'erijon' : 'koray')
+  const gegnerKlein = gegner.toLowerCase()
 
-  const aufholenTitel = duellStand
+  const aufholen = duellStand
     ? duellStand.diff > 0
-      ? 'Vorsprung ausbauen'
+      ? { titel: 'vorsprung ausbauen', prompt: `wie baue ich meinen vorsprung gegen ${gegnerKlein} weiter aus` }
       : duellStand.diff === 0
-        ? 'Führung übernehmen'
-        : 'Heute aufholen'
-    : 'Führung übernehmen'
+        ? { titel: 'führung übernehmen', prompt: `wie übernehme ich heute die führung gegen ${gegnerKlein}` }
+        : { titel: 'heute aufholen', prompt: `wie hole ich heute gegen ${gegnerKlein} am besten auf` }
+    : { titel: 'führung übernehmen', prompt: `wie übernehme ich heute die führung gegen ${gegnerKlein}` }
 
-  const aufholenPrompt = duellStand
-    ? duellStand.diff > 0
-      ? `wie baue ich meinen vorsprung gegen ${gegner.toLowerCase()} weiter aus`
-      : duellStand.diff === 0
-        ? `wie übernehme ich heute die führung gegen ${gegner.toLowerCase()}`
-        : `wie hole ich heute gegen ${gegner.toLowerCase()} am besten auf`
-    : `wie übernehme ich heute die führung gegen ${gegner.toLowerCase()}`
-
-  // Personalisierte Vorschläge
   const vorschlaege = [
-    {
-      id: 'duell',
-      titel: 'Duell analysieren',
-      icon: IconChart,
-      prompt: `wie stehe ich gegen ${gegner.toLowerCase()}`,
-    },
-    {
-      id: 'aufholen',
-      titel: aufholenTitel,
-      icon: IconTarget,
-      prompt: aufholenPrompt,
-    },
-    {
-      id: 'abend',
-      titel: 'Abend planen',
-      icon: IconMoon,
-      prompt: 'hilf mir den abend planen: schlaf, essen und regeneration',
-    },
-    {
-      id: 'ernaehrung',
-      titel: 'Ernährung besprechen',
-      icon: IconFood,
-      prompt: 'was soll ich heute essen',
-    },
+    { id: 'duell', titel: `wie stehe ich gegen ${gegnerKlein}`, prompt: `wie stehe ich gegen ${gegnerKlein}` },
+    { id: 'aufholen', titel: aufholen.titel, prompt: aufholen.prompt },
+    { id: 'abend', titel: 'abend planen', prompt: 'hilf mir den abend planen: schlaf, essen und regeneration' },
+    { id: 'ernaehrung', titel: 'was soll ich heute essen', prompt: 'was soll ich heute essen' },
   ]
 
   return (
     <div className="flex flex-1 flex-col justify-start pt-8 pb-6">
-      {/* Kopf-Einheit mit Monolith und Begrüßung */}
       <div className="flex items-start gap-4">
         <EniMarke groesse={44} grund="var(--grund)" />
         <div className="min-w-0 flex-1">
-          <h2 className="display text-[20px] font-bold tracking-tight text-kreide leading-tight">
+          {/* ENI spricht in ganzen Sätzen, deshalb bleibt sein Gruß groß. */}
+          <h2 className="display text-[20px] font-bold leading-tight tracking-tight text-kreide">
             {gruss}
           </h2>
           <p className="mt-1 text-[13px] leading-snug text-kreide-60">
@@ -548,66 +529,71 @@ function EniLeer({
         </div>
       </div>
 
-      {/* Echte Duell-Lage (falls vorhanden) */}
-      {duellStand && (
-        <div className="mt-5 rounded-[2px] border border-linie/40 bg-flaeche/50 p-3">
-          <div className="flex items-center justify-between text-[11px] text-kreide-52">
-            <span className="font-bold uppercase tracking-wider">Aktueller Stand</span>
-            <span className="tnum font-bold text-kreide">
-              {duellStand.diff > 0
-                ? `+${duellStand.diff}`
-                : duellStand.diff < 0
-                  ? `−${Math.abs(duellStand.diff)}`
-                  : '='}
-            </span>
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[13px] font-semibold" style={{ color: ichFarbe }}>
-              Du: <span className="tnum text-[16px] font-bold">{duellStand.wocheIch}</span>
-            </span>
-            <span className="text-[12px] text-kreide-52">:</span>
-            <span className="text-[13px] font-semibold" style={{ color: gegnerDef.farbe }}>
-              {gegner}: <span className="tnum text-[16px] font-bold">{duellStand.wocheEr}</span>
-            </span>
-          </div>
-          {duellStand.statusText && (
-            <p className="mt-1.5 truncate text-[11px] text-kreide-60">
-              {duellStand.statusText}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Privatsphäre-Hinweis */}
-      <p className="mt-4 text-[11px] leading-relaxed text-kreide-52">
-        Deine Unterhaltungen sind privat. {gegner} hat keinen Zugriff auf deinen Verlauf.
-      </p>
-
-      {/* 4 kompakte, klickbare Startvorschläge */}
-      <div className="mt-6">
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-kreide-52 mb-2.5">
-          Startvorschläge
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {vorschlaege.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onAuftakt(item.prompt)}
-                aria-label={item.prompt}
-                className="group flex min-h-12 items-center gap-3 rounded-[2px] border border-linie/40 bg-flaeche/60 px-3.5 py-3 text-left transition-colors hover:border-linie hover:bg-flaeche active:bg-grund focus-visible:outline-2 focus-visible:outline-fokus"
-              >
-                <Icon size={20} className="shrink-0 text-kreide-60 transition-colors group-hover:text-kreide" aria-hidden="true" />
-                <span className="block truncate text-[14px] sm:text-[15px] font-medium text-kreide">
-                  {item.titel}
+      {/*
+        Der Stand stand in einem Kasten mit eigener Flaeche und eigener
+        Ueberschrift. Er ist aber dieselbe Zahl wie im Kopf der Anzeigetafel
+        und traegt hier dieselbe Form: eine Zeile zwischen zwei Haarlinien.
+      */}
+      <div className="mt-6 divide-y divide-linie border-y border-linie">
+        {duellStand && (
+          <div className="py-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[11px] text-kreide-52">diese woche</span>
+              <span className="flex items-baseline gap-1.5">
+                <span className="tnum text-[17px] font-bold leading-none" style={{ color: ichFarbe }}>
+                  {duellStand.wocheIch}
                 </span>
-              </button>
-            )
-          })}
-        </div>
+                <span className="text-[12px] leading-none text-kreide-52">:</span>
+                <span className="tnum text-[17px] font-bold leading-none" style={{ color: gegnerDef.farbe }}>
+                  {duellStand.wocheEr}
+                </span>
+                <span className="tnum pl-1.5 text-[12px] font-bold leading-none text-kreide">
+                  {duellStand.diff > 0
+                    ? `+${duellStand.diff}`
+                    : duellStand.diff < 0
+                      ? `−${Math.abs(duellStand.diff)}`
+                      : '='}
+                </span>
+              </span>
+            </div>
+            {duellStand.statusText && (
+              <p className="mt-1.5 truncate text-[11px] text-kreide-52">{duellStand.statusText}</p>
+            )}
+          </div>
+        )}
+
+        {vorschlaege.map((item) => (
+          <div key={item.id}>
+            <button
+              type="button"
+              onClick={() => onAuftakt(item.prompt)}
+              className="group flex min-h-12 w-full items-center justify-between gap-3 py-2.5 text-left transition-colors"
+            >
+              <span className="min-w-0 flex-1 truncate text-[15px] text-kreide-60 transition-colors group-hover:text-kreide">
+                {item.titel}
+              </span>
+              <span
+                aria-hidden="true"
+                className="shrink-0 text-[13px] leading-none text-kreide-52 transition-colors group-hover:text-kreide"
+              >
+                ›
+              </span>
+            </button>
+          </div>
+        ))}
       </div>
+
+      {/*
+        Herkunft als Text, nicht als Symbol, und an der Stelle, an der man sie
+        liest — der Datenschutzdialog daneben wurde nie geoeffnet. Zwei Saetze:
+        wer nicht mitliest, und wohin die Saetze gehen.
+      */}
+      <p className="mt-5 text-[11px] leading-relaxed text-kreide-52">
+        privat. {gegnerKlein} sieht deinen verlauf nicht.
+        {modellName
+          ? ` was du schreibst, geht über supabase an ${modellName.toLowerCase()}.`
+          : ' ohne modellverbindung rechnet nichts im netz.'}
+      </p>
     </div>
   )
 }

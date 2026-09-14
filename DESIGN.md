@@ -1471,3 +1471,69 @@ mitgeladen beim kaltstart. Die funktion steht jetzt in `token.ts`, beide
 functions holen sie dort, und `eniModell.ts` reicht sie weiter, damit die
 aufrufer nichts davon merken. Das bündel der stimme ist damit bei knapp
 dreißigtausend zeichen.
+
+## 37. Nachtrag: das gedächtnis war nie angelegt, und ENI sah aus wie ein fremder (14.09.2026)
+
+**Der dialog war nicht kaputt, seine tabelle fehlte.** „Das Gedächtnis ist
+gerade nicht erreichbar. Bitte später erneut versuchen." stand unter jedem
+ladeversuch, und „später" hat nie geholfen: die migration
+`20260911181438_eni_gedaechtnis` ist in der produktiven datenbank nie gelaufen.
+`eni_erinnerungen` existiert dort nicht, und mit ihr fehlen drei weitere
+migrationen. Der satz war kein fehler der oberfläche, sondern ein fehler über
+den zustand der umgebung — und er hat genau die auskunft verschwiegen, die man
+gebraucht hätte. `ladeWissen` unterscheidet jetzt: eine unbekannte tabelle
+(`PGRST205` / `42P01`) sagt, dass die migration fehlt, eine abgewiesene
+berechtigung (`42501`) sagt, dass die anmeldung nicht reicht, und alles andere
+zitiert die meldung der gegenstelle, statt sie zu schlucken. Ein fehler, der
+seine ursache verschweigt, kostet genau die zeit, die man ohne ihn braucht.
+
+**Die datenschutzseite ist weg.** Sie war ein vollbilddialog mit vier
+abschnitten hinter einem `i` in der werkzeugleiste — also vier absätze, die
+niemand öffnet, für eine app mit zwei nutzern, die beide wissen, was sie gebaut
+haben. Was wirklich zählt, steht jetzt im auftakt, wo man es liest: wer nicht
+mitliest, und an welches modell die sätze gehen. Eine aussage an der stelle,
+an der sie gilt, ist mehr wert als vier hinter einem knopf.
+
+**Der kopf von ENI trug zwei zeilen für fünf bedienelemente.** Unter der
+werkzeugleiste stand eine zweite, volle 44-pixel-zeile für einen einzigen
+textlink zum gedächtnis. Das gedächtnis hat jetzt ein eigenes zeichen in der
+leiste und die zeile ist frei — der platz, den der gelöschte info-knopf
+hinterlassen hat, war genau der, den es brauchte.
+
+**Der gesprächseinstieg war der fremdeste teil der app.** Vier kacheln mit
+je einem icon, ein label `STARTVORSCHLÄGE`, ein kasten mit eigener fläche für
+den stand, alles großgeschrieben: das muster jeder KI-app, in einer app, die
+karten verbietet. Es ist jetzt eine tafel — stand und vorschläge in einem block
+zwischen haarlinien, dieselbe form wie eine bereichszeile, ohne icons. Und die
+regel dahinter gilt ab jetzt überall bei ENI: **ENIs eigene sätze bleiben
+großgeschrieben, weil er spricht; alles, was bedienung ist, wird klein
+geschrieben wie der rest der app.**
+
+**Das gedächtnis zeigt jetzt zuerst, was es weiß.** Vorher kam ein leeres
+formular und die antwort auf die frage des dialogs stand darunter. Die fünf
+bereiche standen in einer klappliste — eine auswahl, die man öffnen muss, um zu
+wissen, dass es sie gibt; sie stehen jetzt nebeneinander, und die gewählte ist
+die gefüllte. Die freigabe an den duellpartner, die folgenreichste eingabe des
+dialogs, war eine graue systemcheckbox und trägt jetzt die marke aus dem raster.
+Der speichern-knopf sah mit 30 % deckkraft aus wie kaputt statt wie wartend: er
+ist leer ein umriss und gefüllt eine fläche, wieder dieselbe sprache.
+
+**Vier dinge an der anzeigetafel, die sich selbst wiederholt haben.** Der
+tagesstand stand dreimal im kopf — als eigener kasten, in den klammern unter
+den namen und als satz in der statuszeile. Der kasten ist weg, die klammern
+sagen jetzt `heute 1/5` statt `(1/5)`. Die siebzig zellen des rasters trugen
+alle dieselbe haarlinie, auch die der zukunft, und die eine gefüllte zelle ging
+in dem teppich unter; die zukunft hat einen eigenen, schwächeren ton
+(`--linie-zukunft`), weil sie kein zustand ist, sondern dessen abwesenheit. Die
+leere marke war neutral umrandet und die app damit im ruhezustand farblos —
+sie behält ihren neutralen rahmen, denn der muss 3:1 halten, bekommt aber einen
+fuß in der personenfarbe: sie gehört sichtbar dir, bevor du sie setzt. Und der
+gewichtsverlauf ohne eine einzige messung kostete einen halben bildschirm für
+fünf beschriftete achsenlinien, drei gleich leere fenster und eine legende für
+punkte, die es nicht gibt; er ist ein satz, bis gewogen wurde.
+
+**Zwei alte verstöße nebenbei.** Das modellmenü trug als einziges element der
+app einen weichen schatten und hebt sich jetzt mit einer helleren haarlinie ab.
+Der fehlerkasten im chat trug als einziges element einen 12-pixel-radius. Die
+farbpunkte im kopf waren die einzigen kreise und sind jetzt die quadrate, die
+die legende des rasters schon benutzt hat.

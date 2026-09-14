@@ -366,7 +366,7 @@ function Zelle({
     </>
   )
 
-  const rand = gefuellt ? (halb ? farbe : 'transparent') : zukunft ? 'var(--linie)' : leer
+  const rand = gefuellt ? (halb ? farbe : 'transparent') : zukunft ? 'var(--linie-zukunft)' : leer
 
   // die zukunft ist nichts zum nachschlagen und bleibt stumm
   if (zukunft) {

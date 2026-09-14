@@ -102,7 +102,12 @@ export function EniModellwahl({
         <div
           role="menu"
           aria-label="modell"
-          className="absolute left-1/2 top-full z-20 mt-1 w-[230px] -translate-x-1/2 border border-linie bg-flaeche py-1 shadow-lg"
+          /*
+            Das Menue trug als einziges Element der App einen weichen Schatten.
+            Es liegt ohnehin ueber dem Grund; eine hellere Haarlinie hebt es ab,
+            ohne eine zweite Ebene zu erfinden.
+          */
+          className="absolute left-1/2 top-full z-20 mt-1 w-[230px] -translate-x-1/2 border border-linie-hell bg-flaeche py-1"
         >
           {anbieter.map((eintrag) => {
             const dran = eintrag.id === aktiv.id

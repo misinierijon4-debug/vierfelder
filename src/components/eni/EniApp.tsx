@@ -25,11 +25,10 @@ import {
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
 import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
-import { IconInfo } from './EniSymbole'
+import { IconGedaechtnis } from './EniSymbole'
 import { EniEingabe } from './EniEingabe'
 import { EniWissenDialog } from './EniWissenDialog'
 import type { Erinnerung } from '../../lib/eniWissen'
-import { EniInfoDialog } from './EniInfoDialog'
 import { EniModellwahl } from './EniModellwahl'
 import { EniStrom } from './EniStrom'
 import { EniVerlauf } from './EniVerlauf'
@@ -71,7 +70,6 @@ export function EniApp({
   const [geber, setGeber] = useState<Antwortgeber | null>(null)
   const [prueft, setPrueft] = useState(false)
   const [verlaufOffen, setVerlaufOffen] = useState(false)
-  const [infoOffen, setInfoOffen] = useState(false)
   const [wissenOffen, setWissenOffen] = useState(false)
   const [wissensStart, setWissensStart] = useState<{ text: string; art: Erinnerung['art'] } | undefined>()
   const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
@@ -760,11 +758,11 @@ export function EniApp({
             )}
             <button
               type="button"
-              onClick={() => setInfoOffen(true)}
-              aria-label="informationen und datenschutz"
+              onClick={() => { setWissensStart(undefined); setWissenOffen(true) }}
+              aria-label="das weiß eni über mich"
               className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
             >
-              <IconInfo size={18} className="text-kreide-60 hover:text-kreide" />
+              <IconGedaechtnis size={18} />
             </button>
             <button
               type="button"
@@ -785,9 +783,6 @@ export function EniApp({
           </div>
         </div>
 
-        <div className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2">
-          <button type="button" className="min-h-11 text-sm text-kreide-60 hover:text-kreide" onClick={() => { setWissensStart(undefined); setWissenOffen(true) }}>Über mich & meine Schritte</button>
-        </div>
         <p className="sr-only">
           {modus === 'pruefen'
             ? 'verbindung wird geprüft …'
@@ -815,6 +810,7 @@ export function EniApp({
             onVorlesen={stimme.moeglich ? lieseVor : undefined}
             onAuftakt={uebernimmAuftakt}
             duellStand={duellStand}
+            modellName={anbieter.find((eintrag) => eintrag.id === gewaehlt)?.name ?? null}
           />
           {hinweis && (
             <p role="status" className="pt-4 text-[12px] leading-relaxed text-kreide-52">
@@ -830,7 +826,7 @@ export function EniApp({
         <div className="mx-auto w-full max-w-[560px]">
           {stimme.hinweis && <p role="status" className="pb-2 text-xs text-kreide-60">{stimme.hinweis}</p>}
           {fehler && (
-            <div role="alert" aria-atomic="true" className="mb-3 max-h-[30dvh] overflow-y-auto rounded-xl border border-linie bg-flaeche p-3 text-kreide">
+            <div role="alert" aria-atomic="true" className="mb-3 max-h-[30dvh] overflow-y-auto rounded-[2px] border border-linie bg-flaeche p-3 text-kreide">
               <p className="text-sm font-bold">Das hat nicht geklappt</p>
               <p className="mt-1 break-words text-sm leading-relaxed">{fehler}</p>
               {letzterFehlversuchRef.current && !prueft && (
@@ -874,12 +870,6 @@ export function EniApp({
       />
 
       <EniWissenDialog key={speicher.kontoId} offen={wissenOffen} kontoId={speicher.kontoId} start={wissensStart} onSchliessen={() => setWissenOffen(false)} />
-      {/* Info Dialog */}
-      <EniInfoDialog
-        offen={infoOffen}
-        onSchliessen={() => setInfoOffen(false)}
-        modellName={anbieter.find((eintrag) => eintrag.id === gewaehlt)?.name ?? null}
-      />
     </div>
   )
 }

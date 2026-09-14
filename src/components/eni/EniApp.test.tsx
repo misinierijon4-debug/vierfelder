@@ -598,8 +598,8 @@ describe('ENI als eigene oberflaeche', () => {
       )
       await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
-      expect(screen.getByText('Führung übernehmen')).toBeInTheDocument()
-      expect(screen.queryByText('Vorsprung ausbauen')).toBeNull()
+      expect(screen.getByText('führung übernehmen')).toBeInTheDocument()
+      expect(screen.queryByText('vorsprung ausbauen')).toBeNull()
     })
 
     it('formatiert frische antworten mit Fettdruck ohne raw markdown und staffelt woerter', async () => {

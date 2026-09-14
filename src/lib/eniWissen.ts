@@ -18,16 +18,30 @@ function db() {
     throw new Error("Das persönliche Gedächtnis braucht eine Anmeldung.");
   return supabase;
 }
+/**
+ * Jeder Ladefehler sah gleich aus: „gerade nicht erreichbar, bitte spaeter".
+ * Der Satz stimmte nur fuer den einen Fall, in dem er nie zutraf — das
+ * Gedaechtnis war nicht kurz weg, seine Tabelle war in dieser Umgebung nie
+ * angelegt worden, und „spaeter erneut versuchen" hat daran nie etwas geaendert.
+ * Ein Fehler, der seine Ursache verschweigt, kostet genau die Zeit, die man
+ * braucht, um sie ohne ihn zu finden.
+ */
+function ladefehler(code: string | undefined, meldung: string): string {
+  // PGRST205: PostgREST kennt die Tabelle nicht. 42P01: PostgreSQL auch nicht.
+  if (code === "PGRST205" || code === "42P01")
+    return "Das Gedächtnis ist in dieser Umgebung noch nicht angelegt. Die Migration eni_gedaechtnis fehlt in der Datenbank.";
+  if (code === "42501" || code === "PGRST301")
+    return "Kein Zugriff auf das Gedächtnis. Melde dich neu an.";
+  return `Das Gedächtnis ist gerade nicht erreichbar: ${meldung}`;
+}
+
 export async function ladeWissen(): Promise<Erinnerung[]> {
   const { data, error } = await db()
     .from("eni_erinnerungen")
     .select("*")
     .order("geaendert", { ascending: false })
     .limit(200);
-  if (error)
-    throw new Error(
-      "Das Gedächtnis ist gerade nicht erreichbar. Bitte später erneut versuchen.",
-    );
+  if (error) throw new Error(ladefehler(error.code, error.message));
   return data as Erinnerung[];
 }
 export async function speichereWissen(

@@ -61,20 +61,14 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Pr
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 max-[239px]:w-full">
-                {/* HEUTE-SCORE BADGE */}
-                <div className="flex items-center gap-2 rounded-[2px] border border-linie bg-flaeche px-2 py-1 text-[11px] max-[239px]:w-full max-[239px]:justify-between">
-                  <span className="text-kreide-52">heute</span>
-                  <span className="tnum font-bold" style={{ color: ich.farbe }}>
-                    {match.heuteIch}
-                  </span>
-                  <span className="text-kreide-52">:</span>
-                  <span className="tnum font-bold" style={{ color: er.farbe }}>
-                    {match.heuteEr}
-                  </span>
-                </div>
-                <EniTuer onOeffnen={onEni} />
-              </div>
+              {/*
+                Hier stand ein Kasten mit dem Tagesstand. Er trug dieselben zwei
+                Zahlen wie die Klammern unter den Namen und dieselbe Aussage wie
+                die Statuszeile darunter — drei Anzeigen fuer zwei Zahlen auf den
+                teuersten 120 Pixeln der App. Geblieben ist die Stelle, an der
+                die Zahlen gross stehen; hier steht nur noch der Weg zu ENI.
+              */}
+              <EniTuer onOeffnen={onEni} />
             </div>
 
             {/* HEAD-TO-HEAD SCOREBOARD */}
@@ -82,9 +76,11 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Pr
               {/* ERIJON / ICH */}
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-[11px] leading-none text-kreide-52 max-[239px]:flex-col max-[239px]:items-start max-[239px]:gap-0.5">
-                  <span className="size-1.5 rounded-full" style={{ background: ich.farbe }} aria-hidden="true" />
+                  <span className="h-2 w-3 rounded-[1px]" style={{ background: ich.farbe }} aria-hidden="true" />
                   <span>{ich.name}</span>
-                  <span className="text-[10px] text-kreide-60">({match.heuteIch}/5)</span>
+                  <span className="text-[10px] text-kreide-60">
+                    heute <span className="tnum">{match.heuteIch}</span>/5
+                  </span>
                 </div>
                 <div className="mt-1 flex h-[38px] items-end">
                   {match.wocheIch > 0 ? (
@@ -114,9 +110,11 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Pr
               {/* KORAY / ER */}
               <div className="min-w-0 text-right">
                 <div className="flex items-center justify-end gap-1.5 text-[11px] leading-none text-kreide-52 max-[239px]:flex-col-reverse max-[239px]:items-end max-[239px]:gap-0.5">
-                  <span className="text-[10px] text-kreide-60">({match.heuteEr}/5)</span>
+                  <span className="text-[10px] text-kreide-60">
+                    heute <span className="tnum">{match.heuteEr}</span>/5
+                  </span>
                   <span>{er.name}</span>
-                  <span className="size-1.5 rounded-full" style={{ background: er.farbe }} aria-hidden="true" />
+                  <span className="h-2 w-3 rounded-[1px]" style={{ background: er.farbe }} aria-hidden="true" />
                 </div>
                 <div className="mt-1 flex h-[38px] items-end justify-end">
                   {match.wocheEr > 0 ? (
@@ -135,7 +133,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Pr
             </div>
 
             {/* 2PX DOMINANZ-BALKEN (POLE-POSITION) */}
-            <div className="h-[2px] w-full overflow-hidden rounded-full bg-grund">
+            <div className="h-[2px] w-full overflow-hidden bg-grund">
               <div className="flex h-full w-full">
                 <div
                   className="transition-all duration-300"

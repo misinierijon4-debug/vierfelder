@@ -56,7 +56,7 @@ describe("Das weiß ENI über mich", () => {
     expect(screen.getByRole("checkbox")).not.toBeChecked();
     await act(async () => {
       fireEvent.click(
-        screen.getByRole("button", { name: "Bewusst speichern" }),
+        screen.getByRole("button", { name: "bewusst speichern" }),
       );
     });
     expect(dienst.speichern).toHaveBeenCalledWith(
@@ -89,11 +89,11 @@ describe("Das weiß ENI über mich", () => {
     });
     const fremd = screen.getByText("Geteiltes Ziel").closest("li")!;
     expect(within(fremd).queryByRole("button")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Löschen" }));
+    fireEvent.click(screen.getByRole("button", { name: "löschen" }));
     expect(dienst.loeschen).not.toHaveBeenCalled();
     await act(async () => {
       fireEvent.click(
-        screen.getByRole("button", { name: "Endgültig löschen" }),
+        screen.getByRole("button", { name: "endgültig löschen" }),
       );
     });
     expect(dienst.loeschen).toHaveBeenCalledWith("ich", "1");
@@ -111,10 +111,10 @@ describe("Das weiß ENI über mich", () => {
         />,
       );
     });
-    fireEvent.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    fireEvent.click(screen.getByRole("button", { name: "bearbeiten" }));
     await act(async () => {
       fireEvent.click(
-        screen.getByRole("button", { name: "Bewusst speichern" }),
+        screen.getByRole("button", { name: "bewusst speichern" }),
       );
     });
     expect(dienst.speichern).toHaveBeenCalledWith(

@@ -67,6 +67,31 @@ export function Gewichtsdiagramm({ gewichte, heute }: Props) {
   const y = (wert: number) =>
     OBEN + PLOT_HOEHE - ((wert - achse.min) / (achse.max - achse.min)) * PLOT_HOEHE
 
+  /*
+   * Ohne eine einzige Messung stand hier ein halber Bildschirm Diagramm: fuenf
+   * beschriftete Achsenlinien fuer nichts, eine Fensterwahl zwischen drei
+   * gleich leeren Fenstern und eine Legende fuer Punkte, die es nicht gibt.
+   * Ein leerer Zustand darf nicht mehr Platz kosten als ein voller Inhalt.
+   */
+  if (!hatDaten) {
+    return (
+      <motion.section
+        aria-labelledby="gewicht-titel"
+        initial={reduced ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: reduced ? 0 : 0.28, ease: EASE }}
+        className="mt-3 border-t border-linie pt-2.5"
+      >
+        <h2 id="gewicht-titel" className="sr-only">
+          gewichtsverlauf
+        </h2>
+        <p className="text-[12px] text-kreide-52">
+          der verlauf beginnt mit der ersten messung.
+        </p>
+      </motion.section>
+    )
+  }
+
   return (
     <motion.section
       aria-labelledby="gewicht-titel"
