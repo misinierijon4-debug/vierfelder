@@ -1541,3 +1541,10 @@ app einen weichen schatten und hebt sich jetzt mit einer helleren haarlinie ab.
 Der fehlerkasten im chat trug als einziges element einen 12-pixel-radius. Die
 farbpunkte im kopf waren die einzigen kreise und sind jetzt die quadrate, die
 die legende des rasters schon benutzt hat.
+
+**Nachtrag zum nachtrag: die eingabe stand zu weit über dem rand.** `calc(var(--app-safe-bottom) + 0.75rem)` liest sich wie „safe-area plus etwas
+luft", ist aber eine doppelte rechnung: die safe-area *ist* die luft — auf einem
+iPhone genau die 34 punkte, die Apple für den home-indicator vorsieht. Addiert
+ergab das 46, und die zeile stand sichtbar zu hoch. `max(0.75rem, var(--app-safe-bottom))` gibt beiden fällen ihren wert: ohne safe-area zwölf
+pixel, mit safe-area genau sie. Dazu hatte der platzhalter der sendelinie acht
+pixel abstand für eine haarlinie. Zusammen 55 auf 39 pixel.

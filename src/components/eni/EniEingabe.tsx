@@ -240,10 +240,10 @@ export function EniEingabe({
 
 function Stempel({ nr }: { nr: number }) {
   const reduced = useReducedMotion()
-  if (nr === 0 || reduced) return <div className="mt-2 h-px" aria-hidden="true" />
+  if (nr === 0 || reduced) return <div className="mt-1 h-px" aria-hidden="true" />
 
   return (
-    <div className="mt-2 h-px overflow-hidden" aria-hidden="true">
+    <div className="mt-1 h-px overflow-hidden" aria-hidden="true">
       <motion.div
         key={nr}
         className="h-px bg-kreide"

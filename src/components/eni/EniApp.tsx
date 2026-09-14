@@ -821,7 +821,14 @@ export function EniApp({
       </div>
 
       {/* Eingabebereich */}
-      <div className="vollbild-safe-x shrink-0 pb-[calc(var(--app-safe-bottom)+0.75rem)]">
+      {/*
+        Die Safe-Area unten IST der Abstand zum Rand — auf einem iPhone sind das
+        die 34 Punkte, die Apple fuer den Home-Indicator vorsieht. Ein fester
+        Wert obendrauf addiert sich dort zu 46 und schob die Eingabe sichtbar
+        vom unteren Rand weg. `max` gibt beiden ihren Fall: ohne Safe-Area die
+        zwoelf Pixel, mit Safe-Area genau sie.
+      */}
+      <div className="vollbild-safe-x shrink-0 pb-[max(0.75rem,var(--app-safe-bottom))]">
         <div className="mx-auto w-full max-w-[560px]">
           {stimme.hinweis && <p role="status" className="pb-2 text-xs text-kreide-60">{stimme.hinweis}</p>}
           {fehler && (
