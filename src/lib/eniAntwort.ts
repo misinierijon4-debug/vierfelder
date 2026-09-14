@@ -17,8 +17,11 @@ import type { EniSpeicher, EniZeile } from './eniSpeicher'
 export type AnbieterInfo = {
   id: string
   name: string
-  hinweis: string
   modell: string
+  /** ob diese gegenstelle erst nachdenken kann. sonst steht der umschalter nicht da. */
+  denkbar: boolean
+  /** was unter dem umschalter steht, solange dieser anbieter dran ist */
+  denkHinweis: string
 }
 
 /** was die pruefung zurueckgibt: ob überhaupt, und wenn ja, wer zur wahl steht */
@@ -34,6 +37,8 @@ export type Antwortgeber = {
   art: 'modell' | 'stimmenprobe'
   /** die id des anbieters, der antwortet. null in der stimmenprobe. */
   anbieter: string | null
+  /** ob dieser geber die gegenstelle erst nachdenken lässt */
+  denkt: boolean
   /**
    * schreibt vorlage und urteil und gibt beide zurueck. `eni` ist null, wenn
    * ENI zu dieser vorlage nichts sagt; dann steht der grund in `hinweis`.
@@ -200,8 +205,14 @@ export async function modellBereit(): Promise<Modellstand> {
       .map((eintrag) => ({
         id: eintrag.id,
         name: eintrag.name,
-        hinweis: String(eintrag.hinweis ?? ''),
         modell: String(eintrag.modell ?? ''),
+        /**
+         * Ein alter Server kennt das Feld nicht. Dann steht der Umschalter
+         * nicht da — lieber eine Möglichkeit weniger als ein Schalter, der
+         * ins Leere greift.
+         */
+        denkbar: eintrag.denkbar === true,
+        denkHinweis: String(eintrag.denkHinweis ?? ''),
       }))
     return { bereit: true, anbieter }
   } catch {
@@ -214,8 +225,17 @@ export async function modellBereit(): Promise<Modellstand> {
  *
  * `anbieter` ist nur eine id. Adresse, Modellname und Schlüssel kennt
  * ausschließlich die Function; der Browser weiß von keinem davon.
+ *
+ * `denkt` ist genauso wenig: ein Ja oder Nein. Welchen Schalter das bei dieser
+ * Gegenstelle umlegt und was er kostet, steht ebenfalls nur dort.
  */
-export function modellAntwort(anbieter: string | null = null): Antwortgeber {
+export function modellAntwort(
+  anbieter: string | null = null,
+  denkt = false
+): Antwortgeber {
+  /** was bei jeder vorlage mitgeht: die wahl und die stellung */
+  const wahl = { ...(anbieter ? { modell: anbieter } : {}), ...(denkt ? { denkt: true } : {}) }
+
   /** aus status und rumpf entweder eine antwort machen oder einen fehler werfen */
   const lies = (status: number, inhalt: Record<string, unknown>): Antwort => {
     const mensch = (inhalt.mensch ?? null) as EniZeile | null
@@ -239,12 +259,13 @@ export function modellAntwort(anbieter: string | null = null): Antwortgeber {
   return {
     art: 'modell',
     anbieter,
+    denkt,
     async antworte(chatId, text, _bisher, anhaenge, signal, onText) {
       const { status, inhalt } = await rufe(
         {
           chatId,
           text,
-          ...(anbieter ? { modell: anbieter } : {}),
+          ...wahl,
           ...(anhaenge && anhaenge.length > 0 ? { anhaenge } : {}),
         },
         signal,
@@ -254,22 +275,14 @@ export function modellAntwort(anbieter: string | null = null): Antwortgeber {
     },
     async nochmal(chatId, signal, onText) {
       const { status, inhalt } = await rufe(
-        { chatId, wiederholen: true, ...(anbieter ? { modell: anbieter } : {}) },
+        { chatId, wiederholen: true, ...wahl },
         signal,
         onText
       )
       return lies(status, inhalt)
     },
     async wochenbericht(chatId, wochenbeginn, signal, onText) {
-      const { status, inhalt } = await rufe(
-        {
-          chatId,
-          wochenbeginn,
-          ...(anbieter ? { modell: anbieter } : {}),
-        },
-        signal,
-        onText
-      )
+      const { status, inhalt } = await rufe({ chatId, wochenbeginn, ...wahl }, signal, onText)
       return lies(status, inhalt)
     },
   }
@@ -283,6 +296,8 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
   return {
     art: 'stimmenprobe',
     anbieter: null,
+    // die stimmenprobe hat keine gegenstelle, die nachdenken koennte
+    denkt: false,
     async antworte(chatId, text, bisher, _anhaenge, signal) {
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
       const person = await speicher.person()
@@ -334,20 +349,53 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
  * Anbieter noch anbietet — sonst fällt sie auf den ersten zurück.
  */
 const ANBIETER_KEY = 'eni.anbieter'
+const DENKT_KEY = 'eni.denkt'
 
-export function anbieterGemerkt(): string | null {
+/**
+ * Bis zum 14.09.2026 war das Vordenken eine eigene Zeile im Menü. Wer sie
+ * gewählt hatte, hat auf diesem Gerät `ling-denkt` stehen — eine id, die es
+ * nicht mehr gibt. Sie ist kein Müll, sondern eine Aussage: dasselbe Modell,
+ * und denken.
+ */
+const ALTE_DENKZEILE = 'ling-denkt'
+
+function gelesen(schluessel: string): string | null {
   try {
-    const wert = localStorage.getItem(ANBIETER_KEY)
+    const wert = localStorage.getItem(schluessel)
     return wert && wert.trim() !== '' ? wert : null
   } catch {
     return null
   }
 }
 
-export function merkeAnbieter(id: string) {
+function gemerkt(schluessel: string, wert: string) {
   try {
-    localStorage.setItem(ANBIETER_KEY, id)
+    localStorage.setItem(schluessel, wert)
   } catch {
     /* ein voller oder gesperrter speicher darf die wahl nicht verhindern */
   }
+}
+
+export function anbieterGemerkt(): string | null {
+  const wert = gelesen(ANBIETER_KEY)
+  return wert === ALTE_DENKZEILE ? 'ling' : wert
+}
+
+export function merkeAnbieter(id: string) {
+  gemerkt(ANBIETER_KEY, id)
+}
+
+/**
+ * Ob dieses Gerät zuletzt nachdenken ließ. Ohne eigenen Eintrag zählt die alte
+ * Denk-Zeile: wer sie gewählt hatte, wollte das Denken und soll es behalten,
+ * ohne es ein zweites Mal einzuschalten.
+ */
+export function denkenGemerkt(): boolean {
+  const wert = gelesen(DENKT_KEY)
+  if (wert === null) return gelesen(ANBIETER_KEY) === ALTE_DENKZEILE
+  return wert === 'an'
+}
+
+export function merkeDenken(an: boolean) {
+  gemerkt(DENKT_KEY, an ? 'an' : 'aus')
 }

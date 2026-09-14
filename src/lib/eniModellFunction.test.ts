@@ -3,6 +3,7 @@ import {
   ABLEHNUNG,
   behandleEni,
   MAX_ANHAENGE,
+  MAX_TOKENS,
   mitAnhangText,
   pruefeAnhaenge,
   subAusToken,
@@ -10,7 +11,7 @@ import {
   type EniDatenbank,
   type ModellAnfrage,
 } from '../../supabase/functions/_shared/eniModell.ts'
-import { ANBIETER, type Anbieter } from '../../supabase/functions/_shared/eniAnbieter.ts'
+import { ANBIETER, type Gegenstelle } from '../../supabase/functions/_shared/eniAnbieter.ts'
 
 const JETZT = new Date('2026-09-10T17:00:00Z') // donnerstag, kw 37
 const ICH = 'konto-erijon'
@@ -166,7 +167,7 @@ function deps(
 ) {
   const tabellen = optionen.tabellen ?? grunddaten()
   const gesehen: ModellAnfrage[] = []
-  const gerufen: Array<{ anbieter: Anbieter; schluessel: string }> = []
+  const gerufen: Array<{ anbieter: Gegenstelle; schluessel: string }> = []
   const abhaengigkeiten: EniAbhaengigkeiten = {
     umgebung: (name) =>
       ({
@@ -300,6 +301,7 @@ describe('ENIs modellverbindung', () => {
         modell: 'qwen/qwen3.8-27b:free',
         endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
         denken: { reasoning: { effort: 'none' } },
+        denkt: false,
       },
       schluessel: 'infron-test',
     })
@@ -321,7 +323,7 @@ describe('ENIs modellverbindung', () => {
     const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling', infron: '  ' })
     const pruefung = await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)
     expect((await pruefung.json()).anbieter.map((a: { id: string }) => a.id))
-      .toEqual(['deepseek', 'ling', 'ling-denkt'])
+      .toEqual(['deepseek', 'ling'])
     const antwort = await behandleEni(
       anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-infron' }), abhaengigkeiten
     )
@@ -330,12 +332,12 @@ describe('ENIs modellverbindung', () => {
     expect(gerufen).toHaveLength(0)
   })
 
-  it('unterscheidet zwei zeilen auf demselben modell nur im vordenken', async () => {
+  it('macht aus derselben zeile zwei stellungen, je nach `denkt`', async () => {
     const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
 
     await behandleEni(anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }), abhaengigkeiten)
     await behandleEni(
-      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling-denkt' }),
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling', denkt: true }),
       abhaengigkeiten
     )
 
@@ -347,16 +349,70 @@ describe('ENIs modellverbindung', () => {
     // und genau ein unterschied: das vordenken, mit mehr luft fuer die ausgabe
     expect(ohne!.denken).toEqual({ reasoning: { enabled: false } })
     expect(mit!.denken).toEqual({ reasoning: { enabled: true, exclude: true } })
-    expect(mit!.maxTokens).toBeGreaterThan(ohne!.maxTokens ?? 0)
+    expect(ohne!.denkt).toBe(false)
+    expect(mit!.denkt).toBe(true)
+    expect(mit!.maxTokens!).toBeGreaterThan(ohne!.maxTokens ?? 0)
   })
 
-  it('schaltet das vordenken ueberall ausdruecklich, statt es dem modell zu ueberlassen', () => {
-    // `ling-3.0-flash-vl` denkt von sich aus vor (`default_enabled: true` in
-    // OpenRouters modellauskunft). eine zeile ohne eigene angabe waere also
-    // nicht "wie das modell es macht", sondern unabsichtlich langsam.
-    for (const anbieter of ANBIETER) {
-      expect(Object.keys(anbieter.denken).length).toBeGreaterThan(0)
+  it('laesst jedes modell vordenken, nicht nur eines', async () => {
+    // der umschalter steht neben der liste, nicht in ihr: was er umlegt, muss
+    // deshalb bei jeder zeile ankommen, die sich als denkbar ausgibt.
+    const { abhaengigkeiten, gerufen } = deps({
+      schluessel: 'sk-deepseek', openrouter: 'sk-or-ling', infron: 'infron-test',
+    })
+    for (const id of ['deepseek', 'ling', 'qwen-infron']) {
+      await behandleEni(
+        anfrage({ chatId: 'c1', text: 'hallo', modell: id, denkt: true }),
+        abhaengigkeiten
+      )
     }
+
+    expect(gerufen.map((ruf) => ruf.anbieter.denkt)).toEqual([true, true, true])
+    expect(gerufen.map((ruf) => ruf.anbieter.denken)).toEqual([
+      { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
+      { reasoning: { enabled: true, exclude: true } },
+      { reasoning: { effort: 'xhigh' } },
+    ])
+    // denk-token sind ausgabe-token: ohne eigenen deckel frisst das denken die
+    // antwort, und eine leere antwort mit `length` geht ohne fehler durch.
+    for (const ruf of gerufen) expect(ruf.anbieter.maxTokens!).toBeGreaterThan(MAX_TOKENS)
+  })
+
+  it('nimmt ein erfundenes `denkt` nicht als wahrheit', async () => {
+    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
+    for (const denkt of ['ja', 1, {}, null]) {
+      await behandleEni(
+        anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling', denkt }),
+        abhaengigkeiten
+      )
+    }
+    // nur ein echtes `true` legt den schalter um. alles andere ist kein ja.
+    expect(gerufen.every((ruf) => ruf.anbieter.denkt === false)).toBe(true)
+  })
+
+  it('schaltet das vordenken in beiden stellungen ausdruecklich', () => {
+    // `ling-3.0-flash-vl` und `deepseek-flash` denken beide von sich aus vor.
+    // eine stellung ohne eigene angabe waere also nicht "wie das modell es
+    // macht", sondern unabsichtlich langsam beziehungsweise teuer.
+    for (const anbieter of ANBIETER) {
+      expect(Object.keys(anbieter.denken.aus).length).toBeGreaterThan(0)
+      expect(Object.keys(anbieter.denken.an ?? {}).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('sagt der oberflaeche, wer vordenken kann und was es dort kostet', async () => {
+    const { abhaengigkeiten } = deps({
+      schluessel: 'sk-deepseek', openrouter: 'sk-or-ling', infron: 'infron-test',
+    })
+    const liste = (await (await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)).json())
+      .anbieter as Array<{ id: string; denkbar: boolean; denkHinweis: string }>
+
+    expect(liste.every((eintrag) => eintrag.denkbar)).toBe(true)
+    // bei deepseek kostet die denkzeit geld, bei den anderen nur zeit. ein
+    // satz fuer alle drei waere bei einem davon gelogen.
+    const deepseek = liste.find((eintrag) => eintrag.id === 'deepseek')!
+    expect(deepseek.denkHinweis).toContain('geld')
+    expect(liste.find((eintrag) => eintrag.id === 'ling')!.denkHinweis).not.toContain('geld')
   })
 
   it('nimmt ohne wahl den ersten anbieter, fuer den ein schluessel steht', async () => {

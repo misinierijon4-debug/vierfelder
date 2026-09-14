@@ -24,9 +24,8 @@ liest Bilder (das VL im Namen heißt vision-language). Dafür gelten OpenRouters
 Grenzen für kostenlose Modelle, und was dort passiert, entscheidet OpenRouter,
 nicht du.
 
-Dieser eine Schlüssel bringt **zwei** Einträge ins Menü: `ling 3.0 flash` und
-`ling 3.0 flash (denkt)`. Dasselbe Modell, derselbe Schlüssel, ein Unterschied —
-siehe *Vordenken* weiter unten.
+Ob es erst nachdenkt, ist kein zweiter Eintrag, sondern ein Umschalter neben
+der Modellwahl — siehe *Vordenken* weiter unten. Der gilt für alle drei.
 
 ## 2. Schlüssel setzen
 
@@ -35,7 +34,8 @@ siehe *Vordenken* weiter unten.
 1. [Secrets im Vierfelder-Projekt öffnen](https://supabase.com/dashboard/project/ogxwazageufvalkocywh/functions/secrets).
 2. Als **Name** `INFRON_API_KEY` und als **Value** deinen Infron-Key eintragen.
 3. **Save** drücken und ENI neu öffnen (gegebenenfalls die App neu laden).
-4. Oben auf **ENI** tippen und **qwen 3.8 27b** auswählen.
+4. Unten an der Eingabe auf den Modellnamen tippen und **qwen 3.8 unzensiert**
+   auswählen.
 
 Die Function muss die Infron-Erweiterung aus `eniAnbieter.ts` enthalten. Nach
 deren Deployment ist beim Setzen oder Wechseln des Secrets kein weiterer
@@ -69,14 +69,25 @@ npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-DEIN-SCHLUESSEL
 
 Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**.
 
+**Im Menü steht nur der Name, keine Beschreibung darunter.** Es beantwortet die
+Frage „wer spricht", und drei Erklärzeilen haben sie lauter beantwortet als
+nötig — was ein Modell kann und was es kostet, steht hier in dieser Datei. Die
+Namen sind entsprechend kurz: `deepseek`, `ling 3.0`, `qwen 3.8 unzensiert`.
+`flash` und `27b` sagen einem Menschen nichts über das Gespräch, das ihn
+erwartet; „unzensiert" schon, und Infron führt das Modell auch genau so
+(*Qwen3.8 27B Uncensored*).
+
 Jeder Schlüssel steht für sich. ENI zeigt nur die Modelle mit gesetztem
-Schlüssel. OpenRouter bringt zwei Varianten mit. Bei mehreren verfügbaren
-Einträgen erscheint der Umschalter; die Wahl bleibt auf diesem Gerät gemerkt.
+Schlüssel. Bei mehreren erscheint die Liste; die Wahl bleibt auf diesem Gerät
+gemerkt. Der Denk-Umschalter steht auch dann da, wenn nur ein Schlüssel gesetzt
+ist — bei einem einzigen Modell ist die Stellung die einzige offene Frage.
 
 Ein weiteres Modell dazuzunehmen ist ein Eintrag in
 `supabase/functions/_shared/eniAnbieter.ts` plus ein Secret. Alle Gegenstellen
 sprechen dasselbe OpenAI-Chatformat; sie streiten sich nur darüber, wie man das
-Vordenken abschaltet, und genau das steht als Feld in der Zeile.
+Vordenken stellt, und genau das steht als Feld in der Zeile — einmal für aus und
+einmal für an. Wer nichts anzubieten hat, schreibt `an: null`, und dann steht
+der Umschalter für dieses Modell gar nicht erst da.
 
 Optional, wenn dir die Standardgrenze von 60 Vorlagen pro Person und Tag zu hoch
 oder zu niedrig ist:
@@ -191,39 +202,47 @@ Studio, ohne irgendetwas umzustellen.
 
 ### Vordenken
 
-`ling-3.0-flash-vl` ist ein Hybrid: es kann sofort antworten oder erst denken.
-OpenRouters Modellauskunft sagt dazu:
+**Alle drei Modelle können erst nachdenken, und der Umschalter gilt für alle
+drei.** Er sitzt unter der Modellliste, hinter einer Haarlinie: das sind zwei
+Fragen — wer spricht, und nimmt er sich Zeit. Steht er an, sagt es die Zeile an
+der Eingabe mit (`deepseek · denkt`). Die Stellung bleibt beim Wechsel des
+Modells stehen und wird auf diesem Gerät gemerkt.
 
-```json
-"reasoning": { "default_enabled": true, "mandatory": false }
-```
+Jede Gegenstelle nennt den Schalter anders, und nur eine kennt echte Stufen:
 
-**Von sich aus denkt es also vor.** Deshalb steht in beiden Ling-Zeilen der
-Schalter ausdrücklich drin — eine Zeile ohne Angabe wäre nicht „wie das Modell
-es macht", sondern unabsichtlich langsam.
+| Modell | denkt nicht | denkt | Ausgabedeckel beim Denken |
+| --- | --- | --- | --- |
+| `deepseek` | `thinking: {type:'disabled'}` | `thinking: {type:'enabled'}` + `reasoning_effort: 'low'` | 8000 |
+| `ling 3.0` | `reasoning: {enabled:false}` | `reasoning: {enabled:true, exclude:true}` | 8000 |
+| `qwen 3.8 unzensiert` | `reasoning: {effort:'none'}` | `reasoning: {effort:'xhigh'}` | 16000 |
 
-**Stufen gibt es nicht.** Die Auskunft nennt für dieses Modell weder
-`supported_efforts` noch `supports_max_tokens`, und das heißt laut OpenRouters
-Doku, dass es keine Abstufung anbietet. `high`/`medium`/`low` sind OpenAI- und
-Grok-Sache. Ein Menü mit drei Stufen wäre hier eine Behauptung, keine
-Einstellung, also gibt es an und aus:
+**Warum bei DeepSeek `low` und sonst das Höchste.** Ling bietet keine Abstufung
+an — OpenRouters Modellauskunft nennt weder `supported_efforts` noch
+`supports_max_tokens`, an ist dort also schon das Höchste. Infron kennt
+`xhigh|high|medium|low|minimal|none`, also `xhigh`. DeepSeek kennt
+`low`/`high`/`max` mit Vorgabe `high` — und rechnet als einziges der drei die
+Denk-Token als Ausgabe-Token ab. Dort kostet Nachdenken Geld, also die kleinste
+Stufe. Genau das steht auch unter dem Umschalter, sobald DeepSeek gewählt ist.
 
-| Eintrag | `reasoning` | Ausgabedeckel |
-| --- | --- | --- |
-| `ling 3.0 flash` | `{ enabled: false }` | 2500 |
-| `ling 3.0 flash (denkt)` | `{ enabled: true, exclude: true }` | 8000 |
+**Die Deckel sind kein Luxus.** Denk-Token gehen von demselben `max_tokens` ab
+wie die Antwort. Mit den 2500 aus dem Normalfall könnte das Denken die Erklärung
+auffressen — und eine Antwort, die leer ist *und* `length` meldet, geht bewusst
+ohne Fehler durch: das wäre eine leere Blase im Chat, ohne Hinweis und ohne
+*wiederholen*. Bei Qwen steht 16000 statt 8000, weil Infron die Stufe bei
+Gegenstellen, die nur ein Denkbudget kennen, in einen Anteil von `max_tokens`
+umrechnet; `xhigh` sind dort rund 95 Prozent.
 
-Der höhere Deckel ist kein Luxus: Denk-Token sind Ausgabe-Token und gehen von
-demselben Limit ab. Mit 2500 könnte das Denken die Erklärung auffressen und den
-Satz mittendrin abschneiden. Das Modell lässt bis 32768 zu und kostet nichts;
-der Deckel bremst hier nur eine Schleife, nicht die Rechnung.
+**Die Gedanken siehst du nie.** Bei allen dreien kommen sie in
+`reasoning_content` beziehungsweise `message.reasoning` zurück, nie in
+`content`, und ENI liest nur `content`. Bei Ling kommt `exclude: true` dazu, das
+spart die Leitung; OpenRouter kennt das, Infron und DeepSeek nicht.
 
-`exclude: true` heißt, dass die Gedanken nicht zurückkommen. Sie stünden ohnehin
-in `message.reasoning` und nicht in `content`, ENI würde sie also nie zeigen —
-aber sie müssen deshalb auch nicht durch die Leitung.
+**Was du merkst, ist die Stille.** Beim Streamen kommt während des Denkens
+nichts an — ENI liest nur `delta.content`. Das Serverbudget von 60 Sekunden je
+Versuch läuft dabei mit.
 
-Bei DeepSeek ist das Vordenken aus und bleibt es: `thinking: {type:'disabled'}`.
-Dort kostet es Geld, hier nur Zeit.
+**Wer vorher die Zeile `ling 3.0 flash (denkt)` gewählt hatte**, bekommt jetzt
+`ling 3.0` mit angeschaltetem Umschalter. Es ist nichts zu tun.
 
 ## Was das kostet
 
@@ -293,8 +312,8 @@ Oder direkt in der App: ENI öffnen. Oben im Kopf steht die Zeile, die sagt, was
 
 - `lokale stimmenprobe. noch keine modellverbindung.` → der Schlüssel ist nicht
   angekommen, oder die Function ist nicht ausgerollt.
-- `deepseek flash über supabase. was du hier schreibst, verlässt dein gerät.` →
-  es läuft. Statt `deepseek flash` steht dort der Name des Modells, das gerade
+- `deepseek über supabase. was du hier schreibst, verlässt dein gerät.` →
+  es läuft. Statt `deepseek` steht dort der Name des Modells, das gerade
   gewählt ist.
 
 Diese Zeile ist nicht Deko. Sie ist die einzige Stelle, an der die Oberfläche
@@ -304,10 +323,11 @@ Info-Dialog hinter dem **i**.
 
 ## 4a. Das Modell wechseln
 
-Stehen beide Schlüssel, sitzt oben im Kopf ein Chip-Symbol. Ein Druck öffnet die
-Liste, ein Druck wählt. Der Verlauf bleibt stehen — es wechselt nur, wer die
-nächste Antwort formt. Während ENI gerade antwortet, ist der Knopf gesperrt:
-mitten im Satz wechselt niemand.
+Unten an der Eingabe steht, wer gerade spricht. Ein Druck öffnet die Liste, ein
+Druck wählt. Der Verlauf bleibt stehen — es wechselt nur, wer die nächste
+Antwort formt. Darunter, hinter einer Haarlinie, sitzt **erst nachdenken**; das
+Menü bleibt beim Umlegen offen, damit du die Sanduhr umspringen siehst. Während
+ENI gerade antwortet, ist der Knopf gesperrt: mitten im Satz wechselt niemand.
 
 Die Wahl merkt sich dieses Gerät. Ziehst du später einen Schlüssel zurück, fällt
 sie stillschweigend auf das verbliebene Modell zurück, statt in einen Fehler zu
@@ -321,9 +341,9 @@ gibt, beantwortet sie mit 400, statt irgendwohin zu telefonieren.
 
 Pro Vorlage gehen ENIs Charakter, der Wochenstand aus dem Tracker und die
 letzten 24 Nachrichten des Chats mit. Das sind grob 1500 bis 2500 Eingabetoken
-und selten mehr als 500 Ausgabetoken. Bei DeepSeek und beim schnellen Ling ist
-das Vordenken ausgeschaltet: ENI ist eine Haltung, keine Rechenaufgabe, und die
-Denk-Token zählen gegen dasselbe Ausgabelimit.
+und selten mehr als 500 Ausgabetoken. Das Vordenken ist überall aus, bis du es
+anschaltest: ENI ist eine Haltung, keine Rechenaufgabe, und die Denk-Token
+zählen gegen dasselbe Ausgabelimit.
 
 `inclusionai/ling-3.0-flash-vl:free` kostet nichts, mit und ohne Vordenken.
 Dafür gelten OpenRouters Grenzen für kostenlose Modelle. Die häufigste davon ist
@@ -337,7 +357,10 @@ erreicht ist, ist der Umschalter der Ausweg.
 
 `deepseek-flash` kostet. Die aktuellen Preise stehen auf platform.deepseek.com;
 DeepSeek rechnet Treffer im Kontext-Cache günstiger ab, und ENIs Charakter steht
-bei jeder Vorlage unverändert vorn, ist also genau so ein Treffer.
+bei jeder Vorlage unverändert vorn, ist also genau so ein Treffer. **Der
+Denk-Umschalter ist hier die einzige Stelle, die die Rechnung bewegt**: Denk-Token
+gehen als Ausgabe-Token durch. Deshalb steht dort `low` und nicht die Vorgabe
+`high`, und deshalb sagt die Zeile unter dem Umschalter es auch.
 
 Die Tagesgrenze aus Schritt 2 ist die harte Bremse, falls ein Handy verloren
 geht oder ein Client in eine Schleife läuft. Sie zählt Vorlagen, nicht Modelle:

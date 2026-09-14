@@ -8,8 +8,10 @@ import { chatTitel } from '../../lib/eniSpeicher'
 import type { DuellKontext, EniChat, EniSpeicher, EniZeile } from '../../lib/eniSpeicher'
 import {
   anbieterGemerkt,
+  denkenGemerkt,
   EniModellFehler,
   merkeAnbieter,
+  merkeDenken,
   modellAntwort,
   modellBereit,
   NACHHOLBAR,
@@ -45,15 +47,21 @@ type Props = {
   /** prueft, ob eine modellverbindung steht, und welche modelle es gibt */
   pruefeModell?: () => Promise<Modellstand>
   /** baut den antwortgeber. injiziert fuer tests */
-  baueGeber?: (bereit: boolean, speicher: EniSpeicher, anbieter: string | null) => Antwortgeber
+  baueGeber?: (
+    bereit: boolean,
+    speicher: EniSpeicher,
+    anbieter: string | null,
+    denkt: boolean
+  ) => Antwortgeber
   initialDuellStand?: DuellKontext | null
 }
 
 const STANDARD_GEBER = (
   bereit: boolean,
   speicher: EniSpeicher,
-  anbieter: string | null
-): Antwortgeber => (bereit ? modellAntwort(anbieter) : stimmenprobeAntwort(speicher))
+  anbieter: string | null,
+  denkt: boolean
+): Antwortgeber => (bereit ? modellAntwort(anbieter, denkt) : stimmenprobeAntwort(speicher))
 
 export function EniApp({
   speicher,
@@ -78,6 +86,13 @@ export function EniApp({
   const [wissensStart, setWissensStart] = useState<{ text: string; art: Erinnerung['art'] } | undefined>()
   const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
+  /**
+   * Ob die Gegenstelle erst nachdenken soll. Gilt für alle Modelle, die es
+   * können, und bleibt beim Wechsel stehen: die Frage „wer spricht" und die
+   * Frage „nimmt er sich Zeit" sind zwei verschiedene, und wer einmal gesagt
+   * hat, dass er lieber wartet, meint das nicht nur für eine Stimme.
+   */
+  const [denkt, setDenkt] = useState(false)
   const [wahlOffen, setWahlOffen] = useState(false)
   const [menueOffen, setMenueOffen] = useState(false)
   const [vorgabe, setVorgabe] = useState<{ text: string; nr: number } | null>(null)
@@ -168,8 +183,10 @@ export function EniApp({
       const gemerkt = anbieterGemerkt()
       const gueltig = stand.anbieter.some((eintrag) => eintrag.id === gemerkt)
       const wahl = gueltig ? gemerkt : (stand.anbieter[0]?.id ?? null)
+      const denkWahl = denkenGemerkt()
       setGewaehlt(wahl)
-      setGeber(baueGeber(stand.bereit, speicher, wahl))
+      setDenkt(denkWahl)
+      setGeber(baueGeber(stand.bereit, speicher, wahl, denkWahl))
     })()
     return () => {
       abgemeldet = true
@@ -183,10 +200,24 @@ export function EniApp({
       if (id === gewaehlt) return
       merkeAnbieter(id)
       setGewaehlt(id)
-      setGeber(baueGeber(true, speicher, id))
+      setGeber(baueGeber(true, speicher, id, denkt))
     },
-    [baueGeber, gewaehlt, speicher]
+    [baueGeber, denkt, gewaehlt, speicher]
   )
+
+  /**
+   * Das Vordenken umlegen. Das Menü bleibt dabei offen — man soll die Sanduhr
+   * umspringen sehen. Geschrieben wird nichts: es gilt ab der nächsten Vorlage,
+   * und was schon im Verlauf steht, bleibt so, wie es gesagt wurde.
+   */
+  const schalteDenken = useCallback(() => {
+    setDenkt((vorher) => {
+      const jetzt = !vorher
+      merkeDenken(jetzt)
+      setGeber(baueGeber(true, speicher, gewaehlt, jetzt))
+      return jetzt
+    })
+  }, [baueGeber, gewaehlt, speicher])
 
   // Intelligentes Scrollen: Zieht den Nutzer nicht nach unten, wenn er aeltere Zeilen liest
   const scrolleZumEndeWennSinnvoll = useCallback((erzwingen = false) => {
@@ -890,11 +921,13 @@ export function EniApp({
               <EniModellwahl
                 anbieter={modus === 'modell' ? anbieter : []}
                 gewaehlt={gewaehlt}
+                denkt={denkt}
                 offen={wahlOffen}
                 gesperrt={prueft}
                 onUmschalten={() => setWahlOffen((vorher) => !vorher)}
                 onSchliessen={() => setWahlOffen(false)}
                 onWaehlen={waehleAnbieter}
+                onDenken={schalteDenken}
               />
             }
           />

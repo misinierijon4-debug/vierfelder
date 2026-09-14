@@ -1711,3 +1711,70 @@ der hülle abzuschalten, ist zweimal daran gescheitert, dass React und Motion
 beides beim nächsten rendern wieder abräumen — die höhe im `style` überlebt, der
 rest nicht. Ein schalter, der unbemerkt auf seinen rückfall zurückfällt, ist
 schlechter als keiner; die 34 punkte über der tastatur bleiben stehen.
+
+## 42. Nachtrag: aus einer zeile wird ein umschalter (14.09.2026)
+
+**Abschnitt 35 hat sich an der dritten stimme erledigt.** Dort stand, ein modell
+dürfe zweimal im menü stehen und ein zweites bedienelement hätte dieselbe wahl
+in zwei handgriffe zerlegt. Das galt, solange genau ein modell ein hybrid war.
+Inzwischen sind es drei, und alle drei können es: `deepseek-flash` über
+`thinking`, `ling-3.0-flash-vl` über `reasoning.enabled`, `qwen3.8-27b` über
+`reasoning.effort`. Bei drei modellen wären es sechs zeilen für drei
+gesprächspartner — ein menü, das mehr über den modus redet als über die wahl,
+und auf dem telefon eine liste, die über den oberen rand läuft.
+
+**Jetzt trägt jede zeile beide stellungen.** `denken: { aus, an }` statt eines
+flachen rumpfes, dazu ein deckel je stellung. Der client schickt weiterhin eine
+id und zusätzlich genau einen boolean; welchen schalter das bei welcher
+gegenstelle umlegt, weiß nur `eniAnbieter.ts`. `mitVordenken` macht daraus vor
+dem ersten aufruf eine `Gegenstelle` mit genau einer stellung — der heiße pfad
+entscheidet nichts mehr, er schreibt nur noch hin, was schon feststeht.
+
+**Die stufen sind dort, wo es sie wirklich gibt.** Bei ling gibt es keine, an
+ist schon das höchste. Infron kennt `xhigh` bis `none`, also `xhigh`. DeepSeek
+kennt `low`/`high`/`max` und rechnet denk-token als ausgabe-token ab — als
+einziges der drei kostet das dort geld, also `low`. Das steht auch in der
+oberfläche: der hinweis unter dem umschalter kommt vom anbieter, und bei
+deepseek sagt er, dass die denkzeit geld kostet. Ein satz für alle drei wäre bei
+einem davon gelogen.
+
+**Der deckel bleibt die eigentliche falle.** Denk-token gehen von `max_tokens`
+ab, und eine antwort, die leer ist *und* `finish_reason: 'length'` meldet, geht
+in `eni/index.ts` bewusst ohne fehler durch — sie wäre also eine leere blase im
+chat, ohne hinweis und ohne wiederholung. Deshalb hat jede denkende stellung
+ihren eigenen deckel: 8000 bei deepseek und ling. Bei qwen 16000, weil infron
+die stufe bei gegenstellen, die nur ein denkbudget kennen, in einen anteil von
+`max_tokens` umrechnet — `xhigh` sind dort rund 95 prozent.
+
+**Der umschalter steht unter der liste, hinter einer haarlinie.** Nicht als
+vierte zeile in derselben liste: das sind zwei fragen — wer spricht, und nimmt
+er sich zeit. Das menü bleibt beim umlegen offen, wie im kopfmenü, damit man die
+sanduhr umspringen sieht. Und die zeile an der eingabe sagt es mit, sobald es
+an ist: `deepseek · denkt`. Ein modus, der nur die antwort verlangsamt und
+sich sonst nicht zeigt, wäre genau die sorte geheimnis, die diese app nicht hat.
+
+**Unter den namen steht nichts mehr, und die namen sind kürzer geworden.** Drei
+zeilen mit je einem erklärsatz darunter waren ein beipackzettel an der stelle,
+an der nur eine frage steht: wer spricht. Die beschreibungen sind raus — was ein
+modell kann und was es kostet, steht in ENI-SCHLUESSEL.md. Aus `deepseek flash`
+wurde `deepseek`, aus `ling 3.0 flash` `ling 3.0`, und aus `qwen 3.8 27b` wurde
+`qwen 3.8 unzensiert`: `flash` und `27b` sagen einem menschen nichts über das
+gespräch, das ihn erwartet, „unzensiert" schon. Infron führt das modell auch
+genau so. Die zeilen sind dafür einzeilig und bekommen `min-h-11` — was sie an
+höhe verlieren, bekommen sie als griff zurück.
+
+**Die sanduhr ist keine glühbirne und kein kopf.** Was man eintauscht, ist zeit
+— ENI wird davon nicht klüger, er antwortet später. Dieselbe regel wie beim
+gedächtnis-symbol aus abschnitt 37.
+
+**Steht nur ein schlüssel, steht der umschalter trotzdem da.** Bisher hieß es:
+eine wahl mit einer möglichkeit ist keine wahl, also weg damit. Das gilt für die
+liste weiter, aber nicht mehr für das ganze menü — bei einem einzigen anbieter
+ist die stellung die einzige frage, die noch offen ist.
+
+**Was auf den geräten liegt, wird übernommen.** Wer `ling 3.0 flash (denkt)`
+gewählt hatte, hat `ling-denkt` im localStorage stehen: eine id, die es nicht
+mehr gibt. Sie wird als `ling` plus stellung an gelesen, statt still auf den
+ersten anbieter zu fallen. Ein alter, noch zwischengespeicherter client heilt
+sich von selbst — er findet seine gemerkte id nicht mehr in der serverliste und
+fällt auf den ersten zurück, so wie beim zurückgezogenen schlüssel auch.

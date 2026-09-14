@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lokalerEniSpeicher } from '../../lib/eniSpeicher'
 import type { EniSpeicher } from '../../lib/eniSpeicher'
 import { EniModellFehler } from '../../lib/eniAntwort'
-import type { Modellstand } from '../../lib/eniAntwort'
+import type { AnbieterInfo, Modellstand } from '../../lib/eniAntwort'
 import { EniApp } from './EniApp'
 
 // jsdom bringt showModal nicht mit. dieselbe kleine kruecke wie im kalender.
@@ -39,6 +39,21 @@ function zeigeEni(speicher: EniSpeicher = lokalerEniSpeicher('erijon')) {
 
 function feld() {
   return screen.getByLabelText('was du ENI vorlegst')
+}
+
+/**
+ * Ein anbieter, so wie die function ihn anbietet. `denkbar` ist die Vorgabe,
+ * weil alle drei echten Zeilen vordenken koennen; wer das Gegenteil pruefen
+ * will, setzt es ausdruecklich.
+ */
+function anbieterInfo(id: string, name: string): AnbieterInfo {
+  return {
+    id,
+    name,
+    modell: `modell/${id}`,
+    denkbar: true,
+    denkHinweis: 'langsamer, dafür gründlicher.',
+  }
 }
 
 /** das kopfmenue auf: dahinter liegen verlauf, vorlesen und gedaechtnis */
@@ -251,13 +266,14 @@ describe('ENI als eigene oberflaeche', () => {
     const geber = {
       art: 'modell' as const,
       anbieter: null,
+      denkt: false,
       antworte: vi.fn(),
     }
     const baue = vi.fn(() => geber as unknown as any)
     const modelle = [
-      { id: 'deepseek', name: 'deepseek flash', hinweis: 'schnell', modell: 'deepseek-flash' },
-      { id: 'ling', name: 'ling 3.0 flash', hinweis: 'kostenlos', modell: 'inclusionai/ling' },
-      { id: 'qwen-infron', name: 'qwen 3.8 27b', hinweis: 'über infron', modell: 'qwen/qwen3.8-27b:free' },
+      anbieterInfo('deepseek', 'deepseek'),
+      anbieterInfo('ling', 'ling 3.0'),
+      anbieterInfo('qwen-infron', 'qwen 3.8 unzensiert'),
     ]
     render(
       <EniApp
@@ -270,25 +286,101 @@ describe('ENI als eigene oberflaeche', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
     // ohne gemerkte wahl gilt der erste
-    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'deepseek')
-    expect(screen.getByText(/deepseek flash über supabase/i)).toBeInTheDocument()
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'deepseek', false)
+    expect(screen.getByText(/deepseek über supabase/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /ling 3\.0 flash/i }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /ling 3\.0/i }))
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
 
-    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling')
-    expect(screen.getByText(/ling 3\.0 flash über supabase/i)).toBeInTheDocument()
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling', false)
+    expect(screen.getByText(/ling 3\.0 über supabase/i)).toBeInTheDocument()
     // das menü ist wieder zu. das sagt der knopf, nicht das DOM: die hülle
     // blendet aus und haengt so lange noch im dokument.
     expect(zu()).toBe(true)
 
     fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /qwen 3\.8 27b/i }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /qwen 3\.8 unzensiert/i }))
     await act(async () => { await vi.advanceTimersByTimeAsync(10) })
-    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'qwen-infron')
-    expect(screen.getByText(/qwen 3\.8 27b über supabase/i)).toBeInTheDocument()
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'qwen-infron', false)
+    expect(screen.getByText(/qwen 3\.8 unzensiert über supabase/i)).toBeInTheDocument()
     expect(zu()).toBe(true)
+  })
+
+  it('legt das vordenken für jedes modell um und merkt es sich auf diesem gerät', async () => {
+    vi.useFakeTimers()
+    const baue = vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)
+    const modelle = [
+      anbieterInfo('deepseek', 'deepseek'),
+      anbieterInfo('ling', 'ling 3.0'),
+    ]
+    const zeigen = () =>
+      render(
+        <EniApp
+          speicher={lokalerEniSpeicher('erijon')}
+          onZurueck={vi.fn()}
+          pruefeModell={() => Promise.resolve({ bereit: true, anbieter: modelle })}
+          baueGeber={baue}
+        />
+      )
+
+    zeigen()
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // aus ist die vorgabe: ENI ist eine haltung, keine rechenaufgabe
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'deepseek', false)
+
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    const schalter = screen.getByRole('menuitemcheckbox', { name: /erst nachdenken/i })
+    expect(schalter).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(schalter)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'deepseek', true)
+    // das menü bleibt offen: man soll die sanduhr umspringen sehen
+    expect(zu()).toBe(false)
+    expect(screen.getByRole('menuitemcheckbox', { name: /erst nachdenken/i }))
+      .toHaveAttribute('aria-checked', 'true')
+
+    // und die stellung bleibt beim wechsel stehen — zwei fragen, zwei antworten
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /ling 3\.0/i }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling', true)
+    // die zeile an der eingabe sagt es, ohne dass man das menü öffnen muss
+    expect(screen.getByRole('button', { name: /modell wählen.*denkt vor/i })).toBeInTheDocument()
+
+    // neu geöffnet steht die stellung noch
+    cleanup()
+    zeigen()
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling', true)
+  })
+
+  it('übernimmt die alte denk-zeile als modell plus stellung', async () => {
+    vi.useFakeTimers()
+    // bis zum 14.09.2026 war das vordenken eine eigene zeile. wer sie gewählt
+    // hatte, soll das denken behalten, statt still auf den ersten zu fallen.
+    localStorage.setItem('eni.anbieter', 'ling-denkt')
+    const baue = vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() =>
+          Promise.resolve({
+            bereit: true,
+            anbieter: [
+              anbieterInfo('deepseek', 'deepseek'),
+              anbieterInfo('ling', 'ling 3.0'),
+            ],
+          })
+        }
+        baueGeber={baue}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling', true)
   })
 
   it('legt das wort am rückweg unter 416 pixeln ab, damit der kopf nicht überläuft', async () => {
@@ -302,7 +394,7 @@ describe('ENI als eigene oberflaeche', () => {
     expect(screen.getByText('zweikampf')).toHaveClass('max-[415px]:hidden')
   })
 
-  it('zeigt im namensmenü keine modellwahl, wenn es nur einen anbieter gibt', async () => {
+  it('zeigt keine modellwahl, wenn es nur einen anbieter gibt und der nicht denken kann', async () => {
     vi.useFakeTimers()
     render(
       <EniApp
@@ -311,7 +403,7 @@ describe('ENI als eigene oberflaeche', () => {
         pruefeModell={() =>
           Promise.resolve({
             bereit: true,
-            anbieter: [{ id: 'deepseek', name: 'deepseek flash', hinweis: '', modell: 'deepseek-flash' }],
+            anbieter: [{ ...anbieterInfo('deepseek', 'deepseek'), denkbar: false }],
           })
         }
       />
@@ -320,6 +412,26 @@ describe('ENI als eigene oberflaeche', () => {
 
     // eine wahl mit einer möglichkeit ist keine wahl: dann steht sie gar nicht da
     expect(screen.queryByRole('button', { name: /modell wählen/i })).toBeNull()
+  })
+
+  it('stellt den umschalter auch hin, wenn nur ein anbieter da ist — aber einer, der denken kann', async () => {
+    vi.useFakeTimers()
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() =>
+          Promise.resolve({ bereit: true, anbieter: [anbieterInfo('ling', 'ling 3.0')] })
+        }
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // bei einem einzigen schlüssel ist die stellung die einzige offene frage
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    expect(screen.getByRole('menuitemcheckbox', { name: /erst nachdenken/i })).toBeInTheDocument()
+    // die liste selbst bleibt weg: eine wahl mit einer möglichkeit ist keine
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
   })
 
   it('trägt oben rechts nur noch das menü und den neuen chat', async () => {
@@ -342,8 +454,8 @@ describe('ENI als eigene oberflaeche', () => {
   it('legt die modellwahl an die eingabe, nicht in den kopf', async () => {
     vi.useFakeTimers()
     const modelle = [
-      { id: 'deepseek', name: 'deepseek flash', hinweis: 'schnell', modell: 'deepseek-flash' },
-      { id: 'ling', name: 'ling 3.0 flash', hinweis: 'kostenlos', modell: 'inclusionai/ling' },
+      anbieterInfo('deepseek', 'deepseek'),
+      anbieterInfo('ling', 'ling 3.0'),
     ]
     render(
       <EniApp
@@ -676,6 +788,7 @@ describe('ENI als eigene oberflaeche', () => {
       const baueGeber = () => ({
         art: 'modell' as const,
         anbieter: 'test',
+        denkt: false,
         async antworte(chatId: string, text: string) {
           const mensch = await speicher.schreibe(chatId, 'mensch', text)
           const eni = await speicher.schreibe(chatId, 'eni', 'Hier ist **echter Einsatz** gefragt.')

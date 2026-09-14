@@ -176,6 +176,24 @@ export function IconFood({ size = 16, className = '', ...props }: Props) {
 }
 
 /**
+ * Das Vordenken: eine Sanduhr, kein Gehirn und keine Gluehbirne.
+ *
+ * Was man beim Umschalten wirklich eintauscht, ist Zeit — ENI wird davon nicht
+ * klueger, er antwortet nur spaeter. Ein Kopf oder ein Funke wuerde etwas
+ * anderes behaupten. Kanten statt Rundungen, wie ueberall auf der Anzeigetafel.
+ */
+export function IconSanduhr({ size = 16, className = '', ...props }: Props) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true" {...props}>
+      <path d="M6 3h12" />
+      <path d="M6 21h12" />
+      <path d="M8 3v4l4 5 4-5V3" />
+      <path d="M8 21v-4l4-5 4 5v4" />
+    </svg>
+  )
+}
+
+/**
  * Das Gedaechtnis: ein Merkzettel mit drei Zeilen und einer Eselsohr-Ecke.
  * Steht fuer bewusst hingeschriebenes Wissen, nicht fuer einen Kopf oder ein
  * Gehirn — ENI denkt nicht mit, er liest nach, was hier steht.

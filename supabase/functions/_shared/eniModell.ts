@@ -4,10 +4,11 @@ import { subAusToken } from './token.ts'
 import {
   anbieterFehlertext,
   findeAnbieter,
+  mitVordenken,
   schluesselVon,
   STANDARD_ANBIETER,
   verfuegbareAnbieter,
-  type Anbieter,
+  type Gegenstelle,
 } from './eniAnbieter.ts'
 import { eniSystemPrompt } from './eniCharakter.ts'
 import { baueLage } from './eniLage.ts'
@@ -225,7 +226,7 @@ export type EniAbhaengigkeiten = {
    */
   dienstDatenbank?(): EniDatenbank | null
   /** ruft das modell. injiziert, damit die tests kein netz brauchen */
-  modell(anfrage: ModellAnfrage, anbieter: Anbieter, schluessel: string): Promise<string>
+  modell(anfrage: ModellAnfrage, anbieter: Gegenstelle, schluessel: string): Promise<string>
   protokoll: Pick<Console, 'error'>
   /** nur für tests. sonst die echte uhr */
   jetzt?(): Date
@@ -388,7 +389,7 @@ type WochenberichtOptionen = {
   userId: string
   chatId: string
   wochenbeginn: string
-  anbieter: Anbieter
+  anbieter: Gegenstelle
   modellSchluessel: string
   deps: EniAbhaengigkeiten
   jetzt: Date
@@ -631,6 +632,11 @@ export async function behandleEni(
     /** die id des anbieters, mit dem geredet werden soll. optional. */
     modell?: unknown
     /**
+     * ob diese gegenstelle erst nachdenken soll. ein boolean, kein zweiter
+     * name: was das beim gewaehlten anbieter heisst, weiss nur der server.
+     */
+    denkt?: unknown
+    /**
      * noch einmal auf die letzte vorlage antworten, die ohne urteil geblieben
      * ist. dann wird nichts neues geschrieben — siehe unten.
      */
@@ -668,11 +674,22 @@ export async function behandleEni(
   // Was der Client schickt, wird nachgeschlagen, nie uebernommen: eine
   // erfundene id darf niemals zu einer Adresse werden, an die der Schluessel
   // getragen wird. Ohne Angabe gilt der erste Anbieter, der bereitsteht.
-  const anbieter =
+  const zeile =
     anfrage.modell === undefined || anfrage.modell === null
       ? findeAnbieter(offen[0]!.id)
       : findeAnbieter(anfrage.modell)
-  if (!anbieter) return antwort(400, { error: 'dieses modell gibt es nicht' })
+  if (!zeile) return antwort(400, { error: 'dieses modell gibt es nicht' })
+
+  /**
+   * Das Vordenken festlegen, bevor irgendjemand die Gegenstelle zu sehen
+   * bekommt. Ab hier gibt es keine Wahl mehr, nur noch einen Anbieter mit
+   * genau einer Stellung — der heisse Pfad muss nichts mehr entscheiden.
+   *
+   * Was der Client dafuer schickt, ist ein Boolean. Er kann damit nichts
+   * adressieren, und eine Zeile ohne Denk-Stellung nimmt ihn stillschweigend
+   * nicht an, statt mit einem Fehler zu antworten, den niemand ausgeloest hat.
+   */
+  const anbieter = mitVordenken(zeile, anfrage.denkt === true)
 
   const modellSchluessel = schluesselVon(anbieter, deps.umgebung)
   if (modellSchluessel === '') {

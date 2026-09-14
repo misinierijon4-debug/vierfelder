@@ -7,7 +7,7 @@ import {
   type EniDatenbank,
   type ModellAnfrage,
 } from '../_shared/eniModell.ts'
-import type { Anbieter } from '../_shared/eniAnbieter.ts'
+import type { Gegenstelle } from '../_shared/eniAnbieter.ts'
 import {
   mitWiederholung,
   Nochmal,
@@ -61,7 +61,7 @@ type ChatAntwort = {
 
 async function einVersuch(
   anfrage: ModellAnfrage,
-  anbieter: Anbieter,
+  anbieter: Gegenstelle,
   schluessel: string,
   fristMs: number
 ): Promise<string> {
@@ -76,14 +76,14 @@ async function einVersuch(
       model: anbieter.modell,
       ...(anfrage.onText ? { stream: true } : {}),
       /**
-       * Eine Zeile, die vordenkt, bekommt mehr Luft: denk-token sind
-       * ausgabe-token und gehen von demselben Deckel ab.
+       * Wer vordenkt, bekommt mehr Luft: denk-token sind ausgabe-token und
+       * gehen von demselben Deckel ab.
        */
       max_tokens: anbieter.maxTokens ?? MAX_TOKENS,
       /**
-       * Jede Gegenstelle nennt den Schalter fuers Vordenken anders, und nicht
-       * jede hat ihn in derselben Stellung stehen. Wie er heisst und wo er
-       * steht, sagt der Anbieter; warum, steht dort auch.
+       * Jede Gegenstelle nennt den Schalter fuers Vordenken anders. Wie er
+       * heisst, in welcher Stellung er steht und warum, hat `mitVordenken`
+       * schon entschieden; hier steht nur noch das Ergebnis.
        */
       ...anbieter.denken,
       messages: [
@@ -181,7 +181,7 @@ async function einVersuch(
  * Das Modell rufen und bei einem voruebergehenden Fehler noch einmal. Wann das
  * gilt und wie lange gewartet wird, steht in `_shared/eniWiederholung.ts`.
  */
-const rufeModell = (anfrage: ModellAnfrage, anbieter: Anbieter, schluessel: string) =>
+const rufeModell = (anfrage: ModellAnfrage, anbieter: Gegenstelle, schluessel: string) =>
   mitWiederholung((frist) => einVersuch(anfrage, anbieter, schluessel, frist), {
     fristMs: FRIST_MS,
     protokoll: (was) => console.log(`eni: ${was}`),
