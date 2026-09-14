@@ -34,6 +34,7 @@ describe('edge-function-abhaengigkeiten', () => {
     ].sort()
     expect(adressen).toEqual([
       'https://api.deepseek.com/chat/completions',
+      'https://api.tavily.com/search',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:streamGenerateContent?alt=sse',
       'https://llm.onerouter.pro/v1/chat/completions',
