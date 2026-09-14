@@ -39,6 +39,40 @@ Beide sind so gewollt — sie sind der schmale Schreibpfad fuer die Wochenbindun
 und pruefen `auth.uid()` sowie die `profile`-Zeile selbst. Die uebrigen Meldungen
 sind Altbestand.
 
+## Neue Migration `eni_quellen` (14.09.2026)
+
+ENIs Websuche speichert ihre Seitenauszüge seit diesem Paket an der Antwort,
+damit er eine Nachricht später noch weiß, woher er etwas hat. Dafür kam eine
+Tabelle dazu. Sie wurde nach ausdrücklicher Freigabe einzeln über
+`apply_migration` angewandt, nicht über `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260914180000_eni_quellen.sql` | `20260914163743_eni_quellen` |
+
+**Auch hier stimmen die Versionsnummern nicht überein, die Namen schon.** Der
+Versatz oben wächst damit um eine Zeile; die Sperre gegen `db push` gilt
+unverändert weiter.
+
+Vor der Anwendung gelesen und bestätigt: `public.eni_quellen` existierte noch
+nicht, `eni_nachrichten`, `eni_chats` und `auth.users` standen, `service_role`
+existierte. Nach der Anwendung: RLS aktiv, beide Policies auf
+`auth.uid() = user_id`, `authenticated` hat `select` und `delete`, aber
+ausdrücklich kein `insert` und kein `update`, `anon` hat gar nichts, `insert`
+liegt bei `service_role` — dieselbe Rollenverteilung wie bei `eni_anhaenge`.
+Bestand unverändert: 6 Chats, 28 Nachrichten vorher wie nachher.
+
+**Nicht erfüllt sind Abschnitt 4 und 5.** Auf dem Rechner, auf dem dieses Paket
+entstand, lief kein Docker, und ein getrenntes Staging-Projekt gibt es nicht.
+Es gab also keine frische lokale Datenbank, keine gespielte Rollenmatrix, keine
+Backup-Restore-Probe und keinen Staging-Lauf. Geprüft sind der SQL-Quelltext,
+die Vorbedingungen und der Zustand danach — mehr nicht. Die Freigabe erfolgte in
+Kenntnis dieser Lücke.
+
+Die Edge Function `eni` kommt ohne die Tabelle aus: Lesen und Schreiben der
+Quellen werden dann protokolliert und übersprungen, die Antwort steht trotzdem.
+Deshalb war die Reihenfolge von Migration und Deployment hier unkritisch.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
