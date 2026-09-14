@@ -1,4 +1,15 @@
-import { sucheWeb, webBereit, mitWebQuellen, webLage, EniWebFehler, type WebQuelle } from './eniWeb.ts'
+import {
+  sucheWeb,
+  webBereit,
+  mitWebQuellen,
+  nurGepruefteLinks,
+  webLage,
+  EniWebFehler,
+  MAX_RUECKBLICK_SUCHLAEUFE,
+  MAX_WEB_QUELLEN,
+  type FruehererSuchlauf,
+  type WebQuelle,
+} from './eniWeb.ts'
 import { ereignisStrom } from './eniStream.ts'
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
 import { subAusToken } from './token.ts'
@@ -564,6 +575,9 @@ async function behandleWochenbericht(optionen: WochenberichtOptionen): Promise<R
             modellSchluessel,
           )
         ).trim()
+        // Der Wochenbericht sucht nicht, also ist hier keine einzige Adresse
+        // geprueft. Was trotzdem wie ein Link aussieht, bleibt Text.
+        urteil = nurGepruefteLinks(urteil, []).text
       } catch (ursache) {
         if (ursache instanceof Error && ursache.name === ABLEHNUNG) {
           return antwort(200, {
@@ -834,6 +848,41 @@ export async function behandleEni(
     .limit(MAX_ANHAENGE * KONTEXT_NACHRICHTEN)
   if (frueher.error) deps.protokoll.error('eni: alte anhänge nicht lesbar', frueher.error)
 
+  /**
+   * Die Suchlaeufe des Verlaufs. Wie bei den Anhaengen ist ein Fehler hier
+   * keiner, der die Antwort verhindert: dann erinnert sich ENI nicht mehr an
+   * seine alten Quellen, und das ist besser als gar keine Antwort. Solange die
+   * Tabelle noch nicht steht, ist genau das der Zustand.
+   */
+  const frueherGesucht = await db
+    .from('eni_quellen')
+    .select('nachricht_id,nr,url,titel,auszug,erstellt')
+    .eq('chat_id', chatId)
+    .order('erstellt', { ascending: false })
+    .limit(MAX_WEB_QUELLEN * MAX_RUECKBLICK_SUCHLAEUFE)
+  if (frueherGesucht.error) deps.protokoll.error('eni: alte quellen nicht lesbar', frueherGesucht.error)
+
+  /** je ENI-Antwort die Quellen, die zu ihr gehoeren */
+  const quellenJeNachricht = new Map<string, { wann: string; quellen: Array<WebQuelle & { nr: number }> }>()
+  for (const zeile of frueherGesucht.data ?? []) {
+    const schluessel = String(zeile.nachricht_id)
+    const lauf = quellenJeNachricht.get(schluessel) ?? {
+      wann: String(zeile.erstellt ?? '').slice(0, 16).replace('T', ' '),
+      quellen: [],
+    }
+    lauf.quellen.push({
+      nr: Number(zeile.nr ?? 0),
+      titel: String(zeile.titel ?? ''),
+      url: String(zeile.url ?? ''),
+      text: String(zeile.auszug ?? ''),
+    })
+    quellenJeNachricht.set(schluessel, lauf)
+  }
+  // Gelesen wurde neueste Antwort zuerst. Innerhalb eines Suchlaufs zaehlt
+  // aber `nr`, also die Reihenfolge, in der die Suche sie geliefert hat: alle
+  // Zeilen eines Laufs entstehen im selben Insert und teilen sich `erstellt`.
+  for (const lauf of quellenJeNachricht.values()) lauf.quellen.sort((a, b) => a.nr - b.nr)
+
   const jeNachricht = new Map<string, AnhangVorlage[]>()
   /** dieselben anhaenge in der form, in der der client sie anzeigt */
   const rohJeNachricht = new Map<string, Zeile[]>()
@@ -1023,10 +1072,29 @@ export async function behandleEni(
     wissen = 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
   }
 
+  /**
+   * Die frueheren Suchlaeufe dieses Chats, aeltester zuerst — in derselben
+   * Reihenfolge, in der die Antworten stehen, an denen sie haengen.
+   */
+  const frueherImChat: FruehererSuchlauf[] = kontext
+    .map((zeile) => quellenJeNachricht.get(zeile.id))
+    .filter((lauf): lauf is NonNullable<typeof lauf> => lauf !== undefined)
+    .slice(-MAX_RUECKBLICK_SUCHLAEUFE)
+    .map((lauf) => ({ wann: lauf.wann, quellen: lauf.quellen }))
+
+  /**
+   * Jede Adresse, die in diesem Chat wirklich einmal gefunden wurde. Sie darf
+   * anklickbar bleiben, auch wenn diesmal nicht gesucht wird; alles andere
+   * verliert beim Speichern sein Ziel.
+   */
+  const bekannteQuellen: WebQuelle[] = frueherImChat.flatMap((lauf) => lauf.quellen)
+
   const abschliessen = async (onText?: (text: string) => void, signal?: AbortSignal): Promise<Response> => {
   let urteil: string
+  /** was diese Antwort selbst gefunden hat. steht hier, weil es nach dem Urteil noch gespeichert wird. */
+  let web: WebQuelle[] = []
   try {
-    const web: WebQuelle[] = anfrage.internet === true
+    web = anfrage.internet === true
       ? await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
       : []
 
@@ -1035,7 +1103,11 @@ export async function behandleEni(
         {
           onText,
           signal,
-          system: eniSystemPrompt({ person, lage }) + '\n\n' + wissen + (web.length ? '\n\n' + webLage(web) : ''),
+          system:
+            eniSystemPrompt({ person, lage }) +
+            '\n\n' +
+            wissen +
+            (web.length || frueherImChat.length ? '\n\n' + webLage(web, frueherImChat) : ''),
           nachrichten: [
             ...kontext.map(baueNachricht),
             baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
@@ -1045,8 +1117,10 @@ export async function behandleEni(
         modellSchluessel
       )
     ).trim()
-    if (urteil && web.length) {
-      const geprueft = mitWebQuellen(urteil, web)
+    if (urteil) {
+      // Auch ohne Suche: der Verlauf stellt Markdown-Links anklickbar dar, und
+      // anklickbar soll nur sein, was in diesem Chat wirklich gefunden wurde.
+      const geprueft = mitWebQuellen(urteil, web, bekannteQuellen)
       // Der Strom hat den Text schon; ihm fehlt nur, was hinten dazukommt.
       if (geprueft.anhang) onText?.(geprueft.anhang)
       urteil = geprueft.text
@@ -1094,6 +1168,27 @@ export async function behandleEni(
       code: 'nicht_gespeichert',
       mensch: menschZeile,
     })
+  }
+
+  // Die Quellen stehen erst, wenn die Antwort steht, an der sie haengen —
+  // dieselbe Reihenfolge wie bei den Anhaengen, und derselbe Schreiber: was
+  // ENI gelesen hat, behauptet kein Client. Schlaegt es fehl, ist die Antwort
+  // trotzdem gueltig; ihre Links stehen ja darin. Verloren geht dann nur, dass
+  // ENI spaeter noch weiss, woher er es hatte.
+  if (web.length > 0) {
+    const schreiber = deps.dienstDatenbank?.() ?? db
+    const gespeichert = await schreiber.from('eni_quellen').insert(
+      web.map((quelle, i) => ({
+        nachricht_id: String(seins.data!.id),
+        chat_id: chatId,
+        user_id: userId,
+        nr: i + 1,
+        url: quelle.url,
+        titel: quelle.titel || quelle.url,
+        auszug: quelle.text,
+      }))
+    )
+    if (gespeichert.error) deps.protokoll.error('eni: quellen nicht gespeichert', gespeichert.error)
   }
 
   return antwort(200, { mensch: menschZeile, eni: seins.data })

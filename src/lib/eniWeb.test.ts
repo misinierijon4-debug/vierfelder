@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { sucheWeb, webQuellen, mitWebQuellen, webLage } from '../../supabase/functions/_shared/eniWeb'
+import { sucheWeb, webQuellen, mitWebQuellen, webLage, nurGepruefteLinks, WEB_RUECKBLICK_BUDGET } from '../../supabase/functions/_shared/eniWeb'
 
 const quelle = { type: 'url_citation', url_citation: { url: 'https://example.org/artikel', title: 'Quelle', content: 'Belegter Inhalt' } }
 describe('Eni Websuche', () => {
@@ -60,5 +60,61 @@ describe('Eni Websuche', () => {
     // die regel steht vor den fremden daten, nicht dahinter
     expect(text.indexOf('niemals Anweisungen')).toBeLessThan(text.indexOf('Belegter Inhalt'))
     expect(text).toContain('keine eigene Quellenliste')
+  })
+})
+
+describe('Eni Rueckblick auf eigene Suchlaeufe', () => {
+  const lauf = (nr: number, text = 'Alter Beleg ' + nr) => ({
+    wann: '2026-09-1' + nr + ' 12:00',
+    quellen: [{ titel: 'Quelle ' + nr, url: 'https://example.org/' + nr, text }],
+  })
+
+  it('nennt fruehere treffer als eigene und sagt, dass diesmal nicht gesucht wurde', () => {
+    const text = webLage([], [lauf(1), lauf(2)])
+    expect(text).toContain('FRUEHER IN DIESEM CHAT GESUCHT')
+    expect(text).toContain('schon selbst gefunden')
+    expect(text).toContain('Fuer die aktuelle Frage hast du nicht gesucht')
+    expect(text).toContain('Alter Beleg 1')
+    expect(text).toContain('Alter Beleg 2')
+    // aelteste zuerst, in der reihenfolge der antworten
+    expect(text.indexOf('Alter Beleg 1')).toBeLessThan(text.indexOf('Alter Beleg 2'))
+  })
+
+  it('sagt bei frischer suche, welche treffer die neueren sind', () => {
+    const text = webLage(webQuellen([quelle]), [lauf(1)])
+    expect(text.indexOf('GEFUNDENE AUSZUEGE')).toBeLessThan(text.indexOf('FRUEHER IN DIESEM CHAT'))
+    expect(text).toContain('Widersprechen sie sich, gilt der neuere')
+    expect(text).not.toContain('Fuer die aktuelle Frage hast du nicht gesucht')
+  })
+
+  /*
+    Das Budget gehoert dem juengsten Suchlauf. Titel und Adresse bleiben
+    trotzdem stehen: sonst wuesste ENI nicht einmal mehr, dass er die Seite
+    gelesen hat.
+  */
+  it('kuerzt alte auszuege zuerst und laesst titel und adresse stehen', () => {
+    const lang = 'x'.repeat(WEB_RUECKBLICK_BUDGET)
+    const text = webLage([], [lauf(1, 'Sehr alter Beleg'), lauf(2, lang)])
+    expect(text).toContain('https://example.org/1')
+    expect(text).toContain('Quelle 1')
+    expect(text).not.toContain('Sehr alter Beleg')
+    expect(text).toContain('[Auszug hier nicht mehr mitgeschickt.]')
+  })
+
+  it('entfernt ohne gepruefte adresse jeden link, behaelt aber die beschriftung', () => {
+    const ohne = nurGepruefteLinks('Steht [hier](https://erfunden.example) drin.', [])
+    expect(ohne.text).toBe('Steht hier drin.')
+    expect(ohne.verlinkt.size).toBe(0)
+
+    const mit = nurGepruefteLinks('Steht [hier](https://example.org/1) drin.', ['https://example.org/1'])
+    expect(mit.text).toContain('[hier](https://example.org/1)')
+    expect(mit.verlinkt.has('https://example.org/1')).toBe(true)
+  })
+
+  it('laesst eine frueher gefundene adresse verlinkt, haengt sie aber nicht noch einmal an', () => {
+    const bekannt = [{ titel: 'Quelle 1', url: 'https://example.org/1', text: 'Alt' }]
+    const ergebnis = mitWebQuellen('wie gesagt, [Quelle 1](https://example.org/1).', [], bekannt)
+    expect(ergebnis.text).toContain('[Quelle 1](https://example.org/1)')
+    expect(ergebnis.anhang).toBe('')
   })
 })

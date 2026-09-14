@@ -1130,3 +1130,88 @@ describe('Internet im authentifizierten Chat', () => {
     expect(tabellen.eni_nachrichten).toHaveLength(1)
   })
 })
+
+/*
+  Bisher lagen die Auszuege nur in dem einen Modellaufruf, in dem gesucht
+  wurde. Eine Nachricht spaeter wusste ENI nicht mehr, dass er die Seiten je
+  gelesen hatte — im Verlauf standen nur noch die Links.
+*/
+describe('ENIs gedaechtnis fuer die eigenen quellen', () => {
+  const treffer = [{ titel: 'Quelle', url: 'https://example.org/artikel', text: 'Aktueller Beleg' }]
+
+  it('haengt die auszuege an die antwort und legt sie beim naechsten mal wieder vor', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ openrouter: 'test' })
+    abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(treffer)
+
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Aktuelle Frage', internet: true }), abhaengigkeiten)
+    const gespeichert = tabellen.eni_quellen ?? []
+    expect(gespeichert).toHaveLength(1)
+    expect(gespeichert[0]).toMatchObject({
+      nr: 1,
+      url: 'https://example.org/artikel',
+      titel: 'Quelle',
+      auszug: 'Aktueller Beleg',
+      chat_id: 'chat-1',
+    })
+    // an der Antwort, nicht an der Frage: gelesen hat sie ENI.
+    expect(gespeichert[0]!.nachricht_id).toBe(tabellen.eni_nachrichten.at(-1)!.id)
+
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Und woher weißt du das?' }), abhaengigkeiten)
+    const system = gesehen.at(-1)!.system
+    expect(system).toContain('FRUEHER IN DIESEM CHAT GESUCHT')
+    expect(system).toContain('Aktueller Beleg')
+    expect(system).toContain('https://example.org/artikel')
+    // und ehrlich dazu: diesmal wurde nicht gesucht
+    expect(system).toContain('Fuer die aktuelle Frage hast du nicht gesucht')
+  })
+
+  /*
+    Seit der Verlauf Markdown-Links anklickbar darstellt, waere eine erfundene
+    Adresse in einer ganz normalen Antwort ein echter Knopf.
+  */
+  it('macht ohne gefundene quelle keine erfundene adresse anklickbar', async () => {
+    const { abhaengigkeiten, tabellen } = deps({
+      modell: async () => 'Steht so [hier](https://erfunden.example).',
+    })
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage' }), abhaengigkeiten)
+    const gesagt = String(tabellen.eni_nachrichten.at(-1)!.text)
+    expect(gesagt).not.toContain('https://erfunden.example')
+    expect(gesagt).toContain('hier')
+  })
+
+  it('laesst eine frueher wirklich gefundene adresse weiter verlinken', async () => {
+    const { abhaengigkeiten, tabellen } = deps({
+      openrouter: 'test',
+      modell: async (gestellt) =>
+        gestellt.system.includes('GEFUNDENE AUSZUEGE')
+          ? 'erst einmal nachgesehen.'
+          : 'wie gesagt, [Quelle](https://example.org/artikel).',
+    })
+    abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(treffer)
+
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Nochmal' }), abhaengigkeiten)
+    expect(String(tabellen.eni_nachrichten.at(-1)!.text)).toContain(
+      '[Quelle](https://example.org/artikel)'
+    )
+  })
+
+  it('haengt an einen wochenbericht keine quellen und keine links', async () => {
+    const tische = grunddaten()
+    tische.eni_chats = [{ id: 'chat-1', user_id: ICH, wochenbeginn: '2026-09-07' }]
+    tische.eni_wochen_einladungen = [
+      { user_id: ICH, wochenbeginn: '2026-09-07', faellig_am: '2026-09-10T06:00:00Z', geschlossen_am: null, erstellt: '2026-09-07T06:00:00Z' },
+    ]
+    const { abhaengigkeiten, tabellen } = deps({
+      tabellen: tische,
+      modell: async () => 'Deine Woche: [Beleg](https://erfunden.example).',
+    })
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', wochenbeginn: '2026-09-07' }),
+      abhaengigkeiten
+    )
+    expect(res.status).toBe(200)
+    expect(String(tabellen.eni_nachrichten.at(-1)!.text)).not.toContain('https://erfunden.example')
+    expect(tabellen.eni_quellen ?? []).toHaveLength(0)
+  })
+})
