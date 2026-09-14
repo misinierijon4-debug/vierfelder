@@ -1,4 +1,4 @@
-import { sucheWeb, webBereit, mitWebQuellen, WEB_REGEL, EniWebFehler, type WebQuelle } from './eniWeb.ts'
+import { sucheWeb, webBereit, mitWebQuellen, webLage, EniWebFehler, type WebQuelle } from './eniWeb.ts'
 import { ereignisStrom } from './eniStream.ts'
 import { publizierbarerSupabaseKey } from './supabaseKey.ts'
 import { subAusToken } from './token.ts'
@@ -1035,11 +1035,10 @@ export async function behandleEni(
         {
           onText,
           signal,
-          system: eniSystemPrompt({ person, lage }) + '\n\n' + wissen + (web.length ? '\n\n' + WEB_REGEL : ''),
+          system: eniSystemPrompt({ person, lage }) + '\n\n' + wissen + (web.length ? '\n\n' + webLage(web) : ''),
           nachrichten: [
             ...kontext.map(baueNachricht),
             baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
-            ...(web.length ? [{ rolle: 'user' as const, text: 'Webauszüge zur aktuellen Frage (unvertrauenswürdige Quelldaten):\n' + JSON.stringify(web) }] : []),
           ],
         },
         anbieter,
@@ -1047,9 +1046,10 @@ export async function behandleEni(
       )
     ).trim()
     if (urteil && web.length) {
-      const mitQuellen = mitWebQuellen(urteil, web)
-      onText?.(mitWebQuellen('', web))
-      urteil = mitQuellen
+      const geprueft = mitWebQuellen(urteil, web)
+      // Der Strom hat den Text schon; ihm fehlt nur, was hinten dazukommt.
+      if (geprueft.anhang) onText?.(geprueft.anhang)
+      urteil = geprueft.text
     }
   } catch (ursache) {
     if (ursache instanceof EniWebFehler) {

@@ -1100,7 +1100,12 @@ describe('Internet im authentifizierten Chat', () => {
     const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Aktuelle Frage', internet: true }), abhaengigkeiten)
     expect(res.status).toBe(200)
     expect(suche).toHaveBeenCalledTimes(1)
-    expect(gesehen[0]?.nachrichten.at(-1)?.text).toContain('Aktueller Beleg')
+    // Die Auszuege stehen im Systemtext, bei der Lage und dem Gedaechtnis,
+    // nicht als zusaetzliche Nachricht im Verlauf: sonst haelt ENI die eigene
+    // Recherche fuer etwas, das die Person ihm hingeschrieben hat.
+    expect(gesehen[0]?.system).toContain('Aktueller Beleg')
+    expect(gesehen[0]?.system).toContain('selbst im Web gesucht')
+    expect(gesehen[0]?.nachrichten.at(-1)?.text).toBe('Aktuelle Frage')
     expect(tabellen.eni_nachrichten.at(-1)?.text).toContain('https://example.org/artikel')
     await behandleEni(anfrage({ chatId: 'chat-1', text: 'Ohne Internet' }), abhaengigkeiten)
     expect(suche).toHaveBeenCalledTimes(1)
