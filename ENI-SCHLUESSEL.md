@@ -1,7 +1,7 @@
 # ENI: die Modellverbindung einrichten
 
 Alles ist gebaut. Es fehlt genau eine Sache, und die machst du selbst: den
-API-Schlüssel setzen. **Einer reicht.** Setzt du beide, kannst du in der App
+API-Schlüssel setzen. **Einer reicht.** Setzt du mehrere, kannst du in der App
 oben im Kopf umschalten, mit wem du gerade redest.
 
 **Schick den Schlüssel niemandem.** Nicht in einen Chat, nicht in eine Datei im
@@ -11,7 +11,7 @@ Function, und die läuft auf dem Server. Im Browser-Bundle taucht er nie auf.
 
 ## 1. Schlüssel holen
 
-Zwei Modelle stehen zur Wahl. Du brauchst nicht beide.
+Drei Anbieter stehen zur Wahl. Du brauchst nicht alle.
 
 **DeepSeek Flash.** Auf platform.deepseek.com anmelden, unter **API keys** einen
 neuen Schlüssel erzeugen. Er beginnt mit `sk-`. Du siehst ihn genau einmal.
@@ -30,6 +30,32 @@ siehe *Vordenken* weiter unten.
 
 ## 2. Schlüssel setzen
 
+### Qwen über Infron: nur den vorhandenen Key einfügen
+
+1. [Secrets im Vierfelder-Projekt öffnen](https://supabase.com/dashboard/project/ogxwazageufvalkocywh/functions/secrets).
+2. Als **Name** `INFRON_API_KEY` und als **Value** deinen Infron-Key eintragen.
+3. **Save** drücken und ENI neu öffnen (gegebenenfalls die App neu laden).
+4. Oben auf **ENI** tippen und **qwen 3.8 27b** auswählen.
+
+Die Function muss die Infron-Erweiterung aus `eniAnbieter.ts` enthalten. Nach
+deren Deployment ist beim Setzen oder Wechseln des Secrets kein weiterer
+Deploy nötig. Die bestehende Oberfläche liest die Auswahl vom Server.
+
+Verwendet wird genau `qwen/qwen3.8-27b:free` über Infrons Endpunkt
+`https://llm.onerouter.pro/v1/chat/completions`. Infrons Modellliste führt
+Text, Bilder und Streaming sowie Ein-/Ausgabepreise von 0 auf (14.09.2026).
+Kontolimits und Verfügbarkeit bestimmt Infron; ENI wechselt bei Problemen
+nicht automatisch auf ein kostenpflichtiges Modell. Der Key wird weder im
+Browser noch in einer Datenbank gespeichert, sondern als Server-Secret.
+Ohne gesetzten Key erscheint Qwen nicht in der Auswahl.
+
+Quellen: [Infron Quickstart](https://infron.ai/docs),
+[Modellliste](https://llm.onerouter.pro/v1/models),
+[Reasoning-Konfiguration](https://infronai.gitbook.io/docs/llm-apis/openai-compatible-api/reasoning-configuration),
+[Supabase Secrets](https://supabase.com/docs/guides/functions/secrets).
+
+### Andere Anbieter und CLI
+
 In der Projektwurzel. Das `npx` davor gehört dazu: der Supabase-CLI ist hier
 nicht global installiert, sondern wird vom Projekt geholt.
 
@@ -43,13 +69,12 @@ npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-DEIN-SCHLUESSEL
 
 Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**.
 
-Jeder Schlüssel steht für sich. Setzt du nur einen, bietet ENI auch nur das eine
-Modell an und der Umschalter im Kopf verschwindet — ein Menü mit einem Eintrag
-ist keine Wahl. Setzt du beide, steht der Umschalter da, und die Wahl bleibt auf
-diesem Gerät gemerkt.
+Jeder Schlüssel steht für sich. ENI zeigt nur die Modelle mit gesetztem
+Schlüssel. OpenRouter bringt zwei Varianten mit. Bei mehreren verfügbaren
+Einträgen erscheint der Umschalter; die Wahl bleibt auf diesem Gerät gemerkt.
 
-Ein drittes Modell dazuzunehmen ist eine Zeile in
-`supabase/functions/_shared/eniAnbieter.ts` plus ein Secret. Beide Gegenstellen
+Ein weiteres Modell dazuzunehmen ist ein Eintrag in
+`supabase/functions/_shared/eniAnbieter.ts` plus ein Secret. Alle Gegenstellen
 sprechen dasselbe OpenAI-Chatformat; sie streiten sich nur darüber, wie man das
 Vordenken abschaltet, und genau das steht als Feld in der Zeile.
 

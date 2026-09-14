@@ -36,6 +36,7 @@ describe('edge-function-abhaengigkeiten', () => {
       'https://api.deepseek.com/chat/completions',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:streamGenerateContent?alt=sse',
+      'https://llm.onerouter.pro/v1/chat/completions',
       'https://openrouter.ai/api/v1/chat/completions',
     ])
 

@@ -31,6 +31,7 @@ const ziel = `${url.replace(/\/+$/, '')}/functions/v1/eni`
 const SETZEN = [
   '  npx supabase secrets set DEEPSEEK_API_KEY=sk-DEIN-SCHLUESSEL',
   '  npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-DEIN-SCHLUESSEL',
+  '  npx supabase secrets set INFRON_API_KEY=DEIN-INFRON-SCHLUESSEL',
 ]
 
 /**

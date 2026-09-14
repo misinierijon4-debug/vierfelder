@@ -152,6 +152,7 @@ function deps(
     schluessel?: string
     /** der zweite schluessel. undefined heisst: openrouter ist nicht gesetzt. */
     openrouter?: string
+    infron?: string
     modell?: (anfrage: ModellAnfrage) => Promise<string>
     limit?: string
     /**
@@ -173,6 +174,7 @@ function deps(
         SUPABASE_ANON_KEY: 'sb_publishable_test',
         DEEPSEEK_API_KEY: optionen.schluessel ?? 'sk-test',
         OPENROUTER_API_KEY: optionen.openrouter,
+        INFRON_API_KEY: optionen.infron,
         ENI_TAGESLIMIT: optionen.limit,
       })[name],
     datenbank: () =>
@@ -252,12 +254,13 @@ describe('ENIs modellverbindung', () => {
 
     const beide = await behandleEni(
       anfrage({ pruefen: true }),
-      deps({ openrouter: 'sk-or-geheim' }).abhaengigkeiten
+      deps({ openrouter: 'sk-or-geheim', infron: 'infron-geheim' }).abhaengigkeiten
     )
     const liste = await beide.json()
     expect(liste.anbieter.map((a: { id: string }) => a.id)).toEqual(ANBIETER.map((a) => a.id))
     // die pruefung nennt namen und modell, nie eine adresse und nie einen schluessel
     expect(JSON.stringify(liste)).not.toContain('sk-or-geheim')
+    expect(JSON.stringify(liste)).not.toContain('infron-geheim')
     expect(JSON.stringify(liste)).not.toContain('https://')
   })
 
@@ -280,6 +283,51 @@ describe('ENIs modellverbindung', () => {
     )
     expect(gerufen[1]!.anbieter.id).toBe('deepseek')
     expect(gerufen[1]!.schluessel).toBe('sk-deepseek')
+  })
+
+  it('ruft Qwen nur bei Infron mit dessen eigenem Secret auf', async () => {
+    const { abhaengigkeiten, gerufen } = deps({
+      schluessel: 'sk-deepseek', openrouter: 'sk-or-ling', infron: '  infron-test  ',
+    })
+    const antwort = await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-infron' }), abhaengigkeiten
+    )
+    expect(antwort.status).toBe(200)
+    expect(gerufen).toHaveLength(1)
+    expect(gerufen[0]).toMatchObject({
+      anbieter: {
+        id: 'qwen-infron',
+        modell: 'qwen/qwen3.8-27b:free',
+        endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
+        denken: { reasoning: { effort: 'none' } },
+      },
+      schluessel: 'infron-test',
+    })
+    expect(await antwort.text()).not.toContain('infron-test')
+  })
+
+  it('funktioniert auch mit ausschliesslich einem Infron-Schluessel', async () => {
+    const { abhaengigkeiten, gerufen } = deps({ schluessel: '', infron: 'infron-test' })
+    const pruefung = await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)
+    const info = await pruefung.json()
+    expect(info.bereit).toBe(true)
+    expect(info.anbieter.map((a: { id: string }) => a.id)).toEqual(['qwen-infron'])
+    const antwort = await behandleEni(anfrage({ chatId: 'c1', text: 'hallo' }), abhaengigkeiten)
+    expect(antwort.status).toBe(200)
+    expect(gerufen[0]!.anbieter.id).toBe('qwen-infron')
+  })
+
+  it('versteckt Qwen ohne Infron-Secret und weicht bei direkter Wahl nicht aus', async () => {
+    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling', infron: '  ' })
+    const pruefung = await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)
+    expect((await pruefung.json()).anbieter.map((a: { id: string }) => a.id))
+      .toEqual(['deepseek', 'ling', 'ling-denkt'])
+    const antwort = await behandleEni(
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-infron' }), abhaengigkeiten
+    )
+    expect(antwort.status).toBe(503)
+    expect((await antwort.json()).code).toBe('kein_schluessel')
+    expect(gerufen).toHaveLength(0)
   })
 
   it('unterscheidet zwei zeilen auf demselben modell nur im vordenken', async () => {

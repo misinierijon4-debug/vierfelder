@@ -562,11 +562,11 @@ export function EniApp({
     let aktiv = true
     void (async () => {
       try {
-        let zielChat: { id: string; titel: string } | null = null
+        let zielChat: EniChat | null = null
         if (speicher.art === 'supabase') {
           const wChat = await oeffneEniWochenchat(wochenbeginn)
           if (wChat) {
-            zielChat = { id: wChat.id, titel: wChat.titel }
+            zielChat = { id: wChat.id, titel: wChat.titel, zuletzt: wChat.zuletzt }
           }
         }
         if (!zielChat) {

@@ -238,15 +238,16 @@ describe('ENI als eigene oberflaeche', () => {
       antworte: vi.fn(),
     }
     const baue = vi.fn(() => geber as unknown as any)
-    const zwei = [
+    const modelle = [
       { id: 'deepseek', name: 'deepseek flash', hinweis: 'schnell', modell: 'deepseek-flash' },
       { id: 'ling', name: 'ling 3.0 flash', hinweis: 'kostenlos', modell: 'inclusionai/ling' },
+      { id: 'qwen-infron', name: 'qwen 3.8 27b', hinweis: 'über infron', modell: 'qwen/qwen3.8-27b:free' },
     ]
     render(
       <EniApp
         speicher={lokalerEniSpeicher('erijon')}
         onZurueck={vi.fn()}
-        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: zwei })}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: modelle })}
         baueGeber={baue}
       />
     )
@@ -263,6 +264,12 @@ describe('ENI als eigene oberflaeche', () => {
     expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'ling')
     expect(screen.getByText(/ling 3\.0 flash über supabase/i)).toBeInTheDocument()
     // das menü ist wieder zu
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /qwen 3\.8 27b/i }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'qwen-infron')
+    expect(screen.getByText(/qwen 3\.8 27b über supabase/i)).toBeInTheDocument()
     expect(screen.queryByRole('menuitemradio')).toBeNull()
   })
 

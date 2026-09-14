@@ -302,7 +302,6 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
     },
     async wochenbericht(chatId, _wochenbeginn, signal) {
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
-      const person = await speicher.person()
       const bisher = await speicher.nachrichten(chatId)
       const offene = bisher.find(
         (z) => z.rolle === 'mensch' && z.text === 'Willst du, dass Eni deine Woche zusammenfasst?'

@@ -11,8 +11,8 @@
  *    Modellnamen.** Was er schickt, wird hier nachgeschlagen; findet sich
  *    nichts, ist die Anfrage ungueltig. Sonst koennte jemand die Function
  *    dazu bringen, den Schluessel an eine fremde Adresse zu tragen.
- * 2. **Jeder Anbieter nennt seine eigene Umgebungsvariable.** Zwei Schluessel,
- *    zwei Secrets, keiner kennt den anderen. Wer nur einen setzt, bekommt nur
+ * 2. **Jeder Anbieter nennt seine eigene Umgebungsvariable.** Getrennte
+ *    Secrets, keiner kennt den anderen. Wer nur einen setzt, bekommt nur
  *    den einen Anbieter angeboten.
  * 3. **Die Unterschiede stehen hier, nicht im Aufruf.** Alle Gegenstellen
  *    sprechen dasselbe OpenAI-Chatformat; sie streiten sich nur darueber, wie
@@ -103,6 +103,17 @@ export const ANBIETER: readonly Anbieter[] = [
      * eine Schleife, nicht die Rechnung.
      */
     maxTokens: 8000,
+  },
+  {
+    id: 'qwen-infron',
+    name: 'qwen 3.8 27b',
+    hinweis: 'über infron, kostenloses modell. liest bilder.',
+    modell: 'qwen/qwen3.8-27b:free',
+    endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
+    schluessel: 'INFRON_API_KEY',
+    // Infrons dokumentierter Reasoning-Schalter; keine DeepSeek-spezifischen
+    // Parameter. Die :free-ID bleibt fest, auch bei Limits kein Bezahl-Fallback.
+    denken: { reasoning: { effort: 'none' } },
   },
 ]
 
