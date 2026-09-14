@@ -5,6 +5,40 @@ Kurzbefehls- und Push-Anleitungen beschreiben ihre jeweilige Funktion, aber
 führen keine Datenbankmigration oder produktive Veröffentlichung eigenständig
 aus.
 
+## Nachgezogene Migrationen (14.09.2026)
+
+Vier Migrationen standen lokal, waren produktiv aber nie gelaufen. Der sichtbare
+Schaden war das persoenliche Gedaechtnis: `eni_erinnerungen` existierte nicht,
+und der Dialog meldete stattdessen "gerade nicht erreichbar". Sie wurden nach
+ausdruecklicher Freigabe einzeln ueber `apply_migration` angewandt, nicht ueber
+`db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260911181438_eni_gedaechtnis.sql` | `20260914133248_eni_gedaechtnis` |
+| `20260911190000_eni_anhaenge_dienstschreiber.sql` | `20260914133254_eni_anhaenge_dienstschreiber` |
+| `20260911200000_eni_stimme_ueberschreiben.sql` | `20260914133258_eni_stimme_ueberschreiben` |
+| `20260913173714_wochen_partner_erinnerungen.sql` | `20260914133338_wochen_partner_erinnerungen` |
+
+**Die Versionsnummern stimmen deshalb nicht ueberein, die Namen schon.** Ein
+kuenftiges `supabase db push` haelt die lokalen Dateien fuer nicht angewandt und
+wuerde sie ein zweites Mal ausfuehren — `create table` bricht dann ab. Vor dem
+naechsten Push gehoert dieser Versatz in eine dokumentierte Reconciliation; bis
+dahin gilt die Sperre unveraendert weiter.
+
+Vor der Anwendung geprueft und nach der Anwendung bestaetigt: `private`-Schema,
+alle referenzierten Tabellen und der Bucket `eni-stimme` waren vorhanden; beide
+Konten haben eine `profile`-Zeile, weshalb die verschaerften Chat-Policies
+niemanden aussperren; 20 Chats und 74 Nachrichten sind unveraendert. Der neue
+Parameter `p_jetzt` von `reserviere_aktivitaetsversand` hat einen Default, alte
+Aufrufe brechen also nicht.
+
+Der Sicherheitsbericht meldet danach zwei neue `SECURITY DEFINER`-Funktionen fuer
+angemeldete Konten, `oeffne_eni_wochenchat` und `schliesse_eni_wochen_einladung`.
+Beide sind so gewollt — sie sind der schmale Schreibpfad fuer die Wochenbindung
+und pruefen `auth.uid()` sowie die `profile`-Zeile selbst. Die uebrigen Meldungen
+sind Altbestand.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
