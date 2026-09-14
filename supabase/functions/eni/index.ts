@@ -1,4 +1,4 @@
-import { liesModellStrom } from '../_shared/eniStream.ts'
+import { liesModellStrom, StromFehler } from '../_shared/eniStream.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import {
   ABLEHNUNG,
@@ -7,7 +7,7 @@ import {
   type EniDatenbank,
   type ModellAnfrage,
 } from '../_shared/eniModell.ts'
-import type { Anbieter } from '../_shared/eniAnbieter.ts'
+import { GegenstelleFehler, type Anbieter } from '../_shared/eniAnbieter.ts'
 import {
   mitWiederholung,
   Nochmal,
@@ -50,13 +50,47 @@ const FRIST_MS = 60_000
 type ChatAntwort = {
   choices?: Array<{
     finish_reason?: string
-    message?: { content?: string }
+    message?: { content?: string; reasoning?: string; reasoning_content?: string }
   }>
   /**
    * OpenRouter legt einen Fehler auch mal in einen 200er-Rumpf, statt ihn im
    * Status zu sagen. Ohne diese Zeile waere das eine leere Antwort ohne Grund.
+   * `code` ist bewusst `unknown`: manche Gegenstelle schreibt dort eine Zahl,
+   * manche `"rate_limit_exceeded"`. Nur die Zahl darf eine Meldung tragen.
    */
-  error?: { message?: string; code?: number }
+  error?: { message?: string; code?: unknown; status?: unknown }
+}
+
+/** eine zahl aus dem code der gegenstelle, oder 0 */
+function codeZahl(wert: unknown): number {
+  const zahl = typeof wert === 'number' ? wert : Number(wert)
+  return Number.isFinite(zahl) && zahl > 0 ? zahl : 0
+}
+
+/**
+ * Was die Gegenstelle im Rumpf sagt — gekuerzt, in einer Zeile, **nur fuers
+ * Protokoll**.
+ *
+ * Genau hier steht der Satz, an dem eine Fehlersuche haengt ("free model
+ * requires account balance", "model not found"). Er darf trotzdem nicht in die
+ * App: es ist fremder Text. Er geht in die Function-Logs, wo ihn nur liest,
+ * wer ohnehin die Secrets setzen darf. Ein sehr grosser Rumpf wird gar nicht
+ * erst gelesen; eine Fehlermeldung ist kurz, alles andere ist eine Antwort,
+ * die uns an dieser Stelle nichts mehr nuetzt.
+ */
+async function grundAusRumpf(antwort: Response): Promise<string> {
+  const laenge = Number(antwort.headers.get('content-length') ?? '0')
+  if (laenge > 100_000) {
+    await antwort.body?.cancel()
+    return ''
+  }
+  try {
+    const text = await antwort.text()
+    return text.replace(/\s+/g, ' ').trim().slice(0, 300)
+  } catch {
+    await antwort.body?.cancel().catch(() => {})
+    return ''
+  }
 }
 
 async function einVersuch(
@@ -125,29 +159,51 @@ async function einVersuch(
   })
 
   if (!antwort.ok) {
-    // Der Koerper kann den Schluessel nicht enthalten, aber sicherheitshalber
-    // geht nur der Status weiter, nie die Antwort der Gegenstelle.
+    // Nach aussen geht nur der Status, nie die Antwort der Gegenstelle. Ihr
+    // Wortlaut geht ins Protokoll: dort erklaert er den Abend, in der App
+    // waere er fremder Text.
     const was = `${anbieter.id} antwortet ${antwort.status}`
-    // Der Rumpf wird nicht gelesen, aber geschlossen: ein offener Koerper haelt
-    // die Verbindung, und davon soll keine in die Wartezeit mitgehen.
-    await antwort.body?.cancel()
-    if (vorruebergehend(antwort.status)) throw new Nochmal(was, retryAfter(antwort))
-    throw new Error(was)
+    const warten = retryAfter(antwort)
+    const grund = await grundAusRumpf(antwort)
+    console.error(`eni: ${was}${grund ? `: ${grund}` : ''}`)
+    const gemeldet = { anbieterId: anbieter.id, status: antwort.status }
+    if (vorruebergehend(antwort.status)) throw new Nochmal(was, warten, gemeldet)
+    throw new GegenstelleFehler(anbieter.id, antwort.status)
   }
 
   if (anfrage.onText && antwort.headers.get('content-type')?.includes('text/event-stream')) {
-    if (!antwort.body) throw new Error('Leerer Modellstream')
-    return liesModellStrom(antwort.body, anfrage.onText)
+    if (!antwort.body) throw new GegenstelleFehler(anbieter.id, 0, 'strom')
+    try {
+      return await liesModellStrom(antwort.body, anfrage.onText)
+    } catch (ursache) {
+      // Der Strom kennt den Anbieter nicht. Hier bekommt sein Fehlschlag eine
+      // id und damit eine Meldung, die sagt, wer geschwiegen hat und warum.
+      if (!(ursache instanceof StromFehler)) throw ursache
+      console.error(
+        `eni: ${anbieter.id} im strom: ${ursache.message} (${ursache.status || ursache.art})`
+      )
+      /**
+       * Kein zweiter Versuch. Was der Strom schon geliefert hat, steht beim
+       * Menschen bereits auf dem Schirm; ein zweiter Durchlauf schriebe die
+       * naechste Antwort dahinter. Der Weg zurueck ist **wiederholen** im Chat,
+       * und der faengt sauber von vorn an.
+       */
+      throw new GegenstelleFehler(anbieter.id, ursache.status, ursache.art, ursache.message)
+    }
   }
   const inhalt = (await antwort.json()) as ChatAntwort
   if (inhalt.error) {
-    // Auch hier nur der Code, nicht der Text der Gegenstelle.
-    const code = inhalt.error.code ?? 0
-    const was = `${anbieter.id} meldet fehler ${inhalt.error.code ?? '?'}`
+    // Auch hier nur der Code, nicht der Text der Gegenstelle — und der Code
+    // als Feld, damit auch ein `"insufficient_quota"` ohne Zahl noch zu einer
+    // Meldung wird, die mehr sagt als "hat nicht geantwortet".
+    const code = codeZahl(inhalt.error.code ?? inhalt.error.status)
+    const was = `${anbieter.id} meldet fehler ${code || '?'}`
+    console.error(`eni: ${was}: ${JSON.stringify(inhalt.error).slice(0, 300)}`)
+    const gemeldet = { anbieterId: anbieter.id, status: code, art: 'fehler' as const }
     // OpenRouter legt die Grenze je Minute auch mal in einen 200er-Rumpf. Sie
     // bleibt dieselbe Grenze, also darf sie denselben zweiten Versuch haben.
-    if (vorruebergehend(code)) throw new Nochmal(was)
-    throw new Error(was)
+    if (vorruebergehend(code)) throw new Nochmal(was, null, gemeldet)
+    throw new GegenstelleFehler(anbieter.id, code, code ? undefined : 'fehler', was)
   }
   const wahl = inhalt.choices?.[0]
 
@@ -160,7 +216,10 @@ async function einVersuch(
     wahl?.finish_reason === 'insufficient_system_resource' ||
     wahl?.finish_reason === 'aborted'
   ) {
-    throw new Nochmal(`${anbieter.id} bricht ab: ${wahl.finish_reason}`)
+    throw new Nochmal(`${anbieter.id} bricht ab: ${wahl.finish_reason}`, null, {
+      anbieterId: anbieter.id,
+      art: 'strom',
+    })
   }
 
   // `length` heisst abgeschnitten. Der angefangene satz ist trotzdem mehr wert
@@ -171,7 +230,18 @@ async function einVersuch(
   // Bei `length` waere es kein Verpassen, sondern ein volles Denkbudget, und
   // ein zweiter Versuch endete genauso — der geht deshalb als leer durch.
   if (gesagt.trim() === '' && wahl?.finish_reason !== 'length') {
-    throw new Nochmal(`${anbieter.id} antwortet leer`)
+    // Nur gedacht und nichts gesagt ist kein Verpassen: das Modell denkt beim
+    // zweiten Mal wieder, also braucht es hier keinen zweiten Versuch, sondern
+    // einen Satz, der sagt, welcher Schalter falsch steht.
+    const nurGedanken =
+      (wahl?.message?.reasoning ?? wahl?.message?.reasoning_content ?? '').trim() !== ''
+    if (nurGedanken) {
+      throw new GegenstelleFehler(anbieter.id, 0, 'gedacht', `${anbieter.id} denkt nur`)
+    }
+    throw new Nochmal(`${anbieter.id} antwortet leer`, null, {
+      anbieterId: anbieter.id,
+      art: 'leer',
+    })
   }
 
   return gesagt

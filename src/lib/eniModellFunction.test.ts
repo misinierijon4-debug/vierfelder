@@ -299,7 +299,7 @@ describe('ENIs modellverbindung', () => {
         id: 'qwen-infron',
         modell: 'qwen/qwen3.8-27b:free',
         endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
-        denken: { reasoning: { effort: 'none' } },
+        denken: { reasoning: { enabled: false } },
       },
       schluessel: 'infron-test',
     })

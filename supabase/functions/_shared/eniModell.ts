@@ -4,6 +4,7 @@ import { subAusToken } from './token.ts'
 import {
   anbieterFehlertext,
   findeAnbieter,
+  GegenstelleFehler,
   schluesselVon,
   STANDARD_ANBIETER,
   verfuegbareAnbieter,
@@ -734,7 +735,13 @@ export async function behandleEni(
   // beide profile auf einmal: eins beantwortet die mitgliedschaft, beide
   // zusammen uebersetzen die uuids in der lage in namen.
   const profile = await db.from('profile').select('id,person')
-  if (profile.error) return antwort(500, { error: 'mitgliedschaft konnte nicht geprüft werden' })
+  if (profile.error) {
+    // Ein verschluckter Datenbankfehler ist der teuerste: die App sagt, etwas
+    // ging nicht, und nirgends steht, was. Deshalb geht jeder davon ins
+    // Protokoll der Function, wo er beim Nachsehen wirklich hilft.
+    deps.protokoll.error('eni: mitgliedschaft nicht lesbar', profile.error)
+    return antwort(500, { error: 'mitgliedschaft konnte nicht geprüft werden' })
+  }
   const personen = new Map<string, Person>()
   for (const zeile of profile.data ?? []) {
     const name = zeile.person
@@ -774,7 +781,12 @@ export async function behandleEni(
     .select('id', { count: 'exact', head: true })
     .eq('rolle', 'mensch')
     .gte('erstellt', tagesbeginn.toISOString())
-  if (heute.error) return antwort(500, { error: 'tagesgrenze konnte nicht geprüft werden' })
+  if (heute.error) {
+    deps.protokoll.error('eni: tagesgrenze nicht lesbar', heute.error)
+    return antwort(500, {
+      error: 'die tagesgrenze konnte nicht geprüft werden. versuch es gleich noch einmal.',
+    })
+  }
   if (Number.isFinite(grenze) && (heute.count ?? 0) >= grenze) {
     return antwort(429, {
       error: `für heute ist schluss. ${grenze} vorlagen am tag reichen ENI.`,
@@ -798,7 +810,10 @@ export async function behandleEni(
     .eq('chat_id', chatId)
     .order('erstellt', { ascending: false })
     .limit(KONTEXT_NACHRICHTEN)
-  if (verlauf.error) return antwort(500, { error: 'der chat konnte nicht gelesen werden' })
+  if (verlauf.error) {
+    deps.protokoll.error('eni: verlauf nicht lesbar', verlauf.error)
+    return antwort(500, { error: 'der chat konnte nicht gelesen werden' })
+  }
 
   const vorherige = ((verlauf.data ?? []) as unknown as EniZeile[]).slice().reverse()
 
@@ -1042,8 +1057,10 @@ export async function behandleEni(
   }
 
   if (!urteil) {
+    // Auch das Schweigen bekommt den Namen dessen, der geschwiegen hat. Wer
+    // vier Modelle im Menue hat, muss wissen, welches davon nichts sagt.
     return antwort(502, {
-      error: 'ENI hat nicht geantwortet. versuch es gleich noch einmal.',
+      error: anbieterFehlertext(anbieter, new GegenstelleFehler(anbieter.id, 0, 'leer')),
       code: 'leere_antwort',
       mensch: menschZeile,
     })

@@ -39,13 +39,34 @@ export const GESAMTFRIST_MS = 100_000
  * das war die Lage, nicht die Anfrage.
  */
 export class Nochmal extends Error {
+  /** wer gemeldet hat. leer heisst: niemand, den eine Meldung nennen duerfte. */
+  readonly anbieterId: string
+  /** http-status oder code der gegenstelle, 0 wenn sie keinen genannt hat */
+  readonly status: number
+  /** was es war, wenn es keinen status gibt. dieselben Arten wie in `Gemeldet`. */
+  readonly art?: 'leer' | 'gedacht' | 'strom' | 'fehler'
+
   constructor(
     nachricht: string,
     /** was die gegenstelle selbst an wartezeit verlangt, in ms */
-    readonly wartenMs: number | null = null
+    readonly wartenMs: number | null = null,
+    /**
+     * Was die Gegenstelle gemeldet hat, als Feld. Dasselbe `Gemeldet` wie in
+     * `eniAnbieter.ts`, nur nicht von dort importiert: dieses Modul haengt
+     * bewusst an keiner Anbieterliste. Wer daraus einen Satz macht, liest die
+     * Felder, nicht die Nachricht.
+     */
+    gemeldet?: {
+      anbieterId: string
+      status?: number
+      art?: 'leer' | 'gedacht' | 'strom' | 'fehler'
+    }
   ) {
     super(nachricht)
     this.name = 'EniNochmal'
+    this.anbieterId = gemeldet?.anbieterId ?? ''
+    this.status = gemeldet?.status ?? 0
+    this.art = gemeldet?.art
   }
 }
 
