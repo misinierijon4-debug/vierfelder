@@ -160,12 +160,6 @@ export function EniModellwahl({
                     >
                       {eintrag.name}
                     </span>
-                    {dran && (
-                      <span
-                        aria-hidden="true"
-                        className="mr-1 inline-block size-1.5 shrink-0 rounded-full bg-kreide"
-                      />
-                    )}
                   </motion.button>
                 )
               })}

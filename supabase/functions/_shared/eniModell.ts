@@ -641,19 +641,39 @@ async function behandleWochenbericht(optionen: WochenberichtOptionen): Promise<R
   })
 }
 
+/** Versatz von Europe/Berlin gegen UTC in Minuten, zu genau diesem Zeitpunkt. */
+function berlinerVersatzMinuten(zeitpunkt: Date): number {
+  const name = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    timeZoneName: 'longOffset',
+  })
+    .formatToParts(zeitpunkt)
+    .find((t) => t.type === 'timeZoneName')?.value ?? 'GMT+01:00'
+  const treffer = /GMT([+-])(\d{2}):(\d{2})/.exec(name)
+  if (!treffer) return 60
+  const vorzeichen = treffer[1] === '-' ? -1 : 1
+  return vorzeichen * (Number(treffer[2]) * 60 + Number(treffer[3]))
+}
+
 export function berlinerTagesbeginnIso(jetzt: Date = new Date()): string {
   const teile = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Berlin',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    timeZoneName: 'longOffset',
   }).formatToParts(jetzt)
   const wert = (art: Intl.DateTimeFormatPartTypes) =>
     teile.find((t) => t.type === art)?.value ?? ''
   const tag = `${wert('year')}-${wert('month')}-${wert('day')}`
-  const tz = wert('timeZoneName').replace('GMT', '') || '+01:00'
-  return new Date(`${tag}T00:00:00${tz}`).toISOString()
+  const scheinbar = Date.parse(`${tag}T00:00:00Z`)
+  // Der Versatz gehoert zum Zeitpunkt, nicht zum Tag: in den beiden
+  // Umstellungsnaechten ist er um Mitternacht ein anderer als am Mittag
+  // desselben Tages. Den Versatz von 'jetzt' auf Mitternacht anzuwenden,
+  // verschiebt die Tagesgrenze zweimal im Jahr um eine Stunde. Zwei Runden
+  // rasten auf dem Versatz ein, der um Mitternacht wirklich galt.
+  let zeitpunkt = scheinbar - berlinerVersatzMinuten(new Date(scheinbar)) * 60_000
+  zeitpunkt = scheinbar - berlinerVersatzMinuten(new Date(zeitpunkt)) * 60_000
+  return new Date(zeitpunkt).toISOString()
 }
 
 export async function behandleEni(

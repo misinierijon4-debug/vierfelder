@@ -82,6 +82,12 @@ export function erstelleThinkFilter(onText: (teil: string) => void) {
   let inThink = false;
   let puffer = "";
   let akkumuliert = "";
+  /**
+   * Was hinter <think> verschwindet, heben wir trotzdem auf. Bricht der Strom
+   * ab, bevor </think> kommt, ist das der einzige Text, den es gibt — dann ist
+   * ein angefangener Gedanke immer noch besser als eine leere Antwort.
+   */
+  let denkText = "";
 
   function gibFrei(text: string) {
     if (!text) return;
@@ -120,6 +126,7 @@ export function erstelleThinkFilter(onText: (teil: string) => void) {
         const lower = puffer.toLowerCase();
         const endeIdx = lower.indexOf("</think>");
         if (endeIdx !== -1) {
+          denkText = "";
           puffer = puffer.slice(endeIdx + "</think>".length);
           if (akkumuliert === "") {
             puffer = puffer.replace(/^\n+/, "");
@@ -136,9 +143,11 @@ export function erstelleThinkFilter(onText: (teil: string) => void) {
             "<",
           ].find((p) => lower.endsWith(p));
           if (matchPrefix) {
+            denkText += puffer.slice(0, puffer.length - matchPrefix.length);
             puffer = puffer.slice(puffer.length - matchPrefix.length);
             break;
           } else {
+            denkText += puffer;
             puffer = "";
           }
         }
@@ -150,6 +159,14 @@ export function erstelleThinkFilter(onText: (teil: string) => void) {
     if (!inThink && puffer.length > 0) {
       gibFrei(puffer);
       puffer = "";
+    }
+    // <think> ohne </think>: der Strom ist mitten im Denken abgerissen. Alles
+    // zu verwerfen hiesse leerer Bildschirm und leere Zeile in der Datenbank.
+    // Steht sonst nichts da, geben wir den angefangenen Gedanken frei.
+    if (inThink && akkumuliert === "") {
+      gibFrei((denkText + puffer).trim());
+      puffer = "";
+      denkText = "";
     }
     return akkumuliert;
   }
