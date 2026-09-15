@@ -133,6 +133,14 @@ export function tavilyQuellen(ergebnisse: unknown): WebQuelle[] {
 const ANREDE_WORT = /\b(?:du|dir|dich|dein\w*|bitte|kannst|koenntest|könntest|hey|hallo|hi|moin|servus)\b/i
 
 /**
+ * Steht direkt hinter dem Namen eine Frage oder ein Auftrag, war der Name die
+ * Anrede: "Eni was ist die Hauptstadt von Peru". Steht dort ein Sachwort,
+ * gehoert der Name zur Frage: "Eni Dividende 2026".
+ */
+const FRAGE_DANACH =
+  /^(?:was|wie|wer|wo|wann|warum|wieso|weshalb|welche\w*|kannst|kann|gibt|erklär|erklaer|such|suche|zeig|sag|mach|finde|schau|nenn|hilf|bitte)\b/i
+
+/**
  * Bereinigt eine Suchanfrage vor dem Versenden an Suchmaschinen.
  *
  * Suchmaschinen kennen unseren Assistenten nicht: fuer sie ist "Eni" der
@@ -149,9 +157,12 @@ export function bereinigeSuchfrage(frage: string): string {
   // Ohne Gruss, ohne Satzzeichen und ohne Anrede im Rest ist das erste Wort
   // dagegen das Thema ("Eni Quartalszahlen") und bleibt stehen.
   text = text.replace(
-    /^(?:(hey|hallo|hi|moin|servus)\s+)?\beni\b([\s,:;—–-]*)/i,
-    (treffer, gruss: string | undefined, trenner: string) =>
-      gruss || /[,:;—–-]/.test(trenner) || angeredet ? '' : treffer,
+    /^(?:(hey|hallo|hi|moin|servus)\s+)?\beni\b([\s,:;—–-]*)(.*)$/is,
+    (treffer, gruss: string | undefined, trenner: string, rest: string) => {
+      const anrede =
+        gruss || /[,:;—–-]/.test(trenner) || angeredet || FRAGE_DANACH.test(rest)
+      return anrede ? rest : treffer
+    },
   )
 
   // Anrede am Ende: "..., Eni", "... bitte Eni". Auch hier zaehlt nur, was

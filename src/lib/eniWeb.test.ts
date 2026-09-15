@@ -206,6 +206,10 @@ describe('Eni Rueckblick auf eigene Suchlaeufe', () => {
     expect(bereinigeSuchfrage('kannst du Eni mal nachschauen')).toBe('kannst du mal nachschauen')
     expect(bereinigeSuchfrage('Eni')).toBe('Eni')
     expect(bereinigeSuchfrage('schau, Eni, mal nach dem Preis')).toBe('schau, mal nach dem Preis')
+    // Anrede ohne Komma: was direkt danach kommt, verraet sie.
+    expect(bereinigeSuchfrage('Eni was ist die hauptstadt von peru')).toBe(
+      'was ist die hauptstadt von peru'
+    )
   })
 
   it('laesst Fragen zum Konzern Eni S.p.A. unangetastet', () => {
@@ -215,6 +219,7 @@ describe('Eni Rueckblick auf eigene Suchlaeufe', () => {
     expect(bereinigeSuchfrage('Wer ist Eni S.p.A.?')).toBe('Wer ist Eni S.p.A.?')
     expect(bereinigeSuchfrage('Aktienkurs Eni')).toBe('Aktienkurs Eni')
     expect(bereinigeSuchfrage('Eni Quartalszahlen 2026')).toBe('Eni Quartalszahlen 2026')
+    expect(bereinigeSuchfrage('Eni Dividende 2026')).toBe('Eni Dividende 2026')
     // Enigma, Denim und Co. waren nie gemeint.
     expect(bereinigeSuchfrage('Was macht Enigma?')).toBe('Was macht Enigma?')
   })
