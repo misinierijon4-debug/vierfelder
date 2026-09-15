@@ -2,10 +2,11 @@ import type { ReactNode } from 'react'
 import type { FeldId } from '../lib/types'
 
 /**
- * ein zeichen je feld, links vom wort. es steht dort als merkhilfe für den
- * daumen, nicht als ersatz für die schrift: das wort bleibt stehen, das zeichen
- * kommt dazu. deshalb ist es `aria-hidden` — eine vorlesestimme, die „boxen,
- * boxhandschuh" sagt, wiederholt sich nur.
+ * ein zeichen je feld, rechts neben dem wort. es steht dort als merkhilfe für
+ * den daumen, nicht als ersatz für die schrift: das wort bleibt stehen und
+ * behält die kante links, an der die ganze liste ausgerichtet ist; das zeichen
+ * kommt dahinter dazu. deshalb ist es `aria-hidden` — eine vorlesestimme, die
+ * „boxen, boxhandschuh" sagt, wiederholt sich nur.
  *
  * gezeichnet wie der rest der app: haarlinien, radius 2px, keine flächen, keine
  * sechste farbe. die farbe kommt über `currentColor` aus der zeile, damit das

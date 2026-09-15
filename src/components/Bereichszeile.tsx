@@ -161,10 +161,10 @@ export function Bereichszeile({
           className="flex min-w-0 items-center gap-2 transition-colors duration-200"
           style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
         >
-          <Feldsymbol feld={area.id} className="shrink-0" />
           <span className="display min-w-0 truncate text-[22px] font-semibold lowercase leading-none">
             {area.label}
           </span>
+          <Feldsymbol feld={area.id} className="shrink-0" />
         </span>
         {statuszeile && (
           <span className="mt-0.5 block text-pretty text-[10px] leading-snug text-kreide-52">

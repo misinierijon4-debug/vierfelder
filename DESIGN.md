@@ -1836,13 +1836,21 @@ hängt er wie bisher die echte klickbare Liste an. Ein inhaltlicher Abschnitt
 über Quellenarten bleibt erhalten, weil er keinen konkreten Suchtreffer
 wiederholt.
 
-## 45. Nachtrag: ein zeichen vor jedem wort (15.09.2026)
+## 45. Nachtrag: ein zeichen hinter jedem wort (15.09.2026)
 
 **Die Tracker-Liste war fünf Wörter untereinander.** lernen, gym, boxen, lesen,
 gewicht — gleiche Schrift, gleiche Größe, gleicher Ort. Wer die Liste kennt,
 liest sie nicht mehr, er zählt die Zeilen ab; wer sie nicht kennt, liest fünf
-Mal dasselbe Grau. Vor jedem Wort steht jetzt ein Zeichen: Doktorhut, Hantel,
-Boxhandschuh, aufgeschlagenes Buch, Balkenwaage.
+Mal dasselbe Grau. Hinter jedem Wort steht jetzt ein Zeichen: Doktorhut,
+Hantel, Boxhandschuh, aufgeschlagenes Buch, Balkenwaage.
+
+**Das Zeichen steht rechts vom Wort, nicht links.** Links steht die Kante, an
+der die fünf Zeilen ausgerichtet sind — dieselbe Kante, an der auch die Tabs
+und das Datum darüber hängen. Ein Zeichen davor rückt jedes Wort um 28px nach
+innen und knickt genau diese Kante; die Liste wüchse dann von einer unruhigen
+Reihe Symbole aus statt von einem Rand. Rechts vom Wort endet das Zeichen an
+einer Stelle, die ohnehin von Wort zu Wort wandert, und kostet die Ordnung
+nichts.
 
 **Das Zeichen ersetzt das Wort nicht, es kommt dazu.** Abschnitt 38 hat schon
 festgehalten, dass ein Symbol allein geraten werden muss und eine Zeile mit

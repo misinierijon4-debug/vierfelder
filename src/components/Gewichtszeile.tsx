@@ -98,10 +98,10 @@ export function Gewichtszeile({
       <div className="flex flex-col justify-center gap-1.5 py-2 pl-1">
         <div className="flex flex-wrap items-center gap-2 min-[260px]:flex-nowrap min-[360px]:gap-3">
           <div className="flex basis-full items-center gap-2 text-kreide-60 min-[260px]:min-w-0 min-[260px]:flex-1 min-[260px]:basis-auto">
-            <Feldsymbol feld="gewicht" className="shrink-0" />
             <span className="display min-w-0 truncate text-[22px] font-semibold lowercase leading-none">
               gewicht
             </span>
+            <Feldsymbol feld="gewicht" className="shrink-0" />
           </div>
 
           {entwurf === null ? (
