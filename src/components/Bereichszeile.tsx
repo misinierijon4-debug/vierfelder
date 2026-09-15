@@ -4,6 +4,7 @@ import { Minus, Plus } from '@phosphor-icons/react'
 import type { MessungsLaufstatus } from '../lib/tracker'
 import type { AreaDef, TagesQuelle } from '../lib/types'
 import { EASE, EINGANG, TAKT } from '../lib/motion'
+import { Feldsymbol } from './Feldsymbole'
 import { Marke } from './Marke'
 import { Schritt } from './Schritt'
 import { Zahl } from './Zahl'
@@ -154,11 +155,16 @@ export function Bereichszeile({
   const kopfInhalt = (
     <>
       <span className="min-w-0 basis-full min-[260px]:flex-1 min-[260px]:basis-auto">
+        {/* zeichen und wort tragen dieselbe farbe: das zeichen gehört zum wort
+            und nicht zur zeile, und wird mit ihm zusammen hell */}
         <span
-          className="display block truncate text-[22px] font-semibold lowercase leading-none transition-colors duration-200"
+          className="flex min-w-0 items-center gap-2 transition-colors duration-200"
           style={{ color: gesetzt ? 'var(--kreide)' : 'var(--kreide-60)' }}
         >
-          {area.label}
+          <span className="display min-w-0 truncate text-[22px] font-semibold lowercase leading-none">
+            {area.label}
+          </span>
+          <Feldsymbol feld={area.id} className="shrink-0" />
         </span>
         {statuszeile && (
           <span className="mt-0.5 block text-pretty text-[10px] leading-snug text-kreide-52">
