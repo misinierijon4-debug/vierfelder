@@ -165,8 +165,12 @@ for (const name of jsDateien) {
 // 236806 danach; Gesamtsumme 269996 auf 270446 Byte). Deshalb steigt nur die
 // Gesamtsumme um ein KiB, und die strengere initiale Grenze bleibt stehen, wo
 // sie stand. Beide bleiben verbindlich; keine Budgetabschaltung.
+// ENIs Moduswechsel und die weitergereichte, bereits freigegebene Mikrofonspur
+// liegen ebenfalls restlos im ENI-Lazy-Chunk. Gemessener Pages-Stand: 272142
+// Byte gesamt. Die Gesamtsumme erhaelt dafuer 2 KiB kontrollierten Spielraum;
+// die initiale Grenze bleibt unveraendert und beide Pruefungen bleiben hart.
 const INITIAL_GZIP_BUDGET = 232 * 1024
-const GESAMT_GZIP_BUDGET = 265 * 1024
+const GESAMT_GZIP_BUDGET = 267 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
