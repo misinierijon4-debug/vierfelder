@@ -1835,3 +1835,36 @@ einen Titel oder eine Adresse aus dem gerade geprüften Suchlauf enthält. Danac
 hängt er wie bisher die echte klickbare Liste an. Ein inhaltlicher Abschnitt
 über Quellenarten bleibt erhalten, weil er keinen konkreten Suchtreffer
 wiederholt.
+
+## 45. Nachtrag: ein zeichen vor jedem wort (15.09.2026)
+
+**Die Tracker-Liste war fünf Wörter untereinander.** lernen, gym, boxen, lesen,
+gewicht — gleiche Schrift, gleiche Größe, gleicher Ort. Wer die Liste kennt,
+liest sie nicht mehr, er zählt die Zeilen ab; wer sie nicht kennt, liest fünf
+Mal dasselbe Grau. Vor jedem Wort steht jetzt ein Zeichen: Doktorhut, Hantel,
+Boxhandschuh, aufgeschlagenes Buch, Balkenwaage.
+
+**Das Zeichen ersetzt das Wort nicht, es kommt dazu.** Abschnitt 38 hat schon
+festgehalten, dass ein Symbol allein geraten werden muss und eine Zeile mit
+Wort nicht. Deshalb bleibt das Wort stehen, in derselben Größe wie vorher, und
+das Zeichen ist `aria-hidden` — eine Vorlesestimme, die „boxen, Boxhandschuh"
+sagt, wiederholt sich nur. Die Zeile heißt für Bedienhilfen unverändert
+`lernen, heute eingetragen`.
+
+**Zeichen und Wort tragen eine Farbe.** Beide hängen an demselben `currentColor`
+und wechseln gemeinsam von `--kreide-60` auf `--kreide`, wenn der Tag gesetzt
+ist. Ein Zeichen, das hell bleibt, während das Wort verblasst, wäre ein zweiter
+Zustand ohne zweite Bedeutung.
+
+**Eigene Pfade, keine Bibliothek.** Abschnitt 3 legt Phosphor auf `minus` und
+`plus` fest, und dabei bleibt es: `Feldsymbole.tsx` zeichnet die fünf Zeichen
+selbst. Ein Zeichensatz von der Stange bringt seine eigene Bildsprache mit —
+weiche Rundungen, gefüllte Flächen — und die ist nicht die der Anzeigetafel.
+Die Zeichen sind Haarlinien mit Radius 1–2, ohne Fläche, ohne sechste Farbe,
+20px neben der 22px-Überschrift: sie tragen, ohne sie zu überstimmen.
+
+**Warum eine Balkenwaage und keine Personenwaage.** Die Personenwaage ist ein
+Quadrat mit einem Strich darin. Genau daneben steht die Marke, die auch ein
+Rechteck mit Radius 2 ist; zwei Kästchen in einer Zeile, von denen nur eines
+etwas bedeutet, sind eines zu viel. Der Balken mit den zwei Schalen ist bei
+16px noch als Waage zu erkennen und mit nichts im Raster zu verwechseln.
