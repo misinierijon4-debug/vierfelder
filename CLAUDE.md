@@ -1,8 +1,12 @@
-# CLAUDE.md — Wegweiser für Agenten
+# Wegweiser für Agenten
 
 Diese Datei ersetzt das Absuchen des Repos. **Erst hier nachschlagen, dann
 gezielt eine Datei öffnen.** Nur wenn die Antwort hier fehlt, breit suchen —
 und danach diese Datei ergänzen.
+
+Sie liegt einmal als `CLAUDE.md` und ist zusätzlich als `AGENTS.md` (Codex) und
+`GEMINI.md` (Gemini CLI) verlinkt. Drei namen, eine datei — **immer `CLAUDE.md`
+bearbeiten**, die beiden anderen sind symlinks.
 
 ## Was das ist
 
