@@ -4,9 +4,13 @@ Diese Datei ersetzt das Absuchen des Repos. **Erst hier nachschlagen, dann
 gezielt eine Datei öffnen.** Nur wenn die Antwort hier fehlt, breit suchen —
 und danach diese Datei ergänzen.
 
-Sie liegt einmal als `CLAUDE.md` und ist zusätzlich als `AGENTS.md` (Codex) und
-`GEMINI.md` (Gemini CLI) verlinkt. Drei namen, eine datei — **immer `CLAUDE.md`
-bearbeiten**, die beiden anderen sind symlinks.
+Es gibt sie dreimal, damit jedes werkzeug sie findet: `CLAUDE.md` (Claude Code),
+`AGENTS.md` (Codex) und `GEMINI.md` (Gemini CLI). Die drei dateien sind
+zeichengleiche kopien — **keine symlinks**, weil git die unter Windows zu einer
+9-byte-textdatei macht und das werkzeug dann still nichts liest.
+
+**Immer `CLAUDE.md` bearbeiten**, danach `npm run sync:agentendoku`. Die CI
+prüft mit `npm run check:agentendoku`, dass die drei gleich sind.
 
 ## Was das ist
 
@@ -27,13 +31,14 @@ npm run dev            # localhost:5199
 npm run typecheck      # tsc -b, kein Build
 npm test               # vitest run (TZ=Europe/Berlin ist fix gesetzt)
 npm run check:edge     # deno check der produktiven Edge Functions
-npm run check          # alles, was die CI prüft (check:web + check:edge)
+npm run sync:agentendoku  # CLAUDE.md nach AGENTS.md + GEMINI.md uebernehmen
+npm run check          # alles, was die CI prüft
 ```
 
 Vor jedem Push mindestens `npm run typecheck && npm test`.
 Bei Änderungen unter `supabase/functions/` zusätzlich `npm run check:edge`.
 Die CI (`.github/workflows/ci.yml`) fährt genau diese Reihenfolge:
-`typecheck → test → check:edge → build:web → check:dist`.
+`check:agentendoku → typecheck → test → check:edge → build:web → check:dist`.
 Es gibt **keinen Linter** und **kein Formatierwerkzeug** — Stil der Nachbardatei
 übernehmen.
 
