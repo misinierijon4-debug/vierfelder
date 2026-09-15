@@ -153,6 +153,15 @@ das sagt, nach derselben Regel wie die Zeile im Kopf. Aufgenommen und
 gespeichert wird nichts; was zurückkommt, ist Text im Eingabefeld, den man vor
 dem Vorlegen noch ändern kann.
 
+Beim ersten Tippen holt die App die normale Mikrofonfreigabe des Browsers. Der
+Browser beziehungsweise iOS verwaltet diese Berechtigung; ein eigenes
+`localStorage`-Häkchen dürfte sie weder erteilen noch nach einem Widerruf
+übergehen. Die freigegebene Audiospur wird danach direkt an die Spracherkennung
+gegeben. Damit startet ENI keine zweite Berechtigungsrunde. Nach dem Diktat wird
+die Spur geschlossen, damit das Mikrofon nicht unbemerkt offen bleibt. Wenn das
+Gerät diese neuere Spur-Übergabe noch nicht unterstützt, fällt die App auf die
+bisherige Browser-Erkennung zurück.
+
 Firefox hat diese Schnittstelle nicht. Dort ist der Knopf nicht grau, sondern
 weg.
 

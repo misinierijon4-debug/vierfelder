@@ -19,7 +19,7 @@ class Attrappe {
   constructor() {
     Attrappe.letzte = this
   }
-  start() {
+  start(_spur?: MediaStreamTrack) {
     this.gestartet = true
   }
   stop() {
@@ -47,6 +47,7 @@ function mitErkennung() {
 
 afterEach(() => {
   delete (window as unknown as Record<string, unknown>).SpeechRecognition
+  Reflect.deleteProperty(navigator, 'mediaDevices')
   Attrappe.letzte = null
 })
 
@@ -165,6 +166,57 @@ describe('das diktat', () => {
 
     expect(bauer).toHaveBeenCalledTimes(1)
     bauer.mockRestore()
+    zurueck()
+  })
+
+  it('reicht eine einmal freigegebene browser-spur an die erkennung weiter', async () => {
+    const zurueck = mitErkennung()
+    const stop = vi.fn()
+    const spur = { stop } as unknown as MediaStreamTrack
+    const strom = {
+      getAudioTracks: () => [spur],
+      getTracks: () => [spur],
+    } as unknown as MediaStream
+    const getUserMedia = vi.fn().mockResolvedValue(strom)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+    const start = vi.spyOn(Attrappe.prototype, 'start')
+    const { result } = renderHook(() => useDiktat(() => {}))
+
+    await act(async () => {
+      result.current.starte()
+      await Promise.resolve()
+    })
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledWith(spur)
+
+    act(() => Attrappe.letzte!.onend?.())
+    expect(stop).toHaveBeenCalledTimes(1)
+    start.mockRestore()
+    zurueck()
+  })
+
+  it('startet nach verweigertem zugriff keine erkennung', async () => {
+    const zurueck = mitErkennung()
+    const getUserMedia = vi.fn().mockRejectedValue({ name: 'NotAllowedError' })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+    const start = vi.spyOn(Attrappe.prototype, 'start')
+    const { result } = renderHook(() => useDiktat(() => {}))
+
+    await act(async () => {
+      result.current.starte()
+      await Promise.resolve()
+    })
+
+    expect(start).not.toHaveBeenCalled()
+    expect(result.current.fehler).toContain('mikrofon ist gesperrt')
+    start.mockRestore()
     zurueck()
   })
 })

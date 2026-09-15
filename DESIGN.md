@@ -1778,3 +1778,46 @@ mehr gibt. Sie wird als `ling` plus stellung an gelesen, statt still auf den
 ersten anbieter zu fallen. Ein alter, noch zwischengespeicherter client heilt
 sich von selbst — er findet seine gemerkte id nicht mehr in der serverliste und
 fällt auf den ersten zurück, so wie beim zurückgezogenen schlüssel auch.
+
+## 43. Nachtrag: ENI ist nicht in jedem Satz ein Trainer (15.09.2026)
+
+**Der Duellauftrag hatte jedes andere Gespräch überstimmt.** Der Systemtext
+nannte ENI zuerst Trainer, gab ihm danach den vollständigen Wochenstand und
+endete sogar mit „Du bist sein Trainer und Schiedsrichter“. Eine historische
+Frage bekam dadurch zwar eine historische Antwort, danach aber trotzdem den
+Vorwurf, sie sei eine Ausrede für eine fehlende Gym-Einheit. Das Modell hatte
+nicht zu wenig Wissen; die Rangfolge seiner Rollen war falsch.
+
+**Alltag und Wissen sind jetzt der Standard.** Vor jeder Antwort ordnet ENI das
+aktuelle Anliegen still einem von drei Modi zu: Alltag und Wissen, Duell und
+Coaching oder Fürsorge. Sachfragen, Interessen, Schule, Ideen, lockeres Reden
+und hypothetische Fragen werden vollständig in ihrem eigenen Thema beantwortet.
+Der Duellmodus beginnt erst bei erkennbarem Bezug zu Stand, Tracker, Punkten,
+Routinen, einer eigenen Einheit, dem Gegner oder einer ausdrücklichen Bitte um
+Coaching. Bei Mehrdeutigkeit gewinnt der Alltagsmodus.
+
+**Die Lage ist Datenmaterial, kein Gesprächsbefehl.** ENI bekommt den echten
+Trackerstand weiterhin serverseitig, damit er bei einer Duellfrage nicht raten
+muss. Die Modusregel steht aber bewusst *nach* diesem Block: Die bloße
+Anwesenheit von Punkten darf ein fremdes Thema nicht zurück ins Duell ziehen.
+Auch ein Themenwechsel innerhalb desselben Chats wird neu beurteilt.
+
+**Fürsorge bleibt ein eigener Weg.** Sorgen, Konflikte, Angst, Verletzung und
+Überlastung werden weder zur Ausrede erklärt noch in Punkte umgerechnet. Das ist
+nicht der weiche Duellmodus, sondern eine andere Aufgabe: erst zuhören, dann
+sicher und passend reagieren.
+
+**Die lokale Stimmenprobe folgt derselben Grenze.** Ihre festen Regeln dürfen
+nur noch bei einem ausdrücklichen Duellbezug coachen. Eine normale Frage sagt
+ehrlich, dass die Stimmenprobe kein Wissensmodell ist, statt eine erfundene
+Trainerantwort zu geben. Begrüßung und Rollensatz nennen ENI deshalb zuerst als
+KI-Begleiter und nur bedingt als Schiedsrichter.
+
+**Die Mikrofonfreigabe bleibt beim Browser.** Ein gespeichertes App-Häkchen
+könnte keine Systemberechtigung ersetzen und würde nach einem Widerruf sogar
+lügen. ENI holt stattdessen beim ersten Einsatz eine echte Audiospur über
+`getUserMedia` und reicht sie an `SpeechRecognition.start(spur)` weiter. Dieser
+Start löst nach der Web-Speech-Regel keine zweite Mikrofonanfrage aus; Safari
+oder Chrome können ihre einmal erteilte Ursprungsfreigabe wiederverwenden. Die
+Spur wird bei Ende, Abbruch und Ansichtswechsel immer geschlossen. Ältere
+Browser fallen ohne Funktionsverlust auf `start()` zurück.

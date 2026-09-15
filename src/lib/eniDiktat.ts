@@ -41,7 +41,12 @@ type Erkennung = {
   lang: string
   continuous: boolean
   interimResults: boolean
-  start(): void
+  /**
+   * Neuere Browser koennen eine bereits freigegebene Mikrofonspur bekommen.
+   * Dann startet die Spracherkennung nicht noch eine zweite, eigene
+   * Berechtigungsrunde. Aeltere Browser kennen nur die Variante ohne Spur.
+   */
+  start(audioTrack?: MediaStreamTrack): void
   stop(): void
   abort(): void
   onresult: ((ereignis: Erkennungsereignis) => void) | null
@@ -58,6 +63,41 @@ function erkennungsbauer(): (new () => Erkennung) | null {
   if (typeof window === 'undefined') return null
   const fenster = window as unknown as MitErkennung
   return fenster.SpeechRecognition ?? fenster.webkitSpeechRecognition ?? null
+}
+
+/** alle Spuren sicher schliessen, damit die Mikrofonanzeige nicht stehen bleibt */
+function schliesseMikrofon(strom: MediaStream | null): void {
+  for (const spur of strom?.getTracks() ?? []) spur.stop()
+}
+
+/**
+ * Holt die normale Browser-Berechtigung, die Safari/Chrome fuer den Ursprung
+ * verwalten und nach einer dauerhaften Freigabe wiederverwenden koennen.
+ *
+ * Die App speichert absichtlich kein eigenes "erlaubt"-Flag: Das koennte eine
+ * widerrufene Systemberechtigung nicht ersetzen. Entscheidend ist stattdessen,
+ * die freigegebene Spur an SpeechRecognition.start(spur) weiterzureichen. Nach
+ * der Web-Speech-Spezifikation darf dieser Start nicht erneut um
+ * Mikrofonzugriff bitten.
+ */
+function oeffneMikrofon(): Promise<MediaStream> | null {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return null
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+}
+
+function zugriffsFehlertext(ursache: unknown): string {
+  const name =
+    typeof ursache === 'object' && ursache !== null && 'name' in ursache
+      ? String(ursache.name)
+      : ''
+
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return diktatFehlertext('not-allowed')!
+  }
+  if (name === 'NotFoundError' || name === 'NotReadableError' || name === 'AbortError') {
+    return diktatFehlertext('audio-capture')!
+  }
+  return 'die spracherkennung ließ sich nicht starten.'
 }
 
 /** ob dieses geraet ueberhaupt diktieren kann */
@@ -123,6 +163,9 @@ export function useDiktat(aufText: (stueck: string) => void): Diktat {
   const [vorlaeufig, setVorlaeufig] = useState('')
   const [fehler, setFehler] = useState<string | null>(null)
   const erkennungRef = useRef<Erkennung | null>(null)
+  const mikrofonRef = useRef<MediaStream | null>(null)
+  const startRef = useRef(0)
+  const startetRef = useRef(false)
   const [moeglich] = useState(diktatMoeglich)
 
   // der aufrufer gibt bei jedem rendern eine neue funktion herein; die
@@ -133,8 +176,12 @@ export function useDiktat(aufText: (stueck: string) => void): Diktat {
   }, [aufText])
 
   const stoppe = useCallback(() => {
+    startRef.current += 1
+    startetRef.current = false
     const erkennung = erkennungRef.current
     erkennungRef.current = null
+    const mikrofon = mikrofonRef.current
+    mikrofonRef.current = null
     setLaeuft(false)
     setVorlaeufig('')
     // `stop` liefert noch ein letztes ergebnis, `abort` wirft es weg. wer den
@@ -144,72 +191,121 @@ export function useDiktat(aufText: (stueck: string) => void): Diktat {
     } catch {
       /* eine erkennung, die nie startete, wehrt sich gegen stop */
     }
+    schliesseMikrofon(mikrofon)
   }, [])
 
   const starte = useCallback(() => {
     const Bauer = erkennungsbauer()
-    if (!Bauer || erkennungRef.current) return
+    if (!Bauer || erkennungRef.current || startetRef.current) return
 
     setFehler(null)
-    let erkennung: Erkennung
-    try {
-      erkennung = new Bauer()
-    } catch {
-      setFehler('die spracherkennung ließ sich nicht starten.')
-      return
-    }
+    startetRef.current = true
+    const start = ++startRef.current
 
-    erkennung.lang = 'de-DE'
-    // durchlaufen lassen: man denkt beim sprechen nach, und eine erkennung, die
-    // nach der ersten pause abschaltet, zwingt zum hetzen.
-    erkennung.continuous = true
-    erkennung.interimResults = true
-
-    erkennung.onresult = (ereignis) => {
-      let offen = ''
-      for (let i = ereignis.resultIndex; i < ereignis.results.length; i += 1) {
-        const ergebnis = ereignis.results[i]
-        if (!ergebnis) continue
-        const stueck = ergebnis[0].transcript
-        if (ergebnis.isFinal) aufTextRef.current(stueck)
-        else offen += stueck
+    void (async () => {
+      let mikrofon: MediaStream | null = null
+      try {
+        const zugriff = oeffneMikrofon()
+        if (zugriff) mikrofon = await zugriff
+      } catch (ursache) {
+        if (start === startRef.current) setFehler(zugriffsFehlertext(ursache))
+        startetRef.current = false
+        return
       }
-      setVorlaeufig(offen)
-    }
 
-    erkennung.onerror = (ereignis) => {
-      const satz = diktatFehlertext(ereignis.error)
-      if (satz) setFehler(satz)
-    }
+      // Wurde waehrend des Systemdialogs abgebrochen oder die Ansicht
+      // verlassen, darf die spaeter eintreffende Freigabe nichts mehr starten.
+      if (start !== startRef.current) {
+        schliesseMikrofon(mikrofon)
+        return
+      }
 
-    erkennung.onend = () => {
-      // manche browser beenden von selbst, etwa nach langer stille. der
-      // zustand muss dann mitkommen, sonst leuchtet der knopf weiter.
-      erkennungRef.current = null
-      setLaeuft(false)
-      setVorlaeufig('')
-    }
+      let erkennung: Erkennung
+      try {
+        erkennung = new Bauer()
+      } catch {
+        schliesseMikrofon(mikrofon)
+        startetRef.current = false
+        setFehler('die spracherkennung ließ sich nicht starten.')
+        return
+      }
 
-    try {
-      erkennung.start()
-    } catch {
-      setFehler('die spracherkennung ließ sich nicht starten.')
-      return
-    }
-    erkennungRef.current = erkennung
-    setLaeuft(true)
+      erkennung.lang = 'de-DE'
+      // durchlaufen lassen: man denkt beim sprechen nach, und eine erkennung, die
+      // nach der ersten pause abschaltet, zwingt zum hetzen.
+      erkennung.continuous = true
+      erkennung.interimResults = true
+
+      erkennung.onresult = (ereignis) => {
+        let offen = ''
+        for (let i = ereignis.resultIndex; i < ereignis.results.length; i += 1) {
+          const ergebnis = ereignis.results[i]
+          if (!ergebnis) continue
+          const stueck = ergebnis[0].transcript
+          if (ergebnis.isFinal) aufTextRef.current(stueck)
+          else offen += stueck
+        }
+        setVorlaeufig(offen)
+      }
+
+      erkennung.onerror = (ereignis) => {
+        const satz = diktatFehlertext(ereignis.error)
+        if (satz) setFehler(satz)
+      }
+
+      erkennung.onend = () => {
+        schliesseMikrofon(mikrofon)
+        if (mikrofonRef.current === mikrofon) mikrofonRef.current = null
+        if (start !== startRef.current) return
+        // manche browser beenden von selbst, etwa nach langer stille. der
+        // zustand muss dann mitkommen, sonst leuchtet der knopf weiter.
+        erkennungRef.current = null
+        setLaeuft(false)
+        setVorlaeufig('')
+      }
+
+      try {
+        const spur = mikrofon?.getAudioTracks()[0]
+        if (spur) {
+          try {
+            erkennung.start(spur)
+          } catch (ursache) {
+            // Die Spur-Uebergabe ist neu. Ein aelterer Browser darf auf seine
+            // bisherige start()-Variante zurueckfallen.
+            if (!(ursache instanceof TypeError)) throw ursache
+            erkennung.start()
+          }
+        } else {
+          erkennung.start()
+        }
+      } catch (ursache) {
+        schliesseMikrofon(mikrofon)
+        startetRef.current = false
+        setFehler(zugriffsFehlertext(ursache))
+        return
+      }
+      mikrofonRef.current = mikrofon
+      erkennungRef.current = erkennung
+      startetRef.current = false
+      setLaeuft(true)
+    })()
   }, [])
 
   // wer die ansicht verlaesst, laesst kein offenes mikrofon zurueck
   useEffect(() => {
     return () => {
+      startRef.current += 1
+      startetRef.current = false
       const erkennung = erkennungRef.current
       erkennungRef.current = null
+      const mikrofon = mikrofonRef.current
+      mikrofonRef.current = null
       try {
         erkennung?.abort()
       } catch {
         /* siehe stoppe */
       }
+      schliesseMikrofon(mikrofon)
     }
   }, [])
 

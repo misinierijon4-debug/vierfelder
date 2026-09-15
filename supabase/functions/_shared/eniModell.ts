@@ -1178,12 +1178,15 @@ export async function behandleEni(
         {
           onText,
           signal,
-          system:
-            eniSystemPrompt({ person, lage }) +
-            '\n\n' +
-            wissen +
-            (web.length || frueherImChat.length ? '\n\n' + webLage(web, frueherImChat) : '') +
-            webHinweis,
+          system: eniSystemPrompt({
+            person,
+            lage,
+            zusatz: [
+              wissen,
+              web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',
+              webHinweis,
+            ],
+          }),
           nachrichten: [
             ...kontext.map(baueNachricht),
             baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),

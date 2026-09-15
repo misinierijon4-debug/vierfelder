@@ -9,13 +9,30 @@ describe('enis urteil', () => {
   })
 
   it('nimmt den aufschub nicht an', () => {
-    for (const satz of ['ich mache das morgen', 'heute keine zeit', 'bin zu müde']) {
+    for (const satz of [
+      'ich gehe morgen statt heute ins gym',
+      'fürs boxen habe ich keine zeit',
+      'für die einheit bin ich zu müde',
+    ]) {
       expect(eniAntwort(satz, 0)).toContain('Aufschub')
     }
   })
 
+  it('macht aus einer sachfrage keine ausrede und kein training', () => {
+    for (const frage of [
+      'Was würde Hitler heute mit Migranten machen?',
+      'Wie funktioniert Muskelaufbau?',
+      'Warum ist der Himmel blau?',
+    ]) {
+      const antwort = eniAntwort(frage, 0)
+      expect(antwort).toContain('normale Sachfrage')
+      expect(antwort).not.toContain('kleinste Einheit')
+      expect(antwort).not.toContain('Aufschub')
+    }
+  })
+
   it('behauptet ohne modellverbindung keine zahl, sondern verweist ans raster', () => {
-    const antwort = eniAntwort('wer führt gerade?', 0)
+    const antwort = eniAntwort('wer führt im duell gerade?', 0)
     expect(antwort).toContain('Raster')
     expect(antwort).toContain('sehe die Zahlen in dieser Fassung nicht')
   })
@@ -40,7 +57,7 @@ describe('enis urteil', () => {
   })
 
   it('antwortet auch auf eine leere vorlage, ohne zu raten', () => {
-    expect(eniAntwort('   ', 2)).toContain('Nenn den Bereich')
+    expect(eniAntwort('   ', 2)).toContain('Sag etwas genauer')
   })
 })
 
@@ -57,9 +74,9 @@ describe('enis schreibweise', () => {
 })
 
 describe('der erste satz', () => {
-  it('stellt ENI als schiedsrichter vor, ohne hilfe anzubieten', () => {
+  it('stellt ENI als allgemeinen begleiter und bedingten schiedsrichter vor', () => {
     expect(ERSTER_SATZ).toContain('Ich bin ENI')
-    expect(ERSTER_SATZ).toContain('nach Punkten, nicht nach Sympathie')
-    expect(ERSTER_SATZ.toLowerCase()).not.toContain('helfen')
+    expect(ERSTER_SATZ).toContain('KI-Begleiter')
+    expect(ERSTER_SATZ).toContain('im Zweikampf')
   })
 })

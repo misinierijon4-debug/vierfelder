@@ -19,7 +19,7 @@ import type { UserId } from './types'
 
 /** kompakter erster satz fuer abwaertskompatibilitaet */
 export const ERSTER_SATZ =
-  'Ich bin ENI. Schiedsrichter und Begleiter im Zweikampf: nach Punkten, nicht nach Sympathie. Sag, was ansteht.'
+  'Ich bin ENI. Dein KI-Begleiter – und im Zweikampf ein fairer Schiedsrichter. Frag mich, was du wissen willst.'
 
 /** begruessung und rollensatz, angepasst an die angemeldete person */
 export function eniBegruessung(person: UserId = 'erijon'): { gruss: string; rolle: string; gegner: string } {
@@ -27,16 +27,16 @@ export function eniBegruessung(person: UserId = 'erijon'): { gruss: string; roll
   const gegner = person === 'koray' ? 'Erijon' : 'Koray'
   return {
     gruss: `Hallo ${ich}.`,
-    rolle: `Ich bin ENI. Schiedsrichter und Begleiter im Zweikampf gegen ${gegner}: nach Punkten, nicht nach Sympathie. Sag, was ansteht.`,
+    rolle: `Ich bin ENI. Dein KI-Begleiter – und im Zweikampf gegen ${gegner} ein fairer Schiedsrichter. Frag mich, was du wissen willst.`,
     gegner,
   }
 }
 
 /** wenn nichts greift, wird gezielt nachgefragt statt abgewertet */
 const NACHFRAGEN = [
-  'Zu vage. Nenn den Bereich, die Zahl und den Tag, dann urteile ich.',
-  'Was beschäftigt dich gerade? Geht es um deinen Stand im Duell oder um etwas Persönliches?',
-  'Gesagt ist nichts. Was davon steht am Sonntag im Raster? Nenn den konkreten nächsten Schritt.',
+  'Sag etwas genauer, welcher Zusammenhang fehlt.',
+  'Was beschäftigt dich gerade?',
+  'Da fehlt mir noch der Zusammenhang. Erzähl weiter.',
 ]
 
 /**
@@ -56,12 +56,8 @@ export function eniAntwort(frage: string, zaehler: number, person: UserId = 'eri
         'Ich bin heute eine Stimmenprobe auf deinem Gerät, kein Modell im Netz. Jeder Satz, den ich sage, steht fest im Code, und ich sehe deine Zahlen nicht. Wenn du mehr von mir willst, dann bau die Verbindung.',
     },
     {
-      muster: /\b(morgen|sp[äa]ter|irgendwann|vielleicht|eigentlich|wollte)\b|keine zeit|kann (ich )?nicht|schaffe? .*nicht|\b(m[üu]de|kaputt|ersch[öo]pft)\b/,
-      antwort:
-        'Das ist kein Grund, das ist ein Aufschub oder echte Erschöpfung. Wenn der Schlaf unter 6 Stunden lag oder Gelenke schmerzen: schlaf oder mach Mobilität. Wenn du nur träge bist: nenn die kleinste Einheit und zieh sie durch.',
-    },
-    {
-      muster: /\b(stand|punkte|vorsprung|wette|kw|woche)\b|wer f[üu]hrt|(ge)?winne|verliere/,
+      muster:
+        /\b(wie stehe ich|meine punkte|unser stand|wer f[üu]hrt im duell)\b|\b(duell|tracker|koray|erijon|gegner)\b.*\b(stand|punkte|vorsprung|wette|kw|woche|f[üu]hrt|gewinne|verliere)\b|\b(stand|punkte|vorsprung|wette|f[üu]hrt|gewinne|verliere)\b.*\b(duell|tracker|koray|erijon|gegner)\b/,
       antwort:
         `Ich sehe die Zahlen in dieser Fassung nicht, also behaupte ich auch keine. Sie stehen im Raster. Mit Modellverbindung lese ich sie und sage dir, wo du gegen ${gegner} stehst.`,
     },
@@ -71,22 +67,37 @@ export function eniAntwort(frage: string, zaehler: number, person: UserId = 'eri
         'Als lokale Stimmenprobe kann ich deine Ernährung nicht individuell beurteilen. Nenn dein Ziel und deinen Alltag; mit Modellverbindung kann ENI die Frage genauer einordnen.',
     },
     {
-      muster: /\b(fertig|erledigt|geschafft|durchgezogen|trainiert|gelernt|gelesen)\b/,
+      muster:
+        /\b(ich habe|ich hab|habe|hab)\b.*\b(fertig|erledigt|geschafft|durchgezogen|trainiert|gelernt|gelesen)\b|\b(gym|boxen|training|lernen|lesen|einheit)\b.*\b(fertig|erledigt|geschafft|durchgezogen)\b/,
       antwort:
         'Gute Einheit. Der Punkt steht. Aber eine Woche hat sieben Tage, und heute ist einer davon. Sauber essen, regenerieren und morgen nachlegen.',
     },
     {
-      muster: /\b(wie|hilf|hilfe|rat|tipp|anfangen|starten|training|gym|boxen)\b|was soll ich/,
+      muster:
+        /\b(gym|boxen|training|lernen|lesen|einheit|tracker|duell)\b.*\b(morgen|sp[äa]ter|keine zeit|keine lust|m[üu]de|kaputt|ersch[öo]pft|ausfallen|schaffe|kann nicht)\b|\b(morgen|sp[äa]ter|keine zeit|keine lust|m[üu]de|kaputt|ersch[öo]pft|ausfallen|schaffe|kann nicht)\b.*\b(gym|boxen|training|lernen|lesen|einheit|tracker|duell)\b/,
+      antwort:
+        'Beim Zweikampf muss ich zwischen Aufschub und echter Erschöpfung unterscheiden. Wenn Schlafdefizit, Schmerzen oder Überlastung dahinterstecken, ist Regeneration sinnvoll; wenn es nur Trägheit ist, nenn die kleinste Einheit, die du heute sicher beendest.',
+    },
+    {
+      muster: /\b(hilf|hilfe|rat|tipp|anfangen|starten)\b.*\b(training|gym|boxen|lernen|lesen|duell|tracker)\b|\b(training|gym|boxen|lernen|lesen|duell|tracker)\b.*\b(hilf|hilfe|rat|tipp|anfangen|starten)\b/,
       antwort:
         'Fang mit dem Bereich an, in dem du hinten liegst, und nimm die kleinste Einheit, die noch zählt. Nicht die beste, die kleinste, die du sicher zu Ende bringst.',
     },
     {
-      muster: /\b(aufgeben|egal|hasse|sinnlos)\b|keinen sinn|bringt nichts|schlecht drauf/,
+      muster: /\?|^(wer|was|wie|warum|weshalb|wieso|wann|wo|welche|welcher|welches)\b/,
+      antwort:
+        'Das ist eine normale Sachfrage, kein Zweikampf-Signal. Diese lokale Stimmenprobe hat kein Wissensmodell; mit aktiver Modellverbindung beantwortet ENI sie direkt, ohne sie auf Punkte oder Training umzudeuten.',
+    },
+    {
+      muster:
+        /\b(duell|tracker|gym|boxen|training|lernen|lesen|einheit)\b.*\b(aufgeben|egal|hasse|sinnlos|keinen sinn|bringt nichts)\b|\b(aufgeben|egal|hasse|sinnlos|keinen sinn|bringt nichts)\b.*\b(duell|tracker|gym|boxen|training|lernen|lesen|einheit)\b/,
       antwort:
         'Du hast dich für diesen Zweikampf entschieden, als es dir gut ging. Dieser Tag zählt genauso wie der. Steh auf und mach die kleinste Einheit.',
     },
     {
-      muster: new RegExp(`\\b(${gegner.toLowerCase()}|duell|gegner|unfair)\\b|er hat|der andere|betr[üu]g`),
+      muster: new RegExp(
+        `\\b(${gegner.toLowerCase()}|duell|gegner)\\b.*\\b(unfair|betr[üu]g|vorn|vorne|f[üu]hrt)\\b|\\b(unfair|betr[üu]g)\\b.*\\b(${gegner.toLowerCase()}|duell|gegner)\\b`
+      ),
       antwort:
         `${gegner} ist nicht dein Problem, er ist dein Maß. Wenn er vorne liegt, hat er gearbeitet, während du geredet hast.`,
     },

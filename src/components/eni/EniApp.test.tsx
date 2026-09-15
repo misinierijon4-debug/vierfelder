@@ -118,9 +118,9 @@ describe('ENI als eigene oberflaeche', () => {
   it('zeigt erst den takt und danach das urteil', async () => {
     vi.useFakeTimers()
     zeigeEni()
-    await laufeAn('ich mache das morgen')
+    await laufeAn('ich gehe morgen statt heute ins gym')
 
-    expect(screen.getByText('ich mache das morgen')).toBeInTheDocument()
+    expect(screen.getByText('ich gehe morgen statt heute ins gym')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('ENI prüft')
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
@@ -128,14 +128,14 @@ describe('ENI als eigene oberflaeche', () => {
     expect(screen.queryByRole('status')).toBeNull()
     // der satz steht in wort-spans, also wird der ganze strom befragt
     expect(screen.getByLabelText('dialog mit ENI')).toHaveTextContent(
-      /Das ist kein Grund, das ist ein Aufschub/
+      /Beim Zweikampf muss ich zwischen Aufschub/
     )
   })
 
   it('klappt die frisch eingetroffene antwort wort fuer wort auf', async () => {
     vi.useFakeTimers()
     zeigeEni()
-    await laufeAn('ich mache das morgen')
+    await laufeAn('ich gehe morgen statt heute ins gym')
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
 
     const woerter = document.querySelectorAll<HTMLElement>('.eni-wort')
