@@ -1835,3 +1835,40 @@ einen Titel oder eine Adresse aus dem gerade geprüften Suchlauf enthält. Danac
 hängt er wie bisher die echte klickbare Liste an. Ein inhaltlicher Abschnitt
 über Quellenarten bleibt erhalten, weil er keinen konkreten Suchtreffer
 wiederholt.
+
+## 45. Nachtrag: eine sitzung, zweimal gezählt (15.09.2026)
+
+**Der fokus lief einmal, die tagesansicht zeigte zwei einträge.** Eine
+lesesitzung von 09:51 bis 10:23 stand als messung da — und daneben ein
+getippter eintrag ohne wert, auf die minute zur gleichen zeit. Beides zusammen
+machte den tag „gemischt“: zwei einträge, zwei herkünfte, eine einzige
+sitzung.
+
+**Der weg dahin ist banal und passiert jedem.** Solange der fokus läuft, ist
+die sitzung nicht fertig, also steht die zeile ohne haken da. Wer sie in dem
+moment antippt — oder sie antippt, bevor die automation ihre meldung
+durchgestellt hat —, legt einen haken an. Sekunden später meldet der fokus
+dieselbe sitzung. Der haken ist keine zweite durchführung, er ist dieselbe,
+nur von hand behauptet.
+
+**Die regel gab es schon, nur eine ebene zu tief.** Für zwei messungen gilt
+seit den fokus-modi: überschneiden sie sich, zählt die längere
+(`ohneUeberschneidung`). Zwischen messung und getipptem gilt sie jetzt auch —
+allerdings nur für den fall, der gar nichts eigenes behauptet: **kein wert**
+(nie erfasst oder auf null heruntergezählt) **und keine eigene
+durchführungszeit**. So ein eintrag sagt nur „heute war was“, und genau das
+belegt eine zählende messung desselben tages bereits, mit beweis. Er heißt
+darum `gedeckt` und zählt nicht mit.
+
+**Alles, was etwas eigenes sagt, bleibt getrennt.** Wer neben der gemessenen
+stunde 30 minuten oder 20 seiten einträgt, hat einen zweiten eintrag — der tag
+bleibt gemischt, und die zahlen stehen weiter nebeneinander statt in einer
+summe. Dasselbe gilt für einen haken mit eigener uhrzeit: eine zeit ist eine
+aussage. Und solange die messung unter der schwelle liegt, deckt sie nichts;
+sonst verlöre der tag seinen haken.
+
+**Gelöscht wird nichts.** Der gedeckte haken bleibt in der datenbank und in der
+tagesansicht stehen — ohne nummer, mit dem zusatz `gedeckt` und einer zeile,
+die erklärt warum. Löschen und ändern gehen weiter wie vorher, und fällt die
+messung später weg, zählt er wieder für sich. Ein stiller schreibvorgang auf
+fremde daten wäre die schlechtere hälfte dieser korrektur.

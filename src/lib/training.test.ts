@@ -248,10 +248,55 @@ describe('tick aus der messung', () => {
     expect(quelle(z, 'erijon', 'boxen', '2026-08-26')).toBe('getippt')
   })
 
-  it('nennt den Tag gemischt, wenn Messung und manueller Eintrag nebeneinander stehen', () => {
-    const z = setzeTick(mit(besuch('2026-08-26', [18, 0], 60)), 'erijon', 'gym', '2026-08-26', true)
+  it('nennt den Tag gemischt, wenn neben der Messung ein eigener Wert steht', () => {
+    const z = fuegeEinheitHinzu(
+      mit(besuch('2026-08-26', [18, 0], 60)),
+      baueEinheit('erijon', 'gym', '2026-08-26', 30)
+    )
     expect(quelle(z, 'erijon', 'gym', '2026-08-26')).toBe('gemischt')
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(2)
     expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
+  })
+
+  it('zaehlt den blossen haken neben einer messung nicht als zweite einheit', () => {
+    const z = setzeTick(mit(besuch('2026-08-26', [18, 0], 60)), 'erijon', 'gym', '2026-08-26', true)
+
+    expect(quelle(z, 'erijon', 'gym', '2026-08-26')).toBe('gemessen')
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(1)
+    expect(wocheBereich(z, 'erijon', 'gym', weekDays(MITTWOCH))).toBe(1)
+
+    const liste = tageseinheiten(z, 'erijon', 'gym', '2026-08-26')
+    expect(liste).toHaveLength(2)
+    expect(liste.filter((e) => e.gedeckt)).toHaveLength(1)
+  })
+
+  it('deckt auch einen auf null heruntergezaehlten lesehaken neben dem fokus', () => {
+    const z = fuegeEinheitHinzu(
+      mit(fokus('2026-08-26', 'lesen', [9, 51], 32)),
+      baueEinheit('erijon', 'lesen', '2026-08-26', 0)
+    )
+
+    expect(quelle(z, 'erijon', 'lesen', '2026-08-26')).toBe('gemessen')
+    expect(anzahlEinheiten(z, 'erijon', 'lesen', '2026-08-26')).toBe(1)
+    expect(hatTageswert(z, 'erijon', 'lesen', '2026-08-26')).toBe(false)
+    expect(messungsMinuten(z, 'erijon', 'lesen', '2026-08-26')).toBe(32)
+  })
+
+  it('laesst einen haken fuer sich stehen, solange die messung zu kurz ist', () => {
+    const z = setzeTick(mit(fokus('2026-08-26', 'lesen', [9, 51], 4)), 'erijon', 'lesen', '2026-08-26', true)
+
+    expect(quelle(z, 'erijon', 'lesen', '2026-08-26')).toBe('getippt')
+    expect(anzahlEinheiten(z, 'erijon', 'lesen', '2026-08-26')).toBe(2)
+  })
+
+  it('haelt einen haken mit eigener uhrzeit neben der messung getrennt', () => {
+    const z = fuegeEinheitHinzu(
+      mit(besuch('2026-08-26', [18, 0], 60)),
+      baueEinheit('erijon', 'gym', '2026-08-26', null, MITTWOCH, zeit('2026-08-26', 7, 0))
+    )
+
+    expect(quelle(z, 'erijon', 'gym', '2026-08-26')).toBe('gemischt')
+    expect(anzahlEinheiten(z, 'erijon', 'gym', '2026-08-26')).toBe(2)
   })
 
   it('nennt einen antippten lerntag getippt, seit es den fokus gibt', () => {
