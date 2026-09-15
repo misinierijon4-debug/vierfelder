@@ -163,6 +163,14 @@ Release-Runbooks eingegrenzt, nicht durch einen spontanen Produktionsdeploy.
 - **Fokus und Standort gleichzeitig** (Fokus `training` im Gym, während die
   Standort-Automation läuft) ergibt keine zwei Einheiten: überschneiden sich
   zwei Sitzungen desselben Bereichs, zählt die längere.
+- **Fokus und Antippen am selben Tag** ergibt ebenfalls keine zwei Einheiten,
+  solange der Haken nichts Eigenes behauptet. Wer die Zeile antippt, während der
+  Fokus noch läuft — sie steht dann ja ohne Haken da —, legt einen Haken ohne
+  Wert und ohne eigene Uhrzeit an. Sobald die Sitzung zählt, ist dieser Haken
+  `gedeckt`: er steht weiter in der Tagesansicht, ohne Nummer und mit Zusatz,
+  wird aber nicht als zweite Einheit gezählt. Getippte Seiten oder Minuten und
+  ein Haken mit eigener Uhrzeit bleiben dagegen ein eigener Eintrag, und der Tag
+  bleibt „gemischt“.
 - **Ein Fokus, der von einem Zeitplan kommt**, setzt trotzdem einen Tick. Die
   Datenbank kann nicht sehen, wer den Schalter umgelegt hat. Deshalb steht oben:
   keine Zeitpläne auf diesen drei.

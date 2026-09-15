@@ -83,20 +83,28 @@ export function Tagesdetail({
   const einheit = bereich?.unit ?? 'kg'
 
   const liste = tageseinheiten(zustand, auswahl.user, auswahl.area, auswahl.tag)
-  const gesamt = liste.reduce((s, e) => (e.einheit === einheit ? s + (e.wert ?? 0) : s), 0)
+  /**
+   * gezählt wird, was eine eigene durchführung ist. ein getippter haken ohne
+   * wert und ohne eigene uhrzeit, den eine messung desselben tages schon belegt,
+   * steht weiter in der liste — als zweite einheit gezählt wäre er dieselbe
+   * sitzung zweimal.
+   */
+  const gezaehlt = liste.filter((e) => !e.gedeckt)
+  const gedeckte = liste.length - gezaehlt.length
+  const gesamt = gezaehlt.reduce((s, e) => (e.einheit === einheit ? s + (e.wert ?? 0) : s), 0)
   /**
    * beim lesen misst der fokus minuten, gezählt werden aber seiten. die dauer
    * steht deshalb neben der summe und nicht darin — addiert ergäbe sie eine
    * zahl, die nichts bedeutet.
    */
-  const dauer = liste.reduce((s, e) => (e.einheit === einheit ? s : s + (e.wert ?? 0)), 0)
-  const ohneWert = liste.some((e) => e.wert === null)
+  const dauer = gezaehlt.reduce((s, e) => (e.einheit === einheit ? s : s + (e.wert ?? 0)), 0)
+  const ohneWert = gezaehlt.some((e) => e.wert === null)
   const kg = istGewicht ? zustand.gewichte[gewichtKey(auswahl.user, auswahl.tag)] : undefined
   const tagesQuelle = quelle(zustand, auswahl.user, auswahl.area, auswahl.tag)
-  const gemesseneWerte = liste.filter(
+  const gemesseneWerte = gezaehlt.filter(
     (e) => e.herkunft === 'gemessen' && e.einheit === einheit && e.wert !== null
   )
-  const getippteWerte = liste.filter(
+  const getippteWerte = gezaehlt.filter(
     (e) => e.herkunft === 'getippt' && e.einheit === einheit && e.wert !== null
   )
   const gemessenerAnteil = gemesseneWerte.length > 0
@@ -120,8 +128,8 @@ export function Tagesdetail({
   const bearbeitbar = editierbar && eigene && !vergangen
   const schritt = bereich?.step ?? 10
 
-  const gemessene = liste.filter((e) => e.herkunft === 'gemessen').length
-  const getippte = liste.length - gemessene
+  const gemessene = gezaehlt.filter((e) => e.herkunft === 'gemessen').length
+  const getippte = gezaehlt.length - gemessene
   // Ø der tageswerte der letzten 14 kalendertage, den ausgewählten mitgezählt
   const start = fromKey(auswahl.tag)
   let summe14 = 0
@@ -211,10 +219,10 @@ export function Tagesdetail({
           ) : (
             <>
               <p className="flex flex-wrap items-baseline gap-1.5 text-[12px] text-kreide-52">
-                <span className="tnum text-[15px] font-semibold text-kreide">{liste.length}</span>
+                <span className="tnum text-[15px] font-semibold text-kreide">{gezaehlt.length}</span>
                 {tagesQuelle === 'gemischt'
-                  ? liste.length === 1 ? 'eintrag' : 'einträge'
-                  : liste.length === 1 ? 'einheit' : 'einheiten'}
+                  ? gezaehlt.length === 1 ? 'eintrag' : 'einträge'
+                  : gezaehlt.length === 1 ? 'einheit' : 'einheiten'}
                 {gesamt > 0 && (
                   <>
                     <span aria-hidden>·</span>
@@ -241,6 +249,21 @@ export function Tagesdetail({
                 <span className="tnum">{schnitt14}</span> {einheit}
               </p>
 
+              {gedeckte > 0 && (
+                <div className="mt-2.5 border-l-2 border-linie-hell pl-2.5 text-[10px] text-kreide-60">
+                  <p role="status">
+                    {gedeckte === 1
+                      ? 'ein getippter haken ohne wert und ohne eigene uhrzeit steht hier'
+                      : `${gedeckte} getippte haken ohne wert und ohne eigene uhrzeit stehen hier`}
+                    , {gedeckte === 1 ? 'er wird' : 'sie werden'} von der messung
+                    gedeckt und nicht als eigene einheit gezählt.
+                  </p>
+                  <p className="mt-1">
+                    gelöscht wird nichts: fällt die messung weg, zählt der haken wieder für sich.
+                  </p>
+                </div>
+              )}
+
               {tagesQuelle === 'gemischt' && (
                 <div className="mt-2.5 border-l-2 border-linie-hell pl-2.5 text-[10px] text-kreide-60">
                   <p>
@@ -264,15 +287,20 @@ export function Tagesdetail({
               )}
 
               <ul className="mt-3 divide-y divide-linie border-t border-linie">
-                {liste.map((e, i) => {
+                {liste.map((e) => {
                   const zeit = uhrzeit(e.von ?? e.erfasst)
                   const aktuellerWert = e.wert ?? 0
                   const wertName = e.wert === null ? 'ohne wert' : `${e.wert} ${e.einheit}`
-                  const einheitName = `${person.name}, ${label}, ${langesDatum(datum)}, eintrag ${i + 1}, ${wertName}${zeit ? ` um ${zeit} uhr` : ', ohne uhrzeit'}`
+                  // gezählt wird durchgehend; ein gedeckter haken bekommt keine
+                  // nummer, sonst zählte die liste doch wieder bis zwei.
+                  const nummer = e.gedeckt ? null : gezaehlt.indexOf(e) + 1
+                  const einheitName = `${person.name}, ${label}, ${langesDatum(datum)}, ${nummer === null ? 'gedeckter haken' : `eintrag ${nummer}`}, ${wertName}${zeit ? ` um ${zeit} uhr` : ', ohne uhrzeit'}${e.gedeckt ? ', von der messung gedeckt' : ''}`
                   const zeile = (
                     <>
                       <span className="flex min-w-0 items-baseline gap-2">
-                        <span className="tnum text-[11px] text-kreide-52">{i + 1}.</span>
+                        <span className="tnum text-[11px] text-kreide-52">
+                          {nummer === null ? '·' : `${nummer}.`}
+                        </span>
                         <span className="truncate text-[12px] text-kreide-60">
                           {zeit ? `${zeit} uhr` : 'ohne uhrzeit'}
                           {e.herkunft === 'gemessen' && e.ort ? ` · ${e.ort}` : ''}
@@ -292,6 +320,7 @@ export function Tagesdetail({
                         <span className="w-[52px] text-right text-[10px] text-kreide-52">
                           {e.herkunft}
                           {e.herkunft === 'gemessen' && !e.zaehlt ? ' · zu kurz' : ''}
+                          {e.gedeckt ? ' · gedeckt' : ''}
                         </span>
                       </span>
                     </>

@@ -102,7 +102,9 @@ describe('Tagesdetail Datenherkunft', () => {
             tag: '2026-09-06',
             wert: null,
             erfasst: '2026-09-06T18:40:00+02:00',
-            von: null,
+            // eigene uhrzeit: damit bleibt der eintrag eine eigene einheit und
+            // wird nicht von der messung gedeckt
+            von: '2026-09-06T07:00:00+02:00',
           },
         ],
       },
@@ -164,6 +166,61 @@ describe('Tagesdetail Datenherkunft', () => {
 
     expect(screen.getByRole('button', {
       name: /Erijon, gym, sonntag, 6\. september, eintrag 1, 30 min um 18:30 uhr löschen/i,
+    })).not.toBeNull()
+  })
+
+  it('zaehlt einen vom fokus gedeckten haken nicht als zweiten eintrag', () => {
+    const zustand: Zustand = {
+      einheiten: {
+        'erijon|lesen|2026-09-06': [
+          {
+            id: 'blosser-haken',
+            user: 'erijon',
+            area: 'lesen',
+            tag: '2026-09-06',
+            wert: 0,
+            erfasst: '2026-09-06T10:23:00+02:00',
+            von: null,
+          },
+        ],
+      },
+      gewichte: {},
+      aufenthalte: [
+        {
+          user: 'erijon',
+          bereich: 'lesen',
+          ort: 'fokus lesen',
+          ankunft: '2026-09-06T09:51:00+02:00',
+          abgang: '2026-09-06T10:23:00+02:00',
+        },
+      ],
+    }
+
+    render(
+      <Tagesdetail
+        zustand={zustand}
+        auswahl={{ user: 'erijon', area: 'lesen', tag: '2026-09-06' }}
+        heute="2026-09-06"
+        eigene
+        editierbar
+        onSchliessen={vi.fn()}
+        onLoeschen={vi.fn()}
+      />
+    )
+
+    // eine einheit, nicht zwei — und der tag bleibt gemessen statt gemischt
+    const text = screen.getByRole('dialog').textContent ?? ''
+    expect(text).toMatch(/1\s*einheit\b/)
+    expect(text).not.toMatch(/einträge|einheiten/)
+    expect(screen.getByText(/quelle: gemessen/)).not.toBeNull()
+    expect(screen.queryByText(/quelle: gemischt/)).toBeNull()
+    expect(screen.queryByText('2.')).toBeNull()
+
+    // der haken bleibt sichtbar, erklärt und löschbar
+    expect(screen.getByRole('status').textContent).toContain('von der messung')
+    expect(screen.getByText(/· gedeckt/)).not.toBeNull()
+    expect(screen.getByRole('button', {
+      name: /gedeckter haken.*von der messung gedeckt löschen/i,
     })).not.toBeNull()
   })
 })

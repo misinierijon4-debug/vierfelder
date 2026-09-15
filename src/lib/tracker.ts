@@ -64,10 +64,13 @@ export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TagesQuel
   }
 
   const hatMessung = gemessen(z.aufenthalte, u, f, tag)
-  const hatManuelleEinheit = einheitenAn(z, u, f, tag).length > 0
-  if (hatMessung && hatManuelleEinheit) return 'gemischt'
+  const manuelle = einheitenAn(z, u, f, tag)
+  // ein haken, den die messung schon deckt, macht den tag nicht gemischt:
+  // sonst stünde neben der messung eine zweite herkunft für dieselbe sitzung.
+  const hatEigeneEinheit = manuelle.some((e) => !istGedeckterHaken(e, hatMessung))
+  if (hatMessung && hatEigeneEinheit) return 'gemischt'
   if (hatMessung) return 'gemessen'
-  if (hatManuelleEinheit) return 'getippt'
+  if (manuelle.length > 0) return 'getippt'
   return null
 }
 
@@ -75,6 +78,27 @@ export function quelle(z: Zustand, u: UserId, f: FeldId, tag: string): TagesQuel
 export function einheitenAn(z: Zustand, u: UserId, f: FeldId, tag: string): Einheit[] {
   if (f === 'gewicht') return []
   return z.einheiten[tickKey(u, f, tag)] ?? []
+}
+
+/**
+ * ein getippter haken ohne eigene aussage: kein wert — nie erfasst oder auf
+ * null heruntergezählt — und keine eigene durchführungszeit. er behauptet nur
+ * „heute war was". genau das belegt eine zählende messung desselben tages
+ * schon, und zwar mit beweis.
+ *
+ * so ein haken entsteht im alltag ganz ohne absicht: der fokus läuft, die
+ * zeile steht noch ohne haken da, weil die sitzung erst mit dem ausschalten
+ * fertig ist — also tippt man sie an. sekunden später meldet die automation
+ * dieselbe sitzung. zwei quellen für dieselbe sitzung sind eine einheit, auch
+ * wenn die zweite von hand kommt; dieselbe regel gilt zwischen zwei messungen
+ * längst (`ohneUeberschneidung`).
+ *
+ * gelöscht wird dabei nichts: der haken bleibt in der datenbank und in der
+ * tagesansicht sichtbar, er zählt nur nicht ein zweites mal. fällt die messung
+ * später weg, steht er wieder für sich.
+ */
+function istGedeckterHaken(e: Einheit, hatMessung: boolean): boolean {
+  return hatMessung && !e.von && (e.wert === null || e.wert === 0)
 }
 
 /**
@@ -97,6 +121,12 @@ export type Tageseinheit = {
   herkunft: TickQuelle
   /** ob diese durchfuehrung fuer den tagespunkt zaehlt */
   zaehlt: boolean
+  /**
+   * nur bei einem getippten haken: eine zählende messung desselben tages belegt
+   * dieselbe sitzung schon. er bleibt sichtbar und änderbar, wird aber nicht als
+   * zweite durchführung mitgezählt.
+   */
+  gedeckt?: boolean
   /** nur bei einer messung: der name der quelle, ein ort oder ein fokus */
   ort?: string
 }
@@ -105,6 +135,7 @@ export type Tageseinheit = {
 export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): Tageseinheit[] {
   if (f === 'gewicht') return []
 
+  const hatMessung = gemessen(z.aufenthalte, u, f, tag)
   const liste: Tageseinheit[] = einheitenAn(z, u, f, tag).map((e) => ({
     id: e.id,
     wert: e.wert,
@@ -113,6 +144,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
     erfasst: e.erfasst,
     herkunft: 'getippt' as const,
     zaehlt: true,
+    gedeckt: istGedeckterHaken(e, hatMessung),
   }))
 
   for (const a of sitzungen(z.aufenthalte, u, f, tag)) {
@@ -124,6 +156,7 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
       erfasst: a.ankunft,
       herkunft: 'gemessen',
       zaehlt: zaehlt(a),
+      gedeckt: false,
       ort: a.ort,
     })
   }
@@ -140,9 +173,12 @@ export function tageseinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): T
   })
 }
 
-/** wie oft die aktivität an diesem tag stattgefunden hat */
+/**
+ * wie oft die aktivität an diesem tag stattgefunden hat. ein getippter haken,
+ * den eine messung schon deckt, ist keine zweite durchführung.
+ */
 export function anzahlEinheiten(z: Zustand, u: UserId, f: FeldId, tag: string): number {
-  return tageseinheiten(z, u, f, tag).length
+  return tageseinheiten(z, u, f, tag).reduce((n, e) => n + (e.gedeckt ? 0 : 1), 0)
 }
 
 /**
@@ -157,7 +193,7 @@ export function tagesWert(z: Zustand, u: UserId, f: FeldId, tag: string): number
   if (f === 'gewicht') return 0
   const einheit = area(f).unit
   return tageseinheiten(z, u, f, tag)
-    .filter((e) => e.einheit === einheit)
+    .filter((e) => e.einheit === einheit && !e.gedeckt)
     .reduce((s, e) => s + (e.wert ?? 0), 0)
 }
 
@@ -545,5 +581,7 @@ export function hatTageswert(z: Zustand, u: UserId, f: FeldId, tag: string): boo
   // in der einheit des bereichs gefragt: eine gemessene lesestunde ist kein
   // seitenwert, dort steht weiter „ohne wert" — die minuten stehen rechts.
   const einheit = area(f).unit
-  return tageseinheiten(z, u, f, tag).some((e) => e.einheit === einheit && e.wert !== null)
+  return tageseinheiten(z, u, f, tag).some(
+    (e) => e.einheit === einheit && e.wert !== null && !e.gedeckt
+  )
 }
