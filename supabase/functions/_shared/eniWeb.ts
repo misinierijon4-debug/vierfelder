@@ -330,7 +330,7 @@ export function webLage(neu: WebQuelle[], frueher: FruehererSuchlauf[] = []): st
         REGEL_FREMD,
         'Belege aktuelle Aussagen mit Markdown-Links auf diese Treffer. Erfinde keine Quelle und keine Adresse; eine Adresse, die dir nicht wirklich vorliegt, wird beim Speichern ohnehin entfernt.',
         'Du hast nur diese Auszuege gelesen, keine vollstaendigen Seiten, und du kannst gerade nicht noch einmal suchen.',
-        'Schreibe keine eigene Quellenliste ans Ende. Die geprueften Quellen haengt die Anwendung selbst an; eine zweite Liste stuende nur doppelt da.',
+        'Schreibe keine eigene Quellenliste ans Ende. Die geprueften Quellen haengt die Anwendung selbst an; eine zweite Liste stuende nur doppelt da. Verwende insbesondere keine Ueberschrift "Quellen" und keine nummerierte Bibliografie.',
         '',
         'GEFUNDENE AUSZUEGE',
         auszugsliste(neu, MAX_WEB_QUELLEN * MAX_WEB_AUSZUG).text,
@@ -390,6 +390,39 @@ export function nurGepruefteLinks(
 }
 
 /**
+ * Entfernt eine Quellenliste, die das Modell trotz der ausdruecklichen Regel
+ * selbst ans Ende geschrieben hat. Die Erkennung verlangt beides: einen
+ * Quellenkopf mit Listenpunkten und mindestens einen Titel oder eine Adresse
+ * aus dem echten Suchlauf. So bleibt ein inhaltlicher Abschnitt ueber Arten
+ * von Quellen unangetastet.
+ */
+function ohneEigeneQuellenliste(text: string, quellen: WebQuelle[]): string {
+  if (!quellen.length) return text
+
+  const koepfe = [...text.matchAll(
+    /(?:^|\n)[ \t]*(?:#{1,6}[ \t]+)?(?:\*\*|__)?(?:quellen|sources)[ \t]*:?(?:\*\*|__)?[ \t]*(?=\n|$)/giu
+  )]
+  const kopf = koepfe.at(-1)
+  if (!kopf || kopf.index === undefined) return text
+
+  const anhang = text.slice(kopf.index + kopf[0].length)
+  const hatListe = /^[ \t]*(?:[-*•][ \t]+|\[\d+\][ \t]*|\d+[.)][ \t]+|https?:\/\/)/imu.test(anhang)
+  if (!hatListe) return text
+
+  const normalisiere = (wert: string) =>
+    wert.normalize('NFKC').toLocaleLowerCase('de-DE').replace(/\s+/g, ' ').trim()
+  const normalerAnhang = normalisiere(anhang)
+  const hatEchtenTreffer = quellen.some((quelle) => {
+    if (anhang.includes(quelle.url)) return true
+    const titel = normalisiere(quelle.titel)
+    const schluessel = titel.length > 32 ? titel.slice(0, 32) : titel
+    return schluessel.length >= 12 && normalerAnhang.includes(schluessel)
+  })
+
+  return hatEchtenTreffer ? text.slice(0, kopf.index).trimEnd() : text
+}
+
+/**
  * Die geprueften Quellen an die Antwort haengen.
  *
  * Zwei Dinge auf einmal: eine Adresse, die nicht wirklich gefunden wurde,
@@ -408,7 +441,8 @@ export function mitWebQuellen(
   neu: WebQuelle[],
   bekannt: WebQuelle[] = []
 ): { text: string; anhang: string } {
-  const geprueft = nurGepruefteLinks(antwort, [...neu, ...bekannt].map((q) => q.url))
+  const ohneDoppelteListe = ohneEigeneQuellenliste(antwort, neu)
+  const geprueft = nurGepruefteLinks(ohneDoppelteListe, [...neu, ...bekannt].map((q) => q.url))
   const fehlende = neu.filter((q) => !geprueft.verlinkt.has(q.url))
   if (!fehlende.length) return { text: geprueft.text, anhang: '' }
   const liste = fehlende

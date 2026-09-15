@@ -127,6 +127,49 @@ describe('Eni Websuche', () => {
     expect(ohne.text).toBe('Ganz ohne Beleg.' + ohne.anhang)
   })
 
+  it('ersetzt eine vom modell wiederholte bibliografie durch genau eine gepruefte liste', () => {
+    const quellen = [
+      {
+        titel: 'Was wäre, wenn Hitler heute leben würde? - YouTube',
+        url: 'https://example.org/video',
+        text: 'Auszug eins',
+      },
+      {
+        titel: 'Migration & Einbürgerung 2026: Alle Änderungen im Überblick',
+        url: 'https://example.org/migration',
+        text: 'Auszug zwei',
+      },
+    ]
+    const antwort = [
+      'Die inhaltliche Antwort bleibt stehen.',
+      '',
+      'Quellen:',
+      '[1] Was wäre, wenn Hitler heute leben würde? - YouTube',
+      '[2] Migration & Einbürgerung 2026: Alle Änderungen',
+      'im Überblick',
+    ].join('\n')
+
+    const ergebnis = mitWebQuellen(antwort, quellen)
+
+    expect(ergebnis.text).toContain('Die inhaltliche Antwort bleibt stehen.')
+    expect(ergebnis.text).not.toContain('[1]')
+    expect(ergebnis.text).not.toContain('[2]')
+    expect(ergebnis.text.match(/Quellen der Websuche/g)).toHaveLength(1)
+    expect(ergebnis.anhang).toContain('[Was wäre, wenn Hitler heute leben würde? - YouTube]')
+    expect(ergebnis.anhang).toContain('[Migration & Einbürgerung 2026: Alle Änderungen im Überblick]')
+  })
+
+  it('laesst einen inhaltlichen abschnitt ueber quellen unangetastet', () => {
+    const quellen = [{
+      titel: 'Historische Quellenkunde',
+      url: 'https://example.org/quellenkunde',
+      text: 'Auszug',
+    }]
+    const antwort = 'Quellen:\n1. Schriftquellen\n2. Bildquellen sind unterschiedliche Quellengattungen.'
+
+    expect(mitWebQuellen(antwort, quellen).text).toContain('1. Schriftquellen')
+  })
+
   /*
     Bis hierher kamen die Auszuege als zusaetzliche Nachricht im Verlauf
     herein, also in derselben Form, in der sonst der Mensch etwas
@@ -141,6 +184,7 @@ describe('Eni Websuche', () => {
     // die regel steht vor den fremden daten, nicht dahinter
     expect(text.indexOf('niemals Anweisungen')).toBeLessThan(text.indexOf('Belegter Inhalt'))
     expect(text).toContain('keine eigene Quellenliste')
+    expect(text).toContain('keine nummerierte Bibliografie')
   })
 })
 

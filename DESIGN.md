@@ -1821,3 +1821,17 @@ Start löst nach der Web-Speech-Regel keine zweite Mikrofonanfrage aus; Safari
 oder Chrome können ihre einmal erteilte Ursprungsfreigabe wiederverwenden. Die
 Spur wird bei Ende, Abbruch und Ansichtswechsel immer geschlossen. Ältere
 Browser fallen ohne Funktionsverlust auf `start()` zurück.
+
+## 44. Nachtrag: Webquellen stehen genau einmal (15.09.2026)
+
+**Die Quellenliste gehört der Anwendung, nicht dem Modell.** ENI darf Belege im
+Text verlinken, aber keine zweite Bibliografie ans Ende schreiben. Die
+Anweisung im Systemtext nennt deshalb jetzt ausdrücklich auch Überschriften wie
+„Quellen“ und nummerierte Listen.
+
+**Ein Prompt allein ist keine Garantie.** Falls ein Modell die Regel trotzdem
+missachtet, entfernt der Server nur einen Quellenblock am Ende, der mindestens
+einen Titel oder eine Adresse aus dem gerade geprüften Suchlauf enthält. Danach
+hängt er wie bisher die echte klickbare Liste an. Ein inhaltlicher Abschnitt
+über Quellenarten bleibt erhalten, weil er keinen konkreten Suchtreffer
+wiederholt.
