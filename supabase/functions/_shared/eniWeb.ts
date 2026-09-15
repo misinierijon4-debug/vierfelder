@@ -126,6 +126,13 @@ export function tavilyQuellen(ergebnisse: unknown): WebQuelle[] {
 }
 
 /**
+ * Woran eine Anrede zu erkennen ist: jemand spricht ENI an, statt ueber Eni
+ * zu reden. Ohne so ein Wort im Satz bleibt "Eni" stehen — "Aktienkurs Eni
+ * heute" meint den Konzern und soll auch danach gesucht werden.
+ */
+const ANREDE_WORT = /\b(?:du|dir|dich|dein\w*|bitte|kannst|koenntest|könntest|hey|hallo|hi|moin|servus)\b/i
+
+/**
  * Bereinigt eine Suchanfrage vor dem Versenden an Suchmaschinen.
  *
  * Suchmaschinen kennen unseren Assistenten nicht: fuer sie ist "Eni" der
@@ -134,14 +141,33 @@ export function tavilyQuellen(ergebnisse: unknown): WebQuelle[] {
  * zu dem, wonach eigentlich gesucht wird.
  */
 export function bereinigeSuchfrage(frage: string): string {
-  let text = frage.trim()
-  // Anrede am Anfang: "Eni, ...", "Hey Eni, ...", "Hallo Eni: ..."
-  text = text.replace(/^(?:hey|hallo|hi|moin|servus)?\s*\beni\b[\s,:;—–-]*/i, '')
-  // Anrede am Ende: "... Eni", "... bitte Eni"
-  text = text.replace(/[\s,:;—–-]*(?:bitte\s+)?\beni\b[.!?]*$/i, '')
-  // Isoliertes "Eni" mitten im Satz, z. B. "kannst du Eni mal..."
-  text = text.replace(/(^|[\s,;])\beni\b([\s,;!?.]|$)/gi, '$1$2')
-  return text.replace(/\s+/g, ' ').trim() || frage.trim()
+  const roh = frage.trim()
+  const angeredet = ANREDE_WORT.test(roh)
+  let text = roh
+
+  // Anrede am Anfang: "Eni, ...", "Hey Eni, ...", "Hallo Eni: ...".
+  // Ohne Gruss, ohne Satzzeichen und ohne Anrede im Rest ist das erste Wort
+  // dagegen das Thema ("Eni Quartalszahlen") und bleibt stehen.
+  text = text.replace(
+    /^(?:(hey|hallo|hi|moin|servus)\s+)?\beni\b([\s,:;—–-]*)/i,
+    (treffer, gruss: string | undefined, trenner: string) =>
+      gruss || /[,:;—–-]/.test(trenner) || angeredet ? '' : treffer,
+  )
+
+  // Anrede am Ende: "..., Eni", "... bitte Eni". Auch hier zaehlt nur, was
+  // wirklich nach Anrede aussieht; "Aktienkurs Eni" ist eine Suchfrage.
+  text = text.replace(
+    /([\s,:;—–-]*)(bitte\s+)?\beni\b([.!?]*)$/i,
+    (treffer, trenner: string, bitte: string | undefined) =>
+      /[,:;—–-]/.test(trenner) || bitte || angeredet ? '' : treffer,
+  )
+
+  // Mitten im Satz nur direkt hinter einer Anrede, z. B. "kannst du Eni mal
+  // nachschauen" — und in Kommas eingeschlossen, "schau, Eni, mal nach".
+  text = text.replace(/\b(du|dir|dich|bitte|mal)\s+eni\b(?=[\s,;!?.]|$)/gi, '$1')
+  text = text.replace(/,\s*eni\s*,/gi, ', ')
+
+  return text.replace(/\s+/g, ' ').trim() || roh
 }
 
 export async function sucheWeb(

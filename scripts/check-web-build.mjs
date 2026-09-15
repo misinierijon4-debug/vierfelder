@@ -166,11 +166,7 @@ for (const name of jsDateien) {
 // Gesamtsumme um ein KiB, und die strengere initiale Grenze bleibt stehen, wo
 // sie stand. Beide bleiben verbindlich; keine Budgetabschaltung.
 const INITIAL_GZIP_BUDGET = 232 * 1024
-// ENI-Design & Motion-Polishing: feiner Chevron-Indikator, haptische
-// Stempel-Transitionen, thinking-Puls und verbesserte Anhang-Animationen liegen
-// restlos im Lazy-Chunk. Der initiale Startpfad bleibt unveraendert; die
-// Gesamtsumme erhaelt dafuer 1 KiB kontrollierten Spielraum (266 KiB).
-const GESAMT_GZIP_BUDGET = 266 * 1024
+const GESAMT_GZIP_BUDGET = 265 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`

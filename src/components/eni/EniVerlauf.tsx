@@ -71,9 +71,11 @@ export function EniVerlauf({
     >
       {sichtbar && (
         <motion.div
+          // Kein `exit`: das Blatt blendet als <dialog> per CSS aus, und ohne
+          // ein umschliessendes AnimatePresence liefe ein exit ohnehin nie.
+          // useDialogNachlauf haelt den Inhalt so lange stehen.
           initial={reduziert ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.98 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="vollbild-safe-x flex h-full flex-col pb-[calc(var(--app-safe-bottom)+1rem)] pt-[calc(var(--app-safe-top)+1rem)]"
         >

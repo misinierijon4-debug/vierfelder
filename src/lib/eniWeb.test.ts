@@ -205,5 +205,17 @@ describe('Eni Rueckblick auf eigene Suchlaeufe', () => {
     expect(bereinigeSuchfrage('Hey Eni: was kostet Kreatin?')).toBe('was kostet Kreatin?')
     expect(bereinigeSuchfrage('kannst du Eni mal nachschauen')).toBe('kannst du mal nachschauen')
     expect(bereinigeSuchfrage('Eni')).toBe('Eni')
+    expect(bereinigeSuchfrage('schau, Eni, mal nach dem Preis')).toBe('schau, mal nach dem Preis')
+  })
+
+  it('laesst Fragen zum Konzern Eni S.p.A. unangetastet', () => {
+    // Ohne Anrede im Satz ist "Eni" das Thema und nicht der Angesprochene.
+    // Wer es hier streicht, sucht nach "Aktienkurs heute" und findet nichts.
+    expect(bereinigeSuchfrage('Aktienkurs Eni heute')).toBe('Aktienkurs Eni heute')
+    expect(bereinigeSuchfrage('Wer ist Eni S.p.A.?')).toBe('Wer ist Eni S.p.A.?')
+    expect(bereinigeSuchfrage('Aktienkurs Eni')).toBe('Aktienkurs Eni')
+    expect(bereinigeSuchfrage('Eni Quartalszahlen 2026')).toBe('Eni Quartalszahlen 2026')
+    // Enigma, Denim und Co. waren nie gemeint.
+    expect(bereinigeSuchfrage('Was macht Enigma?')).toBe('Was macht Enigma?')
   })
 })
