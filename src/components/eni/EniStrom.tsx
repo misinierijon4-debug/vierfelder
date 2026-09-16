@@ -246,61 +246,185 @@ function EniWort({
   )
 }
 
+const UEBERSCHRIFT = /^(#{1,6})\s+(.+)$/
+const TRENNER = /^(?:-{3,}|\*{3,}|_{3,})$/
+const AUFZAEHLUNG = /^[\-•*]\s+/
+const NUMMER = /^(\d{1,3})[.)]\s+/
+
+type Block =
+  | { art: 'ueberschrift'; stufe: number; text: string }
+  | { art: 'trenner' }
+  | { art: 'liste'; punkte: string[] }
+  | { art: 'nummern'; beginn: number; punkte: string[] }
+  | { art: 'absatz'; text: string }
+
+/** hat der text ueberhaupt struktur, oder ist er ein satz? */
+function hatStruktur(text: string): boolean {
+  return text.split('\n').some((roh) => {
+    const zeile = roh.trim()
+    return UEBERSCHRIFT.test(zeile) || TRENNER.test(zeile) || AUFZAEHLUNG.test(zeile) || NUMMER.test(zeile)
+  })
+}
+
 /**
- * strukturiert antworten sinnvoll in absaetze, aufzaehlungen und fettdruck.
- * frische antworten durchlaufen dieselbe struktur und typografie wie
- * gespeicherte chats, wobei woerter fuer das aufklappen staffelbar sind.
+ * Antworttext in bloecke zerlegen.
+ *
+ * Absaetze trennen leerzeilen, innerhalb eines absatzes trennt die zeilenart:
+ * eine ueberschrift beendet eine liste, eine liste beendet einen absatz. Die
+ * modelle setzen selten leerzeilen zwischen ueberschrift und liste, und ohne
+ * diese trennung stuende die ueberschrift als erster listenpunkt da.
+ */
+function teileInBloecke(text: string): Block[] {
+  const bloecke: Block[] = []
+  for (const absatz of text.split(/\n\s*\n/)) {
+    let art: 'liste' | 'nummern' | 'absatz' | null = null
+    let sammler: string[] = []
+    let beginn = 1
+
+    const schliesse = () => {
+      if (art === 'liste') bloecke.push({ art: 'liste', punkte: sammler })
+      else if (art === 'nummern') bloecke.push({ art: 'nummern', beginn, punkte: sammler })
+      else if (art === 'absatz') bloecke.push({ art: 'absatz', text: sammler.join('\n') })
+      art = null
+      sammler = []
+    }
+
+    for (const roh of absatz.split('\n')) {
+      const zeile = roh.trim()
+      if (!zeile) continue
+
+      const ueberschrift = UEBERSCHRIFT.exec(zeile)
+      if (ueberschrift) {
+        schliesse()
+        bloecke.push({ art: 'ueberschrift', stufe: ueberschrift[1]!.length, text: ueberschrift[2]!.trim() })
+        continue
+      }
+      if (TRENNER.test(zeile)) {
+        schliesse()
+        bloecke.push({ art: 'trenner' })
+        continue
+      }
+      const nummer = NUMMER.exec(zeile)
+      if (nummer) {
+        if (art !== 'nummern') {
+          schliesse()
+          art = 'nummern'
+          beginn = Number(nummer[1])
+        }
+        sammler.push(zeile.slice(nummer[0]!.length))
+        continue
+      }
+      if (AUFZAEHLUNG.test(zeile)) {
+        if (art !== 'liste') {
+          schliesse()
+          art = 'liste'
+        }
+        sammler.push(zeile.replace(AUFZAEHLUNG, ''))
+        continue
+      }
+      if (art !== 'absatz') {
+        schliesse()
+        art = 'absatz'
+      }
+      sammler.push(roh)
+    }
+    schliesse()
+  }
+  return bloecke
+}
+
+/**
+ * strukturiert antworten sinnvoll in ueberschriften, absaetze, aufzaehlungen
+ * und fettdruck. frische antworten durchlaufen dieselbe struktur und
+ * typografie wie gespeicherte chats, wobei woerter fuer das aufklappen
+ * staffelbar sind.
+ *
+ * Nummerierte listen bekommen ihre zahlen: vorher fiel `1.` weg und jedes
+ * element bekam denselben punkt. Bei einem trainingsplan oder einer anleitung
+ * ist die reihenfolge aber die halbe aussage.
  */
 function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text: string; frisch?: boolean; linksAktiv?: boolean }) {
   const absaetze = text.split(/\n\s*\n/).map((a) => a.trim()).filter(Boolean)
-  const istKurz = absaetze.length <= 1 && text.length < 180
+  const istKurz = absaetze.length <= 1 && text.length < 180 && !hatStruktur(text)
 
   const woerterZahl = (text.match(/[^\s]+/g) || []).length
   const schritt = Math.min(WORT_VERSATZ_MS, AUSKLAPP_MAX_MS / Math.max(woerterZahl, 1))
   const counter = { current: 0 }
+  const teile = (roh: string) => formatiereTextTeile(roh, counter, schritt, frisch, linksAktiv)
 
   if (istKurz) {
     return (
       <p className="display whitespace-pre-wrap text-pretty text-[16px] sm:text-[17px] font-semibold leading-[1.35] text-kreide">
-        {formatiereTextTeile(text, counter, schritt, frisch, linksAktiv)}
+        {teile(text)}
       </p>
     )
   }
 
+  const bloecke = teileInBloecke(text)
+  /** die erste zeile eines laengeren textes steht akzentuierter */
+  let ersterAbsatz = true
+
   return (
     <div className="space-y-3">
-      {absaetze.map((absatz, idx) => {
-        const zeilen = absatz.split('\n').map((z) => z.trim()).filter(Boolean)
-        const istListe = zeilen.every((z) => /^[\-•*]\s+|^\d+\.\s+/.test(z))
+      {bloecke.map((block, idx) => {
+        if (block.art === 'trenner') {
+          return <hr key={idx} className="my-4 border-0 border-t border-linie" />
+        }
 
-        if (istListe) {
+        if (block.art === 'ueberschrift') {
+          const gross = block.stufe <= 2
+          const inhalt = teile(block.text)
+          return gross ? (
+            <h3 key={idx} className="display mt-4 text-pretty text-[15px] sm:text-[16px] font-bold leading-[1.3] text-kreide first:mt-0">
+              {inhalt}
+            </h3>
+          ) : (
+            <h4 key={idx} className="display mt-3 text-pretty text-[14px] sm:text-[15px] font-bold leading-[1.3] text-kreide first:mt-0">
+              {inhalt}
+            </h4>
+          )
+        }
+
+        if (block.art === 'nummern') {
+          return (
+            <ol key={idx} className="my-2 space-y-1.5 pl-1">
+              {block.punkte.map((punkt, lIdx) => (
+                <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
+                  <span className="tnum shrink-0 text-kreide-52" aria-hidden="true">
+                    {block.beginn + lIdx}.
+                  </span>
+                  <span>{teile(punkt)}</span>
+                </li>
+              ))}
+            </ol>
+          )
+        }
+
+        if (block.art === 'liste') {
           return (
             <ul key={idx} className="my-2 space-y-1.5 pl-1">
-              {zeilen.map((zeile, lIdx) => {
-                const bereinigt = zeile.replace(/^[\-•*]\s+|^\d+\.\s+/, '')
-                return (
-                  <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
-                    <span className="mt-2 block size-1 shrink-0 rounded-full bg-kreide-52" aria-hidden="true" />
-                    <span>{formatiereTextTeile(bereinigt, counter, schritt, frisch, linksAktiv)}</span>
-                  </li>
-                )
-              })}
+              {block.punkte.map((punkt, lIdx) => (
+                <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
+                  <span className="mt-2 block size-1 shrink-0 rounded-full bg-kreide-52" aria-hidden="true" />
+                  <span>{teile(punkt)}</span>
+                </li>
+              ))}
             </ul>
           )
         }
 
-        // erste zeile eines laengeren textes kann akzentuierter stehen
-        if (idx === 0) {
+        if (ersterAbsatz) {
+          ersterAbsatz = false
           return (
             <p key={idx} className="display whitespace-pre-wrap text-pretty text-[15px] sm:text-[16px] font-semibold leading-[1.4] text-kreide">
-              {formatiereTextTeile(absatz, counter, schritt, frisch, linksAktiv)}
+              {teile(block.text)}
             </p>
           )
         }
 
         return (
           <p key={idx} className="font-body whitespace-pre-wrap text-pretty text-[14px] sm:text-[15px] leading-relaxed text-kreide">
-            {formatiereTextTeile(absatz, counter, schritt, frisch, linksAktiv)}
+            {teile(block.text)}
           </p>
         )
       })}

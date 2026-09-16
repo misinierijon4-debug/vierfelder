@@ -205,3 +205,67 @@ describe('quellenlinks aus der websuche', () => {
     expect(screen.queryByRole('link')).toBeNull()
   })
 })
+
+describe('die struktur einer antwort', () => {
+  /** der verlauf ist selbst eine liste; die antwort steht in ihrem eintrag */
+  const zeichneAntwort = (text: string) => {
+    const { container } = render(
+      <EniStrom
+        zeilen={[{ id: 'a1', rolle: 'eni', text, erstellt: '2026-09-11T18:00:05.000Z' }]}
+        me="erijon"
+        prueft={false}
+        onAuftakt={vi.fn()}
+      />
+    )
+    return container.querySelector('li')!
+  }
+
+  it('stellt eine ueberschrift als ueberschrift dar, statt die rauten zu zeigen', () => {
+    zeichneAntwort('## Trainingsplan\n\nDrei einheiten die woche.')
+    expect(screen.getByRole('heading', { name: 'Trainingsplan' })).toBeInTheDocument()
+    expect(screen.queryByText(/##/)).toBeNull()
+  })
+
+  it('macht aus einer trennlinie eine linie, keine drei striche', () => {
+    const nachricht = zeichneAntwort('Erster teil.\n\n---\n\nZweiter teil.')
+    expect(nachricht.querySelector('hr')).not.toBeNull()
+    expect(screen.queryByText('---')).toBeNull()
+  })
+
+  it('behaelt die reihenfolge einer nummerierten liste', () => {
+    // vorher fiel die zahl weg und jeder punkt bekam denselben aufzaehlungspunkt.
+    // bei einer anleitung ist die reihenfolge die halbe aussage.
+    const nachricht = zeichneAntwort('1. aufwaermen\n2. grunduebung\n3. auslaufen')
+    const liste = nachricht.querySelector('ol')
+    expect(liste).not.toBeNull()
+    expect(liste!.querySelectorAll('li')).toHaveLength(3)
+    expect(liste!.textContent).toContain('1.')
+    expect(liste!.textContent).toContain('3.')
+    expect(screen.getByText('grunduebung')).toBeInTheDocument()
+  })
+
+  it('zaehlt weiter, wo das modell zu zaehlen anfaengt', () => {
+    const nachricht = zeichneAntwort('3. dritter schritt\n4. vierter schritt')
+    const punkte = [...nachricht.querySelectorAll('ol li')].map((li) => li.textContent)
+    expect(punkte).toEqual(['3.dritter schritt', '4.vierter schritt'])
+  })
+
+  it('laesst eine aufzaehlung ohne zahlen eine aufzaehlung bleiben', () => {
+    const nachricht = zeichneAntwort('- schlaf\n- essen\n- ruhe')
+    expect(nachricht.querySelector('ol')).toBeNull()
+    expect(nachricht.querySelectorAll('ul li')).toHaveLength(3)
+    expect(screen.queryByText(/^- /)).toBeNull()
+  })
+
+  it('trennt ueberschrift und liste auch ohne leerzeile dazwischen', () => {
+    const nachricht = zeichneAntwort('## Woche 1\n- montag gym\n- mittwoch boxen')
+    expect(screen.getByRole('heading', { name: 'Woche 1' })).toBeInTheDocument()
+    expect(nachricht.querySelectorAll('ul li')).toHaveLength(2)
+  })
+
+  it('laesst einen kurzen satz ein kurzer satz bleiben', () => {
+    const nachricht = zeichneAntwort('Das reicht nicht.')
+    expect(nachricht.querySelectorAll('ul, ol, hr')).toHaveLength(0)
+    expect(screen.getByText('Das reicht nicht.')).toBeInTheDocument()
+  })
+})
