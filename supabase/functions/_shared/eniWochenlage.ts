@@ -257,7 +257,10 @@ function fertigKategorie(kategorie: WochenKategorie, punktTage: Set<string>): Wo
 
 function formatZahl(wert: number | null, nachkommastellen = 0): string {
   if (wert === null || !Number.isFinite(wert)) return 'unbekannt'
-  return nachkommastellen > 0 ? wert.toFixed(nachkommastellen) : String(Math.round(wert))
+  // komma, nicht punkt: der bericht ist deutsch, und ENI schreibt ab, was dasteht
+  return nachkommastellen > 0
+    ? wert.toFixed(nachkommastellen).replace('.', ',')
+    : String(Math.round(wert))
 }
 
 function formatDatum(tag: string): string {

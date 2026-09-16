@@ -62,6 +62,14 @@ function gross(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
+/**
+ * Deutsche Zahl mit Komma. `toFixed` liefert einen Punkt, und ENI reicht ihn
+ * ungeprueft ins deutsche Textbild durch: "74.6 kg", "5.7 Stunden".
+ */
+function komma(wert: number, stellen: number): string {
+  return wert.toFixed(stellen).replace('.', ',')
+}
+
 function spalte(text: string, breite: number): string {
   return text.length >= breite ? `${text} ` : text.padEnd(breite, ' ')
 }
@@ -170,7 +178,7 @@ export async function baueLage(
       const werte = (gewicht.data ?? [])
         .filter((zeile) => wer(zeile.user_id) === person)
         .slice(0, 5)
-        .map((zeile) => `${kurz(String(zeile.tag))} ${Number(zeile.kg).toFixed(1)}`)
+        .map((zeile) => `${kurz(String(zeile.tag))} ${komma(Number(zeile.kg), 1)}`)
       zeilen.push(`${spalte(gross(person), 8)}${werte.length ? werte.join('  ') : 'nichts eingetragen'}`)
     }
   }
@@ -190,7 +198,7 @@ export async function baueLage(
         .filter((zeile) => wer(zeile.user_id) === person)
         .slice(0, 5)
         .map((zeile) => {
-          const stunden = (Number(zeile.schlaf_minuten) / 60).toFixed(1)
+          const stunden = komma(Number(zeile.schlaf_minuten) / 60, 1)
           return `${kurz(String(zeile.nacht))} ${stunden}h/${String(zeile.nachtwert)}`
         })
       zeilen.push(`${spalte(gross(person), 8)}${naechte.length ? naechte.join('  ') : 'nichts importiert'}`)

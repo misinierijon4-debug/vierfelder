@@ -1,4 +1,8 @@
 import { streamZeilen } from '../../supabase/functions/_shared/eniStream'
+import {
+  WOCHENBERICHT_VORLAGE,
+  istWochenberichtVorlage,
+} from '../../supabase/functions/_shared/eniVorlagen'
 import { supabase } from './supabase'
 import { eniAntwort } from './eni'
 import type { AnhangVorlage } from './eniAnhang'
@@ -401,9 +405,9 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
       const bisher = await speicher.nachrichten(chatId)
       const offene = bisher.find(
-        (z) => z.rolle === 'mensch' && z.text === 'Willst du, dass Eni deine Woche zusammenfasst?'
+        (z) => z.rolle === 'mensch' && istWochenberichtVorlage(z.text)
       )
-      const mensch = offene ?? (await speicher.schreibe(chatId, 'mensch', 'Willst du, dass Eni deine Woche zusammenfasst?'))
+      const mensch = offene ?? (await speicher.schreibe(chatId, 'mensch', WOCHENBERICHT_VORLAGE))
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen', mensch)
       const urteil = 'Erfolge\nSolide Woche. Du hast deine Punkte im Blick behalten.\n\nAktivitäten\nEinheiten und Training wurden erfasst.\n\nSchlaf\nSchlafdaten liegen für die Woche vor.\n\nVergleich\nDer Zweikampf bleibt spannend.\n\nNächste Woche\nBleib bei deinen festen Gewohnheiten. Leg die Einheiten früh fest.'
       const eni = await speicher.schreibe(chatId, 'eni', urteil)

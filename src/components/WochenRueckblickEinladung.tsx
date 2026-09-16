@@ -7,6 +7,7 @@ import {
 } from '../lib/wochenEinladung'
 import type { WochenEinladung } from '../lib/wochenEinladung'
 import { wochenZeitraum } from '../lib/kalender'
+import { WOCHENBERICHT_VORLAGE } from '../../supabase/functions/_shared/eniVorlagen'
 
 export type WochenRueckblickEinladungProps = {
   /** Die Einladung gehoert immer zum aktuell angemeldeten Auth-Konto. */
@@ -141,7 +142,7 @@ export function WochenRueckblickEinladung({
       className="mt-3 border-y border-linie bg-flaeche/45 px-3 py-3 text-kreide"
     >
       <p className="text-[13px] font-semibold leading-5 text-pretty">
-        Willst du, dass Eni deine Woche zusammenfasst?
+        {WOCHENBERICHT_VORLAGE}
       </p>
       <p className="mt-1 text-[11px] text-kreide-60">
         {bereich(naechste.wochenbeginn)}

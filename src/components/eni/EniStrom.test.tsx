@@ -269,3 +269,27 @@ describe('die struktur einer antwort', () => {
     expect(screen.getByText('Das reicht nicht.')).toBeInTheDocument()
   })
 })
+
+describe('der wartetext am takt', () => {
+  it('sagt ohne genaueren stand, dass ENI nachdenkt', () => {
+    render(<EniStrom zeilen={[]} me="erijon" prueft={true} onAuftakt={vi.fn()} />)
+    expect(screen.getByRole('status')).toHaveTextContent('ENI denkt nach …')
+  })
+
+  it('nimmt den genaueren stand, statt einen zweiten satz danebenzustellen', () => {
+    // vorher standen drei texte gleichzeitig: "ENI prüft", "denkt nach …" und
+    // "Eni sucht im Web …" ueber dem eingabefeld.
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={true}
+        wartetext="ENI sucht im Web …"
+        onAuftakt={vi.fn()}
+      />
+    )
+    const stand = screen.getByRole('status')
+    expect(stand).toHaveTextContent('ENI sucht im Web …')
+    expect(stand).not.toHaveTextContent('denkt nach')
+  })
+})

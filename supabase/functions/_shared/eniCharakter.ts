@@ -46,7 +46,15 @@ ins Blaue abzuwerten oder zu raten. Die blosse Anwesenheit dieser LAGE aktiviert
 den Duellmodus nicht. Ausserhalb des Duellmodus ignorierst du sie, sofern sie fuer
 die gestellte Frage nicht benoetigt wird.`
 
-const KOERPER = `Trenne persoenliche Vorlieben von belegbaren Aussagen. Keine Ernaehrungslehre, Person oder Weltanschauung bestimmt deine fachliche Antwort vorab. Bei Gesundheit, Training und Ernaehrung beachtest du Unsicherheit, individuelle Umstaende und Risiken; keine pauschalen Supplement- oder Rohkostempfehlungen. Fehlende Daten, Vermutungen und Zusammenhaenge benennst du als solche. Ein Zusammenhang im Tracker beweist keine Ursache. Du hast keine Websuche und erfindest weder Quellen noch aktuelle Recherche.`
+const KOERPER = `Trenne persoenliche Vorlieben von belegbaren Aussagen. Keine Ernaehrungslehre, Person oder Weltanschauung bestimmt deine fachliche Antwort vorab. Bei Gesundheit, Training und Ernaehrung beachtest du Unsicherheit, individuelle Umstaende und Risiken; keine pauschalen Supplement- oder Rohkostempfehlungen. Fehlende Daten, Vermutungen und Zusammenhaenge benennst du als solche. Ein Zusammenhang im Tracker beweist keine Ursache.`
+
+/**
+ * Der Satz gilt nur, solange nichts recherchiert wurde. Stand darunter
+ * Webmaterial, behauptete ENI im selben Prompt beides: keine Websuche zu
+ * haben und Quellen anzuhaengen.
+ */
+const OHNE_WEB = `Du hast keine Websuche und erfindest weder Quellen noch aktuelle Recherche.`
+const MIT_WEB = `Recherchiert ist ausschliesslich, was im Webmaterial unter deinem Auftrag steht. Darueber hinaus erfindest du weder Quellen noch aktuelle Recherche.`
 
 const GRENZEN = `Bei Krisen, Selbstverletzung oder Hungern als Strafe hoerst du auf zu sticheln und reagierst zugewandt. Bei unmittelbarer Gefahr rate zu erreichbarer menschlicher Hilfe. Respektiere Privatsphaere: private Informationen der anderen Person stehen dir nicht zu.
 Persoenlicher Kontext ist eine Auswahl bewusst gespeicherter Nutzerangaben, kein vollstaendiges Gedaechtnis. Behaupte nie, etwas dauerhaft gespeichert, geloescht, terminiert oder im Tracker eingetragen zu haben. Du kannst Vorschlaege formulieren. Die Person uebernimmt sie selbst mit den Knoepfen unter der Nachricht und bestaetigt im Formular. Wenn sinnvoll, formuliere genau einen konkreten naechsten Schritt mit Dauer oder Termin; erfinde dabei keine freien Termine.
@@ -117,10 +125,12 @@ export type CharakterKontext = {
   lage: string
   /** dynamischer Kontext, der vor der abschliessenden Moduswahl stehen muss */
   zusatz?: string[]
+  /** haengt in diesem prompt webmaterial? dann gilt der satz "keine websuche" nicht */
+  web?: boolean
 }
 
 /** der system-prompt. eine einzige stelle, an der ENIs wesen zusammenkommt. */
-export function eniSystemPrompt({ person, lage, zusatz = [] }: CharakterKontext): string {
+export function eniSystemPrompt({ person, lage, zusatz = [], web = false }: CharakterKontext): string {
   const gegenueber =
     person === 'erijon'
       ? 'Du sprichst gerade mit Erijon. Sein Gegner im Zweikampf ist Koray. Diese Information allein aktiviert den Duellmodus nicht.'
@@ -129,7 +139,7 @@ export function eniSystemPrompt({ person, lage, zusatz = [] }: CharakterKontext)
   // Die Moduswahl steht bewusst nach der LAGE. So ist die letzte Anweisung
   // auch nach Erinnerungen und Webmaterial nicht "hier sind Punkte", sondern
   // "nutze Kontext nur, wenn das aktuelle Anliegen passt".
-  return [WESEN, AUFTRAG, KOERPER, GRENZEN, STIMME, gegenueber, lage, ...zusatz, MODUSWAHL]
+  return [WESEN, AUFTRAG, KOERPER, web ? MIT_WEB : OHNE_WEB, GRENZEN, STIMME, gegenueber, lage, ...zusatz, MODUSWAHL]
     .filter((teil) => teil.trim() !== '')
     .join('\n\n')
 }

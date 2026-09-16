@@ -121,7 +121,7 @@ describe('ENI als eigene oberflaeche', () => {
     await laufeAn('ich gehe morgen statt heute ins gym')
 
     expect(screen.getByText('ich gehe morgen statt heute ins gym')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('ENI prüft')
+    expect(screen.getByRole('status')).toHaveTextContent('ENI denkt nach')
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
 

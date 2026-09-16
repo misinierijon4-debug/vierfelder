@@ -71,9 +71,9 @@ const STANDARD_GEBER = (
  * mehr im systemtext sind fünf auszüge, die erst gelesen werden wollen.
  */
 const lageText = (schritt: Lage['schritt'], anzahl: number) => {
-  if (schritt === 'sucht') return 'Eni sucht im Web …'
+  if (schritt === 'sucht') return 'ENI sucht im Web …'
   if (schritt === 'gefunden') return `${anzahl} ${anzahl === 1 ? 'Quelle' : 'Quellen'} gefunden`
-  return anzahl > 0 ? 'Eni liest und denkt nach …' : 'Eni denkt nach …'
+  return anzahl > 0 ? 'ENI liest und denkt nach …' : 'ENI denkt nach …'
 }
 
 export function EniApp({
@@ -1018,6 +1018,7 @@ export function EniApp({
             feldBelegt={feldBelegt}
             aktionenGesperrt={prueft}
             duellStand={duellStand}
+            wartetext={lage ? lageText(lage.schritt, lage.quellen.length) : undefined}
           />
           {hinweis && (
             <p role="status" className="pt-4 text-[12px] leading-relaxed text-kreide-52">
@@ -1070,16 +1071,17 @@ export function EniApp({
               </span>
             </div>
           )}
-          {prueft && !teilAntwort && lage && (
-            <div role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">
-              <p>{lageText(lage.schritt, lage.quellen.length)}</p>
-              {lage.quellen.length > 0 && (
-                <ul className="mt-1 space-y-0.5">
-                  {lage.quellen.map((quelle) => (
-                    <li key={quelle.url} className="truncate">· {quelle.titel}</li>
-                  ))}
-                </ul>
-              )}
+          {/*
+            Der satz dazu steht am takt im verlauf, nicht noch einmal hier.
+            Was diese stelle allein hat, sind die gefundenen quellen.
+          */}
+          {prueft && !teilAntwort && lage && lage.quellen.length > 0 && (
+            <div aria-hidden="true" className="pb-2 text-xs text-kreide-60">
+              <ul className="space-y-0.5">
+                {lage.quellen.map((quelle) => (
+                  <li key={quelle.url} className="truncate">· {quelle.titel}</li>
+                ))}
+              </ul>
             </div>
           )}
           {anhangStatus && <p role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">{anhangStatus}</p>}

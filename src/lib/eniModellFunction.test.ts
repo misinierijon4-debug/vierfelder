@@ -566,9 +566,10 @@ describe('ENIs modellverbindung', () => {
     // zwei gym-einheiten und eine lernen-einheit diese woche, koray eine boxen
     expect(system).toMatch(/gym\s+2\s+0/)
     expect(system).toMatch(/boxen\s+0\s+1/)
-    expect(system).toContain('81.4')
+    // deutsche zahlen mit komma: ENI reicht durch, was hier steht
+    expect(system).toContain('81,4')
     // 412 minuten sind 6,9 stunden. faellt der schlaf still weg, faellt das hier auf
-    expect(system).toContain('6.9h/71')
+    expect(system).toContain('6,9h/71')
     expect(gesehen[0]!.nachrichten).toEqual([{ rolle: 'user', text: 'wie stehe ich' }])
   })
 
@@ -1373,5 +1374,38 @@ describe('ENIs gedaechtnis fuer die eigenen quellen', () => {
     expect(res.status).toBe(200)
     expect(String(tabellen.eni_nachrichten.at(-1)!.text)).not.toContain('https://erfunden.example')
     expect(tabellen.eni_quellen ?? []).toHaveLength(0)
+  })
+
+  it('nimmt eine wochenvorlage im alten wortlaut an, statt eine zweite anzulegen', async () => {
+    // der name steht jetzt in versalien. eine zeile aus einem aelteren chat
+    // traegt noch die alte schreibweise; wird sie nicht erkannt, stehen zwei
+    // vorlagen im selben chat.
+    const tische = grunddaten()
+    tische.eni_chats = [{ id: 'chat-1', user_id: ICH, wochenbeginn: '2026-09-07' }]
+    tische.eni_wochen_einladungen = [
+      { user_id: ICH, wochenbeginn: '2026-09-07', faellig_am: '2026-09-10T06:00:00Z', geschlossen_am: null, erstellt: '2026-09-07T06:00:00Z' },
+    ]
+    tische.eni_nachrichten = [{
+      id: 'alt-1',
+      chat_id: 'chat-1',
+      user_id: ICH,
+      rolle: 'mensch',
+      text: 'Willst du, dass Eni deine Woche zusammenfasst?',
+      erstellt: '2026-09-10T06:00:00Z',
+    }]
+    const { abhaengigkeiten, tabellen } = deps({
+      tabellen: tische,
+      modell: async () => 'Deine Woche stand.',
+    })
+
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', wochenbeginn: '2026-09-07' }),
+      abhaengigkeiten
+    )
+
+    expect(res.status).toBe(200)
+    const vorlagen = tabellen.eni_nachrichten.filter((zeile) => zeile.rolle === 'mensch')
+    expect(vorlagen).toHaveLength(1)
+    expect((await res.json()).mensch.id).toBe('alt-1')
   })
 })

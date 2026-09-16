@@ -25,6 +25,7 @@ import {
 } from './eniAnbieter.ts'
 import { eniSystemPrompt } from './eniCharakter.ts'
 import { baueLage } from './eniLage.ts'
+import { WOCHENBERICHT_VORLAGE, istWochenberichtVorlage } from './eniVorlagen.ts'
 import {
   baueWochenlage,
   istWochenMontag,
@@ -103,8 +104,7 @@ export const ANHANG_BUCKET = 'eni-anhaenge'
 /** `Error.name`, mit dem der Modellaufruf eine Ablehnung meldet */
 export const ABLEHNUNG = 'EniAblehnung'
 
-/** Die Vorlage des woechentlichen ENI-Chats bleibt deterministisch. */
-export const WOCHENBERICHT_VORLAGE = 'Willst du, dass Eni deine Woche zusammenfasst?'
+export { WOCHENBERICHT_VORLAGE } from './eniVorlagen.ts'
 
 /** Zusatzanweisung fuer den explizit gebundenen Wochen-Chat. */
 export const WOCHENBERICHT_ANWEISUNG = `WOCHENBERICHT-MODUS. Beantworte diesen Wochenrueckblick anhand des serverseitigen WOCHENLAGE-Datenblocks. Verwende kurze Abschnitte mit den Ueberschriften Erfolge, Aktivitäten, Schlaf, Vergleich und Nächste Woche. Nenne konkrete belegte Datensaetze, Tagespunkte, Tage, Werte und Minuten nur aus dem Datenblock. Trenne echte Rohdatensaetze von deduplizierten Tagespunkten. Fehlt eine Quelle oder Zahl, sage ausdrücklich "unbekannt" und ersetze sie nicht durch null. Unter Nächste Woche stehen genau zwei realistische, kleine Verbesserungen. Erfinde keine Termine, Diagnosen, Ursachen, Absichten oder Leistungen. Schreibe normal gross und klein, direkt und respektvoll. Dieser Bericht darf laenger als der normale Zwei-bis-vier-Satz-Modus sein, bleibt aber kompakt.`
@@ -512,7 +512,7 @@ async function behandleWochenbericht(optionen: WochenberichtOptionen): Promise<R
       .reverse()
     const letzter = vorherige[vorherige.length - 1]
     const istWochenVorlage = (zeile: Zeile | undefined) =>
-      zeile?.rolle === 'mensch' && zeile.text === WOCHENBERICHT_VORLAGE
+      zeile?.rolle === 'mensch' && istWochenberichtVorlage(String(zeile.text ?? ''))
     const letzteVorlage = vorherige.filter(istWochenVorlage).at(-1)
     const letztesUrteil = letzter?.rolle === 'eni' && letzteVorlage ? letzter : null
 
@@ -1202,6 +1202,7 @@ export async function behandleEni(
           system: eniSystemPrompt({
             person,
             lage,
+            web: web.length > 0 || frueherImChat.length > 0,
             zusatz: [
               wissen,
               web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',

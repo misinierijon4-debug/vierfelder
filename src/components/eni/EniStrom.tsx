@@ -53,6 +53,8 @@ type Props = {
   /** steht etwas im eingabefeld? dann treten die auftakte ab */
   feldBelegt?: boolean
   aktionenGesperrt?: boolean
+  /** woran ENI gerade ist, solange kein textstueck da ist */
+  wartetext?: string
 }
 
 export function EniStrom({
@@ -70,6 +72,7 @@ export function EniStrom({
   duellStand,
   feldBelegt = false,
   aktionenGesperrt = false,
+  wartetext,
 }: Props) {
   /**
    * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
@@ -166,7 +169,7 @@ export function EniStrom({
       )}
       {prueft && !teilAntwort && (
         <li>
-          <EniTakt />
+          <EniTakt text={wartetext} />
         </li>
       )}
     </ol>
@@ -742,11 +745,19 @@ function Anhaenge({
             {anhang.art === 'bild' ? (
               adresse ? (
                 <a href={adresse} target="_blank" rel="noreferrer">
+                  {/*
+                    Feste kachel statt `max-h`/`max-w`: `loading="lazy"` ohne
+                    reservierte masse liess das bild als 2x2 pixel im verlauf
+                    stehen, bis man hinscrollte — der lader sah nie eine
+                    flaeche, die sichtbar werden konnte.
+                  */}
                   <img
                     src={adresse}
                     alt={anhang.name}
                     loading="lazy"
-                    className="max-h-40 max-w-[220px] rounded-[2px] border border-linie object-cover"
+                    width={220}
+                    height={160}
+                    className="h-40 w-[220px] max-w-full rounded-[2px] border border-linie object-cover"
                   />
                 </a>
               ) : (
@@ -772,14 +783,21 @@ function Anhaenge({
   )
 }
 
-export function EniTakt() {
+/**
+ * Der takt der wartezeit, und der einzige satz dazu.
+ *
+ * Vorher standen drei: "ENI prüft" als sr-only im takt, "denkt nach …"
+ * sichtbar darunter und "Eni sucht im Web …" ueber dem eingabefeld — alle
+ * gleichzeitig und in drei schreibweisen des namens. Jetzt reicht der
+ * genauere text durch; ohne ihn bleibt der allgemeine stehen.
+ */
+export function EniTakt({ text = 'ENI denkt nach …' }: { text?: string }) {
   const reduced = useReducedMotion()
   const striche = [12, 20, 8, 26, 14, 22, 10, 28, 16, 20, 8, 24]
 
   return (
     <div role="status" className="pt-5 pb-1">
       <div className="flex items-end gap-[3px]" style={{ height: 38 }}>
-        <span className="sr-only">ENI prüft</span>
         {striche.map((hoehe, index) => (
           <motion.span
             key={index}
@@ -802,7 +820,7 @@ export function EniTakt() {
         transition={reduced ? undefined : { duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         className="mt-2 text-[11px] tracking-wide text-kreide-52"
       >
-        denkt nach …
+        {text}
       </motion.p>
     </div>
   )
