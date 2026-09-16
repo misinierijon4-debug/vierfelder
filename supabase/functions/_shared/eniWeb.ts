@@ -94,12 +94,27 @@ function nimm(quellen: WebQuelle[], adresse: unknown, titel: unknown, text: unkn
     const url = new URL(adresse)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return
     if (quellen.some((q) => q.url === url.href)) return
+    // Ein Titel mit Emojis stand unter ENIs Antwort, deren eigene Regeln
+    // Emojis verbieten. Der Titel ist fremder Text, aber er wird in ENIs
+    // Schrift gesetzt — also faellt heraus, was dort nicht hingehoert.
+    const sauber = ohneEmoji(String(titel ?? ''))
     quellen.push({
       url: url.href,
-      titel: String(titel || url.hostname).slice(0, 180),
+      titel: (sauber || url.hostname).slice(0, 180),
       text: text.slice(0, MAX_WEB_AUSZUG),
     })
   } catch { /* keine verwendbare Quelle */ }
+}
+
+/**
+ * Emojis, Hautton-Modifikatoren, Variantenzeichen und die Nullbreiten-Fugen
+ * dazwischen. `\p{Extended_Pictographic}` deckt auch Zeichen wie ™ und ☀ ab;
+ * in einem Seitentitel ist das genau der Schmuck, der hier nichts verloren hat.
+ */
+const EMOJI = /[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{FE0F}\u{20E3}\u{200D}]/gu
+
+export function ohneEmoji(text: string): string {
+  return text.replace(EMOJI, ' ').replace(/\s+/g, ' ').trim()
 }
 
 /** die Treffer aus den URL-Annotationen des OpenRouter-Web-Plugins */
@@ -181,6 +196,107 @@ export function bereinigeSuchfrage(frage: string): string {
   return text.replace(/\s+/g, ' ').trim() || roh
 }
 
+/**
+ * Woran eine Nachricht zu erkennen ist, die niemals an eine Suchmaschine
+ * gehoert: jemand redet ueber sich und darueber, wie es ihm geht.
+ *
+ * Der Anlass: eine Nachricht ueber Selbstbestrafung und "ziemlich am Boden"
+ * ging woertlich an die Suche. Zurueck kamen Fitnessstudio-Blogs, angehaengt
+ * als "Quellen der Websuche" unter eine Fuersorge-Antwort.
+ */
+const PERSOENLICH =
+  /\b(?:am boden|fertig mit (?:der welt|allem)|keine kraft|kraftlos|ausgebrannt|burn ?out|bestraf\w*|hasse mich|schaeme mich|schäme mich|wertlos|nutzlos|versager|traurig|depressiv|depression\w*|einsam|verzweifelt|verzweiflung|panik|weine|geweint|heule|aufgeben|sinnlos|nicht mehr weiter|ueberfordert|überfordert|ueberforderung|überforderung|zusammenbruch|zusammengebrochen|niedergeschlagen|deprimiert|schlecht drauf|mies drauf|hungere|gehungert|nichts gegessen|erbrech\w*)\b/i
+
+/**
+ * Worte, bei denen die Ich-Form nicht mehr entscheidet. Sie gehen unter
+ * keinen Umstaenden an eine Suchmaschine.
+ */
+const KRISE = /\b(?:suizid\w*|selbstmord\w*|umbringen|ritzen|selbstverletzung\w*)\b/i
+
+/** redet die nachricht von der person selbst? */
+const ICH_FORM = /\b(?:ich|mich|mir|mein\w*|wir|uns|unser\w*)\b/i
+
+/**
+ * Woran ein Nachschlagen zu erkennen ist. Die Liste entscheidet nicht, **ob**
+ * gesucht wird — der Schalter steht ja auf an —, sondern **welcher Satz** an
+ * die Suchmaschine geht, wenn die Nachricht aus mehreren besteht.
+ */
+const SUCHWORT =
+  /\b(?:was|wie|wer|wen|wem|wo|wann|warum|wieso|weshalb|welche\w*|gibt es|stimmt|such\w*|google\w*|recherchier\w*|nachschlag\w*|nachsehen|finde|quelle\w*|link|aktuell\w*|neueste\w*|news|preis\w*|kurs\w*|wetter|studie\w*|rezept\w*|ergebnis\w*|unterschied|bedeutet|definition|vergleich\w*)\b/i
+
+/**
+ * Ob die Nachricht an die Suchmaschine darf, und mit welchem Wortlaut.
+ *
+ * `null` heisst: diesmal wird nicht gesucht. Das ist kein Ausschalten des
+ * Schalters — er bleibt an, und die naechste Sachfrage sucht wieder. Es heisst
+ * nur, dass diese eine Nachricht nichts ist, was man nachschlaegt.
+ *
+ * Aus mehreren Saetzen geht nur der nachschlagende an die Suche. Wer erst
+ * erzaehlt, wie seine Woche lief, und dann fragt, wie viel Protein er braucht,
+ * hat seine Woche nicht in eine Suchmaschine getippt.
+ */
+export function suchauftrag(vorlage: string): string | null {
+  const frage = bereinigeSuchfrage(vorlage).trim()
+  if (!frage) return null
+  if (KRISE.test(frage)) return null
+  // Eine reine Sachfrage bleibt eine Sachfrage: "was ist Burnout" hat keine
+  // Ich-Form und wird nachgeschlagen, "ich glaube ich habe Burnout" nicht.
+  if (PERSOENLICH.test(frage) && ICH_FORM.test(frage)) return null
+  return sachteil(frage).slice(0, MAX_TAVILY_FRAGE) || null
+}
+
+/** die saetze, die nachschlagen. gibt es keinen, gilt die ganze nachricht. */
+function sachteil(frage: string): string {
+  const saetze = (frage.match(/[^.!?]+[.!?]*/g) ?? [frage])
+    .map((satz) => satz.trim())
+    .filter(Boolean)
+  if (saetze.length <= 1) return frage
+  const traegt = saetze.filter((satz) => satz.includes('?') || SUCHWORT.test(satz))
+  return (traegt.length ? traegt : saetze).join(' ')
+}
+
+/**
+ * Funktionswoerter, die in jedem zweiten Text stehen. Sie sagen nichts
+ * darueber, ob ein Treffer zur Frage gehoert.
+ */
+const FUELLWORT = new Set([
+  'eine', 'einen', 'einem', 'eines', 'dass', 'wenn', 'dann', 'denn', 'aber',
+  'oder', 'auch', 'noch', 'schon', 'sehr', 'mehr', 'ganz', 'nach', 'nicht',
+  'sich', 'sind', 'sein', 'seine', 'haben', 'habe', 'hast', 'hatte', 'wird',
+  'werden', 'wurde', 'kann', 'kannst', 'koennen', 'können', 'soll', 'sollte',
+  'muss', 'muessen', 'müssen', 'will', 'willst', 'wuerde', 'würde', 'gibt',
+  'geben', 'machen', 'macht', 'immer', 'wieder', 'etwas', 'jemand', 'alles',
+  'selbst', 'ziemlich', 'wirklich', 'eigentlich', 'viel', 'wenig', 'dein',
+  'deine', 'mein', 'meine', 'mich', 'mir', 'dich', 'euch', 'ihre', 'ihrer',
+  'diese', 'dieser', 'dieses', 'denen', 'welche', 'welcher', 'welches',
+  'bitte', 'danke', 'also', 'gerade', 'einfach', 'heute',
+])
+
+function schluesselworte(frage: string): string[] {
+  const worte = frage.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []
+  return [...new Set(worte)].filter((wort) => !FUELLWORT.has(wort))
+}
+
+/**
+ * Treffer ohne Bezug wegwerfen.
+ *
+ * Eine Suchmaschine liefert immer etwas: fragt man sie falsch, liefert sie
+ * falsches. Was hier durchkommt, traegt ein Schluesselwort der Frage im Titel
+ * oder zwei verschiedene im Auszug. Bleibt nichts uebrig, ist das die Antwort:
+ * gesucht wurde, gefunden nichts Passendes — besser als fuenf Blogs, die ENI
+ * dann als Belege anhaengt.
+ */
+export function mitBezug(quellen: WebQuelle[], frage: string): WebQuelle[] {
+  const worte = schluesselworte(frage)
+  if (worte.length === 0) return quellen
+  return quellen.filter((quelle) => {
+    const titel = quelle.titel.toLowerCase()
+    if (worte.some((wort) => titel.includes(wort))) return true
+    const text = quelle.text.toLowerCase()
+    return worte.filter((wort) => text.includes(wort)).length >= 2
+  })
+}
+
 export async function sucheWeb(
   frage: string,
   umgebung: (name: string) => string | undefined,
@@ -199,7 +315,7 @@ export async function sucheWeb(
       ? await beiTavily(suchfrage, schluessel(umgebung, 'TAVILY_API_KEY'), abbruch, http)
       : await beiOpenRouter(suchfrage, schluessel(umgebung, 'OPENROUTER_API_KEY'), abbruch, http)
     if (!quellen.length) throw new EniWebFehler('Die Suche hat keine auswertbaren Quellen geliefert. Formuliere die Frage genauer oder schalte Internet aus.')
-    return quellen
+    return mitBezug(quellen, suchfrage)
   } catch (fehler) {
     if (signal?.aborted) throw fehler
     if (fehler instanceof EniWebFehler) throw fehler

@@ -1270,6 +1270,46 @@ describe('Internet im authentifizierten Chat', () => {
     expect(await stand({ tavily: 'tvly-test', openrouter: 'sk-or-test' })).toMatchObject({ suche: 'tavily' })
     expect(await stand({})).toMatchObject({ internet: false, suche: null })
   })
+  it('schickt eine fuersorge-nachricht nicht an die suchmaschine', async () => {
+    // der befund: eine nachricht ueber selbstbestrafung ging woertlich an die
+    // suche, und fitnessstudio-blogs standen als "quellen" unter der antwort.
+    const { abhaengigkeiten, gesehen } = deps({ tavily: 'tvly-test' })
+    const suche = vi.fn()
+    abhaengigkeiten.webSuche = suche
+
+    const res = await behandleEni(
+      anfrage({
+        chatId: 'chat-1',
+        text: 'ich bestrafe mich selbst und bin gerade ziemlich am boden',
+        internet: true,
+      }),
+      abhaengigkeiten
+    )
+
+    expect(res.status).toBe(200)
+    expect(suche).not.toHaveBeenCalled()
+    // und ENI weiss dann auch, dass er keine recherche hat
+    expect(gesehen[0]!.system).toContain('Du hast keine Websuche')
+  })
+
+  it('schickt nur den nachschlagenden satz an die suche, nicht die ganze nachricht', async () => {
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test' })
+    const suche = vi.fn().mockResolvedValue([])
+    abhaengigkeiten.webSuche = suche
+
+    await behandleEni(
+      anfrage({
+        chatId: 'chat-1',
+        text: 'die woche lief bescheiden. wie viel protein brauche ich pro tag?',
+        internet: true,
+      }),
+      abhaengigkeiten
+    )
+
+    expect(suche).toHaveBeenCalledTimes(1)
+    expect(suche.mock.calls[0]![0]).toBe('wie viel protein brauche ich pro tag?')
+  })
+
   it('sucht bei fehlender Anmeldung oder Tageslimit nicht', async () => {
     const { abhaengigkeiten } = deps({ limit: '0' })
     const suche = vi.fn()

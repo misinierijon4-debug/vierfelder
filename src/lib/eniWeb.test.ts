@@ -9,11 +9,23 @@ import {
   mitWebQuellen,
   webLage,
   nurGepruefteLinks,
+  mitBezug,
+  ohneEmoji,
+  suchauftrag,
   WEB_RUECKBLICK_BUDGET,
 } from '../../supabase/functions/_shared/eniWeb'
 
 const quelle = { type: 'url_citation', url_citation: { url: 'https://example.org/artikel', title: 'Quelle', content: 'Belegter Inhalt' } }
 const treffer = { url: 'https://example.org/artikel', title: 'Quelle', content: 'Belegter Inhalt' }
+
+/**
+ * Dieselben Attrappen, aber mit Bezug zur Suchfrage: seit `mitBezug` faellt
+ * ein Treffer heraus, der mit der Frage kein Wort gemein hat. Wo die Pruefung
+ * dem Weg nach draussen gilt und nicht der Auswahl, muss der Treffer passen.
+ */
+const WETTER = 'Das Wetter heute in Berlin bleibt trocken.'
+const wetterQuelle = { type: 'url_citation', url_citation: { url: 'https://example.org/artikel', title: 'Wetter Berlin', content: WETTER } }
+const wetterTreffer = { url: 'https://example.org/artikel', title: 'Wetter Berlin', content: WETTER }
 
 /** eine Umgebung mit genau den Schluesseln, die der Fall braucht */
 const mit = (werte: Record<string, string>) => (name: string) => werte[name]
@@ -42,9 +54,9 @@ describe('Eni Websuche', () => {
     geht deshalb vor, auch wenn beide Schluessel dastehen.
   */
   it('sucht kostenlos bei Tavily und holt keine Seiteninhalte nach', async () => {
-    const http = vi.fn().mockResolvedValue(Response.json({ results: [treffer] }))
+    const http = vi.fn().mockResolvedValue(Response.json({ results: [wetterTreffer] }))
     const ergebnis = await sucheWeb('Wetter heute', NUR_TAVILY, undefined, http)
-    expect(ergebnis).toEqual([{ url: 'https://example.org/artikel', titel: 'Quelle', text: 'Belegter Inhalt' }])
+    expect(ergebnis).toEqual([{ url: 'https://example.org/artikel', titel: 'Wetter Berlin', text: WETTER }])
     expect(http).toHaveBeenCalledTimes(1)
     expect(http.mock.calls[0]![0]).toBe('https://api.tavily.com/search')
     const body = JSON.parse(http.mock.calls[0]![1].body)
@@ -55,15 +67,15 @@ describe('Eni Websuche', () => {
   })
 
   it('nimmt den freien Weg auch dann, wenn beide Schluessel gesetzt sind', async () => {
-    const http = vi.fn().mockResolvedValue(Response.json({ results: [treffer] }))
-    await sucheWeb('Frage', mit({ TAVILY_API_KEY: 'tvly-test', OPENROUTER_API_KEY: 'sk-or-test' }), undefined, http)
+    const http = vi.fn().mockResolvedValue(Response.json({ results: [wetterTreffer] }))
+    await sucheWeb('Wetter heute', mit({ TAVILY_API_KEY: 'tvly-test', OPENROUTER_API_KEY: 'sk-or-test' }), undefined, http)
     expect(http.mock.calls[0]![0]).toBe('https://api.tavily.com/search')
   })
 
   it('sucht einmal und gibt keine generierten Recherchebehauptungen als Quelldaten weiter', async () => {
-    const http = vi.fn().mockResolvedValue(Response.json({ choices: [{ message: { content: 'Unbelegtes', annotations: [quelle] } }] }))
+    const http = vi.fn().mockResolvedValue(Response.json({ choices: [{ message: { content: 'Unbelegtes', annotations: [wetterQuelle] } }] }))
     const ergebnis = await sucheWeb('Wetter heute', NUR_OPENROUTER, undefined, http)
-    expect(ergebnis[0]?.text).toBe('Belegter Inhalt')
+    expect(ergebnis[0]?.text).toBe(WETTER)
     expect(http).toHaveBeenCalledTimes(1)
     expect(http.mock.calls[0]![0]).toBe('https://openrouter.ai/api/v1/chat/completions')
     const body = JSON.parse(http.mock.calls[0]![1].body)
@@ -266,5 +278,85 @@ describe('Eni Rueckblick auf eigene Suchlaeufe', () => {
     expect(bereinigeSuchfrage('Eni Dividende 2026')).toBe('Eni Dividende 2026')
     // Enigma, Denim und Co. waren nie gemeint.
     expect(bereinigeSuchfrage('Was macht Enigma?')).toBe('Was macht Enigma?')
+  })
+})
+
+describe('was an die Suchmaschine geht', () => {
+  it('schickt eine Fuersorge-Nachricht nicht an die Suche', () => {
+    // der befund: genau so eine nachricht wurde zur suchanfrage, und zurueck
+    // kamen fitnessstudio-blogs unter einer fuersorge-antwort.
+    expect(suchauftrag('ich bestrafe mich selbst und bin gerade ziemlich am boden')).toBeNull()
+    expect(suchauftrag('ich habe keine kraft mehr und schaeme mich dafuer')).toBeNull()
+  })
+
+  it('haelt eine sachfrage ueber dasselbe wort fuer eine sachfrage', () => {
+    // ohne ich-form ist "burnout" ein begriff, kein zustand
+    expect(suchauftrag('was ist burnout genau?')).toBe('was ist burnout genau?')
+  })
+
+  it('laesst krisenwoerter unter keinen umstaenden hinaus', () => {
+    expect(suchauftrag('gibt es studien zu suizid')).toBeNull()
+    expect(suchauftrag('ritzen')).toBeNull()
+  })
+
+  it('schickt nur den nachschlagenden satz, nicht die ganze woche', () => {
+    expect(
+      suchauftrag('die woche lief bescheiden. wie viel protein brauche ich pro tag?')
+    ).toBe('wie viel protein brauche ich pro tag?')
+  })
+
+  it('nimmt die ganze nachricht, wenn kein satz sich als frage zu erkennen gibt', () => {
+    // der schalter steht auf an; im zweifel wird gesucht, nicht geschwiegen
+    expect(suchauftrag('kreatin monohydrat dosierung')).toBe('kreatin monohydrat dosierung')
+  })
+
+  it('nimmt auch hier den botnamen heraus', () => {
+    expect(suchauftrag('Eni, was kostet Kreatin?')).toBe('was kostet Kreatin?')
+  })
+
+  it('gibt bei leerer vorlage nichts zurueck', () => {
+    expect(suchauftrag('   ')).toBeNull()
+  })
+})
+
+describe('Treffer ohne Bezug', () => {
+  const quelle = (titel: string, text: string) => ({ titel, url: `https://example.org/${titel}`, text })
+
+  it('wirft weg, was mit der frage nichts zu tun hat', () => {
+    const treffer = [
+      quelle('Protein pro Tag', 'Wie viel Protein ein Mensch braucht.'),
+      quelle('Zehn Tipps fuers Fitnessstudio', 'Motivation und Ausreden im Alltag.'),
+    ]
+    expect(mitBezug(treffer, 'wie viel protein brauche ich pro tag').map((q) => q.titel)).toEqual([
+      'Protein pro Tag',
+    ])
+  })
+
+  it('nimmt einen treffer an, der zwei schluesselworte im auszug traegt', () => {
+    const treffer = [quelle('Lima', 'Lima ist die Hauptstadt von Peru und liegt am Pazifik.')]
+    expect(mitBezug(treffer, 'was ist die hauptstadt von peru')).toHaveLength(1)
+  })
+
+  it('laesst alles stehen, wenn die frage kein eigenes wort hat', () => {
+    const treffer = [quelle('Irgendwas', 'Irgendwas')]
+    expect(mitBezug(treffer, 'wie und was')).toHaveLength(1)
+  })
+})
+
+describe('Emojis in Quellentiteln', () => {
+  it('nimmt sie heraus, weil ENIs eigene regeln sie verbieten', () => {
+    expect(ohneEmoji('🔥 Die 10 besten Übungen 💪')).toBe('Die 10 besten Übungen')
+  })
+
+  it('faellt auf den hostnamen zurueck, wenn nur emojis uebrig waren', () => {
+    expect(
+      tavilyQuellen([{ url: 'https://example.org/a', title: '🔥💪', content: 'Inhalt' }])[0]!.titel
+    ).toBe('example.org')
+  })
+
+  it('reicht einen titel ohne emojis unveraendert durch', () => {
+    expect(
+      tavilyQuellen([{ url: 'https://example.org/a', title: 'Protein pro Tag', content: 'Inhalt' }])[0]!.titel
+    ).toBe('Protein pro Tag')
   })
 })

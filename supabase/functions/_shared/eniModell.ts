@@ -1,5 +1,6 @@
 import {
   sucheWeb,
+  suchauftrag,
   webBereit,
   webWeg,
   mitWebQuellen,
@@ -1175,10 +1176,13 @@ export async function behandleEni(
   let web: WebQuelle[] = []
   let webHinweis = ''
   try {
-    if (anfrage.internet === true) {
+    // Der Schalter erlaubt die Suche, er erzwingt sie nicht: was nichts zum
+    // Nachschlagen ist, geht auch nicht an eine Suchmaschine.
+    const auftrag = anfrage.internet === true ? suchauftrag(vorlageText) : null
+    if (auftrag) {
       melde?.({ schritt: 'sucht' })
       try {
-        web = await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
+        web = await (deps.webSuche ?? sucheWeb)(auftrag, deps.umgebung, signal)
         // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
         // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
         melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
