@@ -363,6 +363,35 @@ describe('ENI als eigene oberflaeche', () => {
     expect(screen.getByRole('menuitemradio', { name: /^deepseek$/i })).toBeInTheDocument()
   })
 
+  it('zeigt die warnung auch, wenn das versuchsmodell das einzige ist', async () => {
+    // eine wahl mit einer moeglichkeit ist keine wahl, also faellt die liste
+    // weg — und mit ihr fiel die warnung weg. genau hier ist sie am noetigsten:
+    // es gibt kein anderes modell, auf das man ausweichen koennte.
+    vi.useFakeTimers()
+    const nurQwen = [
+      { ...anbieterInfo('qwen-infron', 'qwen 3.8 unzensiert'), warnung: 'versuchsmodell, gibt interne anweisungen preis' },
+    ]
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: nurQwen })}
+        baueGeber={vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // der knopf sagt es vorlesbar, auch ohne das menü zu öffnen
+    expect(
+      screen.getByRole('button', { name: /modell wählen.*versuchsmodell, gibt interne anweisungen preis/i })
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    // und sichtbar steht sie im menü, obwohl es keine liste gibt
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+    expect(screen.getByText('versuchsmodell, gibt interne anweisungen preis')).toBeInTheDocument()
+  })
+
   it('legt das vordenken für jedes modell um und merkt es sich auf diesem gerät', async () => {
     vi.useFakeTimers()
     const baue = vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)

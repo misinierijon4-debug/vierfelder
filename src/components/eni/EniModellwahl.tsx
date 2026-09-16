@@ -48,7 +48,8 @@ type Props = {
  * **Eine Warnung ist die Ausnahme davon.** Sie erklärt nicht, was ein Modell
  * kann, sondern was mit einem schiefgeht — qwen 3.8 gibt die Systemanweisung
  * wörtlich aus. Das erfährt man sonst erst aus der Antwort, und dann ist es zu
- * spät. Sie steht nur, wo der Server sie setzt.
+ * spät. Sie steht nur, wo der Server sie setzt — und auch dann, wenn es gar
+ * keine Liste gibt, weil nur dieser eine Schlüssel gesetzt ist.
  *
  * Was hier steht, kommt vom Server: genau die Schlüssel, die gesetzt sind, und
  * für jeden die Auskunft, ob er überhaupt vordenken kann. Der Browser kennt
@@ -83,7 +84,14 @@ export function EniModellwahl({
   */
   const zeigeModelle = anbieter.length > 1
   const zeigeDenken = aktiv.denkbar
-  if (!zeigeModelle && !zeigeDenken) return null
+  /*
+    Die Warnung haengt bisher an der Liste — und die Liste faellt bei einem
+    einzigen Schluessel weg. Steht nur qwen da, ist der Hinweis aber am
+    noetigsten: dann gibt es kein anderes Modell, auf das man ausweichen
+    koennte. Sie steht deshalb auch allein.
+  */
+  const zeigeWarnung = aktiv.warnung !== ''
+  if (!zeigeModelle && !zeigeDenken && !zeigeWarnung) return null
 
   const denktJetzt = denkt && aktiv.denkbar
 
@@ -176,7 +184,23 @@ export function EniModellwahl({
                 )
               })}
 
-            {zeigeModelle && zeigeDenken && (
+            {!zeigeModelle && zeigeWarnung && (
+              /*
+                Ohne Liste gehoert die Warnung trotzdem ins Menue. Kein
+                `menuitem`: hier ist nichts zu waehlen. Und `aria-hidden`, weil
+                die Beschriftung des Knopfes sie schon vorliest — zweimal
+                dasselbe waere kein Gewinn.
+              */
+              <motion.p
+                variants={zeile}
+                aria-hidden="true"
+                className="px-3 py-2 text-[10px] leading-tight text-kreide-52"
+              >
+                {aktiv.warnung}
+              </motion.p>
+            )}
+
+            {(zeigeModelle || zeigeWarnung) && zeigeDenken && (
               /*
                 Eine Haarlinie, kein Abstand: die Stellung ist keine vierte
                 Stimme in derselben Liste, sondern die zweite Frage.
