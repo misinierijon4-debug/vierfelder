@@ -270,6 +270,19 @@ describe('ENIs modellverbindung', () => {
     expect(JSON.stringify(liste)).not.toContain('https://')
   })
 
+  it('nennt qwen sichtbar als versuchsmodell, die anderen ohne warnung', async () => {
+    // es gab die systemanweisung woertlich aus, nannte das interne wort LAGE
+    // und schrieb kaputtes deutsch. es bleibt waehlbar, aber nicht stillschweigend.
+    const antwort = await behandleEni(
+      anfrage({ pruefen: true }),
+      deps({ openrouter: 'sk-or-geheim', infron: 'infron-geheim' }).abhaengigkeiten
+    )
+    const liste = await antwort.json()
+    const mitWarnung = liste.anbieter.filter((a: { warnung: string }) => a.warnung !== '')
+    expect(mitWarnung.map((a: { id: string }) => a.id)).toEqual(['qwen-infron'])
+    expect(mitWarnung[0].warnung).toContain('versuchsmodell')
+  })
+
   it('ruft den anbieter, den der client waehlt, mit dessen eigenem schluessel', async () => {
     const { abhaengigkeiten, gerufen } = deps({
       schluessel: 'sk-deepseek',
@@ -566,10 +579,26 @@ describe('ENIs modellverbindung', () => {
     // zwei gym-einheiten und eine lernen-einheit diese woche, koray eine boxen
     expect(system).toMatch(/gym\s+2\s+0/)
     expect(system).toMatch(/boxen\s+0\s+1/)
-    expect(system).toContain('81.4')
+    // deutsche zahlen mit komma: ENI reicht durch, was hier steht
+    expect(system).toContain('81,4')
     // 412 minuten sind 6,9 stunden. faellt der schlaf still weg, faellt das hier auf
-    expect(system).toContain('6.9h/71')
+    expect(system).toContain('6,9h/71')
     expect(gesehen[0]!.nachrichten).toEqual([{ rolle: 'user', text: 'wie stehe ich' }])
+  })
+
+  it('schluesselt den heutigen tag nach bereichen auf, statt ihn aus der wochentabelle raten zu lassen', async () => {
+    // der befund: die gegenstelle las die wochentabelle als tagesstand und
+    // erklaerte offene bereiche fuer erledigt. heute hat erijon gym und
+    // gewicht, sonst nichts; lernen steht diese woche, aber am mittwoch.
+    const { abhaengigkeiten, gesehen } = deps()
+    await behandleEni(anfrage({ chatId: 'c1', text: 'was fehlt mir heute' }), abhaengigkeiten)
+
+    const system = gesehen[0]!.system
+    expect(system).toContain('Erijon  erledigt: gym, gewicht; offen: lernen, boxen, lesen')
+    expect(system).toContain('Koray   erledigt: nichts; offen: lernen, gym, boxen, lesen, gewicht')
+    // und die tabelle darunter sagt jetzt selbst, dass sie die woche meint
+    expect(system).toContain('Punkte dieser Woche je Bereich')
+    expect(system).not.toContain('Diese Woche, Tagespunkte je Bereich')
   })
 
   it('liefert den vollstaendigen Trackerstand 2:6 statt nur die manuelle Boxeinheit 0:1', async () => {
@@ -635,6 +664,57 @@ describe('ENIs modellverbindung', () => {
       { rolle: 'assistant', text: 'einer von sieben.' },
       { rolle: 'user', text: 'und jetzt' },
     ])
+  })
+
+  it('rahmt eine abgebrochene vorlage als vorbei, statt sie offen stehen zu lassen', async () => {
+    // abbrechen laesst die vorlage im verlauf stehen. fragt man danach etwas
+    // anderes, sah die gegenstelle zwei menschzeilen hintereinander und
+    // beantwortete die alte — einmal statt der neuen, einmal zusaetzlich.
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'schreib mir einen trainingsplan', erstellt: '2026-09-10T16:00:00Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    await behandleEni(anfrage({ chatId: 'c1', text: 'wie spaet ist es' }), abhaengigkeiten)
+
+    const nachrichten = gesehen[0]!.nachrichten
+    expect(nachrichten).toHaveLength(2)
+    expect(nachrichten[0]!.text).toContain('Abgebrochen')
+    expect(nachrichten[0]!.text).toContain('schreib mir einen trainingsplan')
+    // die neue frage bleibt, wie sie ist
+    expect(nachrichten[1]).toEqual({ rolle: 'user', text: 'wie spaet ist es' })
+  })
+
+  it('laesst eine beantwortete vorlage in ruhe', async () => {
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'gym steht', erstellt: '2026-09-10T16:00:00Z' },
+      { id: 'n2', chat_id: 'c1', user_id: ICH, rolle: 'eni', text: 'einer von sieben.', erstellt: '2026-09-10T16:00:01Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    await behandleEni(anfrage({ chatId: 'c1', text: 'und jetzt' }), abhaengigkeiten)
+
+    expect(JSON.stringify(gesehen[0]!.nachrichten)).not.toContain('Abgebrochen')
+  })
+
+  it('rahmt bei einer wiederholung nur die aeltere vorlage, nie die offene', async () => {
+    // zwei abbrueche hintereinander: die letzte zeile wird jetzt beantwortet,
+    // die davor ist vorbei.
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'erste frage', erstellt: '2026-09-10T16:00:00Z' },
+      { id: 'n2', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'zweite frage', erstellt: '2026-09-10T16:00:01Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    await behandleEni(anfrage({ chatId: 'c1', wiederholen: true }), abhaengigkeiten)
+
+    const nachrichten = gesehen[0]!.nachrichten
+    expect(nachrichten[0]!.text).toContain('Abgebrochen')
+    expect(nachrichten[0]!.text).toContain('erste frage')
+    expect(nachrichten[1]).toEqual({ rolle: 'user', text: 'zweite frage' })
   })
 
   it('haelt die vorlage fest, wenn das modell nicht antwortet', async () => {
@@ -1065,7 +1145,9 @@ describe('ENI mit bild und datei', () => {
 
     await behandleEni(anfrage({ chatId: 'chat-9', text: 'und jetzt' }), abhaengigkeiten)
 
-    const alte = gesehen[0]!.nachrichten.find((nachricht) => nachricht.text === 'schau mal')
+    // die zeile ist unbeantwortet und traegt deshalb den abbruch-rahmen; das
+    // bild daran geht trotzdem mit, sonst waere die vorgeschichte blind
+    const alte = gesehen[0]!.nachrichten.find((nachricht) => nachricht.text.includes('schau mal'))
     expect(alte?.bilder).toEqual([`https://bucket/${ICH}/chat-9/alt.jpg?sig=x`])
   })
 
@@ -1201,6 +1283,46 @@ describe('Internet im authentifizierten Chat', () => {
     expect(await stand({ tavily: 'tvly-test', openrouter: 'sk-or-test' })).toMatchObject({ suche: 'tavily' })
     expect(await stand({})).toMatchObject({ internet: false, suche: null })
   })
+  it('schickt eine fuersorge-nachricht nicht an die suchmaschine', async () => {
+    // der befund: eine nachricht ueber selbstbestrafung ging woertlich an die
+    // suche, und fitnessstudio-blogs standen als "quellen" unter der antwort.
+    const { abhaengigkeiten, gesehen } = deps({ tavily: 'tvly-test' })
+    const suche = vi.fn()
+    abhaengigkeiten.webSuche = suche
+
+    const res = await behandleEni(
+      anfrage({
+        chatId: 'chat-1',
+        text: 'ich bestrafe mich selbst und bin gerade ziemlich am boden',
+        internet: true,
+      }),
+      abhaengigkeiten
+    )
+
+    expect(res.status).toBe(200)
+    expect(suche).not.toHaveBeenCalled()
+    // und ENI weiss dann auch, dass er keine recherche hat
+    expect(gesehen[0]!.system).toContain('Du hast keine Websuche')
+  })
+
+  it('schickt nur den nachschlagenden satz an die suche, nicht die ganze nachricht', async () => {
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test' })
+    const suche = vi.fn().mockResolvedValue([])
+    abhaengigkeiten.webSuche = suche
+
+    await behandleEni(
+      anfrage({
+        chatId: 'chat-1',
+        text: 'die woche lief bescheiden. wie viel protein brauche ich pro tag?',
+        internet: true,
+      }),
+      abhaengigkeiten
+    )
+
+    expect(suche).toHaveBeenCalledTimes(1)
+    expect(suche.mock.calls[0]![0]).toBe('wie viel protein brauche ich pro tag?')
+  })
+
   it('sucht bei fehlender Anmeldung oder Tageslimit nicht', async () => {
     const { abhaengigkeiten } = deps({ limit: '0' })
     const suche = vi.fn()
@@ -1305,5 +1427,38 @@ describe('ENIs gedaechtnis fuer die eigenen quellen', () => {
     expect(res.status).toBe(200)
     expect(String(tabellen.eni_nachrichten.at(-1)!.text)).not.toContain('https://erfunden.example')
     expect(tabellen.eni_quellen ?? []).toHaveLength(0)
+  })
+
+  it('nimmt eine wochenvorlage im alten wortlaut an, statt eine zweite anzulegen', async () => {
+    // der name steht jetzt in versalien. eine zeile aus einem aelteren chat
+    // traegt noch die alte schreibweise; wird sie nicht erkannt, stehen zwei
+    // vorlagen im selben chat.
+    const tische = grunddaten()
+    tische.eni_chats = [{ id: 'chat-1', user_id: ICH, wochenbeginn: '2026-09-07' }]
+    tische.eni_wochen_einladungen = [
+      { user_id: ICH, wochenbeginn: '2026-09-07', faellig_am: '2026-09-10T06:00:00Z', geschlossen_am: null, erstellt: '2026-09-07T06:00:00Z' },
+    ]
+    tische.eni_nachrichten = [{
+      id: 'alt-1',
+      chat_id: 'chat-1',
+      user_id: ICH,
+      rolle: 'mensch',
+      text: 'Willst du, dass Eni deine Woche zusammenfasst?',
+      erstellt: '2026-09-10T06:00:00Z',
+    }]
+    const { abhaengigkeiten, tabellen } = deps({
+      tabellen: tische,
+      modell: async () => 'Deine Woche stand.',
+    })
+
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', wochenbeginn: '2026-09-07' }),
+      abhaengigkeiten
+    )
+
+    expect(res.status).toBe(200)
+    const vorlagen = tabellen.eni_nachrichten.filter((zeile) => zeile.rolle === 'mensch')
+    expect(vorlagen).toHaveLength(1)
+    expect((await res.json()).mensch.id).toBe('alt-1')
   })
 })

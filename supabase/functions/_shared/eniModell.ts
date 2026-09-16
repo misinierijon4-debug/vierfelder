@@ -1,5 +1,6 @@
 import {
   sucheWeb,
+  suchauftrag,
   webBereit,
   webWeg,
   mitWebQuellen,
@@ -25,6 +26,7 @@ import {
 } from './eniAnbieter.ts'
 import { eniSystemPrompt } from './eniCharakter.ts'
 import { baueLage } from './eniLage.ts'
+import { WOCHENBERICHT_VORLAGE, istWochenberichtVorlage } from './eniVorlagen.ts'
 import {
   baueWochenlage,
   istWochenMontag,
@@ -103,8 +105,7 @@ export const ANHANG_BUCKET = 'eni-anhaenge'
 /** `Error.name`, mit dem der Modellaufruf eine Ablehnung meldet */
 export const ABLEHNUNG = 'EniAblehnung'
 
-/** Die Vorlage des woechentlichen ENI-Chats bleibt deterministisch. */
-export const WOCHENBERICHT_VORLAGE = 'Willst du, dass Eni deine Woche zusammenfasst?'
+export { WOCHENBERICHT_VORLAGE } from './eniVorlagen.ts'
 
 /** Zusatzanweisung fuer den explizit gebundenen Wochen-Chat. */
 export const WOCHENBERICHT_ANWEISUNG = `WOCHENBERICHT-MODUS. Beantworte diesen Wochenrueckblick anhand des serverseitigen WOCHENLAGE-Datenblocks. Verwende kurze Abschnitte mit den Ueberschriften Erfolge, Aktivitäten, Schlaf, Vergleich und Nächste Woche. Nenne konkrete belegte Datensaetze, Tagespunkte, Tage, Werte und Minuten nur aus dem Datenblock. Trenne echte Rohdatensaetze von deduplizierten Tagespunkten. Fehlt eine Quelle oder Zahl, sage ausdrücklich "unbekannt" und ersetze sie nicht durch null. Unter Nächste Woche stehen genau zwei realistische, kleine Verbesserungen. Erfinde keine Termine, Diagnosen, Ursachen, Absichten oder Leistungen. Schreibe normal gross und klein, direkt und respektvoll. Dieser Bericht darf laenger als der normale Zwei-bis-vier-Satz-Modus sein, bleibt aber kompakt.`
@@ -512,7 +513,7 @@ async function behandleWochenbericht(optionen: WochenberichtOptionen): Promise<R
       .reverse()
     const letzter = vorherige[vorherige.length - 1]
     const istWochenVorlage = (zeile: Zeile | undefined) =>
-      zeile?.rolle === 'mensch' && zeile.text === WOCHENBERICHT_VORLAGE
+      zeile?.rolle === 'mensch' && istWochenberichtVorlage(String(zeile.text ?? ''))
     const letzteVorlage = vorherige.filter(istWochenVorlage).at(-1)
     const letztesUrteil = letzter?.rolle === 'eni' && letzteVorlage ? letzter : null
 
@@ -1095,15 +1096,36 @@ export async function behandleEni(
     gefaltet.set(id, ergebnis.text)
   }
 
+  /**
+   * Vorlagen, auf die nie eine Antwort kam: abgebrochen, weggeklickt oder an
+   * einem Fehler haengengeblieben. Sie bleiben im Verlauf stehen, weil sie echt
+   * gesagt wurden — aber ohne Kennzeichnung liest die Gegenstelle zwei
+   * Menschzeilen hintereinander als eine offene Frage mit Nachtrag. Zweimal
+   * live gesehen: die neue Frage fiel unter den Tisch, oder beide wurden in
+   * einer Nachricht beantwortet.
+   *
+   * Weglassen waere das Naheliegende, nimmt der naechsten Frage aber den
+   * Bezug ("das von eben"). Deshalb steht die Zeile da und sagt selbst, dass
+   * sie vorbei ist.
+   */
+  const ABGEBROCHEN =
+    '[Abgebrochen: diese Vorlage blieb ohne Antwort und ist nicht die Frage, die gerade gestellt wird. Nicht nachtraeglich beantworten; nur als Vorgeschichte lesen.]'
+  const unbeantwortet = new Set(
+    kontext
+      .filter((zeile, i) => zeile.rolle === 'mensch' && kontext[i + 1]?.rolle !== 'eni')
+      .map((zeile) => zeile.id)
+  )
+
   /** aus einer verlaufszeile die vorlage bauen, die das modell liest */
   const baueNachricht = (zeile: { id: string; rolle: EniRolle; text: string }) => {
     const dazu = jeNachricht.get(zeile.id) ?? []
     const bilder = dazu
       .filter((anhang) => anhang.art === 'bild' && anhang.pfad && adressen.has(anhang.pfad))
       .map((anhang) => adressen.get(anhang.pfad!)!)
+    const text = gefaltet.get(zeile.id) ?? zeile.text
     return {
       rolle: zeile.rolle === 'eni' ? ('assistant' as const) : ('user' as const),
-      text: gefaltet.get(zeile.id) ?? zeile.text,
+      text: unbeantwortet.has(zeile.id) ? `${ABGEBROCHEN}\n${text}` : text,
       ...(bilder.length > 0 ? { bilder } : {}),
     }
   }
@@ -1154,10 +1176,13 @@ export async function behandleEni(
   let web: WebQuelle[] = []
   let webHinweis = ''
   try {
-    if (anfrage.internet === true) {
+    // Der Schalter erlaubt die Suche, er erzwingt sie nicht: was nichts zum
+    // Nachschlagen ist, geht auch nicht an eine Suchmaschine.
+    const auftrag = anfrage.internet === true ? suchauftrag(vorlageText) : null
+    if (auftrag) {
       melde?.({ schritt: 'sucht' })
       try {
-        web = await (deps.webSuche ?? sucheWeb)(vorlageText, deps.umgebung, signal)
+        web = await (deps.webSuche ?? sucheWeb)(auftrag, deps.umgebung, signal)
         // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
         // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
         melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
@@ -1181,6 +1206,7 @@ export async function behandleEni(
           system: eniSystemPrompt({
             person,
             lage,
+            web: web.length > 0 || frueherImChat.length > 0,
             zusatz: [
               wissen,
               web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',

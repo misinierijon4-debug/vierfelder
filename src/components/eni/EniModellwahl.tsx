@@ -45,6 +45,12 @@ type Props = {
  * Satz, der bleibt, gehört zum Umschalter: der sagt, was man eintauscht, und
  * das ist bei jedem Modell etwas anderes.
  *
+ * **Eine Warnung ist die Ausnahme davon.** Sie erklärt nicht, was ein Modell
+ * kann, sondern was mit einem schiefgeht — qwen 3.8 gibt die Systemanweisung
+ * wörtlich aus. Das erfährt man sonst erst aus der Antwort, und dann ist es zu
+ * spät. Sie steht nur, wo der Server sie setzt — und auch dann, wenn es gar
+ * keine Liste gibt, weil nur dieser eine Schlüssel gesetzt ist.
+ *
  * Was hier steht, kommt vom Server: genau die Schlüssel, die gesetzt sind, und
  * für jeden die Auskunft, ob er überhaupt vordenken kann. Der Browser kennt
  * weder Adresse noch Schlüssel, nur den Namen, eine id und ein Ja oder Nein.
@@ -78,7 +84,14 @@ export function EniModellwahl({
   */
   const zeigeModelle = anbieter.length > 1
   const zeigeDenken = aktiv.denkbar
-  if (!zeigeModelle && !zeigeDenken) return null
+  /*
+    Die Warnung haengt bisher an der Liste — und die Liste faellt bei einem
+    einzigen Schluessel weg. Steht nur qwen da, ist der Hinweis aber am
+    noetigsten: dann gibt es kein anderes Modell, auf das man ausweichen
+    koennte. Sie steht deshalb auch allein.
+  */
+  const zeigeWarnung = aktiv.warnung !== ''
+  if (!zeigeModelle && !zeigeDenken && !zeigeWarnung) return null
 
   const denktJetzt = denkt && aktiv.denkbar
 
@@ -90,7 +103,7 @@ export function EniModellwahl({
         disabled={gesperrt}
         aria-haspopup="menu"
         aria-expanded={offen}
-        aria-label={`modell wählen, gerade ${aktiv.name}${denktJetzt ? ', denkt vor' : ''}`}
+        aria-label={`modell wählen, gerade ${aktiv.name}${aktiv.warnung ? `, ${aktiv.warnung}` : ''}${denktJetzt ? ', denkt vor' : ''}`}
         className="flex min-w-0 max-w-full items-center gap-1 py-1 text-[11px] transition-opacity disabled:opacity-40"
         style={{ color: offen ? 'var(--kreide)' : 'var(--kreide-52)' }}
       >
@@ -154,17 +167,40 @@ export function EniModellwahl({
                     >
                       •
                     </span>
-                    <span
-                      className="min-w-0 flex-1 truncate text-[12px] font-bold leading-tight"
-                      style={{ color: dran ? 'var(--kreide)' : 'var(--kreide-60)' }}
-                    >
-                      {eintrag.name}
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="block truncate text-[12px] font-bold leading-tight"
+                        style={{ color: dran ? 'var(--kreide)' : 'var(--kreide-60)' }}
+                      >
+                        {eintrag.name}
+                      </span>
+                      {eintrag.warnung !== '' && (
+                        <span className="block pt-0.5 text-[10px] leading-tight text-kreide-52">
+                          {eintrag.warnung}
+                        </span>
+                      )}
                     </span>
                   </motion.button>
                 )
               })}
 
-            {zeigeModelle && zeigeDenken && (
+            {!zeigeModelle && zeigeWarnung && (
+              /*
+                Ohne Liste gehoert die Warnung trotzdem ins Menue. Kein
+                `menuitem`: hier ist nichts zu waehlen. Und `aria-hidden`, weil
+                die Beschriftung des Knopfes sie schon vorliest — zweimal
+                dasselbe waere kein Gewinn.
+              */
+              <motion.p
+                variants={zeile}
+                aria-hidden="true"
+                className="px-3 py-2 text-[10px] leading-tight text-kreide-52"
+              >
+                {aktiv.warnung}
+              </motion.p>
+            )}
+
+            {(zeigeModelle || zeigeWarnung) && zeigeDenken && (
               /*
                 Eine Haarlinie, kein Abstand: die Stellung ist keine vierte
                 Stimme in derselben Liste, sondern die zweite Frage.

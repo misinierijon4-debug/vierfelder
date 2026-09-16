@@ -142,9 +142,9 @@ export function EniWissenDialog({
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="vollbild-safe-x flex h-full flex-col pb-[calc(var(--app-safe-bottom)+1rem)] pt-[calc(var(--app-safe-top)+1rem)]"
         >
-          <header className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-2 border-b border-linie pb-3">
+          <header className="mx-auto flex w-full max-w-[576px] items-center justify-between gap-2 border-b border-linie px-2 pb-3">
             <h2 className="display text-[16px] font-bold lowercase leading-none">
-              das weiß eni über mich
+              das weiß ENI über mich
             </h2>
             <button
               className="-mr-2 flex size-11 shrink-0 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
@@ -156,9 +156,15 @@ export function EniWissenDialog({
             </button>
           </header>
 
-          <div className="mx-auto w-full max-w-[560px] min-h-0 flex-1 overflow-y-auto overscroll-contain py-4">
+          {/*
+            Die knopfzeilen darunter ziehen sich mit `-mx-2` nach aussen, damit
+            ihre beschriftung an der spaltenkante steht. Ohne dieses padding
+            wurden daraus 576 px in einer 560 px breiten spalte, und der dialog
+            liess sich waagerecht schieben — am handy genauso.
+          */}
+          <div className="mx-auto w-full max-w-[576px] min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-4">
             <p className="text-[12px] leading-relaxed text-kreide-52">
-              du bestimmst, was eni in späteren chats berücksichtigen darf. privat,
+              du bestimmst, was ENI in späteren chats berücksichtigen darf. privat,
               solange du einen eintrag nicht ausdrücklich teilst. änderungen gelten
               für künftige antworten; bereits geschriebene chats bleiben stehen.
             </p>

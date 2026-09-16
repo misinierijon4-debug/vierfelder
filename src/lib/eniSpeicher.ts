@@ -1,6 +1,10 @@
 import { supabase } from './supabase'
 import { raeumeChatDateien } from './eniAnhang'
 import type { EniAnhang } from './eniAnhang'
+import { addDays, startOfWeek, toKey } from './dates'
+import { lokalePunktquellen } from './lokal'
+import { tafelAusZeilen } from '../../supabase/functions/_shared/duellPunkte'
+import type { Punktetafel } from '../../supabase/functions/_shared/duellPunkte'
 import type { UserId } from './types'
 
 export type DuellKontext = {
@@ -215,51 +219,72 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
 
     async duellStand() {
       try {
-        const { data: profData } = await klient
-          .from('profile')
-          .select('person')
-          .eq('id', kontoId)
-          .single()
-        const person = (profData as { person?: unknown })?.person as UserId
+        const zeit = duellZeitraum()
+        const [profile, einheiten, aufenthalte, gewicht] = await Promise.all([
+          klient.from('profile').select('id,person'),
+          klient.from('einheiten').select('user_id,bereich,tag').gte('tag', zeit.montag),
+          klient
+            .from('aufenthalte')
+            .select('user_id,bereich,ankunft,abgang')
+            .gte('ankunft', `${zeit.vorMontag}T00:00:00Z`),
+          klient.from('gewicht').select('user_id,tag').gte('tag', zeit.montag),
+        ])
+
+        const nachKonto = new Map(
+          (profile.data ?? []).map((zeile) => [String(zeile.id), String(zeile.person)])
+        )
+        const person = nachKonto.get(kontoId)
         if (person !== 'erijon' && person !== 'koray') return null
-        const ich = person
-        const gegner: UserId = person === 'koray' ? 'erijon' : 'koray'
 
-        const heute = new Date()
-        const montag = new Date(heute)
-        const day = (montag.getDay() + 6) % 7
-        montag.setDate(montag.getDate() - day)
-        const montagIso = montag.toISOString().slice(0, 10)
-
-        const { data: einheitenData } = await klient
-          .from('einheiten')
-          .select('user_id,bereich,tag')
-          .gte('tag', montagIso)
-
-        const { data: allProfiles } = await klient.from('profile').select('id,person')
-        const personMap = new Map((allProfiles ?? []).map((p) => [String(p.id), p.person as UserId]))
-
-        let wocheIch = 0
-        let wocheEr = 0
-        for (const row of einheitenData ?? []) {
-          const u = personMap.get(String(row.user_id))
-          if (u === ich) wocheIch += 1
-          else if (u === gegner) wocheEr += 1
-        }
-
-        return {
-          ich,
-          gegner,
-          ichName: ich === 'koray' ? 'Koray' : 'Erijon',
-          gegnerName: gegner === 'koray' ? 'Koray' : 'Erijon',
-          wocheIch,
-          wocheEr,
-          diff: wocheIch - wocheEr,
-        }
+        const tafel = tafelAusZeilen(
+          { einheiten: einheiten.data, aufenthalte: aufenthalte.data, gewicht: gewicht.data },
+          (id) => nachKonto.get(String(id)) ?? null,
+          toKey,
+          zeit.montag,
+          zeit.heute
+        )
+        return baueDuellKontext(person, tafel)
       } catch {
         return null
       }
     },
+  }
+}
+
+/**
+ * Der Zeitraum des Wochenduells, in Ortszeit. `vorMontag` ist der Puffer fuer
+ * die Messungen: eine Sitzung am Sonntagabend steht in UTC schon am Montag,
+ * und ohne den Puffer fehlte sie. Die Tafel wirft danach weg, was nicht in die
+ * Woche gehoert.
+ */
+function duellZeitraum(): { montag: string; vorMontag: string; heute: string } {
+  const jetzt = new Date()
+  const montag = startOfWeek(jetzt)
+  return {
+    montag: toKey(montag),
+    vorMontag: toKey(addDays(montag, -1)),
+    heute: toKey(jetzt),
+  }
+}
+
+/**
+ * Der Stand, wie der Begruessungsschirm ihn zeigt. Dieselbe Zaehlung wie die
+ * LAGE und wie der Tracker: drei Quellen, ein Punkt je Person, Feld und Tag.
+ * Vorher zaehlte hier nur die Tabelle `einheiten`, und der Schirm zeigte 1:1,
+ * wo 5:3 stand.
+ */
+function baueDuellKontext(ich: UserId, tafel: Punktetafel): DuellKontext {
+  const gegner: UserId = ich === 'koray' ? 'erijon' : 'koray'
+  const wocheIch = tafel.anzahl(ich)
+  const wocheEr = tafel.anzahl(gegner)
+  return {
+    ich,
+    gegner,
+    ichName: ich === 'koray' ? 'Koray' : 'Erijon',
+    gegnerName: gegner === 'koray' ? 'Koray' : 'Erijon',
+    wocheIch,
+    wocheEr,
+    diff: wocheIch - wocheEr,
   }
 }
 
@@ -367,43 +392,34 @@ export function lokalerEniSpeicher(me: UserId): EniSpeicher {
     },
     async duellStand() {
       try {
-        const rawEinheiten = localStorage.getItem('vierfelder.einheiten.v1')
-        const einheitenObj = rawEinheiten ? JSON.parse(rawEinheiten) : null
-        const heute = new Date()
-        const montag = new Date(heute)
-        const day = (montag.getDay() + 6) % 7
-        montag.setDate(montag.getDate() - day)
-        const montagIso = montag.toISOString().slice(0, 10)
-        const heuteIso = heute.toISOString().slice(0, 10)
-
-        let wocheIch = 0
-        let wocheEr = 0
-        const ich = me
-        const gegner: UserId = me === 'koray' ? 'erijon' : 'koray'
-
-        if (einheitenObj && typeof einheitenObj === 'object') {
-          for (const [, liste] of Object.entries(einheitenObj)) {
-            if (!Array.isArray(liste)) continue
-            for (const e of liste as Array<Record<string, unknown>>) {
-              if (!e || typeof e !== 'object') continue
-              const tag = String(e.tag ?? '')
-              if (tag >= montagIso && tag <= heuteIso) {
-                if (e.user === ich) wocheIch += 1
-                else if (e.user === gegner) wocheEr += 1
-              }
-            }
-          }
-        }
-
-        return {
-          ich,
-          gegner,
-          ichName: ich === 'koray' ? 'Koray' : 'Erijon',
-          gegnerName: gegner === 'koray' ? 'Koray' : 'Erijon',
-          wocheIch,
-          wocheEr,
-          diff: wocheIch - wocheEr,
-        }
+        const zeit = duellZeitraum()
+        const quellen = lokalePunktquellen()
+        const tafel = tafelAusZeilen(
+          {
+            einheiten: quellen.einheiten.map((einheit) => ({
+              user_id: einheit.user,
+              bereich: einheit.area,
+              tag: einheit.tag,
+            })),
+            aufenthalte: quellen.aufenthalte.map((aufenthalt) => ({
+              user_id: aufenthalt.user,
+              bereich: aufenthalt.bereich,
+              ankunft: aufenthalt.ankunft,
+              abgang: aufenthalt.abgang,
+            })),
+            // der schluessel eines gewichts ist `person|tag`, ein tag je zeile
+            gewicht: Object.keys(quellen.gewichte).map((schluessel) => {
+              const [user, tag] = schluessel.split('|')
+              return { user_id: user, tag }
+            }),
+          },
+          // ohne konten ist die person schon der schluessel
+          (id) => (id === 'erijon' || id === 'koray' ? String(id) : null),
+          toKey,
+          zeit.montag,
+          zeit.heute
+        )
+        return baueDuellKontext(me, tafel)
       } catch {
         return null
       }

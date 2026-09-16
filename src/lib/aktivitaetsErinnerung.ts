@@ -5,7 +5,7 @@ export const AKTIVITAETS_ERINNERUNGEN = [
   { art: 'lesen', label: 'lesen', beschreibung: 'täglich · 20:45 · wenn noch kein leseeintrag vorliegt' },
   { art: 'wochenblick', label: 'wochenendspurt', beschreibung: 'sonntag · 18:00 · euer aktueller wochenstand' },
   { art: 'partner', label: 'partnerfortschritt', beschreibung: 'täglich · 09:00–21:00 · wenn dein Partner Punkte sammelt oder vorzieht' },
-  { art: 'wochenrueckblick', label: 'wochenrückblick', beschreibung: 'sonntag · 20:00 · Eni fasst deine Woche zusammen' },
+  { art: 'wochenrueckblick', label: 'wochenrückblick', beschreibung: 'sonntag · 20:00 · ENI fasst deine Woche zusammen' },
 ] as const
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>

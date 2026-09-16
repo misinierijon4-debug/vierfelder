@@ -40,3 +40,23 @@ describe('ENIs Moduswahl', () => {
     )
   })
 })
+
+describe('der satz ueber die websuche', () => {
+  it('steht ohne webmaterial, weil dann wirklich nichts recherchiert ist', () => {
+    const ohne = eniSystemPrompt({ person: 'erijon', lage: 'LAGE.' })
+    expect(ohne).toContain('Du hast keine Websuche')
+  })
+
+  it('faellt weg, sobald webmaterial mitgeht', () => {
+    // vorher stand beides im selben prompt: "du hast keine Websuche" und
+    // darunter die gefundenen auszuege.
+    const mit = eniSystemPrompt({
+      person: 'erijon',
+      lage: 'LAGE.',
+      web: true,
+      zusatz: ['GEFUNDENE AUSZUEGE'],
+    })
+    expect(mit).not.toContain('Du hast keine Websuche')
+    expect(mit).toContain('Recherchiert ist ausschliesslich, was im Webmaterial')
+  })
+})

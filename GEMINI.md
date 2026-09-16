@@ -45,8 +45,8 @@ Es gibt **keinen Linter** und **kein Formatierwerkzeug** — Stil der Nachbardat
 ## Wo was liegt
 
 ```
-src/lib/          102 Dateien: gesamte Logik + Tests (*.test.ts neben der Datei)
-src/components/    74 Dateien: Oberfläche, Unterordner eni/ noten/ schlaf/ duell/
+src/lib/          104 Dateien: gesamte Logik + Tests (*.test.ts neben der Datei)
+src/components/    75 Dateien: Oberfläche, Unterordner eni/ noten/ schlaf/ duell/
 supabase/migrations/   46 SQL-Dateien, Name: YYYYMMDDHHMMSS_thema.sql
 supabase/functions/    Edge Functions (Deno), gemeinsamer Code in _shared/
 supabase/schema.sql    Gesamtstand der Tabellen — schneller als Migrationen lesen
@@ -67,6 +67,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Prototypmodus ohne Supabase | `src/lib/lokal.ts` |
 | Backend-Interface (beide Modi erfüllen es) | `src/lib/backend.ts` |
 | Ticks, Einheiten, Wochenwertung | `src/lib/tracker.ts` |
+| **Punktezählung des Duells, eine Stelle für alle** | `supabase/functions/_shared/duellPunkte.ts` |
 | **Fokus an/aus, Einheitenzählung** | `supabase/functions/_shared/fokus.ts`, `supabase/functions/fokus/index.ts`, `src/lib/fokusFunction.test.ts`, `FOKUS-KURZBEFEHL.md` |
 | Anzeige von Einheiten und Quelle | `src/components/Raster.tsx`, `src/components/Tagesdetail.tsx` |
 | Tastaturfokus in Dialogen (**nicht** das Fokus-Feature) | `src/lib/dialogFokus.ts` |
@@ -76,9 +77,10 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts` |
 | Noten, MSS-Regeln Abi 2027 | `src/lib/noten.ts`, `src/components/noten/` |
 | Duell, Wetten, Druckstatus | `src/lib/duell.ts`, `src/components/duell/` |
-| ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1038 Z.) |
+| ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1136 Z.) |
 | ENI Modell, Stream, Websuche | `supabase/functions/_shared/eni*.ts`, `supabase/functions/eni/index.ts` |
 | ENI Sprachausgabe/Diktat | `src/lib/eniStimme.ts`, `src/lib/eniDiktat.ts` |
+| ENI Wochenvorlage (Wortlaut wird wiedererkannt) | `supabase/functions/_shared/eniVorlagen.ts` |
 | Push, Erinnerungen, VAPID | `src/lib/push.ts`, `src/lib/erinnerung.ts`, `supabase/functions/_shared/versand.ts` |
 | Kalenderraster (Tracker + Schlaf) | `src/lib/kalender.ts` |
 | Animationsdauern (alle an einer Stelle) | `src/lib/motion.ts` |

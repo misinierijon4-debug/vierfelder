@@ -53,6 +53,7 @@ function anbieterInfo(id: string, name: string): AnbieterInfo {
     modell: `modell/${id}`,
     denkbar: true,
     denkHinweis: 'langsamer, dafür gründlicher.',
+    warnung: '',
   }
 }
 
@@ -121,7 +122,7 @@ describe('ENI als eigene oberflaeche', () => {
     await laufeAn('ich gehe morgen statt heute ins gym')
 
     expect(screen.getByText('ich gehe morgen statt heute ins gym')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('ENI prüft')
+    expect(screen.getByRole('status')).toHaveTextContent('ENI denkt nach')
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
 
@@ -334,6 +335,61 @@ describe('ENI als eigene oberflaeche', () => {
     expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'qwen-infron', false)
     expect(screen.getByText(/qwen 3\.8 unzensiert über supabase/i)).toBeInTheDocument()
     expect(zu()).toBe(true)
+  })
+
+  it('schreibt die warnung eines versuchsmodells unter seinen namen', async () => {
+    // qwen gibt die systemanweisung woertlich aus. es bleibt waehlbar, aber
+    // wer es waehlt, soll das vorher wissen und nicht aus der antwort erfahren.
+    vi.useFakeTimers()
+    const modelle = [
+      anbieterInfo('deepseek', 'deepseek'),
+      { ...anbieterInfo('qwen-infron', 'qwen 3.8 unzensiert'), warnung: 'versuchsmodell, gibt interne anweisungen preis' },
+    ]
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: modelle })}
+        baueGeber={vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    expect(
+      screen.getByRole('menuitemradio', { name: /versuchsmodell, gibt interne anweisungen preis/i })
+    ).toBeInTheDocument()
+    // die anderen zeilen bleiben eine zeile
+    expect(screen.getByRole('menuitemradio', { name: /^deepseek$/i })).toBeInTheDocument()
+  })
+
+  it('zeigt die warnung auch, wenn das versuchsmodell das einzige ist', async () => {
+    // eine wahl mit einer moeglichkeit ist keine wahl, also faellt die liste
+    // weg — und mit ihr fiel die warnung weg. genau hier ist sie am noetigsten:
+    // es gibt kein anderes modell, auf das man ausweichen koennte.
+    vi.useFakeTimers()
+    const nurQwen = [
+      { ...anbieterInfo('qwen-infron', 'qwen 3.8 unzensiert'), warnung: 'versuchsmodell, gibt interne anweisungen preis' },
+    ]
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: nurQwen })}
+        baueGeber={vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    // der knopf sagt es vorlesbar, auch ohne das menü zu öffnen
+    expect(
+      screen.getByRole('button', { name: /modell wählen.*versuchsmodell, gibt interne anweisungen preis/i })
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    // und sichtbar steht sie im menü, obwohl es keine liste gibt
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+    expect(screen.getByText('versuchsmodell, gibt interne anweisungen preis')).toBeInTheDocument()
   })
 
   it('legt das vordenken für jedes modell um und merkt es sich auf diesem gerät', async () => {

@@ -1,4 +1,8 @@
 import { streamZeilen } from '../../supabase/functions/_shared/eniStream'
+import {
+  WOCHENBERICHT_VORLAGE,
+  istWochenberichtVorlage,
+} from '../../supabase/functions/_shared/eniVorlagen'
 import { supabase } from './supabase'
 import { eniAntwort } from './eni'
 import type { AnhangVorlage } from './eniAnhang'
@@ -22,6 +26,8 @@ export type AnbieterInfo = {
   denkbar: boolean
   /** was unter dem umschalter steht, solange dieser anbieter dran ist */
   denkHinweis: string
+  /** warnung unter dem namen. leer heisst: keine. */
+  warnung: string
 }
 
 /** worüber die websuche läuft, sobald sie eingerichtet ist */
@@ -271,6 +277,9 @@ export async function modellBereit(): Promise<Modellstand> {
          */
         denkbar: eintrag.denkbar === true,
         denkHinweis: String(eintrag.denkHinweis ?? ''),
+        // Ein alter Server kennt das Feld nicht. Dann steht keine Warnung da,
+        // nie eine erfundene.
+        warnung: String(eintrag.warnung ?? ''),
       }))
     const weg = inhalt.suche
     return {
@@ -401,9 +410,9 @@ export function stimmenprobeAntwort(speicher: EniSpeicher): Antwortgeber {
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen')
       const bisher = await speicher.nachrichten(chatId)
       const offene = bisher.find(
-        (z) => z.rolle === 'mensch' && z.text === 'Willst du, dass Eni deine Woche zusammenfasst?'
+        (z) => z.rolle === 'mensch' && istWochenberichtVorlage(z.text)
       )
-      const mensch = offene ?? (await speicher.schreibe(chatId, 'mensch', 'Willst du, dass Eni deine Woche zusammenfasst?'))
+      const mensch = offene ?? (await speicher.schreibe(chatId, 'mensch', WOCHENBERICHT_VORLAGE))
       if (signal?.aborted) throw new EniModellFehler('anfrage abgebrochen', mensch)
       const urteil = 'Erfolge\nSolide Woche. Du hast deine Punkte im Blick behalten.\n\nAktivitäten\nEinheiten und Training wurden erfasst.\n\nSchlaf\nSchlafdaten liegen für die Woche vor.\n\nVergleich\nDer Zweikampf bleibt spannend.\n\nNächste Woche\nBleib bei deinen festen Gewohnheiten. Leg die Einheiten früh fest.'
       const eni = await speicher.schreibe(chatId, 'eni', urteil)

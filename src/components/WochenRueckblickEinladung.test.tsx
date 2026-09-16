@@ -50,7 +50,7 @@ describe('WochenRueckblickEinladung', () => {
     render(<WochenRueckblickEinladung kontoId="konto-a" jetzt={JETZT} />)
 
     await waitFor(() => expect(mock.laden).toHaveBeenCalledOnce())
-    expect(screen.queryByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeNull()
+    expect(screen.queryByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeNull()
   })
 
   it('zeigt nur faellige offene Wochen und die aelteste zuerst', async () => {
@@ -60,7 +60,7 @@ describe('WochenRueckblickEinladung', () => {
     ])
     render(<WochenRueckblickEinladung kontoId="konto-a" jetzt={JETZT} />)
 
-    expect(await screen.findByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeInTheDocument()
+    expect(await screen.findByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeInTheDocument()
     expect(screen.getByText(/14\.–20\. september/i)).toBeInTheDocument()
     expect(screen.getByText(/1 offene woche/i)).toBeInTheDocument()
     expect(screen.queryByText(/21\.–27\. september/i)).toBeNull()
@@ -80,7 +80,7 @@ describe('WochenRueckblickEinladung', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Woche ansehen' }))
     expect(onWocheOeffnen).toHaveBeenCalledWith('2026-09-14')
-    expect(screen.getByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeInTheDocument()
+    expect(screen.getByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeInTheDocument()
     expect(mock.schliessen).not.toHaveBeenCalled()
   })
 
@@ -91,7 +91,7 @@ describe('WochenRueckblickEinladung', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Schließen' }))
     await waitFor(() => expect(mock.schliessen).toHaveBeenCalledWith('2026-09-14'))
-    await waitFor(() => expect(screen.queryByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeNull())
   })
 
   it('laesst die Karte bei Nulltreffer oder Fehler stehen und zeigt den Fehler', async () => {
@@ -102,12 +102,12 @@ describe('WochenRueckblickEinladung', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Schließen' }))
     expect(await screen.findByText(/nicht bestätigt geschlossen/i)).toBeInTheDocument()
-    expect(screen.getByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeInTheDocument()
+    expect(screen.getByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeInTheDocument()
 
     mock.schliessen.mockRejectedValueOnce(new Error('netz'))
     await user.click(screen.getByRole('button', { name: 'Schließen' }))
     expect(await screen.findByText('netz')).toBeInTheDocument()
-    expect(screen.getByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeInTheDocument()
+    expect(screen.getByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeInTheDocument()
   })
 
   it('verwirft eine spaete Antwort des vorherigen Kontos', async () => {
@@ -128,6 +128,6 @@ describe('WochenRueckblickEinladung', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(mock.laden).not.toHaveBeenCalled()
-    expect(screen.queryByText('Willst du, dass Eni deine Woche zusammenfasst?')).toBeNull()
+    expect(screen.queryByText('Willst du, dass ENI deine Woche zusammenfasst?')).toBeNull()
   })
 })

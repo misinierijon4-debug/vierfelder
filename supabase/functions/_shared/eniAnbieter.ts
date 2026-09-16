@@ -48,6 +48,15 @@ export type Anbieter = {
   /** name der umgebungsvariable, in der der schluessel steht */
   schluessel: string
   /**
+   * Ein Satz, der unter dem Namen steht — nur wo er gesetzt ist.
+   *
+   * Die Regel im Menue lautet: eine Zeile, ein Name, keine Erklaerung. Eine
+   * Warnung ist die Ausnahme davon, und zwar eine noetige: wer ein Modell
+   * waehlt, das die Systemanweisung woertlich ausgibt und holpriges Deutsch
+   * schreibt, soll das vorher wissen und nicht aus der Antwort erfahren.
+   */
+  warnung?: string
+  /**
    * Beide Stellungen des Vordenkens. Jede Gegenstelle nennt den Schalter
    * anders, und keine steht von sich aus dort, wo ENI sie haben will:
    * `ling-3.0-flash-vl` und `deepseek-flash` denken beide von sich aus vor.
@@ -146,6 +155,16 @@ export const ANBIETER: readonly Anbieter[] = [
     modell: 'qwen/qwen3.8-27b:free',
     endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
     schluessel: 'INFRON_API_KEY',
+    /**
+     * Gemessen am 15.09.2026: gab die Systemanweisung woertlich aus ("Hoert
+     * auf zu sticheln:" als Ueberschrift), nannte das interne Wort LAGE vor
+     * dem Nutzer, behauptete eine Gewichtsangabe fehle, die in der LAGE stand,
+     * schrieb "absolute Nulł" und brauchte mit Denken 70 bis 80 Sekunden.
+     *
+     * Es bleibt waehlbar — unzensiert ist der Grund, warum es hier steht —,
+     * aber das Menue sagt jetzt dazu, worauf man sich einlaesst.
+     */
+    warnung: 'versuchsmodell, gibt interne anweisungen preis',
     // Infrons dokumentierter Reasoning-Schalter; keine DeepSeek-spezifischen
     // Parameter. Die :free-ID bleibt fest, auch bei Limits kein Bezahl-Fallback.
     denken: {
@@ -267,14 +286,16 @@ export function verfuegbareAnbieter(
   modell: string
   denkbar: boolean
   denkHinweis: string
+  warnung: string
 }> {
   return ANBIETER.filter((anbieter) => schluesselVon(anbieter, umgebung) !== '').map(
-    ({ id, name, modell, denken }) => ({
+    ({ id, name, modell, denken, warnung }) => ({
       id,
       name,
       modell,
       denkbar: denken.an !== null,
       denkHinweis: denken.hinweis ?? '',
+      warnung: warnung ?? '',
     })
   )
 }

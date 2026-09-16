@@ -144,7 +144,7 @@ export function EniKopfmenue({
                 <IconGedaechtnis size={16} />
               </span>
               <span className="text-[12px] font-semibold leading-tight">
-                das weiß eni über mich
+                das weiß ENI über mich
               </span>
             </motion.button>
           </motion.div>
