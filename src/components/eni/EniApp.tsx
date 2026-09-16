@@ -561,6 +561,94 @@ export function EniApp({
     [geber, internet, prueft, stimme, vorlesen]
   )
 
+  /**
+   * Eine eigene Vorlage wird nicht nur im Browser umgeschrieben. Der Speicher
+   * ersetzt genau diese Zeile und schneidet alles danach in einer Transaktion
+   * ab; erst dann beantwortet ENI die nun letzte, offene Vorlage neu.
+   */
+  const bearbeiteVorlage = useCallback(
+    (zeile: EniZeile, text: string) => {
+      const chatId = aktiverChatRef.current
+      const stelle = zeilen.findIndex((eintrag) => eintrag.id === zeile.id)
+      if (!geber || prueft || !chatId || stelle < 0 || zeile.rolle !== 'mensch') return
+
+      const davor = zeilen.slice(0, stelle)
+      setFehler(null)
+      setHinweis(null)
+      setFrisch(null)
+      setTeilAntwort(''); setLage(null)
+      setPrueft(true)
+      stimme.halt()
+      if (vorlesen) weckeStimme()
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      void (async () => {
+        let bearbeitet: EniZeile | null = null
+        try {
+          bearbeitet = await speicher.bearbeite(chatId, zeile.id, text)
+          if (aktiverChatRef.current === chatId) setZeilen([...davor, bearbeitet])
+          if (controller.signal.aborted) throw new EniModellFehler('anfrage abgebrochen')
+
+          const ergebnis = await geber.nochmal(
+            chatId,
+            controller.signal,
+            (teil) => {
+              if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                setTeilAntwort((vorher) => vorher + teil)
+              }
+            },
+            internet,
+            (l) => {
+              if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                setLage((vorher) => ({
+                  schritt: l.schritt,
+                  quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []),
+                }))
+              }
+            }
+          )
+
+          letzterFehlversuchRef.current = null
+          if (aktiverChatRef.current === chatId) {
+            setZeilen([
+              ...davor,
+              ergebnis.mensch,
+              ...(ergebnis.eni ? [ergebnis.eni] : []),
+            ])
+            setFrisch(ergebnis.eni?.id ?? null)
+            if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
+            if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
+          }
+        } catch (ursache) {
+          const istAbbruch =
+            controller.signal.aborted ||
+            (ursache instanceof Error && ursache.message.includes('abgebrochen'))
+
+          // Wenn der Schnitt schon gespeichert wurde, bleibt die bearbeitete
+          // Vorlage offen und kann wie jede unbeantwortete Vorlage nachgeholt
+          // werden. Scheitert bereits der Schnitt, bleibt der alte Verlauf da.
+          if (bearbeitet) {
+            letzterFehlversuchRef.current = istAbbruch ? null : { art: 'nochmal', chatId }
+            if (aktiverChatRef.current === chatId) setZeilen([...davor, bearbeitet])
+          }
+          setFehler(
+            istAbbruch
+              ? 'anfrage abgebrochen.'
+              : ursache instanceof EniModellFehler
+                ? ursache.message
+                : 'die nachricht konnte nicht bearbeitet werden.'
+          )
+        } finally {
+          setTeilAntwort(''); setLage(null)
+          setPrueft(false)
+        }
+      })()
+    },
+    [geber, internet, prueft, speicher, stimme, vorlesen, zeilen]
+  )
+
   const holeWochenbericht = useCallback(
     (chatId: string, zielWoche: string) => {
       if (!geber || prueft) return
@@ -919,8 +1007,10 @@ export function EniApp({
             bildAdressen={adressen}
             spricht={stimme.spricht}
             onVorlesen={stimme.moeglich ? lieseVor : undefined}
+            onBearbeiten={bearbeiteVorlage}
             onAuftakt={uebernimmAuftakt}
             feldBelegt={feldBelegt}
+            aktionenGesperrt={prueft}
             duellStand={duellStand}
           />
           {hinweis && (

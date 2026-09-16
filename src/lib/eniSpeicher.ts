@@ -60,6 +60,8 @@ export type EniSpeicher = {
   /** legt den chat mit dem titel an, den die erste vorlage ihm gibt */
   neuerChat: (titel: string) => Promise<EniChat>
   schreibe: (chatId: string, rolle: EniRolle, text: string) => Promise<EniZeile>
+  /** ersetzt eine eigene Vorlage und verwirft den Verlauf danach atomar */
+  bearbeite: (chatId: string, nachrichtId: string, text: string) => Promise<EniZeile>
   loesche: (chatId: string) => Promise<void>
   duellStand?: () => Promise<DuellKontext | null>
 }
@@ -165,6 +167,40 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
         .single()
       if (error) throw new EniSpeicherfehler('die nachricht wurde nicht gespeichert.', error)
       return leseZeile(data)
+    },
+
+    async bearbeite(chatId, nachrichtId, text) {
+      const { data, error } = await klient.rpc('eni_nachricht_bearbeiten', {
+        p_chat_id: chatId,
+        p_nachricht_id: nachrichtId,
+        p_text: text,
+      })
+      if (error) throw new EniSpeicherfehler('die nachricht konnte nicht bearbeitet werden.', error)
+
+      const ergebnis = data as {
+        zeile?: Record<string, unknown>
+        entfernte_pfade?: unknown
+      } | null
+      if (!ergebnis?.zeile) {
+        throw new EniSpeicherfehler('die bearbeitete nachricht wurde nicht zurückgegeben.')
+      }
+
+      // Die Datenbank nimmt die späteren Anhang-Zeilen in derselben Transaktion
+      // mit. Ihre privaten Bilddateien räumt der angemeldete Client danach auf;
+      // ein Storage-Fehler darf den bereits sauber verzweigten Chat nicht
+      // wieder als fehlgeschlagen darstellen.
+      const pfade = Array.isArray(ergebnis.entfernte_pfade)
+        ? ergebnis.entfernte_pfade.filter((pfad): pfad is string => typeof pfad === 'string')
+        : []
+      if (pfade.length > 0) {
+        try {
+          await klient.storage.from('eni-anhaenge').remove(pfade)
+        } catch {
+          /* verwaiste private Datei ist besser als ein falscher Chatstand */
+        }
+      }
+
+      return leseZeile(ergebnis.zeile)
     },
 
     async loesche(chatId) {
@@ -302,6 +338,26 @@ export function lokalerEniSpeicher(me: UserId): EniSpeicher {
         )
       )
       return zeile
+    },
+    async bearbeite(chatId, nachrichtId, text) {
+      const alle = alleNachrichten()
+      const bisher = alle[chatId] ?? []
+      const stelle = bisher.findIndex((zeile) => zeile.id === nachrichtId)
+      const ziel = bisher[stelle]
+      if (stelle < 0 || !ziel || ziel.rolle !== 'mensch') {
+        throw new EniSpeicherfehler('nur eine eigene nachricht kann bearbeitet werden.')
+      }
+      const bearbeitet: EniZeile = { ...ziel, text }
+      alle[chatId] = [...bisher.slice(0, stelle), bearbeitet]
+      schreibeRoh(NACHRICHTEN_KEY, alle)
+      const jetzt = new Date().toISOString()
+      schreibeRoh(
+        CHATS_KEY,
+        lies<EniChat[]>(CHATS_KEY, []).map((chat) =>
+          chat.id === chatId ? { ...chat, zuletzt: jetzt } : chat
+        )
+      )
+      return bearbeitet
     },
     async loesche(chatId) {
       schreibeRoh(CHATS_KEY, lies<EniChat[]>(CHATS_KEY, []).filter((chat) => chat.id !== chatId))

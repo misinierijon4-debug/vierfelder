@@ -1,7 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EASE } from '../../lib/motion'
-import { IconFileText, IconPlus, IconSpeakerHigh, IconStop } from './EniSymbole'
+import {
+  IconCheck,
+  IconCopy,
+  IconFileText,
+  IconPencil,
+  IconPlus,
+  IconSpeakerHigh,
+  IconStop,
+} from './EniSymbole'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
 import { toKey } from '../../lib/dates'
@@ -39,10 +47,12 @@ type Props = {
   bildAdressen?: Map<string, string>
   spricht?: string | null
   onVorlesen?: (zeile: EniZeile) => void
+  onBearbeiten?: (zeile: EniZeile, text: string) => void
   onAuftakt: (text: string) => void
   duellStand?: DuellKontext | null
   /** steht etwas im eingabefeld? dann treten die auftakte ab */
   feldBelegt?: boolean
+  aktionenGesperrt?: boolean
 }
 
 export function EniStrom({
@@ -55,9 +65,11 @@ export function EniStrom({
   bildAdressen,
   spricht,
   onVorlesen,
+  onBearbeiten,
   onAuftakt,
   duellStand,
   feldBelegt = false,
+  aktionenGesperrt = false,
 }: Props) {
   /**
    * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
@@ -70,6 +82,19 @@ export function EniStrom({
    * mehr ungefragt da.
    */
   const [notizFuer, setNotizFuer] = useState<string | null>(null)
+  const [kopiert, setKopiert] = useState<string | null>(null)
+  const kopierTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (kopierTimer.current) clearTimeout(kopierTimer.current)
+  }, [])
+
+  const kopiere = async (zeile: EniZeile) => {
+    if (!(await kopiereText(zeile.text))) return
+    setKopiert(zeile.id)
+    if (kopierTimer.current) clearTimeout(kopierTimer.current)
+    kopierTimer.current = setTimeout(() => setKopiert(null), 1_600)
+  }
 
   if (zeilen.length === 0 && !prueft) {
     return (
@@ -96,6 +121,8 @@ export function EniStrom({
                 onVorlesen={onVorlesen && (() => onVorlesen(zeile))}
                 notizOffen={notizFuer === zeile.id}
                 onNotiz={onMerken && (() => setNotizFuer((offen) => (offen === zeile.id ? null : zeile.id)))}
+                kopiert={kopiert === zeile.id}
+                onKopieren={() => { void kopiere(zeile) }}
               />
             ) : (
               <MenschWort
@@ -106,6 +133,10 @@ export function EniStrom({
                 bildAdressen={bildAdressen}
                 notizOffen={notizFuer === zeile.id}
                 onNotiz={onMerken && (() => setNotizFuer((offen) => (offen === zeile.id ? null : zeile.id)))}
+                kopiert={kopiert === zeile.id}
+                onKopieren={zeile.text !== '' ? () => { void kopiere(zeile) } : undefined}
+                onBearbeiten={onBearbeiten ? (text) => onBearbeiten(zeile, text) : undefined}
+                aktionenGesperrt={aktionenGesperrt}
               />
             )}
             {onMerken && notizFuer === zeile.id && (
@@ -169,6 +200,8 @@ function EniWort({
   onVorlesen,
   notizOffen,
   onNotiz,
+  kopiert,
+  onKopieren,
 }: {
   text: string
   frisch: boolean
@@ -178,6 +211,8 @@ function EniWort({
   onVorlesen?: () => void
   notizOffen?: boolean
   onNotiz?: () => void
+  kopiert?: boolean
+  onKopieren?: () => void
 }) {
   return (
     <div className="pt-5">
@@ -204,6 +239,9 @@ function EniWort({
       <div className="mt-2 text-kreide">
         <StrukturierterText text={text} frisch={frisch} linksAktiv={linksAktiv} />
       </div>
+      {onKopieren && (
+        <NachrichtenAktionen kopiert={kopiert === true} onKopieren={onKopieren} />
+      )}
     </div>
   )
 }
@@ -387,6 +425,72 @@ function Notizknoepfe({
   )
 }
 
+/**
+ * Kopiert auch in installierten iOS-PWAs, in denen die moderne Clipboard-API
+ * gelegentlich nicht angeboten wird. Der unsichtbare Fallback bleibt nur für
+ * den Augenblick des Kopierens im Dokument.
+ */
+async function kopiereText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+    const feld = document.createElement('textarea')
+    feld.value = text
+    feld.setAttribute('readonly', '')
+    feld.style.position = 'fixed'
+    feld.style.opacity = '0'
+    document.body.appendChild(feld)
+    feld.select()
+    const gelungen = document.execCommand('copy')
+    feld.remove()
+    return gelungen
+  } catch {
+    return false
+  }
+}
+
+function NachrichtenAktionen({
+  kopiert,
+  onKopieren,
+  onBearbeiten,
+  gesperrt = false,
+}: {
+  kopiert: boolean
+  onKopieren?: () => void
+  onBearbeiten?: () => void
+  gesperrt?: boolean
+}) {
+  return (
+    <div className="mt-0.5 flex min-h-11 items-center gap-0.5 text-kreide-52">
+      {onKopieren && (
+        <button
+          type="button"
+          onClick={onKopieren}
+          aria-label={kopiert ? 'kopiert' : 'nachricht kopieren'}
+          title={kopiert ? 'Kopiert' : 'Kopieren'}
+          className="flex size-11 items-center justify-center transition-colors hover:text-kreide"
+        >
+          {kopiert ? <IconCheck size={15} /> : <IconCopy size={15} />}
+        </button>
+      )}
+      {onBearbeiten && (
+        <button
+          type="button"
+          onClick={onBearbeiten}
+          disabled={gesperrt}
+          aria-label="eigene nachricht bearbeiten"
+          title="Bearbeiten"
+          className="flex size-11 items-center justify-center transition-colors hover:text-kreide disabled:opacity-35"
+        >
+          <IconPencil size={15} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 /** was du vorlegst, steht praesent und klar lesbar */
 function MenschWort({
   text,
@@ -396,6 +500,10 @@ function MenschWort({
   bildAdressen,
   notizOffen,
   onNotiz,
+  kopiert,
+  onKopieren,
+  onBearbeiten,
+  aktionenGesperrt = false,
 }: {
   text: string
   me: UserId
@@ -404,8 +512,21 @@ function MenschWort({
   bildAdressen?: Map<string, string>
   notizOffen?: boolean
   onNotiz?: () => void
+  kopiert?: boolean
+  onKopieren?: () => void
+  onBearbeiten?: (text: string) => void
+  aktionenGesperrt?: boolean
 }) {
   const farbe = userDef(me).farbe
+  const [bearbeitung, setBearbeitung] = useState<string | null>(null)
+
+  const sendeBearbeitung = () => {
+    const sauber = bearbeitung?.trim() ?? ''
+    if (!onBearbeiten || sauber === '' || sauber === text || aktionenGesperrt) return
+    setBearbeitung(null)
+    onBearbeiten(sauber)
+  }
+
   return (
     <div className="pt-5">
       <div
@@ -424,7 +545,43 @@ function MenschWort({
           </span>
           {onNotiz && <NotizKnopf offen={notizOffen === true} onKlick={onNotiz} />}
         </p>
-        {text !== '' && (
+        {bearbeitung !== null ? (
+          <form
+            className="mt-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              sendeBearbeitung()
+            }}
+          >
+            <label htmlFor={`eni-bearbeiten-${zeit}`} className="sr-only">
+              eigene nachricht bearbeiten
+            </label>
+            <textarea
+              id={`eni-bearbeiten-${zeit}`}
+              autoFocus
+              rows={Math.min(6, Math.max(2, bearbeitung.split('\n').length))}
+              value={bearbeitung}
+              onChange={(event) => setBearbeitung(event.target.value)}
+              className="block min-h-20 w-full resize-y rounded-[2px] border border-linie bg-grund/60 px-3 py-2.5 text-[16px] leading-relaxed text-kreide focus:border-kreide focus:outline-none"
+            />
+            <div className="mt-1.5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBearbeitung(null)}
+                className="min-h-11 px-3 text-xs font-semibold text-kreide-60 hover:text-kreide"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                disabled={bearbeitung.trim() === '' || bearbeitung.trim() === text || aktionenGesperrt}
+                className="min-h-11 rounded-[2px] bg-kreide px-3 text-xs font-bold text-grund disabled:opacity-40"
+              >
+                Neu absenden
+              </button>
+            </div>
+          </form>
+        ) : text !== '' && (
           <p className="mt-1.5 whitespace-pre-wrap text-pretty text-[15px] leading-relaxed text-kreide">
             {text}
           </p>
@@ -433,6 +590,14 @@ function MenschWort({
           <Anhaenge anhaenge={anhaenge} adressen={bildAdressen} />
         )}
       </div>
+      {bearbeitung === null && (onKopieren || onBearbeiten) && (
+        <NachrichtenAktionen
+          kopiert={kopiert === true}
+          onKopieren={onKopieren}
+          onBearbeiten={onBearbeiten ? () => setBearbeitung(text) : undefined}
+          gesperrt={aktionenGesperrt}
+        />
+      )}
     </div>
   )
 }

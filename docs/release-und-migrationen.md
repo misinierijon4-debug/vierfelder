@@ -62,6 +62,25 @@ ausdrücklich kein `insert` und kein `update`, `anon` hat gar nichts, `insert`
 liegt bei `service_role` — dieselbe Rollenverteilung wie bei `eni_anhaenge`.
 Bestand unverändert: 6 Chats, 28 Nachrichten vorher wie nachher.
 
+## Neue Migration `eni_nachricht_bearbeiten` (15.09.2026)
+
+Eigene Vorlagen lassen sich seit diesem Paket bearbeiten. Die ausgewählte
+Menschenzeile bleibt erhalten; alle späteren Nachrichten werden in derselben
+Transaktion entfernt, damit der Chat ab dort neu weiterläuft. Die Migration
+wurde einzeln über `apply_migration` angewandt, nicht über `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260915172144_eni_nachricht_bearbeiten.sql` | `20260915172403_eni_nachricht_bearbeiten` |
+
+Die Funktion läuft als `SECURITY INVOKER`. `anon` hat kein Execute-Recht;
+`authenticated` darf ausschließlich die Textspalte eigener `mensch`-Zeilen
+ändern, weiterhin unter RLS und vorhandener Profilprüfung. Ein transaktionaler
+Vertragstest als angemeldete Rolle bestätigte Update und Schnitt; seine
+Testzeilen wurden per Subtransaktion zurückgerollt. Der Advisor meldete für
+diese Änderung keinen neuen Befund. Die lokale und produktive Versionsnummer
+weichen erneut ab; die Sperre gegen `db push` gilt deshalb unverändert.
+
 **Nicht erfüllt sind Abschnitt 4 und 5.** Auf dem Rechner, auf dem dieses Paket
 entstand, lief kein Docker, und ein getrenntes Staging-Projekt gibt es nicht.
 Es gab also keine frische lokale Datenbank, keine gespielte Rollenmatrix, keine

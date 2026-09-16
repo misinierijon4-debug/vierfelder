@@ -61,6 +61,33 @@ describe('der lokale verlauf', () => {
     expect(await speicher.nachrichten(chat.id)).toEqual([])
   })
 
+  it('ersetzt eine eigene vorlage und schneidet den spaeteren verlauf ab', async () => {
+    const speicher = lokalerEniSpeicher('erijon')
+    const chat = await speicher.neuerChat('mein tag')
+    const erste = await speicher.schreibe(chat.id, 'mensch', 'ich trainiere heute')
+    await speicher.schreibe(chat.id, 'eni', 'gute entscheidung.')
+    await speicher.schreibe(chat.id, 'mensch', 'danach esse ich nichts')
+    await speicher.schreibe(chat.id, 'eni', 'das waere keine gute idee.')
+
+    const bearbeitet = await speicher.bearbeite(
+      chat.id,
+      erste.id,
+      'ich trainiere morgen'
+    )
+
+    expect(bearbeitet).toMatchObject({ id: erste.id, rolle: 'mensch', text: 'ich trainiere morgen' })
+    expect(await speicher.nachrichten(chat.id)).toEqual([bearbeitet])
+  })
+
+  it('laesst ENIs antworten nicht als eigene vorlage bearbeiten', async () => {
+    const speicher = lokalerEniSpeicher('erijon')
+    const chat = await speicher.neuerChat('mein tag')
+    const eni = await speicher.schreibe(chat.id, 'eni', 'bleib dran.')
+
+    await expect(speicher.bearbeite(chat.id, eni.id, 'anders')).rejects.toThrow(/eigene nachricht/)
+    expect(await speicher.nachrichten(chat.id)).toEqual([eni])
+  })
+
   it('trennt die chats der beiden personen nicht selbst, sondern haelt nur den eigenen speicher', async () => {
     // im prototyp gibt es nur ein geraet und einen speicher. die trennung
     // zwischen erijon und koray macht in der echten fassung die row level
