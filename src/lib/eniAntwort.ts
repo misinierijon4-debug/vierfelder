@@ -26,6 +26,8 @@ export type AnbieterInfo = {
   denkbar: boolean
   /** was unter dem umschalter steht, solange dieser anbieter dran ist */
   denkHinweis: string
+  /** warnung unter dem namen. leer heisst: keine. */
+  warnung: string
 }
 
 /** worüber die websuche läuft, sobald sie eingerichtet ist */
@@ -275,6 +277,9 @@ export async function modellBereit(): Promise<Modellstand> {
          */
         denkbar: eintrag.denkbar === true,
         denkHinweis: String(eintrag.denkHinweis ?? ''),
+        // Ein alter Server kennt das Feld nicht. Dann steht keine Warnung da,
+        // nie eine erfundene.
+        warnung: String(eintrag.warnung ?? ''),
       }))
     const weg = inhalt.suche
     return {

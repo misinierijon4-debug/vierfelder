@@ -53,6 +53,7 @@ function anbieterInfo(id: string, name: string): AnbieterInfo {
     modell: `modell/${id}`,
     denkbar: true,
     denkHinweis: 'langsamer, dafür gründlicher.',
+    warnung: '',
   }
 }
 
@@ -334,6 +335,32 @@ describe('ENI als eigene oberflaeche', () => {
     expect(baue).toHaveBeenLastCalledWith(true, expect.anything(), 'qwen-infron', false)
     expect(screen.getByText(/qwen 3\.8 unzensiert über supabase/i)).toBeInTheDocument()
     expect(zu()).toBe(true)
+  })
+
+  it('schreibt die warnung eines versuchsmodells unter seinen namen', async () => {
+    // qwen gibt die systemanweisung woertlich aus. es bleibt waehlbar, aber
+    // wer es waehlt, soll das vorher wissen und nicht aus der antwort erfahren.
+    vi.useFakeTimers()
+    const modelle = [
+      anbieterInfo('deepseek', 'deepseek'),
+      { ...anbieterInfo('qwen-infron', 'qwen 3.8 unzensiert'), warnung: 'versuchsmodell, gibt interne anweisungen preis' },
+    ]
+    render(
+      <EniApp
+        speicher={lokalerEniSpeicher('erijon')}
+        onZurueck={vi.fn()}
+        pruefeModell={() => Promise.resolve({ bereit: true, anbieter: modelle })}
+        baueGeber={vi.fn(() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any)}
+      />
+    )
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    fireEvent.click(screen.getByRole('button', { name: /modell wählen/i }))
+    expect(
+      screen.getByRole('menuitemradio', { name: /versuchsmodell, gibt interne anweisungen preis/i })
+    ).toBeInTheDocument()
+    // die anderen zeilen bleiben eine zeile
+    expect(screen.getByRole('menuitemradio', { name: /^deepseek$/i })).toBeInTheDocument()
   })
 
   it('legt das vordenken für jedes modell um und merkt es sich auf diesem gerät', async () => {

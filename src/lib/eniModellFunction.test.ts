@@ -270,6 +270,19 @@ describe('ENIs modellverbindung', () => {
     expect(JSON.stringify(liste)).not.toContain('https://')
   })
 
+  it('nennt qwen sichtbar als versuchsmodell, die anderen ohne warnung', async () => {
+    // es gab die systemanweisung woertlich aus, nannte das interne wort LAGE
+    // und schrieb kaputtes deutsch. es bleibt waehlbar, aber nicht stillschweigend.
+    const antwort = await behandleEni(
+      anfrage({ pruefen: true }),
+      deps({ openrouter: 'sk-or-geheim', infron: 'infron-geheim' }).abhaengigkeiten
+    )
+    const liste = await antwort.json()
+    const mitWarnung = liste.anbieter.filter((a: { warnung: string }) => a.warnung !== '')
+    expect(mitWarnung.map((a: { id: string }) => a.id)).toEqual(['qwen-infron'])
+    expect(mitWarnung[0].warnung).toContain('versuchsmodell')
+  })
+
   it('ruft den anbieter, den der client waehlt, mit dessen eigenem schluessel', async () => {
     const { abhaengigkeiten, gerufen } = deps({
       schluessel: 'sk-deepseek',
