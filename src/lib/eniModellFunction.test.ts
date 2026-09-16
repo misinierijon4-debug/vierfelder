@@ -652,6 +652,57 @@ describe('ENIs modellverbindung', () => {
     ])
   })
 
+  it('rahmt eine abgebrochene vorlage als vorbei, statt sie offen stehen zu lassen', async () => {
+    // abbrechen laesst die vorlage im verlauf stehen. fragt man danach etwas
+    // anderes, sah die gegenstelle zwei menschzeilen hintereinander und
+    // beantwortete die alte — einmal statt der neuen, einmal zusaetzlich.
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'schreib mir einen trainingsplan', erstellt: '2026-09-10T16:00:00Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    await behandleEni(anfrage({ chatId: 'c1', text: 'wie spaet ist es' }), abhaengigkeiten)
+
+    const nachrichten = gesehen[0]!.nachrichten
+    expect(nachrichten).toHaveLength(2)
+    expect(nachrichten[0]!.text).toContain('Abgebrochen')
+    expect(nachrichten[0]!.text).toContain('schreib mir einen trainingsplan')
+    // die neue frage bleibt, wie sie ist
+    expect(nachrichten[1]).toEqual({ rolle: 'user', text: 'wie spaet ist es' })
+  })
+
+  it('laesst eine beantwortete vorlage in ruhe', async () => {
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'gym steht', erstellt: '2026-09-10T16:00:00Z' },
+      { id: 'n2', chat_id: 'c1', user_id: ICH, rolle: 'eni', text: 'einer von sieben.', erstellt: '2026-09-10T16:00:01Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    await behandleEni(anfrage({ chatId: 'c1', text: 'und jetzt' }), abhaengigkeiten)
+
+    expect(JSON.stringify(gesehen[0]!.nachrichten)).not.toContain('Abgebrochen')
+  })
+
+  it('rahmt bei einer wiederholung nur die aeltere vorlage, nie die offene', async () => {
+    // zwei abbrueche hintereinander: die letzte zeile wird jetzt beantwortet,
+    // die davor ist vorbei.
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = [
+      { id: 'n1', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'erste frage', erstellt: '2026-09-10T16:00:00Z' },
+      { id: 'n2', chat_id: 'c1', user_id: ICH, rolle: 'mensch', text: 'zweite frage', erstellt: '2026-09-10T16:00:01Z' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+
+    await behandleEni(anfrage({ chatId: 'c1', wiederholen: true }), abhaengigkeiten)
+
+    const nachrichten = gesehen[0]!.nachrichten
+    expect(nachrichten[0]!.text).toContain('Abgebrochen')
+    expect(nachrichten[0]!.text).toContain('erste frage')
+    expect(nachrichten[1]).toEqual({ rolle: 'user', text: 'zweite frage' })
+  })
+
   it('haelt die vorlage fest, wenn das modell nicht antwortet', async () => {
     const { abhaengigkeiten, tabellen } = deps({
       modell: () => Promise.reject(new Error('kein netz')),
@@ -1080,7 +1131,9 @@ describe('ENI mit bild und datei', () => {
 
     await behandleEni(anfrage({ chatId: 'chat-9', text: 'und jetzt' }), abhaengigkeiten)
 
-    const alte = gesehen[0]!.nachrichten.find((nachricht) => nachricht.text === 'schau mal')
+    // die zeile ist unbeantwortet und traegt deshalb den abbruch-rahmen; das
+    // bild daran geht trotzdem mit, sonst waere die vorgeschichte blind
+    const alte = gesehen[0]!.nachrichten.find((nachricht) => nachricht.text.includes('schau mal'))
     expect(alte?.bilder).toEqual([`https://bucket/${ICH}/chat-9/alt.jpg?sig=x`])
   })
 

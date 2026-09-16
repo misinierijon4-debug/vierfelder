@@ -1095,15 +1095,36 @@ export async function behandleEni(
     gefaltet.set(id, ergebnis.text)
   }
 
+  /**
+   * Vorlagen, auf die nie eine Antwort kam: abgebrochen, weggeklickt oder an
+   * einem Fehler haengengeblieben. Sie bleiben im Verlauf stehen, weil sie echt
+   * gesagt wurden — aber ohne Kennzeichnung liest die Gegenstelle zwei
+   * Menschzeilen hintereinander als eine offene Frage mit Nachtrag. Zweimal
+   * live gesehen: die neue Frage fiel unter den Tisch, oder beide wurden in
+   * einer Nachricht beantwortet.
+   *
+   * Weglassen waere das Naheliegende, nimmt der naechsten Frage aber den
+   * Bezug ("das von eben"). Deshalb steht die Zeile da und sagt selbst, dass
+   * sie vorbei ist.
+   */
+  const ABGEBROCHEN =
+    '[Abgebrochen: diese Vorlage blieb ohne Antwort und ist nicht die Frage, die gerade gestellt wird. Nicht nachtraeglich beantworten; nur als Vorgeschichte lesen.]'
+  const unbeantwortet = new Set(
+    kontext
+      .filter((zeile, i) => zeile.rolle === 'mensch' && kontext[i + 1]?.rolle !== 'eni')
+      .map((zeile) => zeile.id)
+  )
+
   /** aus einer verlaufszeile die vorlage bauen, die das modell liest */
   const baueNachricht = (zeile: { id: string; rolle: EniRolle; text: string }) => {
     const dazu = jeNachricht.get(zeile.id) ?? []
     const bilder = dazu
       .filter((anhang) => anhang.art === 'bild' && anhang.pfad && adressen.has(anhang.pfad))
       .map((anhang) => adressen.get(anhang.pfad!)!)
+    const text = gefaltet.get(zeile.id) ?? zeile.text
     return {
       rolle: zeile.rolle === 'eni' ? ('assistant' as const) : ('user' as const),
-      text: gefaltet.get(zeile.id) ?? zeile.text,
+      text: unbeantwortet.has(zeile.id) ? `${ABGEBROCHEN}\n${text}` : text,
       ...(bilder.length > 0 ? { bilder } : {}),
     }
   }
