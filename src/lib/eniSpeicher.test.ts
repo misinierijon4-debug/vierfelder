@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { chatTitel, lokalerEniSpeicher } from './eniSpeicher'
 
 beforeEach(() => localStorage.clear())
@@ -95,5 +95,83 @@ describe('der lokale verlauf', () => {
     const speicher = lokalerEniSpeicher('erijon')
     await speicher.neuerChat('einer')
     expect(await lokalerEniSpeicher('koray').chats()).toHaveLength(1)
+  })
+})
+
+/**
+ * Der Stand im Begruessungsschirm. Er zaehlte nur die Zeilen aus `einheiten`
+ * und zeigte damit 1:1, wo 5:3 stand: ohne Messungen, ohne Gewicht und ohne
+ * Entdopplung. Jetzt zaehlt er wie der Tracker.
+ *
+ * Die Uhr steht fest, weil der Prototyp seine Messungen als Beispiele einer
+ * laufenden Woche erzeugt — an einem Montag stuende sonst etwas anderes da als
+ * an einem Freitag.
+ */
+describe('der duellstand im prototyp', () => {
+  // donnerstag, 10:00 in Berlin. die woche beginnt am montag, dem 14.09.
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-17T08:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const einheit = (user: string, area: string, tag: string) => ({
+    id: `${user}-${area}-${tag}`,
+    user,
+    area,
+    tag,
+    wert: null,
+    erfasst: `${tag}T09:00:00.000Z`,
+  })
+
+  /**
+   * die beispielmessungen der woche, die jeder prototyp-zustand mitbringt:
+   * erijon gym am montag, boxen und lernen am dienstag, gym heute — vier
+   * punkte. koray gym am montag, gym und lesen am mittwoch — drei.
+   */
+  it('zaehlt die messungen mit, die der tracker auch zaehlt', async () => {
+    const stand = await lokalerEniSpeicher('erijon').duellStand!()
+    expect(stand).toMatchObject({ wocheIch: 4, wocheEr: 3, diff: 1 })
+  })
+
+  it('nimmt das gewicht als fuenftes feld dazu', async () => {
+    localStorage.setItem('vierfelder.gewicht.v1', JSON.stringify({ 'erijon|2026-09-17': 81.4 }))
+    const stand = await lokalerEniSpeicher('erijon').duellStand!()
+    expect(stand).toMatchObject({ wocheIch: 5, wocheEr: 3, diff: 2 })
+  })
+
+  it('gibt fuer einen haken auf einer gemessenen einheit keinen zweiten punkt', async () => {
+    // erijon hat heute eine gemessene gym-einheit. der haken daneben zaehlt nicht
+    localStorage.setItem(
+      'vierfelder.einheiten.v1',
+      JSON.stringify([einheit('erijon', 'gym', '2026-09-17')])
+    )
+    const stand = await lokalerEniSpeicher('erijon').duellStand!()
+    expect(stand?.wocheIch).toBe(4)
+  })
+
+  it('zaehlt einen getippten bereich, den keine messung deckt, genau einmal', async () => {
+    localStorage.setItem(
+      'vierfelder.einheiten.v1',
+      JSON.stringify([
+        einheit('erijon', 'lesen', '2026-09-17'),
+        // zweimal derselbe bereich am selben tag bleibt ein punkt
+        { ...einheit('erijon', 'lesen', '2026-09-17'), id: 'zweiter-haken' },
+      ])
+    )
+    const stand = await lokalerEniSpeicher('erijon').duellStand!()
+    expect(stand?.wocheIch).toBe(5)
+  })
+
+  it('dreht die seiten um, wenn koray fragt', async () => {
+    const stand = await lokalerEniSpeicher('koray').duellStand!()
+    expect(stand).toMatchObject({
+      ich: 'koray',
+      gegner: 'erijon',
+      ichName: 'Koray',
+      wocheIch: 3,
+      wocheEr: 4,
+      diff: -1,
+    })
   })
 })

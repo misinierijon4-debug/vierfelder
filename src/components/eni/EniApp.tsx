@@ -185,14 +185,20 @@ export function EniApp({
       setMe(person)
       setChats(liste)
       setChatsZustand('bereit')
-      if (speicher.duellStand) {
+      /**
+       * Nur nachladen, wenn nichts mitkam. Der Tracker rechnet den Stand aus
+       * dem Zustand, den er ohnehin offen hat, samt Statuszeile; der Speicher
+       * fragt die Datenbank neu und weiss vom Druckstatus nichts. Wer hier
+       * blind ueberschrieb, ersetzte den genauen Wert durch den knapperen.
+       */
+      if (!initialDuellStand && speicher.duellStand) {
         const stand = await speicher.duellStand()
         if (stand) setDuellStand(stand)
       }
     } catch {
       setChatsZustand('fehler')
     }
-  }, [speicher])
+  }, [speicher, initialDuellStand])
 
   useEffect(() => {
     void ladeChats()

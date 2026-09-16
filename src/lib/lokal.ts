@@ -610,6 +610,26 @@ export function lokalWechseln(u: UserId) {
 }
 
 /**
+ * die drei quellen der punktezaehlung, wie der prototyp sie hat. ENI zaehlt
+ * damit seinen begruessungsschirm, ohne den ganzen anfangszustand zu laden.
+ *
+ * die aufenthalte stehen hier nicht im speicher: im prototyp gibt es keine
+ * automation, die messungen liefert, nur die beispiele. genau die sieht der
+ * tracker auch — sonst zeigten tracker und ENI zwei verschiedene staende.
+ */
+export function lokalePunktquellen(): {
+  einheiten: Einheit[]
+  gewichte: Gewichte
+  aufenthalte: Aufenthalt[]
+} {
+  return {
+    einheiten: alleEinheiten(),
+    gewichte: lade<Gewichte>(GEWICHT_KEY, {}, istGewichte),
+    aufenthalte: erzeugeBeispielAufenthalte(),
+  }
+}
+
+/**
  * Beispielnaechte fuer den Prototyp ohne Supabase. Sie werden aus echten
  * Phasenzyklen aufgebaut, damit Zeitstrahl, Effizienz und Duell dasselbe
  * zeigen wie mit Health-Daten — nur eben erfunden statt gemessen.

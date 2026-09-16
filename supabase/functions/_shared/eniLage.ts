@@ -1,4 +1,5 @@
 import { lokaleMinute } from './erinnerung.ts'
+import { FELDER, tafelAusZeilen } from './duellPunkte.ts'
 
 /**
  * Die Lage: der Stand des Duells, so knapp wie moeglich, damit ENI vergleichen
@@ -27,11 +28,6 @@ type LageAbfrage = PromiseLike<Ergebnis<Array<Record<string, unknown>> | null>> 
 export type LageDatenbank = {
   from(tabelle: string): { select(spalten: string): LageAbfrage }
 }
-
-export const BEREICHE = ['lernen', 'gym', 'boxen', 'lesen'] as const
-
-/** die vier bereiche plus das gewicht als fuenftes feld, in der reihenfolge der app */
-const FELDER = [...BEREICHE, 'gewicht'] as const
 
 const WOCHENTAG = [
   'Sonntag',
@@ -124,34 +120,15 @@ export async function baueLage(
   if (einheiten.error || aufenthalte.error || gewicht.error) {
     zeilen.push('Trackerstand: nicht vollstaendig lesbar. Keinen Tages- oder Wochenstand nennen und fehlende Daten nicht als null oder fehlende Leistung werten.')
   } else {
-    const punkte = new Set<string>()
-    const addiere = (id: unknown, bereich: string, datum: string) => {
-      const person = wer(id)
-      if (!person || datum < montag || datum > tag) return
-      punkte.add(`${person}:${bereich}:${datum}`)
-    }
-    for (const eintrag of einheiten.data ?? []) {
-      const bereich = String(eintrag.bereich)
-      if (BEREICHE.some((b) => b === bereich)) {
-        addiere(eintrag.user_id, bereich, String(eintrag.tag))
-      }
-    }
-    for (const aufenthalt of aufenthalte.data ?? []) {
-      const bereich = String(aufenthalt.bereich)
-      if (!BEREICHE.some((b) => b === bereich) || !aufenthalt.abgang) continue
-      const start = new Date(String(aufenthalt.ankunft))
-      const dauer = (new Date(String(aufenthalt.abgang)).getTime() - start.getTime()) / 60_000
-      if (!Number.isFinite(dauer) || dauer < (bereich === 'lesen' ? 10 : 20)) continue
-      addiere(aufenthalt.user_id, bereich, lokaleMinute(start).tag)
-    }
-    for (const eintrag of gewicht.data ?? []) {
-      addiere(eintrag.user_id, 'gewicht', String(eintrag.tag))
-    }
+    const tafel = tafelAusZeilen(
+      { einheiten: einheiten.data, aufenthalte: aufenthalte.data, gewicht: gewicht.data },
+      wer,
+      (zeitpunkt) => lokaleMinute(zeitpunkt).tag,
+      montag,
+      tag
+    )
     const anzahl = (person: Person, bereich?: string, datum?: string) =>
-      [...punkte].filter((punkt) => {
-        const [p, b, t] = punkt.split(':')
-        return p === person && (!bereich || b === bereich) && (!datum || t === datum)
-      }).length
+      tafel.anzahl(person, bereich, datum)
     zeilen.push('Trackerregeln: Ein Punkt je Person, Bereich und Tag; mehrere Einheiten oder Messungen am selben Tag geben keinen Zusatzpunkt. Gewicht zaehlt als fuenftes Feld. Messungen zaehlen erst abgeschlossen ab 20 Minuten, Lesen ab 10 Minuten. Punkte sind keine Anzahl von Trainingseinheiten.')
     zeilen.push(`Wochenstand (Erijon : Koray): ${anzahl('erijon')}:${anzahl('koray')}.`)
     zeilen.push(`Tagesstand heute (Erijon : Koray): ${anzahl('erijon', undefined, tag)}:${anzahl('koray', undefined, tag)}.`)
@@ -160,8 +137,8 @@ export async function baueLage(
     // ausgeschrieben da, mit beiden Seiten: erledigt und offen.
     zeilen.push('Heute erledigt und heute noch offen, nur der heutige Tag:')
     for (const person of ['erijon', 'koray'] as const) {
-      const erledigt = FELDER.filter((feld) => anzahl(person, feld, tag) > 0)
-      const offen = FELDER.filter((feld) => anzahl(person, feld, tag) === 0)
+      const erledigt = tafel.felderAm(person, tag)
+      const offen = FELDER.filter((feld) => !erledigt.includes(feld))
       const teile = [
         `erledigt: ${erledigt.length ? erledigt.join(', ') : 'nichts'}`,
         `offen: ${offen.length ? offen.join(', ') : 'nichts'}`,
