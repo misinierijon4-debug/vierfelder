@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -62,6 +62,48 @@ describe('notizen im verlauf', () => {
   it('lässt den knopf ganz weg, wenn niemand zum merken da ist', () => {
     render(<EniStrom zeilen={ZEILEN} me="erijon" prueft={false} onAuftakt={vi.fn()} />)
     expect(screen.queryByRole('button', { name: 'diese zeile notieren' })).not.toBeInTheDocument()
+  })
+})
+
+describe('nachrichtenaktionen', () => {
+  it('kopiert ENIs und die eigene nachricht nur über das übliche symbol', async () => {
+    const nutzer = userEvent.setup()
+    const schreiben = vi.spyOn(navigator.clipboard, 'writeText')
+    render(<EniStrom zeilen={ZEILEN} me="erijon" prueft={false} onAuftakt={vi.fn()} />)
+
+    const kopieren = screen.getAllByRole('button', { name: 'nachricht kopieren' })
+    expect(kopieren).toHaveLength(2)
+    expect(screen.queryByText('Kopieren')).not.toBeInTheDocument()
+
+    await nutzer.click(kopieren[0]!)
+    await waitFor(() => expect(schreiben).toHaveBeenCalledWith(ZEILEN[0]!.text))
+    expect(screen.getByRole('button', { name: 'kopiert' })).toBeInTheDocument()
+  })
+
+  it('bearbeitet nur eigene nachrichten und sendet den neuen text weiter', async () => {
+    const onBearbeiten = vi.fn()
+    const nutzer = userEvent.setup()
+    render(
+      <EniStrom
+        zeilen={ZEILEN}
+        me="erijon"
+        prueft={false}
+        onBearbeiten={onBearbeiten}
+        onAuftakt={vi.fn()}
+      />
+    )
+
+    expect(screen.getAllByRole('button', { name: 'eigene nachricht bearbeiten' })).toHaveLength(1)
+    await nutzer.click(screen.getByRole('button', { name: 'eigene nachricht bearbeiten' }))
+    const feld = screen.getByRole('textbox', { name: 'eigene nachricht bearbeiten' })
+    await nutzer.clear(feld)
+    await nutzer.type(feld, 'wie stehe ich diese woche gegen koray')
+    await nutzer.click(screen.getByRole('button', { name: 'Neu absenden' }))
+
+    expect(onBearbeiten).toHaveBeenCalledWith(
+      ZEILEN[0],
+      'wie stehe ich diese woche gegen koray'
+    )
   })
 })
 

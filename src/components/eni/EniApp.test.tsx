@@ -189,6 +189,35 @@ describe('ENI als eigene oberflaeche', () => {
     expect(document.querySelectorAll('.eni-wort')).toHaveLength(0)
   })
 
+  it('beginnt den chat nach einer bearbeiteten eigenen nachricht dort neu', async () => {
+    vi.useFakeTimers()
+    const speicher = lokalerEniSpeicher('erijon')
+    const chat = await speicher.neuerChat('alter plan')
+    await speicher.schreibe(chat.id, 'mensch', 'ich trainiere heute')
+    await speicher.schreibe(chat.id, 'eni', 'dann zieh es durch.')
+    await speicher.schreibe(chat.id, 'mensch', 'danach esse ich nichts')
+    await speicher.schreibe(chat.id, 'eni', 'das ist keine gute idee.')
+
+    zeigeEni(speicher)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    oeffneVerlauf()
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'verlauf' })).getByText('alter plan'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'eigene nachricht bearbeiten' })[0]!)
+    const bearbeiten = screen.getByRole('textbox', { name: 'eigene nachricht bearbeiten' })
+    fireEvent.change(bearbeiten, { target: { value: 'ich trainiere morgen' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Neu absenden' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(20) })
+
+    expect(screen.getByLabelText('dialog mit ENI')).toHaveTextContent('ich trainiere morgen')
+    expect(screen.getByLabelText('dialog mit ENI')).not.toHaveTextContent('danach esse ich nichts')
+    const gespeichert = await speicher.nachrichten(chat.id)
+    expect(gespeichert).toHaveLength(2)
+    expect(gespeichert[0]?.text).toBe('ich trainiere morgen')
+    expect(gespeichert[1]?.rolle).toBe('eni')
+  })
+
   it('loescht einen chat erst nach ausdruecklicher nachfrage', async () => {
     vi.useFakeTimers()
     const speicher = lokalerEniSpeicher('erijon')
