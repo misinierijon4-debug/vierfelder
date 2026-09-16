@@ -30,6 +30,9 @@ export type LageDatenbank = {
 
 export const BEREICHE = ['lernen', 'gym', 'boxen', 'lesen'] as const
 
+/** die vier bereiche plus das gewicht als fuenftes feld, in der reihenfolge der app */
+const FELDER = [...BEREICHE, 'gewicht'] as const
+
 const WOCHENTAG = [
   'Sonntag',
   'Montag',
@@ -152,12 +155,25 @@ export async function baueLage(
     zeilen.push('Trackerregeln: Ein Punkt je Person, Bereich und Tag; mehrere Einheiten oder Messungen am selben Tag geben keinen Zusatzpunkt. Gewicht zaehlt als fuenftes Feld. Messungen zaehlen erst abgeschlossen ab 20 Minuten, Lesen ab 10 Minuten. Punkte sind keine Anzahl von Trainingseinheiten.')
     zeilen.push(`Wochenstand (Erijon : Koray): ${anzahl('erijon')}:${anzahl('koray')}.`)
     zeilen.push(`Tagesstand heute (Erijon : Koray): ${anzahl('erijon', undefined, tag)}:${anzahl('koray', undefined, tag)}.`)
+    // Ohne diese Zeile las die Gegenstelle die Wochentabelle als heutigen Stand
+    // und erklaerte offene Bereiche fuer erledigt. Der Tag steht deshalb
+    // ausgeschrieben da, mit beiden Seiten: erledigt und offen.
+    zeilen.push('Heute erledigt und heute noch offen, nur der heutige Tag:')
+    for (const person of ['erijon', 'koray'] as const) {
+      const erledigt = FELDER.filter((feld) => anzahl(person, feld, tag) > 0)
+      const offen = FELDER.filter((feld) => anzahl(person, feld, tag) === 0)
+      const teile = [
+        `erledigt: ${erledigt.length ? erledigt.join(', ') : 'nichts'}`,
+        `offen: ${offen.length ? offen.join(', ') : 'nichts'}`,
+      ]
+      zeilen.push(`${spalte(gross(person), 8)}${teile.join('; ')}`)
+    }
     zeilen.push('Bei Fragen nach dem Stand ohne Zeitraum den Wochenstand nennen. Die aktuelle LAGE hat Vorrang vor alten Aussagen im Chat; falsche fruehere Zahlen korrigieren.')
-    zeilen.push('Diese Woche, Tagespunkte je Bereich:')
+    zeilen.push('Punkte dieser Woche je Bereich, Montag bis heute zusammengezaehlt. Das ist nicht der heutige Stand:')
     zeilen.push(`${spalte('', 8)}${spalte('Erijon', 8)}Koray`)
     let summeE = 0
     let summeK = 0
-    for (const bereich of [...BEREICHE, 'gewicht']) {
+    for (const bereich of FELDER) {
       const e = anzahl('erijon', bereich)
       const k = anzahl('koray', bereich)
       summeE += e

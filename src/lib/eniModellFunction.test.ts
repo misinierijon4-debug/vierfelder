@@ -572,6 +572,21 @@ describe('ENIs modellverbindung', () => {
     expect(gesehen[0]!.nachrichten).toEqual([{ rolle: 'user', text: 'wie stehe ich' }])
   })
 
+  it('schluesselt den heutigen tag nach bereichen auf, statt ihn aus der wochentabelle raten zu lassen', async () => {
+    // der befund: die gegenstelle las die wochentabelle als tagesstand und
+    // erklaerte offene bereiche fuer erledigt. heute hat erijon gym und
+    // gewicht, sonst nichts; lernen steht diese woche, aber am mittwoch.
+    const { abhaengigkeiten, gesehen } = deps()
+    await behandleEni(anfrage({ chatId: 'c1', text: 'was fehlt mir heute' }), abhaengigkeiten)
+
+    const system = gesehen[0]!.system
+    expect(system).toContain('Erijon  erledigt: gym, gewicht; offen: lernen, boxen, lesen')
+    expect(system).toContain('Koray   erledigt: nichts; offen: lernen, gym, boxen, lesen, gewicht')
+    // und die tabelle darunter sagt jetzt selbst, dass sie die woche meint
+    expect(system).toContain('Punkte dieser Woche je Bereich')
+    expect(system).not.toContain('Diese Woche, Tagespunkte je Bereich')
+  })
+
   it('liefert den vollstaendigen Trackerstand 2:6 statt nur die manuelle Boxeinheit 0:1', async () => {
     const tabellen = grunddaten()
     tabellen.einheiten = [
