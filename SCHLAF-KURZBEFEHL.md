@@ -236,6 +236,67 @@ ausgeschalteter Ausführungsbenachrichtigung. Das ist kein aktueller Geräte-
 oder Produktionsnachweis; jeder Release prüft den Aufbau auf beiden
 betroffenen iPhones erneut.
 
+### Wenn `No API key found in request` kommt
+
+```json
+{
+  "message": "No API key found in request",
+  "hint": "No `apikey` request header or url param was found."
+}
+```
+
+Diese Antwort kommt nicht aus `record_sleep_night` und hat nichts mit dem
+Import-Token, den Segmenten oder Health zu tun. Die Anfrage erreicht die
+Datenbank gar nicht: das API-Gateway vor `/rest/v1/…` lässt nichts ohne
+`apikey` durch und antwortet selbst. Der Kurzbefehl hat den Header also nicht
+mitgeschickt.
+
+Typischer Anlass ist ein iOS-Update. In **Inhalte von URL abrufen** stehen die
+Kopfzeilen unter einem eigenen Unterpunkt **Header**; die Aktion zeigt in der
+Übersicht nur die Zeile `Header ›` und nicht deren Inhalt. Ein Kurzbefehl mit
+leerer Header-Liste sieht darum vollständig aus. Den Unterpunkt öffnen und die
+Einträge einzeln prüfen.
+
+Nötig sind genau zwei:
+
+| Header | Wert |
+|---|---|
+| `Content-Type` | `application/json` |
+| `apikey` | der Publishable Key des Projekts |
+
+`apikey` wird kleingeschrieben und ohne Trennzeichen geschrieben. `api-key`,
+`Apikey` oder `x-apikey` erzeugen dieselbe Fehlermeldung, weil das Gateway
+genau diesen einen Namen sucht.
+
+Den Publishable Key zeigt Supabase Studio unter *Project Settings → API Keys*
+als `sb_publishable_…`. Dasselbe Projekt nutzt ihn als Repository-Variable
+`VITE_SUPABASE_PUBLISHABLE_KEY` für den Pages-Bau.
+
+#### Die update-feste Variante
+
+Damit ein nächstes iOS-Update den Header nicht erneut verlieren kann, darf der
+Schlüssel auch an der URL hängen — genau das meint der `hint` mit `url param`:
+
+```
+https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_sleep_night?apikey=DER_PUBLISHABLE_KEY
+```
+
+Dann bleibt als Header nur `Content-Type: application/json`, und den setzt iOS
+bei `Haupttext anfordern: JSON` ohnehin selbst.
+
+Der Publishable Key ist dabei kein verratenes Geheimnis: er ist der öffentliche
+Projektschlüssel und steht in jedem ausgelieferten Browser-Bundle der App. Er
+sagt nur, zu welchem Projekt die Anfrage gehört. Wer schreiben darf, entscheidet
+allein `p_token` gegen `schlaf_import_tokens` — und dieses Token gehört
+weiterhin ausschließlich in den JSON-Haupttext, nie in eine URL, nie in einen
+Screenshot und nie in ein Protokoll.
+
+Derselbe Fehler und dieselbe Abhilfe gelten für `record_gewicht` und
+`record_kurzbefehl_lauf`; sie laufen über dasselbe Gateway. Der Weg über die
+Edge Function `/functions/v1/schlaf-import` kennt ihn dagegen nicht: diese
+Function läuft laut `supabase/config.toml` mit `verify_jwt = false` und prüft
+die Identität selbst über den Header `x-schlaf-token`.
+
 ## Wenn keine Daten ankommen
 
 ### Was am 02.09.2026 wirklich passiert ist

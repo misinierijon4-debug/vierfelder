@@ -66,6 +66,13 @@ nicht als neue Messung für den heutigen Tag gespeichert werden.
    - Header hinzufügen — `Content-Type` mit dem Wert `application/json`
    - Header hinzufügen — `apikey` mit dem Publishable Key des Projekts
    - Haupttext anfordern: `JSON`
+
+   Beide Header stehen in **Inhalte von URL abrufen** unter dem eigenen
+   Unterpunkt **Header**; die Aktion zeigt in der Übersicht nur `Header ›` und
+   nicht deren Inhalt. Fehlt `apikey`, antwortet das Gateway mit
+   `No API key found in request`, noch bevor `record_gewicht` läuft — siehe
+   [SCHLAF-KURZBEFEHL.md](SCHLAF-KURZBEFEHL.md#wenn-no-api-key-found-in-request-kommt),
+   dort steht auch die update-feste Variante mit dem Schlüssel an der URL.
 6. Im JSON zwei Felder anlegen, **beide vom Typ Text**:
 
    | Schlüssel | Wert |
