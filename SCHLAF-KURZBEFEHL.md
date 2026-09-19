@@ -326,6 +326,16 @@ Wert `Wiederholungsergebnisse` einsetzen. Die beiden anderen Felder behalten
 Seit `20260919083937_schlaf_segmente_verzeihend.sql` nimmt die Funktion die
 Liste zusätzlich an, wenn sie als Text, als `{"segments": [...]}` oder — bei
 einer Nacht mit nur einem Health-Ergebnis — als einzelnes Wörterbuch ankommt.
+
+**Ein Kurzbefehl, der heute sendet, muss deswegen nichts ändern.** Die
+Migration nimmt nur Formen hinzu; der Array-Zweig gibt die Liste unverändert
+weiter, bevor ein neuer Zweig überhaupt greift. Das gilt für beide iPhones und
+für die Edge Function `schlaf-import`, die dieselbe Funktion mit einem echten
+Array aufruft. Belegt ist das durch einen Vergleich beider Fassungen gegen
+Postgres 16: für Array, `{"segments": [...]}`, 80 und 300 Segmente liefern alte
+und neue Fassung dasselbe Ergebnis, und jede Eingabe, die vorher abgelehnt
+wurde, wird weiterhin mit demselben SQLSTATE `22023` abgelehnt. Nur der
+Meldungstext ist länger geworden.
 Die Grenzen greifen erst danach: 300 Segmente und 512 KiB gelten für die
 ausgepackte Liste und lassen sich nicht umgehen, indem man sie als Text
 schickt. Lehnt die Funktion trotzdem ab, nennt sie seitdem den tatsächlich

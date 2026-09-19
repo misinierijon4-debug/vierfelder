@@ -73,6 +73,54 @@ describe('schlaf-segmente verzeihend annehmen', () => {
     )
   })
 
+  it('laesst ein echtes array unveraendert durch — der weg, der heute laeuft', () => {
+    // Wer heute eine Liste schickt (beide Kurzbefehle und die Edge Function),
+    // muss danach genau dasselbe Ergebnis bekommen. Der Array-Zweig gibt die
+    // Eingabe unveraendert zurueck, bevor irgendein neuer Zweig greift.
+    const zweig = sql.match(/case jsonb_typeof\(raw\)[\s\S]*?when 'object' then/i)?.[0] ?? ''
+    expect(zweig).toMatch(/when 'array' then\s+return raw;/i)
+    expect(zweig).not.toMatch(/jsonb_build_array/i)
+    expect(zweig).not.toMatch(/::jsonb/i)
+  })
+
+  it('behaelt den fehlercode der ablehnung bei', () => {
+    // Die Edge Function macht aus dem SQLSTATE den HTTP-Status. Ein anderer
+    // Code waere eine stille Verhaltensaenderung fuer schlaf-import.
+    const alteAblehnung = vorher.match(/raise exception 'p_raw_segments muss ein array sein'\s+using errcode = '([a-z_]+)'/i)
+    const neueAblehnung = sql.match(/raise exception\s+'p_raw_segments muss ein array sein[^']*'[\s\S]*?using errcode = '([a-z_]+)'/i)
+    expect(alteAblehnung?.[1]).toBe('invalid_parameter_value')
+    expect(neueAblehnung?.[1]).toBe('invalid_parameter_value')
+  })
+
+  it('uebernimmt token-, rate- und grenzblock wortgleich aus der rate-limit-migration', () => {
+    // Alles ausser der Segmentannahme bleibt Zeile fuer Zeile wie gehabt.
+    const bloecke = [
+      /v_token := btrim\(coalesce\(public\._slfn_scalar_text\(p_token\), ''\)\);/,
+      /if length\(v_token\) < 32 then/,
+      /where t\.token_hash = encode\(digest\(v_token, 'sha256'\), 'hex'\)\s+and t\.aktiv/,
+      /if jsonb_array_length\(v_segs\) not between 1 and 300 then/,
+      /if octet_length\(v_segs::text\) > 524288 then/,
+      /delete from private\.schlaf_import_rate\s+where user_id = v_user and fenster < v_fenster - interval '2 days';/,
+      /on conflict \(user_id, fenster\) do update\s+set anfragen = private\.schlaf_import_rate\.anfragen \+ 1/,
+      /if v_anfragen > 30 then/,
+    ]
+    for (const block of bloecke) {
+      expect(vorher).toMatch(block)
+      expect(sql).toMatch(block)
+    }
+  })
+
+  it('prueft die grenzen erst nach dem auspacken', () => {
+    // Sonst liesse sich die 300er-Grenze umgehen, indem die Liste als Text
+    // geschickt wird.
+    const auspacken = sql.search(/v_segs := public\._slfn_segmente\(p_raw_segments\);/i)
+    const grenze = sql.search(/jsonb_array_length\(v_segs\) not between 1 and 300/i)
+    const groesse = sql.search(/octet_length\(v_segs::text\) > 524288/i)
+    expect(auspacken).toBeGreaterThan(-1)
+    expect(grenze).toBeGreaterThan(auspacken)
+    expect(groesse).toBeGreaterThan(auspacken)
+  })
+
   it('behaelt die rollenvergabe des wrappers bei', () => {
     for (const quelle of [vorher, sql]) {
       expect(quelle).toMatch(
