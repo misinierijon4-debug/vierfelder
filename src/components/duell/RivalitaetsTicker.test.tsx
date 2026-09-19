@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Zustand } from '../../lib/types'
@@ -19,11 +19,15 @@ vi.mock('../../lib/duellKlassifizierung', async (importOriginal) => {
 })
 
 afterEach(cleanup)
-beforeEach(() => {
+beforeEach(async () => {
   klassifiziereSpion.mockReset()
   // niemals fertig: so steht im test genau der stand, den auch der erste
   // bildaufbau zeigt — die heuristik, ohne antwort des dienstes
   klassifiziereSpion.mockReturnValue(new Promise<never>(() => {}))
+  // der ticker holt die zuordnung erst im effekt nach. Im test dauert dieser
+  // erste modulladevorgang laenger als der test selbst, deshalb wird er hier
+  // vorgewaermt — danach loest der `import()` im effekt in einem microtask auf.
+  await import('../../lib/duellKlassifizierung')
 })
 
 const ZUSTAND: Zustand = {
@@ -68,7 +72,7 @@ describe('RivalitaetsTicker Reflow', () => {
 })
 
 describe('RivalitaetsTicker Rivalitaets-Badge', () => {
-  it('zeigt sofort die Heuristik, ohne auf den Dienst zu warten', () => {
+  it('zeigt sofort die Heuristik, ohne auf den Dienst zu warten', async () => {
     render(
       <RivalitaetsTicker
         zustand={ZUSTAND}
@@ -78,16 +82,19 @@ describe('RivalitaetsTicker Rivalitaets-Badge', () => {
       />
     )
 
-    // eigener eintrag unter matchball: das ist ein kraftakt
+    // eigener eintrag unter matchball: das ist ein kraftakt, und zwar sofort,
+    // bevor der nachgeladene dienst ueberhaupt gefragt wurde
     expect(screen.getByText('kraftakt')).toBeInTheDocument()
-    expect(klassifiziereSpion).toHaveBeenCalledTimes(1)
+    expect(klassifiziereSpion).not.toHaveBeenCalled()
+
+    await waitFor(() => expect(klassifiziereSpion).toHaveBeenCalledTimes(1))
     expect(klassifiziereSpion.mock.calls[0]![0]).toMatchObject({
       druckStatus: 'matchball',
       istIch: true,
     })
   })
 
-  it('dreht die Lesart, wenn der Eintrag dem Gegner gehoert', () => {
+  it('dreht die Lesart, wenn der Eintrag dem Gegner gehoert', async () => {
     render(
       <RivalitaetsTicker
         zustand={ZUSTAND}
@@ -99,6 +106,7 @@ describe('RivalitaetsTicker Rivalitaets-Badge', () => {
 
     // ich führe die woche, sein eintrag verkleinert den abstand
     expect(screen.getByText('aufholjagd')).toBeInTheDocument()
+    await waitFor(() => expect(klassifiziereSpion).toHaveBeenCalled())
     expect(klassifiziereSpion.mock.calls[0]![0]).toMatchObject({ istIch: false })
   })
 
@@ -173,7 +181,7 @@ describe('RivalitaetsTicker Rivalitaets-Badge', () => {
     expect(screen.getByText('konter')).not.toHaveClass('invisible')
   })
 
-  it('fragt jeden Eintrag genau einmal je Rendern', () => {
+  it('fragt jeden Eintrag genau einmal je Rendern', async () => {
     const { rerender } = render(
       <RivalitaetsTicker
         zustand={ZUSTAND}
@@ -190,6 +198,10 @@ describe('RivalitaetsTicker Rivalitaets-Badge', () => {
         druck="offen"
       />
     )
+
+    await waitFor(() => expect(klassifiziereSpion).toHaveBeenCalled())
+    // beiden effektlaeufen zeit geben, falls es doch einen zweiten gibt
+    await act(async () => {})
 
     // gleiche eintraege, gleiche lage: der effekt laeuft kein zweites mal
     expect(klassifiziereSpion).toHaveBeenCalledTimes(1)

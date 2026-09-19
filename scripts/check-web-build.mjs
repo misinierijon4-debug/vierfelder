@@ -178,8 +178,19 @@ for (const name of jsDateien) {
 // ENI-Lazy-Chunk. Gemessener Pages-Stand: 237731 Byte initial und 277643 Byte
 // gesamt. Die Gesamtsumme erhaelt dafuer 2 KiB kontrollierten Spielraum; die
 // initiale Grenze bleibt unveraendert und beide Pruefungen bleiben harte Buildfehler.
-const INITIAL_GZIP_BUDGET = 233 * 1024
-const GESAMT_GZIP_BUDGET = 272 * 1024
+// Das Rivalitaets-Badge im Duell-Ticker kommt dazu: die semantische Zuordnung
+// eines Ticker-Eintrags ueber classifier.dev, die Freitext-Zuordnung und die
+// situativen Rivalitaetssaetze. Der Ticker steht auf dem ersten Bildschirm,
+// die Zuordnung laeuft aber erst nach dem ersten Bild. Deshalb liegt in
+// duellBadge.ts nur, was sofort sichtbar ist — die Worte des Badges und das
+// heuristische Urteil —, und duellKlassifizierung.ts wird im Effekt
+// nachgeladen; das haelt rund 1,4 KiB Anweisungstexte und HTTP-Teil aus dem
+// Einstiegspfad heraus. Gemessener Pages-Stand: 238461 Byte initial und 279911
+// Byte gesamt. Der Einstieg traegt die sichtbaren Reste des Badges und erhaelt
+// dafuer ein KiB, die Gesamtsumme zwei KiB kontrollierten Spielraum. Beide
+// Pruefungen bleiben harte Buildfehler; keine Budgetabschaltung.
+const INITIAL_GZIP_BUDGET = 234 * 1024
+const GESAMT_GZIP_BUDGET = 274 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
