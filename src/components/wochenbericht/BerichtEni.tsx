@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { EASE } from '../../lib/motion'
 import type { WochenberichtTexte } from '../../lib/wochenberichtTexte'
 
-export type EniTextStatus = 'aus' | 'laedt' | 'fehlt' | 'da'
+export type EniTextStatus = 'aus' | 'laedt' | 'fehlt' | 'da' | 'offen'
 
 type Props = {
   status: EniTextStatus
@@ -66,7 +66,9 @@ export function BerichtEni({ status, texte, onErneut }: Props) {
           <p className="text-pretty text-[12px] leading-snug text-kreide-52">
             {status === 'aus'
               ? 'im prototyp schreibt ENI nichts — die zahlen oben stehen trotzdem alle da.'
-              : 'ENI hat zu dieser woche noch nichts geschrieben.'}
+              : status === 'offen'
+                ? 'ENI blickt am montag auf die abgeschlossene woche zurück.'
+                : 'ENIs Rückblick ist gerade nicht verfügbar. Bei einem laufenden Versuch bitte kurz warten.'}
           </p>
           {status === 'fehlt' && onErneut && (
             <button

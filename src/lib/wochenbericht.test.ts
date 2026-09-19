@@ -6,6 +6,7 @@ import {
   berichtsWochen,
   istWochenmontag,
   wochenMontag,
+  wochenMarken,
 } from './wochenbericht'
 import type { Schlafnacht, Zustand } from './types'
 import { tickKey } from './types'
@@ -44,6 +45,25 @@ function nacht(user: 'erijon' | 'koray', abend: string, minuten: number, wert: n
 const WOCHE = '2026-09-14'
 
 describe('wochenbericht', () => {
+  it('zaehlt geplante Zukunftsdaten weder in Summen noch Diagrammen', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'lernen', '2026-09-20')] = [einheit('plan', 'erijon', 'lernen', '2026-09-20', 60)]
+    z.gewichte['koray|2026-09-20'] = 75
+    const b = baueWochenbericht(WOCHE, z, [nacht('erijon', '2026-09-20', 480, 80)], '2026-09-16')
+    expect(b.punkte).toEqual({ erijon: 0, koray: 0 })
+    expect(b.felder.every(f => f.minuten.erijon === 0 && !f.tage.erijon.some(Boolean))).toBe(true)
+    expect(b.schlaf.person.erijon.naechte).toBe(0)
+    expect(b.gewicht.koray.punkte).toEqual([])
+    expect(b.verlauf.at(-1)?.summe).toEqual(b.punkte)
+    expect(wochenMarken(z, [], '2026-09-16').get(WOCHE)).toBeUndefined()
+  })
+  it('ordnet Aufenthalte am lokalen Montag statt am UTC-Sonntag ein', () => {
+    const z = leererZustand()
+    z.aufenthalte.push({ user: 'koray', bereich: 'lesen', ort: 'fokus',
+      ankunft: '2026-09-13T22:15:00Z', abgang: '2026-09-13T22:45:00Z' })
+    expect([...berichtsWochen(z, [], '2026-09-14')]).toEqual([WOCHE])
+    expect(wochenMarken(z, [], '2026-09-14').get(WOCHE)?.punkte.koray).toBe(1)
+  })
   it('zählt einen punkt je person, feld und tag — mehrere einheiten am selben tag nicht doppelt', () => {
     const z = leererZustand()
     z.einheiten[tickKey('erijon', 'boxen', '2026-09-14')] = [

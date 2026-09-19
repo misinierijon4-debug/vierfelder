@@ -10,6 +10,8 @@ import { useScrollSperre } from '../../lib/scrollsperre'
 import { useDialogNachlauf } from '../../lib/dialogNachlauf'
 import { BERICHT, EASE } from '../../lib/motion'
 import { alsDauer, baueWochenbericht } from '../../lib/wochenbericht'
+import type { Wochenbericht } from '../../lib/wochenbericht'
+import { useWochenberichtArchiv } from '../../lib/wochenberichtArchiv'
 import type { WochenberichtTexte } from '../../lib/wochenberichtTexte'
 import { BerichtAbschnitt } from './BerichtAbschnitt'
 import { BerichtKennzahlen } from './BerichtKennzahlen'
@@ -31,10 +33,19 @@ type Props = {
   ersteWoche: string | null
   eniStatus: EniTextStatus
   eniTexte: WochenberichtTexte | null
+  archivBericht?: Wochenbericht | null
+  archivHinweis?: string | null
   onEniErneut?: () => void
   onWocheWechseln: (woche: string) => void
   onSchliessen: () => void
   onMitEniReden: (woche: string) => void
+}
+
+/** Archiv und Berechnung bleiben zusammen im erst beim Oeffnen geladenen Modul. */
+export function WochenberichtVerbunden({ lokal, bereit, ...props }: Omit<Props, 'eniStatus' | 'eniTexte'> & { lokal: boolean; bereit: boolean }) {
+  const archiv = useWochenberichtArchiv(props.woche, props.zustand, props.naechte, props.heuteKey, lokal, bereit)
+  return <WochenberichtBlatt {...props} eniStatus={archiv.status} eniTexte={archiv.texte}
+    archivBericht={archiv.bericht} archivHinweis={archiv.hinweis} onEniErneut={archiv.erneut} />
 }
 
 /**
@@ -56,6 +67,8 @@ export function WochenberichtBlatt({
   ersteWoche,
   eniStatus,
   eniTexte,
+  archivBericht,
+  archivHinweis,
   onEniErneut,
   onWocheWechseln,
   onSchliessen,
@@ -139,7 +152,7 @@ export function WochenberichtBlatt({
                   {wochenZeitraum(weekKeys(woche))}
                 </p>
                 <p className="truncate text-[10px] text-kreide-52">
-                  {woche === laufendeWoche ? 'läuft noch · stand von heute' : 'abgeschlossen'}
+                  {woche === laufendeWoche ? 'läuft noch · stand von heute' : archivHinweis ?? 'abgeschlossen'}
                 </p>
               </div>
               <NavKnopf richtung="vor" aktiv={kannVor} onClick={() => wechsle(1)} />
@@ -160,6 +173,7 @@ export function WochenberichtBlatt({
                 heuteKey={heuteKey}
                 eniStatus={eniStatus}
                 eniTexte={eniTexte}
+                archivBericht={archivBericht}
                 onEniErneut={onEniErneut}
                 onMitEniReden={onMitEniReden}
               />
@@ -207,6 +221,7 @@ function Inhalt({
   heuteKey,
   eniStatus,
   eniTexte,
+  archivBericht,
   onEniErneut,
   onMitEniReden,
 }: {
@@ -216,13 +231,14 @@ function Inhalt({
   heuteKey: string
   eniStatus: EniTextStatus
   eniTexte: WochenberichtTexte | null
+  archivBericht?: Wochenbericht | null
   onEniErneut?: () => void
   onMitEniReden: (woche: string) => void
 }) {
   const reduced = useReducedMotion()
   const bericht = useMemo(
-    () => baueWochenbericht(woche, zustand, naechte, heuteKey),
-    [woche, zustand, naechte, heuteKey]
+    () => archivBericht?.woche === woche ? archivBericht : baueWochenbericht(woche, zustand, naechte, heuteKey),
+    [woche, zustand, naechte, heuteKey, archivBericht]
   )
 
   const siegerName =

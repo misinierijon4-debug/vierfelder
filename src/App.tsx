@@ -59,7 +59,7 @@ const WochenRueckblickEinladung = lazy(() =>
  */
 const WochenberichtBlatt = lazy(() =>
   import('./components/wochenbericht/WochenberichtBlatt').then((modul) => ({
-    default: modul.WochenberichtBlatt,
+    default: modul.WochenberichtVerbunden,
   }))
 )
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
@@ -649,8 +649,8 @@ function Tracker({
             naechte={schlaf}
             heuteKey={heuteKey}
             ersteWoche={ersteWoche}
-            eniStatus={backend.art === 'lokal' ? 'aus' : 'fehlt'}
-            eniTexte={null}
+            lokal={backend.art === 'lokal'}
+            bereit={bereit}
             onWocheWechseln={setBerichtWoche}
             onSchliessen={() => setBerichtWoche(null)}
             onMitEniReden={oeffneEniWoche}

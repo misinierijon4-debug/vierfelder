@@ -260,19 +260,20 @@ export function baueWochenbericht(
   const vorwocheTage = weekDays(addDays(fromKey(woche), -7))
   const endgueltig = tage[6]! < heuteKey
   const standTag = endgueltig ? tage[6]! : heuteKey
+  const gezaehlteTage = tage.filter((tag) => tag <= standTag)
 
-  const punkte = leerJePerson((u) => punkteDerWoche(z, u, tage))
-  const punktTage = leerJePerson((u) => punktTageDerWoche(z, u, tage))
+  const punkte = leerJePerson((u) => punkteDerWoche(z, u, gezaehlteTage))
+  const punktTage = leerJePerson((u) => punktTageDerWoche(z, u, gezaehlteTage))
 
   const felder: BerichtFeldzeile[] = BERICHT_FELDER.map((feld) => {
-    const mengen = leerJePerson((u) => mengeDerWoche(z, u, feld, tage))
+    const mengen = leerJePerson((u) => mengeDerWoche(z, u, feld, gezaehlteTage))
     const istLesen = feld === 'lesen'
     return {
       feld,
-      punkte: leerJePerson((u) => tage.filter((tag) => istGesetzt(z, u, feld, tag)).length),
+      punkte: leerJePerson((u) => gezaehlteTage.filter((tag) => istGesetzt(z, u, feld, tag)).length),
       minuten: leerJePerson((u) => Math.round(mengen[u].minuten)),
       seiten: istLesen ? leerJePerson((u) => Math.round(mengen[u].seiten)) : null,
-      tage: leerJePerson((u) => tage.map((tag) => istGesetzt(z, u, feld, tag))),
+      tage: leerJePerson((u) => tage.map((tag) => tag <= standTag && istGesetzt(z, u, feld, tag))),
     }
   }).sort((a, b) => {
     const summeA = a.punkte.erijon + a.punkte.koray
@@ -282,7 +283,7 @@ export function baueWochenbericht(
     return BERICHT_FELDER.indexOf(a.feld) - BERICHT_FELDER.indexOf(b.feld)
   })
 
-  const schlafJetzt = leerJePerson((u) => schlafSchnitt(naechte, u, tage))
+  const schlafJetzt = leerJePerson((u) => schlafSchnitt(naechte, u, gezaehlteTage))
   const schlafVor = leerJePerson((u) => schlafSchnitt(naechte, u, vorwocheTage))
 
   const differenz = punkte.erijon - punkte.koray
@@ -302,14 +303,14 @@ export function baueWochenbericht(
     verlauf: baueVerlauf(z, tage, standTag),
     felder,
     schlaf: {
-      naechte: naechteDerWoche(naechte, tage),
+      naechte: naechteDerWoche(naechte.filter(n => abendDatum(n.einschlafzeit) <= standTag), tage),
       person: leerJePerson((u) => ({
         naechte: schlafJetzt[u].anzahl,
         minuten: trend(schlafJetzt[u].minuten, schlafVor[u].minuten),
         wert: trend(schlafJetzt[u].wert, schlafVor[u].wert),
       })),
     },
-    gewicht: leerJePerson((u) => gewichtDerWoche(z.gewichte, u, tage)),
+    gewicht: leerJePerson((u) => gewichtDerWoche(z.gewichte, u, gezaehlteTage)),
   }
 }
 
@@ -333,7 +334,7 @@ export function berichtsWochen(
     if (liste.length > 0) merke(key.slice(key.lastIndexOf('|') + 1))
   }
   for (const key of Object.keys(z.gewichte)) merke(key.slice(key.indexOf('|') + 1))
-  for (const a of z.aufenthalte) merke(a.ankunft.slice(0, 10))
+  for (const a of z.aufenthalte) merke(toKey(new Date(a.ankunft)))
   for (const n of naechte) if (n.schlafMinuten > 0) merke(abendDatum(n.einschlafzeit))
 
   return wochen
@@ -393,7 +394,7 @@ export function wochenMarken(
   const laufende = wochenMontag(heuteKey)
 
   for (const woche of berichtsWochen(z, naechte, heuteKey)) {
-    const tage = weekDays(fromKey(woche))
+    const tage = weekDays(fromKey(woche)).filter(tag => tag <= heuteKey)
     const punkte = leerJePerson((u) => punkteDerWoche(z, u, tage))
     const differenz = punkte.erijon - punkte.koray
     marken.set(woche, {
