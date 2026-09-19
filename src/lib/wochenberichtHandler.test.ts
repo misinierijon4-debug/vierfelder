@@ -3,7 +3,7 @@ import { abgeschlosseneBerichtWoche, behandleBericht, fasseBerichtWocheZusammen 
 import type { BerichtArchiv, BerichtDienste } from '../../supabase/functions/_shared/wochenberichtHandler'
 import { pruefeTexte, pruefeWochenberichtText } from './wochenberichtTexte'
 
-const texte = { ueberschrift: 'Drangeblieben', lief: 'Erijon und Koray waren aktiv.', muster: 'Die Tage waren unterschiedlich.', naechste: ['Erijon: Lesen einplanen.', 'Koray: Lernen einplanen.'] }
+const texte = { ueberschrift: 'Drangeblieben', lief: 'Erijon und Koray waren aktiv.', muster: 'Die Tage waren unterschiedlich.', naechste: ['Erijon: Lesen einplanen.', 'Koray: Lernen einplanen.'] as [string, string] }
 function umgebung() {
   const archiv: BerichtArchiv = { woche: '2026-09-14', daten: { woche: '2026-09-14' }, eingefroren: '2026-09-20T22:00:00Z', quelle: 'montag', texte: null, modell: null, text_erstellt: null }
   const dienste: BerichtDienste = {
@@ -54,6 +54,15 @@ describe('wochenbericht zugriff und generation', () => {
     vi.mocked(dienste.schreiben).mockResolvedValue({ texte: {}, modell: 'test' })
     expect((await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'text' }), dienste)).status).toBe(502)
     expect(dienste.speichern).not.toHaveBeenCalled()
+  })
+  it('erzwingt mit aktion neu das neuschreiben des textes', async () => {
+    const { dienste, archiv } = umgebung()
+    archiv.texte = texte
+    vi.mocked(dienste.reservieren).mockResolvedValue(true)
+    const res = await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'neu' }), dienste)
+    expect(res.status).toBe(200)
+    expect(dienste.reservieren).toHaveBeenCalledWith('2026-09-14', true)
+    expect(dienste.schreiben).toHaveBeenCalled()
   })
   it('liefert bei Modellfehlern keine Geheimnisse', async () => {
     const { dienste } = umgebung()

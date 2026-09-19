@@ -36,6 +36,7 @@ type Props = {
   archivBericht?: Wochenbericht | null
   archivHinweis?: string | null
   onEniErneut?: () => void
+  onNeuFormulieren?: () => void
   onWocheWechseln: (woche: string) => void
   onSchliessen: () => void
   onMitEniReden: (woche: string) => void
@@ -45,7 +46,8 @@ type Props = {
 export function WochenberichtVerbunden({ lokal, bereit, ...props }: Omit<Props, 'eniStatus' | 'eniTexte'> & { lokal: boolean; bereit: boolean }) {
   const archiv = useWochenberichtArchiv(props.woche, props.zustand, props.naechte, props.heuteKey, lokal, bereit)
   return <WochenberichtBlatt {...props} eniStatus={archiv.status} eniTexte={archiv.texte}
-    archivBericht={archiv.bericht} archivHinweis={archiv.hinweis} onEniErneut={archiv.erneut} />
+    archivBericht={archiv.bericht} archivHinweis={archiv.hinweis} onEniErneut={archiv.erneut}
+    onNeuFormulieren={archiv.neuFormulieren} />
 }
 
 /**
@@ -70,12 +72,14 @@ export function WochenberichtBlatt({
   archivBericht,
   archivHinweis,
   onEniErneut,
+  onNeuFormulieren,
   onWocheWechseln,
   onSchliessen,
   onMitEniReden,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const offen = woche !== null
   const sichtbar = useDialogNachlauf(offen)
 
@@ -109,6 +113,27 @@ export function WochenberichtBlatt({
     if (schritt < 0 && !kannZurueck) return
     if (schritt > 0 && !kannVor) return
     onWocheWechseln(toKey(addDays(fromKey(woche), schritt * 7)))
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || e.changedTouches.length !== 1) return
+    const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x
+    const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y
+    touchStartRef.current = null
+
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > 1.8 * Math.abs(deltaY)) {
+      if (deltaX < 0 && kannVor) {
+        wechsle(1)
+      } else if (deltaX > 0 && kannZurueck) {
+        wechsle(-1)
+      }
+    }
   }
 
   return (
@@ -161,6 +186,8 @@ export function WochenberichtBlatt({
 
           <div
             ref={scrollRef}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
             className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}
           >
@@ -175,6 +202,7 @@ export function WochenberichtBlatt({
                 eniTexte={eniTexte}
                 archivBericht={archivBericht}
                 onEniErneut={onEniErneut}
+                onNeuFormulieren={onNeuFormulieren}
                 onMitEniReden={onMitEniReden}
               />
             </div>
@@ -223,6 +251,7 @@ function Inhalt({
   eniTexte,
   archivBericht,
   onEniErneut,
+  onNeuFormulieren,
   onMitEniReden,
 }: {
   woche: string
@@ -233,6 +262,7 @@ function Inhalt({
   eniTexte: WochenberichtTexte | null
   archivBericht?: Wochenbericht | null
   onEniErneut?: () => void
+  onNeuFormulieren?: () => void
   onMitEniReden: (woche: string) => void
 }) {
   const reduced = useReducedMotion()
@@ -285,7 +315,7 @@ function Inhalt({
         nr={1}
         titel="woche auf einen blick"
         unter="ein feld je tag und bereich. gefüllt heißt: an dem tag hat es gezählt."
-        kinder={<BerichtRaster bericht={bericht} grundVersatz={BERICHT.vorlauf + 0.14} />}
+        kinder={<BerichtRaster bericht={bericht} zustand={zustand} grundVersatz={BERICHT.vorlauf + 0.14} />}
       />
 
       <BerichtAbschnitt
@@ -328,7 +358,7 @@ function Inhalt({
         }}
         className="space-y-3"
       >
-        <BerichtEni status={eniStatus} texte={eniTexte} onErneut={onEniErneut} />
+        <BerichtEni status={eniStatus} texte={eniTexte} onErneut={onEniErneut} onNeuFormulieren={onNeuFormulieren} />
 
         <button
           type="button"

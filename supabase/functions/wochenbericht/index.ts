@@ -24,9 +24,11 @@ Deno.serve((request) => {
       if (error || !data) throw error ?? new Error('archiv fehlt')
       return data as BerichtArchiv
     },
-    async reservieren(woche) {
-      const { data, error } = await db().from('wochenberichte')
-        .update({ text_versuch: new Date().toISOString() }).eq('woche', woche).is('texte', null)
+    async reservieren(woche, erzwingen = false) {
+      let anfrage = db().from('wochenberichte')
+        .update({ text_versuch: new Date().toISOString() }).eq('woche', woche)
+      if (!erzwingen) anfrage = anfrage.is('texte', null)
+      const { data, error } = await anfrage
         .or(`text_versuch.is.null,text_versuch.lt.${new Date(Date.now() - 120_000).toISOString()}`)
         .select('woche')
       if (error) throw error
@@ -57,7 +59,7 @@ Deno.serve((request) => {
     async speichern(woche, texte, modell) {
       const { error } = await db().from('wochenberichte')
         .update({ texte, modell, text_erstellt: new Date().toISOString() })
-        .eq('woche', woche).is('texte', null)
+        .eq('woche', woche)
       if (error) throw error
     },
   })

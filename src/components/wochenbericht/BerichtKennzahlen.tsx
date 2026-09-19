@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { USERS } from '../../lib/types'
 import type { UserId } from '../../lib/types'
 import { BERICHT, EASE } from '../../lib/motion'
-import { alsDauer } from '../../lib/wochenbericht'
+import { alsDauer, ermittleHighlight } from '../../lib/wochenbericht'
 import type { Wochenbericht } from '../../lib/wochenbericht'
 import { BerichtTrendPfeil } from './BerichtTrendPfeil'
 
@@ -97,6 +97,23 @@ export function BerichtKennzahlen({ bericht, grundVersatz }: Props) {
       <p className="border-t border-linie py-2 text-[10px] text-kreide-52">
         pfeile: jede person gegen ihre eigene vorwoche
       </p>
+
+      <div className="grid grid-cols-2 gap-3 border-t border-linie pt-2 pb-1 text-[11px] leading-tight">
+        {USERS.map((person) => {
+          const highlight = ermittleHighlight(bericht, person.id)
+          return (
+            <div key={person.id} className="min-w-0">
+              <span
+                className="block truncate text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: person.farbe }}
+              >
+                {person.name}: {highlight.titel}
+              </span>
+              <span className="mt-0.5 block text-[11px] text-kreide-52">{highlight.text}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

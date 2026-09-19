@@ -82,8 +82,38 @@ export function useWochenberichtArchiv(woche: string | null, zustand: Zustand, n
   }, [woche, heute, lokal, bereit, versuch])
   const abgeschlossen = Boolean(woche && woche < wochenMontag(heute))
   const aktuell = stand?.woche === woche && abgeschlossen ? stand : null
+  const neuFormulieren = async () => {
+    if (!woche || lokal || !supabase) return
+    setStand((s) => (s ? { ...s, status: 'laedt' } : null))
+    try {
+      const { data, error } = await supabase.functions.invoke('wochenbericht', {
+        body: { woche, aktion: 'neu' },
+        signal: AbortSignal.timeout(55_000),
+      })
+      if (error) throw error
+      const archiv = data as Archiv
+      const text = pruefeWochenberichtText({
+        woche,
+        texte: archiv.texte,
+        erstellt: archiv.text_erstellt,
+        modell: archiv.modell,
+      })
+      setStand((s) =>
+        s
+          ? {
+              ...s,
+              texte: text?.texte ?? null,
+              status: text ? 'da' : 'fehlt',
+            }
+          : null
+      )
+    } catch {
+      setStand((s) => (s ? { ...s, status: 'fehlt' } : null))
+    }
+  }
   return { bericht: aktuell?.bericht ?? null, texte: aktuell?.texte ?? null,
     status: abgeschlossen ? aktuell?.status ?? (lokal ? 'aus' : 'laedt') : lokal ? 'aus' : 'offen',
     hinweis: abgeschlossen ? aktuell?.hinweis ?? 'archiv wird geladen …' : null,
-    erneut: () => setVersuch(v => v + 1) } as const
+    erneut: () => setVersuch(v => v + 1),
+    neuFormulieren } as const
 }

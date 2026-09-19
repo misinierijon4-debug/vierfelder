@@ -175,4 +175,34 @@ describe('WochenberichtBlatt', () => {
     expect(screen.getByText('Alles kam bis Mittwoch.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'nächste woche' })).toBeInTheDocument()
   })
+
+  it('erlaubt das neu formulieren von ENIs texten', async () => {
+    const neu = vi.fn()
+    const user = userEvent.setup()
+    render(
+      blatt({
+        eniStatus: 'da',
+        eniTexte: {
+          ueberschrift: 'Deine stärkste Boxwoche.',
+          lief: 'Drei Einheiten Boxen.',
+          muster: 'Gleichmäßig verteilt.',
+          naechste: ['Erijon: Weiter so.', 'Koray: Am Ball bleiben.'],
+        },
+        onNeuFormulieren: neu,
+      })
+    )
+    const btn = screen.getByRole('button', { name: 'neu formulieren' })
+    expect(btn).toBeInTheDocument()
+    await user.click(btn)
+    expect(neu).toHaveBeenCalled()
+  })
+
+  it('zeigt beim antippen einer raster-zelle details an', async () => {
+    const user = userEvent.setup()
+    render(blatt())
+    const zellen = screen.getAllByRole('button', { name: /erijon,.*am Mo:/i })
+    expect(zellen.length).toBeGreaterThan(0)
+    await user.click(zellen[0]!)
+    expect(screen.getByRole('button', { name: 'schließen' })).toBeInTheDocument()
+  })
 })
