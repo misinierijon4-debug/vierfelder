@@ -4,6 +4,7 @@ import {
   alsDelta,
   baueWochenbericht,
   berichtsWochen,
+  ermittleHighlight,
   istWochenmontag,
   wochenMontag,
   wochenMarken,
@@ -218,5 +219,21 @@ describe('wochenbericht', () => {
     expect(alsDelta(-6)).toBe('−6')
     expect(alsDelta(0)).toBe('±0')
     expect(alsDelta(null)).toBe('')
+  })
+
+  it('ermittelt praegnantes Wochen-Highlight fuer Serie oder Schwerpunkt', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('koray', 'boxen', '2026-09-14')] = [einheit('1', 'koray', 'boxen', '2026-09-14', 60)]
+    z.einheiten[tickKey('koray', 'boxen', '2026-09-15')] = [einheit('2', 'koray', 'boxen', '2026-09-15', 60)]
+    z.einheiten[tickKey('koray', 'boxen', '2026-09-16')] = [einheit('3', 'koray', 'boxen', '2026-09-16', 60)]
+    z.einheiten[tickKey('erijon', 'lernen', '2026-09-14')] = [einheit('4', 'erijon', 'lernen', '2026-09-14', 45)]
+    z.einheiten[tickKey('erijon', 'lernen', '2026-09-16')] = [einheit('5', 'erijon', 'lernen', '2026-09-16', 45)]
+    const bericht = baueWochenbericht(WOCHE, z, [], '2026-09-20')
+    const hlErijon = ermittleHighlight(bericht, 'erijon')
+    const hlKoray = ermittleHighlight(bericht, 'koray')
+    expect(hlErijon.titel).toBe('schwerpunkt lernen')
+    expect(hlErijon.text).toBe('an 2 tagen gepunktet')
+    expect(hlKoray.titel).toBe('boxen-serie')
+    expect(hlKoray.text).toBe('3 tage in folge aktiv')
   })
 })

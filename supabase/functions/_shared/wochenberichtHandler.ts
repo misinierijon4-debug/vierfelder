@@ -13,7 +13,7 @@ export type BerichtArchiv = {
 export type BerichtDienste = {
   mitglied: (token: string) => Promise<boolean>
   laden: (woche: string) => Promise<BerichtArchiv>
-  reservieren: (woche: string) => Promise<boolean>
+  reservieren: (woche: string, erzwingen?: boolean) => Promise<boolean>
   schreiben: (daten: unknown) => Promise<{ texte: unknown; modell: string }>
   speichern: (woche: string, texte: WochenberichtTexte, modell: string) => Promise<void>
   jetzt?: () => Date
@@ -124,12 +124,13 @@ export async function behandleBericht(request: Request, dienste: BerichtDienste)
     let input: { woche?: unknown; aktion?: unknown }
     try { input = JSON.parse(rumpf) } catch { return antwort(400, { error: 'ungueltige anfrage' }) }
     if (!input || !abgeschlosseneBerichtWoche(input.woche, dienste.jetzt?.() ?? new Date()) ||
-      !['laden', 'text'].includes(String(input.aktion))) return antwort(400, { error: 'ungueltige woche oder aktion' })
+      !['laden', 'text', 'neu'].includes(String(input.aktion))) return antwort(400, { error: 'ungueltige woche oder aktion' })
     const archiv = await dienste.laden(input.woche)
-    if (input.aktion === 'laden' || archiv.texte) return antwort(200, archiv)
+    if (input.aktion === 'laden' || (archiv.texte && input.aktion !== 'neu')) return antwort(200, archiv)
     // Datenbank-Lease: beide Personen teilen einen Versuch. Auch Fehler haben
     // eine Abkuehlzeit, damit wiederholte Klicks keine Modellschleife ausloesen.
-    if (!await dienste.reservieren(input.woche)) return antwort(202, archiv)
+    const erzwingen = input.aktion === 'neu'
+    if (!await dienste.reservieren(input.woche, erzwingen)) return antwort(202, archiv)
     const ergebnis = await dienste.schreiben(archiv.daten)
     const texte = pruefeTexte(ergebnis.texte)
     if (!texte) return antwort(502, { error: 'ENIs text war unvollstaendig' })

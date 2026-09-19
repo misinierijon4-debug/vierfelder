@@ -9,6 +9,7 @@ type Props = {
   texte: WochenberichtTexte | null
   /** nur gesetzt, wenn ein erneuter versuch etwas bringen kann */
   onErneut?: () => void
+  onNeuFormulieren?: () => void
 }
 
 /**
@@ -19,7 +20,7 @@ type Props = {
  * der Bericht trotzdem vollstaendig. Genau darum sind hier nur Saetze und
  * keine Werte.
  */
-export function BerichtEni({ status, texte, onErneut }: Props) {
+export function BerichtEni({ status, texte, onErneut, onNeuFormulieren }: Props) {
   const reduced = useReducedMotion()
 
   return (
@@ -58,6 +59,17 @@ export function BerichtEni({ status, texte, onErneut }: Props) {
               ))}
             </ol>
           </div>
+          {onNeuFormulieren && (
+            <div className="flex justify-end pt-1 border-t border-linie/50">
+              <button
+                type="button"
+                onClick={onNeuFormulieren}
+                className="text-[11px] text-kreide-52 hover:text-kreide transition-colors focus-visible:outline-none"
+              >
+                neu formulieren
+              </button>
+            </div>
+          )}
         </motion.div>
       ) : status === 'laedt' ? (
         <Platzhalter />

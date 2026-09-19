@@ -55,6 +55,15 @@ describe('wochenbericht zugriff und generation', () => {
     expect((await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'text' }), dienste)).status).toBe(502)
     expect(dienste.speichern).not.toHaveBeenCalled()
   })
+  it('erzwingt mit aktion neu das neuschreiben des textes', async () => {
+    const { dienste, archiv } = umgebung()
+    archiv.texte = texte
+    vi.mocked(dienste.reservieren).mockResolvedValue(true)
+    const res = await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'neu' }), dienste)
+    expect(res.status).toBe(200)
+    expect(dienste.reservieren).toHaveBeenCalledWith('2026-09-14', true)
+    expect(dienste.schreiben).toHaveBeenCalled()
+  })
   it('liefert bei Modellfehlern keine Geheimnisse', async () => {
     const { dienste } = umgebung()
     vi.mocked(dienste.schreiben).mockRejectedValue(new Error('secret-key'))

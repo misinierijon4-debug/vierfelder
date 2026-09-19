@@ -407,3 +407,61 @@ export function wochenMarken(
 
   return marken
 }
+
+/** Ermittelt ein praegnantes Wochen-Highlight oder einen Schwerpunkt je Person. */
+export function ermittleHighlight(
+  bericht: Wochenbericht,
+  u: UserId
+): { titel: string; text: string } {
+  for (const f of bericht.felder) {
+    const tage = f.tage[u]
+    let maxFolge = 0
+    let aktFolge = 0
+    for (const an of tage) {
+      if (an) {
+        aktFolge++
+        if (aktFolge > maxFolge) maxFolge = aktFolge
+      } else {
+        aktFolge = 0
+      }
+    }
+    if (maxFolge >= 3) {
+      const label = FELDER.find((x) => x.id === f.feld)?.label ?? f.feld
+      return { titel: `${label}-serie`, text: `${maxFolge} tage in folge aktiv` }
+    }
+  }
+
+  const sortierteFelder = [...bericht.felder].sort((a, b) => b.punkte[u] - a.punkte[u])
+  const staerkstes = sortierteFelder[0]
+  if (staerkstes && staerkstes.punkte[u] >= 2) {
+    const label = FELDER.find((x) => x.id === staerkstes.feld)?.label ?? staerkstes.feld
+    return { titel: `schwerpunkt ${label}`, text: `an ${staerkstes.punkte[u]} tagen gepunktet` }
+  }
+
+  const pkteDelta = bericht.punkte[u] - bericht.vorwoche.punkte[u]
+  if (pkteDelta > 0) {
+    return { titel: 'aufwärtstrend', text: `+${pkteDelta} punkte mehr als vorwoche` }
+  }
+
+  const schlafDelta = bericht.schlaf.person[u].minuten.delta
+  if (schlafDelta !== null && schlafDelta >= 30) {
+    return { titel: 'mehr schlaf', text: `+${schlafDelta} min. im schnitt zur vorwoche` }
+  }
+  const qualitaetDelta = bericht.schlaf.person[u].wert.delta
+  if (qualitaetDelta !== null && qualitaetDelta >= 5) {
+    return { titel: 'bessere erholung', text: `+${qualitaetDelta} punkte schlafqualität` }
+  }
+
+  if (bericht.gewicht.person[u].punkte.length >= 3) {
+    return {
+      titel: 'gewichtskonstanz',
+      text: `${bericht.gewicht.person[u].punkte.length} messungen eingetragen`,
+    }
+  }
+
+  if (bericht.punktTage[u] > 0) {
+    return { titel: 'aktivität', text: `an ${bericht.punktTage[u]} tagen der woche aktiv` }
+  }
+
+  return { titel: 'ruhewoche', text: 'nächste woche neu angreifen' }
+}
