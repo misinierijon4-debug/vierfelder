@@ -324,8 +324,24 @@ Wert `Wiederholungsergebnisse` einsetzen. Die beiden anderen Felder behalten
 `p_target_hours` als **Zahl** und `p_token` als **Text**.
 
 Seit `20260919083937_schlaf_segmente_verzeihend.sql` nimmt die Funktion die
-Liste zusätzlich an, wenn sie als Text, als `{"segments": [...]}` oder — bei
-einer Nacht mit nur einem Health-Ergebnis — als einzelnes Wörterbuch ankommt.
+Liste zusätzlich an, wenn sie als `{"segments": [...]}`, als einzelnes
+Wörterbuch oder als Text ankommt — **beim Text aber nur, wenn dieser für sich
+gültiges JSON ist**, also mit `[` beginnt und die Objekte mit Komma trennt.
+
+**Das reicht für den Feldtyp `Text` in der Kurzbefehle-App nicht aus.** Am
+19.09.2026 wurde ein Lauf am Gerät beobachtet, der weiterhin mit
+`angekommen ist string` abgelehnt wurde, obwohl die Migration bereits
+produktiv war: Der Text, den die App aus `Wiederholungsergebnisse` erzeugt,
+ließ sich nicht als JSON lesen. Wie er tatsächlich aussieht, ist bisher nicht
+gemessen — die Datenbank sieht nur, dass das Parsen scheitert, und der
+Serverlog hält den Anfragetext nicht fest. Solange das offen ist, gilt der
+Feldtyp **Array** als der einzige belegte Weg; die Textannahme ist ein
+Auffangnetz für sauberes JSON, kein Ersatz für den richtigen Feldtyp.
+
+Wer die Form am Gerät sehen will, hängt in der Kurzbefehle-App nach
+`Wiederholung beenden` eine Aktion **Schnellansicht** an
+`Wiederholungsergebnisse`. Das bleibt auf dem Telefon und schickt nichts an
+Dritte.
 
 **Ein Kurzbefehl, der heute sendet, muss deswegen nichts ändern.** Die
 Migration nimmt nur Formen hinzu; der Array-Zweig gibt die Liste unverändert
