@@ -60,3 +60,11 @@ describe('der satz ueber die websuche', () => {
     expect(mit).toContain('Recherchiert ist ausschliesslich, was im Webmaterial')
   })
 })
+
+describe('die anweisung zu nativen diagrammen', () => {
+  it('befiehlt diagramm-codebloecke und verbietet die behauptung, keine diagramme rendern zu koennen', () => {
+    const prompt = eniSystemPrompt({ person: 'erijon', lage: 'LAGE.' })
+    expect(prompt).toContain('Du kannst im Chat native Diagramme rendern')
+    expect(prompt).toContain('```diagramm')
+  })
+})

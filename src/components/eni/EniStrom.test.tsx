@@ -268,6 +268,53 @@ describe('die struktur einer antwort', () => {
     expect(nachricht.querySelectorAll('ul, ol, hr')).toHaveLength(0)
     expect(screen.getByText('Das reicht nicht.')).toBeInTheDocument()
   })
+
+  it('rendert einen diagramm-block zwischen normalem erklaerungstext', () => {
+    const json = JSON.stringify({
+      typ: 'saeulen',
+      titel: 'Tempovergleich',
+      einheit: 'x',
+      serien: [
+        { name: 'Untergrenze', farbe: 'gruen' },
+        { name: 'Obergrenze', farbe: 'blau' },
+      ],
+      daten: [
+        { kategorie: 'LLM', werte: [1, 1] },
+        { kategorie: 'Jev', werte: [40, 200] },
+      ],
+    }, null, 2)
+    zeichneAntwort(`Die Werte sind Herstellerangaben.\n\n\`\`\`diagramm\n${json}\n\`\`\`\n\nDarum ist die Quelle wichtig.`)
+
+    expect(screen.getByText('Die Werte sind Herstellerangaben.')).toBeInTheDocument()
+    expect(screen.getByRole('figure', { name: /Tempovergleich/ })).toBeInTheDocument()
+    expect(screen.getByText('200x')).toBeInTheDocument()
+    expect(screen.getByText('Darum ist die Quelle wichtig.')).toBeInTheDocument()
+  })
+
+  it('laesst normale codebloecke code und aktiviert darin kein diagramm', () => {
+    const nachricht = zeichneAntwort('Beispiel:\n\n```json\n{"typ":"saeulen","titel":"Nur Code"}\n```')
+    const code = nachricht.querySelector('pre code')
+
+    expect(code).toHaveAttribute('data-sprache', 'json')
+    expect(code).toHaveTextContent('{"typ":"saeulen","titel":"Nur Code"}')
+    expect(screen.queryByRole('figure')).toBeNull()
+  })
+
+  it('zeigt bei einem unfertigen diagramm-strom keinen fehler und kein rohes json', () => {
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={true}
+        teilAntwort={'Ein Vergleich entsteht.\n\n```diagramm\n{"typ":"saeulen","titel":'}
+        onAuftakt={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Ein Vergleich entsteht.')).toBeInTheDocument()
+    expect(screen.queryByRole('figure')).toBeNull()
+    expect(screen.queryByText(/"typ"/)).toBeNull()
+  })
 })
 
 describe('der wartetext am takt', () => {

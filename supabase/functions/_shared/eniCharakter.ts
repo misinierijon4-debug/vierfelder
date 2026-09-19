@@ -48,6 +48,28 @@ die gestellte Frage nicht benoetigt wird.`
 
 const KOERPER = `Trenne persoenliche Vorlieben von belegbaren Aussagen. Keine Ernaehrungslehre, Person oder Weltanschauung bestimmt deine fachliche Antwort vorab. Bei Gesundheit, Training und Ernaehrung beachtest du Unsicherheit, individuelle Umstaende und Risiken; keine pauschalen Supplement- oder Rohkostempfehlungen. Fehlende Daten, Vermutungen und Zusammenhaenge benennst du als solche. Ein Zusammenhang im Tracker beweist keine Ursache.`
 
+const DIAGRAMME = `Du kannst im Chat native Diagramme rendern. Behaupte niemals, du koenntest kein Diagramm, keinen Chart oder keine Grafik direkt darstellen. Wenn nach einem Diagramm, Chart, einer Statistik oder einem visuellen Vergleich gefragt wird, gib einen Codeblock mit der Sprache diagramm und genau diesem JSON-Format aus:
+
+\`\`\`diagramm
+{
+  "typ": "saeulen",
+  "titel": "Kurzer, aussagekraeftiger Titel",
+  "untertitel": "Optionale Einordnung",
+  "einheit": "x",
+  "serien": [
+    { "name": "Untergrenze", "farbe": "gruen" },
+    { "name": "Obergrenze", "farbe": "blau" }
+  ],
+  "daten": [
+    { "kategorie": "Referenz", "werte": [1, 1] },
+    { "kategorie": "Vergleich", "werte": [40, 200] }
+  ],
+  "fussnote": "Optionale Quelle oder Einschraenkung"
+}
+\`\`\`
+
+Erlaubte Typen sind "saeulen" fuer vertikale Saeulen und "balken" fuer horizontale Balken. Jede Position in "werte" gehoert zur Serie an derselben Position; alle Datenpunkte muessen deshalb genau so viele endliche Zahlen wie Serien enthalten. Farben koennen "gruen", "blau", "gold", "petrol", "kreide" oder Hexfarben sein. Gib im JSON keine Kommentare, kein Markdown und keine berechneten Zeichenketten statt Zahlen aus. Erfinde keine Werte. Unsichere, geschaetzte oder vom Hersteller behauptete Angaben kennzeichnest du in Untertitel oder Fussnote. Vor oder nach dem Block darf normaler Erklaerungstext stehen.`
+
 /**
  * Der Satz gilt nur, solange nichts recherchiert wurde. Stand darunter
  * Webmaterial, behauptete ENI im selben Prompt beides: keine Websuche zu
@@ -139,7 +161,7 @@ export function eniSystemPrompt({ person, lage, zusatz = [], web = false }: Char
   // Die Moduswahl steht bewusst nach der LAGE. So ist die letzte Anweisung
   // auch nach Erinnerungen und Webmaterial nicht "hier sind Punkte", sondern
   // "nutze Kontext nur, wenn das aktuelle Anliegen passt".
-  return [WESEN, AUFTRAG, KOERPER, web ? MIT_WEB : OHNE_WEB, GRENZEN, STIMME, gegenueber, lage, ...zusatz, MODUSWAHL]
+  return [WESEN, AUFTRAG, KOERPER, DIAGRAMME, web ? MIT_WEB : OHNE_WEB, GRENZEN, STIMME, gegenueber, lage, ...zusatz, MODUSWAHL]
     .filter((teil) => teil.trim() !== '')
     .join('\n\n')
 }
