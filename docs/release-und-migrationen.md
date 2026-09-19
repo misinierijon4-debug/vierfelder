@@ -92,6 +92,60 @@ Die Edge Function `eni` kommt ohne die Tabelle aus: Lesen und Schreiben der
 Quellen werden dann protokolliert und übersprungen, die Antwort steht trotzdem.
 Deshalb war die Reihenfolge von Migration und Deployment hier unkritisch.
 
+## Neue Migration `schlaf_segmente_verzeihend` (19.09.2026)
+
+Ein iOS-Update hatte den Schlaf-Kurzbefehl auf einem der beiden iPhones
+stillgelegt: erst fehlte der Header `apikey`, danach stand der Feldtyp von
+`p_raw_segments` auf `Text` statt auf `Array`, sodass die Segmentliste als
+Zeichenkette ankam. Die Migration nimmt die Liste seitdem auch in dieser Form
+an und nennt in der Ablehnung den tatsächlich angekommenen Typ. Sie wurde nach
+ausdrücklicher Freigabe einzeln über `apply_migration` angewandt, nicht über
+`db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260919083937_schlaf_segmente_verzeihend.sql` | `20260919085500_schlaf_segmente_verzeihend` |
+
+**Auch hier stimmen die Versionsnummern nicht überein, die Namen schon.** Der
+Versatz oben wächst damit um eine Zeile; die Sperre gegen `db push` gilt
+unverändert weiter.
+
+Vor der Anwendung gelesen und bestätigt: die produktive Definition von
+`record_sleep_night` stimmte Zeile für Zeile mit
+`20260901132738_schlaf_import_rate_limit.sql` überein — es gab also keinen
+unbekannten produktiven Sonderstand, den ein `create or replace` überschrieben
+hätte. `_slfn_segmente` existierte noch nicht. Ausführungsrechte vorher
+notiert: `record_sleep_night` für `anon` und `service_role`, nicht für
+`authenticated`; `record_sleep_night_internal` für niemanden außer dem Owner.
+
+Nach der Anwendung bestätigt: dieselbe Rollenverteilung wie vorher;
+`record_sleep_night_internal` ist an der Prüfsumme ihrer Definition
+nachweislich unberührt; Bestand unverändert mit 19 Nächten und zwei aktiven
+Import-Token. Die Annahme wurde produktiv durchgespielt — echtes Array,
+`{"segments": [...]}`, Text mit JSON-Array und einzelnes Wörterbuch kommen als
+Array an, Zahl, Boolean, kaputtes JSON und `null` werden abgelehnt, und ein
+echtes Array kommt wortgleich wieder heraus.
+
+Weil `_slfn_segmente` anders als die übrigen `_slfn_*`-Helfer weder für `anon`
+noch für `authenticated` ausführbar ist, wurde die Definer-Kette eigens
+belegt: eine Wegwerf-Funktion mit demselben Aufbau wie `record_sleep_night`
+(Owner `postgres`, `security definer`) erreichte `_slfn_segmente` als Rolle
+`anon` — die Rolle des Kurzbefehls — und wurde danach wieder entfernt; die
+Nachkontrolle zählte null Reste. Der Zugang des Kurzbefehls hängt also nicht
+am Recht der Helferfunktion.
+
+Vor dem Ausrollen wurden lokal beide Fassungen gegen Postgres 16
+nebeneinander gestellt und für dieselben Eingaben verglichen. Kein Fall, der
+vorher durchging, wird jetzt abgelehnt; abgelehnte Eingaben behalten SQLSTATE
+`22023`, aus dem `schlaf-import` seinen HTTP-Status ableitet. Der zweite
+Kurzbefehl, der unverändert ein echtes Array sendet, war damit nie betroffen.
+
+Der Sicherheitsbericht meldet danach nichts Neues. Dass
+`record_sleep_night` als `SECURITY DEFINER` von `anon` aufrufbar ist, ist
+Altbestand und der gewollte Zugang des Kurzbefehls — die Identität kommt aus
+`p_token` gegen `schlaf_import_tokens`. Die übrigen Meldungen sind ebenfalls
+Altbestand.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
