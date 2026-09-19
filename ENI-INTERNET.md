@@ -35,7 +35,7 @@ Die Schritte gehen als eigene Ereignisse (`typ: "lage"`) durch denselben Strom w
 
 Pro Nachricht gibt es höchstens einen Suchaufruf mit fünf Ergebnissen und 30 Sekunden Frist, ohne automatische Suchwiederholung. Anmeldung, Chatberechtigung und das vorhandene Tageslimit greifen davor.
 
-An die Suche geht nur die aktuelle Frage, gekürzt auf 400 Zeichen, nicht der Trainingsstand, das Gedächtnis oder Dateianhänge. Für Anschlussfragen das Suchthema erneut benennen. Die Suche liefert relevante Seitenauszüge, keinen vollständigen Browser und keine garantierte Vollansicht einer verlinkten Seite. Eni verwendet nur Quellen, die wirklich einen Auszug mitbringen. Fremde Webseitenanweisungen werden als unvertrauenswürdige Daten behandelt. Echte Quellenlinks stehen dauerhaft an der gespeicherten Antwort; JavaScript-Links und HTML werden nicht ausgeführt.
+An die Suchmaschine geht nur die aktuelle Frage, gekürzt auf 400 Zeichen, nicht der Trainingsstand, das Gedächtnis oder Dateianhänge. Für Anschlussfragen das Suchthema erneut benennen. Die Suche liefert relevante Seitenauszüge, keinen vollständigen Browser und keine garantierte Vollansicht einer verlinkten Seite. Eni verwendet nur Quellen, die wirklich einen Auszug mitbringen. Fremde Webseitenanweisungen werden als unvertrauenswürdige Daten behandelt. Echte Quellenlinks stehen dauerhaft an der gespeicherten Antwort; JavaScript-Links und HTML werden nicht ausgeführt.
 
 **Die Auszüge sind bei Tavily kürzer als beim Web-Plugin.** Abgerufen wird die einfache Suche für einen Credit, ausdrücklich ohne `include_raw_content`: das holt jede gefundene Seite noch einmal ganz und wird zusätzlich berechnet — und umsonst zu suchen ist hier der ganze Punkt. Ein Auszug sagt also, worum es auf der Seite geht, nicht alles, was darauf steht. Für die Frage, was gerade passiert ist, reicht das; für die feine Stelle in einem langen Dokument nicht.
 
@@ -44,6 +44,20 @@ Die Auszüge stehen im Systemtext, bei Lage und Gedächtnis, und sind ausdrückl
 Die Auszüge selbst werden in `eni_quellen` an der Antwort gespeichert und in den folgenden Nachrichten desselben Chats wieder vorgelegt, als „früher in diesem Chat gesucht“. Eni kann danach also auch ohne neue Suche sagen, woher er etwas hat. Es gehen höchstens die vier jüngsten Suchläufe zurück und insgesamt 8.000 Zeichen Auszugstext, neueste zuerst; Titel und Adresse bleiben auch darüber hinaus stehen, der Volltext bricht ab. Geschrieben wird die Tabelle nur von der Edge Function mit Dienstrechten, gelesen und gelöscht nur vom eigenen Konto. Ein gelöschter Chat nimmt seine Quellen mit.
 
 Anklickbar ist ausschließlich eine Adresse, die in diesem Chat wirklich gefunden wurde. Das gilt auch für Antworten ohne Internet und für den Wochenbericht: alles andere verliert beim Speichern sein Ziel und bleibt als Text stehen.
+
+## Der zweite Filter
+
+Eine Suchmaschine liefert immer etwas. Zwei Prüfungen entscheiden danach, was Eni wirklich zu sehen bekommt, und beide dürfen Treffer wegwerfen.
+
+**Erst der Wortabgleich.** Er behält, was ein Schlüsselwort der Frage im Titel trägt oder zwei verschiedene im Auszug. Er läuft im Haus, kostet nichts und braucht kein Netz. Er entscheidet, ob ein Treffer *zum Thema* gehört.
+
+**Dann der semantische Filter.** Übrig bleiben sonst Seiten, die das Wort zwar führen, sonst aber nur Werbung, Cookie-Banner oder eine Navigationsleiste sind. Die wirft ein Zero-Shot-Klassifikator auf `classifier.dev` heraus: ein POST mit allen übrigen Quellen auf einmal, kein Schlüssel, kein Konto. Mitgeschickt werden die Frage, der Titel und die ersten 600 Zeichen des Auszugs — Werbung und Banner stehen am Anfang einer Seite, für das Urteil reicht das. Die Frage muss mit, sonst wüsste der Dienst nicht, wozu etwas relevant sein soll.
+
+**Im Zweifel bleibt der Treffer drin.** Weggeworfen wird nur, was der Dienst mit mindestens 0,75 Konfidenz als *nicht relevant* bezeichnet. Beziffert er die Konfidenz nicht, gilt das als unsicher.
+
+**Der Filter darf ausfallen.** Er hat vier Sekunden. Antwortet er nicht, antwortet er mit einem Fehler oder mit etwas Unlesbarem, gilt einfach das Ergebnis des Wortabgleichs — die Suche läuft weiter, und auf dem Bildschirm ändert sich nichts. Ein fertiger Suchlauf wird nie wegen des Filters verworfen. Nur wenn die Person selbst abbricht, bricht auch die Suche ab. Jeder Ausfall steht als Warnung im Function-Protokoll; sonst wäre ein dauerhaft toter Dienst nicht zu bemerken.
+
+**Was dabei hinausgeht.** Der Titel und der Anfang eines Auszugs sind fremder, öffentlicher Text — sie stammen von der gefundenen Seite, nicht aus dieser Anwendung. Dazu die bereinigte Suchfrage. Nicht mitgeschickt werden Trainingsstand, Gedächtnis, Chatverlauf, Dateianhänge oder der Name der Person. Wer das nicht will, schaltet Internet aus: ohne Suche gibt es auch keinen Filter.
 
 ## Wenn es nicht klappt
 
@@ -57,4 +71,4 @@ Backend: eni mit allen relativen Imports deployen, verify_jwt weiterhin true. Al
 
 Datenbank: `20260914180000_eni_quellen.sql` legt die Tabelle an. Die Function kommt auch ohne sie zurecht — fehlt sie, wird das Lesen und Schreiben der Quellen protokolliert und übersprungen, die Antwort steht trotzdem. Die Reihenfolge von Migration und Deployment ist deshalb frei, aber bis die Tabelle steht, erinnert sich Eni nicht an frühere Suchläufe.
 
-Dokumentation: https://docs.tavily.com/documentation/api-reference/endpoint/search, https://docs.tavily.com/documentation/api-credits und https://openrouter.ai/docs/guides/features/plugins/web-search
+Dokumentation: https://docs.tavily.com/documentation/api-reference/endpoint/search, https://docs.tavily.com/documentation/api-credits und https://openrouter.ai/docs/guides/features/plugins/web-search. Der semantische Filter: https://classifier.dev und https://github.com/mrmps/classifier-dev
