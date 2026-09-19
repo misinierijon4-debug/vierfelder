@@ -4,13 +4,8 @@ import { user as userDef } from '../../lib/types'
 import type { UserId, Zustand } from '../../lib/types'
 import { duellTickerEintraege } from '../../lib/duell'
 import type { DruckStatus } from '../../lib/duell'
-import {
-  BADGE_KURZ,
-  BADGE_LANG,
-  heuristischesBadge,
-  klassifiziereTickerEreignis,
-} from '../../lib/duellKlassifizierung'
-import type { RivalitaetsBadge } from '../../lib/duellKlassifizierung'
+import { BADGE_KURZ, BADGE_LANG, heuristischesBadge } from '../../lib/duellBadge'
+import type { RivalitaetsBadge } from '../../lib/duellBadge'
 
 type Props = {
   zustand: Zustand
@@ -55,18 +50,21 @@ export function RivalitaetsTicker({
   const ids = eintraege.map((e) => e.id).join('|')
   useEffect(() => {
     let aktiv = true
-    // `klassifiziereTickerEreignis` wirft nur bei einem abbruch von außen; hier
-    // geht kein signal hinein, also kann diese kette nicht scheitern. Ein
-    // aufruf, der nach dem ausblenden zurückkommt, füllt nur den speicher.
-    void Promise.all(
-      eintraege.map((eintrag) =>
-        klassifiziereTickerEreignis({
-          eintrag,
-          druckStatus: druck,
-          istIch: eintrag.userId === me,
-        }),
-      ),
-    ).then((urteile) => {
+    const anreichern = async () => {
+      // erst hier geladen, nicht oben: die zuordnung samt anweisungstexten und
+      // http-teil gehört nicht in den kaltstart. Bis der chunk da ist, steht
+      // die heuristik im badge.
+      const { klassifiziereTickerEreignis } = await import('../../lib/duellKlassifizierung')
+      if (!aktiv) return
+      const urteile = await Promise.all(
+        eintraege.map((eintrag) =>
+          klassifiziereTickerEreignis({
+            eintrag,
+            druckStatus: druck,
+            istIch: eintrag.userId === me,
+          }),
+        ),
+      )
       if (!aktiv) return
       setBadges((alt) => {
         const neu: Record<string, RivalitaetsBadge> = {}
@@ -78,7 +76,10 @@ export function RivalitaetsTicker({
           Object.entries(neu).every(([id, wert]) => alt[id] === wert)
         return unveraendert ? alt : neu
       })
-    })
+    }
+    // Der einzige weg hier heraus ist ein chunk, der offline nicht kommt.
+    // Dann bleibt stehen, was schon steht — kein grund, jemandem etwas zu sagen.
+    void anreichern().catch(() => {})
     return () => {
       aktiv = false
     }
