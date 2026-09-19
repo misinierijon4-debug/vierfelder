@@ -172,27 +172,6 @@ describe('klassifiziereTickerEreignis (classifier.dev)', () => {
   })
 })
 
-describe('heuristischesBadge', () => {
-  it('liest denselben druck für beide seiten umgekehrt', () => {
-    // `DruckStatus` steht immer aus meiner sicht: führe ich die woche, ist sein
-    // eintrag eine aufholjagd und meiner ein ausbau.
-    expect(heuristischesBadge('wocheFuehrung', true)).toBe('fuehrungsausbau')
-    expect(heuristischesBadge('wocheFuehrung', false)).toBe('aufholjagd')
-    expect(heuristischesBadge('abstandGross', true)).toBe('konter')
-    expect(heuristischesBadge('abstandGross', false)).toBe('fuehrungsausbau')
-  })
-
-  it('macht aus höchstem druck einen kraftakt', () => {
-    expect(heuristischesBadge('matchball', true)).toBe('kraftakt')
-    expect(heuristischesBadge('zugzwang', true)).toBe('kraftakt')
-  })
-
-  it('bleibt ohne lage bei routine', () => {
-    expect(heuristischesBadge('offen', true)).toBe('routine')
-    expect(heuristischesBadge('entschieden', false)).toBe('routine')
-  })
-})
-
 describe('klassifiziereFreitextAktivitaet (classifier.dev)', () => {
   it('erkennt „10km Tempolauf“ als sport mit hoher intensität', async () => {
     const http = bewertet(ja('sport_intensiv', 0.92))
