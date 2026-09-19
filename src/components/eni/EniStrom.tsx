@@ -17,6 +17,7 @@ import { eniBegruessung } from '../../lib/eni'
 import { lesbareGroesse } from '../../lib/eniAnhang'
 import type { EniAnhang } from '../../lib/eniAnhang'
 import type { DuellKontext, EniZeile } from '../../lib/eniSpeicher'
+import { EniDiagramm } from './EniDiagramm'
 import { EniMarke } from './EniMarke'
 
 const TAGESDATUM = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' })
@@ -253,6 +254,8 @@ const UEBERSCHRIFT = /^(#{1,6})\s+(.+)$/
 const TRENNER = /^(?:-{3,}|\*{3,}|_{3,})$/
 const AUFZAEHLUNG = /^[\-•*]\s+/
 const NUMMER = /^(\d{1,3})[.)]\s+/
+const CODEBLOCK_START = /^ {0,3}```\s*([a-z0-9_-]*)\s*$/i
+const CODEBLOCK_ENDE = /^ {0,3}```\s*$/
 
 type Block =
   | { art: 'ueberschrift'; stufe: number; text: string }
@@ -260,12 +263,14 @@ type Block =
   | { art: 'liste'; punkte: string[] }
   | { art: 'nummern'; beginn: number; punkte: string[] }
   | { art: 'absatz'; text: string }
+  | { art: 'code'; sprache: string; text: string }
+  | { art: 'diagramm'; text: string }
 
 /** hat der text ueberhaupt struktur, oder ist er ein satz? */
 function hatStruktur(text: string): boolean {
   return text.split('\n').some((roh) => {
     const zeile = roh.trim()
-    return UEBERSCHRIFT.test(zeile) || TRENNER.test(zeile) || AUFZAEHLUNG.test(zeile) || NUMMER.test(zeile)
+    return CODEBLOCK_START.test(roh) || UEBERSCHRIFT.test(zeile) || TRENNER.test(zeile) || AUFZAEHLUNG.test(zeile) || NUMMER.test(zeile)
   })
 }
 
@@ -277,7 +282,7 @@ function hatStruktur(text: string): boolean {
  * modelle setzen selten leerzeilen zwischen ueberschrift und liste, und ohne
  * diese trennung stuende die ueberschrift als erster listenpunkt da.
  */
-function teileInBloecke(text: string): Block[] {
+function teileTextInBloecke(text: string): Block[] {
   const bloecke: Block[] = []
   for (const absatz of text.split(/\n\s*\n/)) {
     let art: 'liste' | 'nummern' | 'absatz' | null = null
@@ -337,6 +342,54 @@ function teileInBloecke(text: string): Block[] {
 }
 
 /**
+ * Fences zuerst abtrennen, damit JSON-Zeilen nicht als Markdown interpretiert
+ * werden. Ein offener Diagramm-Block ist beim Streamen normal: Er geht schon
+ * an den fehlertoleranten Renderer, der bis zu gueltigem JSON nichts zeigt.
+ */
+function teileInBloecke(text: string): Block[] {
+  const bloecke: Block[] = []
+  let textzeilen: string[] = []
+  let fence: { sprache: string; zeilen: string[] } | null = null
+
+  const schliesseText = () => {
+    const textteil = textzeilen.join('\n')
+    if (textteil.trim()) bloecke.push(...teileTextInBloecke(textteil))
+    textzeilen = []
+  }
+
+  const schliesseFence = () => {
+    if (!fence) return
+    const inhalt = fence.zeilen.join('\n')
+    bloecke.push(
+      fence.sprache === 'diagramm'
+        ? { art: 'diagramm', text: inhalt }
+        : { art: 'code', sprache: fence.sprache, text: inhalt }
+    )
+    fence = null
+  }
+
+  for (const zeile of text.split('\n')) {
+    if (fence) {
+      if (CODEBLOCK_ENDE.test(zeile)) schliesseFence()
+      else fence.zeilen.push(zeile)
+      continue
+    }
+
+    const start = CODEBLOCK_START.exec(zeile)
+    if (start) {
+      schliesseText()
+      fence = { sprache: (start[1] || '').toLowerCase(), zeilen: [] }
+      continue
+    }
+    textzeilen.push(zeile)
+  }
+
+  schliesseFence()
+  schliesseText()
+  return bloecke
+}
+
+/**
  * strukturiert antworten sinnvoll in ueberschriften, absaetze, aufzaehlungen
  * und fettdruck. frische antworten durchlaufen dieselbe struktur und
  * typografie wie gespeicherte chats, wobei woerter fuer das aufklappen
@@ -370,6 +423,18 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
   return (
     <div className="space-y-3">
       {bloecke.map((block, idx) => {
+        if (block.art === 'diagramm') {
+          return <EniDiagramm key={idx} quelltext={block.text} />
+        }
+
+        if (block.art === 'code') {
+          return (
+            <pre key={idx} className="overflow-x-auto border border-linie bg-flaeche px-3 py-2 text-[12px] leading-relaxed text-kreide">
+              <code data-sprache={block.sprache || undefined}>{block.text}</code>
+            </pre>
+          )
+        }
+
         if (block.art === 'trenner') {
           return <hr key={idx} className="my-4 border-0 border-t border-linie" />
         }

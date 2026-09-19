@@ -174,8 +174,12 @@ for (const name of jsDateien) {
 // 274125 Byte gesamt. Fuer den Pages-Einstieg kommt ein KiB, fuer die neue
 // Funktion insgesamt drei KiB kontrollierter Spielraum dazu; beide Grenzen
 // bleiben harte Buildfehler.
+// Native Diagramme (Saeulen und Balken) fuer ENI erweitern restlos den
+// ENI-Lazy-Chunk. Gemessener Pages-Stand: 237731 Byte initial und 277643 Byte
+// gesamt. Die Gesamtsumme erhaelt dafuer 2 KiB kontrollierten Spielraum; die
+// initiale Grenze bleibt unveraendert und beide Pruefungen bleiben harte Buildfehler.
 const INITIAL_GZIP_BUDGET = 233 * 1024
-const GESAMT_GZIP_BUDGET = 270 * 1024
+const GESAMT_GZIP_BUDGET = 272 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
