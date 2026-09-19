@@ -297,6 +297,50 @@ Edge Function `/functions/v1/schlaf-import` kennt ihn dagegen nicht: diese
 Function läuft laut `supabase/config.toml` mit `verify_jwt = false` und prüft
 die Identität selbst über den Header `x-schlaf-token`.
 
+### Wenn `p_raw_segments muss ein array sein` kommt
+
+```json
+{
+  "code": "22023",
+  "message": "p_raw_segments muss ein array sein",
+  "details": null,
+  "hint": null
+}
+```
+
+Diese Antwort ist ein Fortschritt: sie kommt aus `record_sleep_night` selbst,
+das Gateway hat die Anfrage also durchgelassen und das Import-Token war gültig.
+Abgelehnt wird jetzt nur noch die Form der Nutzlast.
+
+Die Kurzbefehle-App legt jedes Feld im JSON-Haupttext mit einem **festen Typ**
+an. Für `p_raw_segments` muss dort `Array` stehen. Steht es auf `Text`, schickt
+iOS dieselbe Liste als Zeichenkette — `"[{\"start\":…}]"` statt `[{"start":…}]`
+— und die Funktion sieht kein Array. Eine nachträglich eingesetzte Variable
+ändert den einmal gewählten Feldtyp nicht; ein iOS-Update, das die Typen
+zurücksetzt, fällt darum genauso wenig auf wie ein verlorener Header.
+
+Am Gerät: im Feld `p_raw_segments` den Feldtyp auf **Array** stellen und als
+Wert `Wiederholungsergebnisse` einsetzen. Die beiden anderen Felder behalten
+`p_target_hours` als **Zahl** und `p_token` als **Text**.
+
+Seit `20260919083937_schlaf_segmente_verzeihend.sql` nimmt die Funktion die
+Liste zusätzlich an, wenn sie als Text, als `{"segments": [...]}` oder — bei
+einer Nacht mit nur einem Health-Ergebnis — als einzelnes Wörterbuch ankommt.
+Die Grenzen greifen erst danach: 300 Segmente und 512 KiB gelten für die
+ausgepackte Liste und lassen sich nicht umgehen, indem man sie als Text
+schickt. Lehnt die Funktion trotzdem ab, nennt sie seitdem den tatsächlich
+angekommenen Typ:
+
+```
+p_raw_segments muss ein array sein; angekommen ist boolean.
+im kurzbefehl den feldtyp auf array stellen
+```
+
+`angekommen ist boolean` ist dabei der klassische Fall aus der Typenfalle oben:
+ein leer angelegtes Feld, in das erst später eine Variable gezogen wurde.
+`angekommen ist nichts` heißt, dass das Feld gar nicht mitgeschickt wurde —
+dann stimmt der Feldname nicht.
+
 ## Wenn keine Daten ankommen
 
 ### Was am 02.09.2026 wirklich passiert ist
