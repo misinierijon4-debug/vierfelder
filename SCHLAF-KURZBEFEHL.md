@@ -236,6 +236,121 @@ ausgeschalteter Ausführungsbenachrichtigung. Das ist kein aktueller Geräte-
 oder Produktionsnachweis; jeder Release prüft den Aufbau auf beiden
 betroffenen iPhones erneut.
 
+### Wenn `No API key found in request` kommt
+
+```json
+{
+  "message": "No API key found in request",
+  "hint": "No `apikey` request header or url param was found."
+}
+```
+
+Diese Antwort kommt nicht aus `record_sleep_night` und hat nichts mit dem
+Import-Token, den Segmenten oder Health zu tun. Die Anfrage erreicht die
+Datenbank gar nicht: das API-Gateway vor `/rest/v1/…` lässt nichts ohne
+`apikey` durch und antwortet selbst. Der Kurzbefehl hat den Header also nicht
+mitgeschickt.
+
+Typischer Anlass ist ein iOS-Update. In **Inhalte von URL abrufen** stehen die
+Kopfzeilen unter einem eigenen Unterpunkt **Header**; die Aktion zeigt in der
+Übersicht nur die Zeile `Header ›` und nicht deren Inhalt. Ein Kurzbefehl mit
+leerer Header-Liste sieht darum vollständig aus. Den Unterpunkt öffnen und die
+Einträge einzeln prüfen.
+
+Nötig sind genau zwei:
+
+| Header | Wert |
+|---|---|
+| `Content-Type` | `application/json` |
+| `apikey` | der Publishable Key des Projekts |
+
+`apikey` wird kleingeschrieben und ohne Trennzeichen geschrieben. `api-key`,
+`Apikey` oder `x-apikey` erzeugen dieselbe Fehlermeldung, weil das Gateway
+genau diesen einen Namen sucht.
+
+Den Publishable Key zeigt Supabase Studio unter *Project Settings → API Keys*
+als `sb_publishable_…`. Dasselbe Projekt nutzt ihn als Repository-Variable
+`VITE_SUPABASE_PUBLISHABLE_KEY` für den Pages-Bau.
+
+#### Die update-feste Variante
+
+Damit ein nächstes iOS-Update den Header nicht erneut verlieren kann, darf der
+Schlüssel auch an der URL hängen — genau das meint der `hint` mit `url param`:
+
+```
+https://ogxwazageufvalkocywh.supabase.co/rest/v1/rpc/record_sleep_night?apikey=DER_PUBLISHABLE_KEY
+```
+
+Dann bleibt als Header nur `Content-Type: application/json`, und den setzt iOS
+bei `Haupttext anfordern: JSON` ohnehin selbst.
+
+Der Publishable Key ist dabei kein verratenes Geheimnis: er ist der öffentliche
+Projektschlüssel und steht in jedem ausgelieferten Browser-Bundle der App. Er
+sagt nur, zu welchem Projekt die Anfrage gehört. Wer schreiben darf, entscheidet
+allein `p_token` gegen `schlaf_import_tokens` — und dieses Token gehört
+weiterhin ausschließlich in den JSON-Haupttext, nie in eine URL, nie in einen
+Screenshot und nie in ein Protokoll.
+
+Derselbe Fehler und dieselbe Abhilfe gelten für `record_gewicht` und
+`record_kurzbefehl_lauf`; sie laufen über dasselbe Gateway. Der Weg über die
+Edge Function `/functions/v1/schlaf-import` kennt ihn dagegen nicht: diese
+Function läuft laut `supabase/config.toml` mit `verify_jwt = false` und prüft
+die Identität selbst über den Header `x-schlaf-token`.
+
+### Wenn `p_raw_segments muss ein array sein` kommt
+
+```json
+{
+  "code": "22023",
+  "message": "p_raw_segments muss ein array sein",
+  "details": null,
+  "hint": null
+}
+```
+
+Diese Antwort ist ein Fortschritt: sie kommt aus `record_sleep_night` selbst,
+das Gateway hat die Anfrage also durchgelassen und das Import-Token war gültig.
+Abgelehnt wird jetzt nur noch die Form der Nutzlast.
+
+Die Kurzbefehle-App legt jedes Feld im JSON-Haupttext mit einem **festen Typ**
+an. Für `p_raw_segments` muss dort `Array` stehen. Steht es auf `Text`, schickt
+iOS dieselbe Liste als Zeichenkette — `"[{\"start\":…}]"` statt `[{"start":…}]`
+— und die Funktion sieht kein Array. Eine nachträglich eingesetzte Variable
+ändert den einmal gewählten Feldtyp nicht; ein iOS-Update, das die Typen
+zurücksetzt, fällt darum genauso wenig auf wie ein verlorener Header.
+
+Am Gerät: im Feld `p_raw_segments` den Feldtyp auf **Array** stellen und als
+Wert `Wiederholungsergebnisse` einsetzen. Die beiden anderen Felder behalten
+`p_target_hours` als **Zahl** und `p_token` als **Text**.
+
+Seit `20260919083937_schlaf_segmente_verzeihend.sql` nimmt die Funktion die
+Liste zusätzlich an, wenn sie als Text, als `{"segments": [...]}` oder — bei
+einer Nacht mit nur einem Health-Ergebnis — als einzelnes Wörterbuch ankommt.
+
+**Ein Kurzbefehl, der heute sendet, muss deswegen nichts ändern.** Die
+Migration nimmt nur Formen hinzu; der Array-Zweig gibt die Liste unverändert
+weiter, bevor ein neuer Zweig überhaupt greift. Das gilt für beide iPhones und
+für die Edge Function `schlaf-import`, die dieselbe Funktion mit einem echten
+Array aufruft. Belegt ist das durch einen Vergleich beider Fassungen gegen
+Postgres 16: für Array, `{"segments": [...]}`, 80 und 300 Segmente liefern alte
+und neue Fassung dasselbe Ergebnis, und jede Eingabe, die vorher abgelehnt
+wurde, wird weiterhin mit demselben SQLSTATE `22023` abgelehnt. Nur der
+Meldungstext ist länger geworden.
+Die Grenzen greifen erst danach: 300 Segmente und 512 KiB gelten für die
+ausgepackte Liste und lassen sich nicht umgehen, indem man sie als Text
+schickt. Lehnt die Funktion trotzdem ab, nennt sie seitdem den tatsächlich
+angekommenen Typ:
+
+```
+p_raw_segments muss ein array sein; angekommen ist boolean.
+im kurzbefehl den feldtyp auf array stellen
+```
+
+`angekommen ist boolean` ist dabei der klassische Fall aus der Typenfalle oben:
+ein leer angelegtes Feld, in das erst später eine Variable gezogen wurde.
+`angekommen ist nichts` heißt, dass das Feld gar nicht mitgeschickt wurde —
+dann stimmt der Feldname nicht.
+
 ## Wenn keine Daten ankommen
 
 ### Was am 02.09.2026 wirklich passiert ist
