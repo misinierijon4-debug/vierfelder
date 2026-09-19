@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { abgeschlosseneBerichtWoche, behandleBericht } from '../../supabase/functions/_shared/wochenberichtHandler'
+import { abgeschlosseneBerichtWoche, behandleBericht, fasseBerichtWocheZusammen } from '../../supabase/functions/_shared/wochenberichtHandler'
 import type { BerichtArchiv, BerichtDienste } from '../../supabase/functions/_shared/wochenberichtHandler'
 import { pruefeTexte, pruefeWochenberichtText } from './wochenberichtTexte'
 
@@ -74,5 +74,48 @@ describe('ENI textschema', () => {
     expect(pruefeWochenberichtText({ texte, woche: '2026-09-14' })).toBeNull()
     expect(pruefeWochenberichtText({ texte, woche: '2026-02-31', erstellt: '2026-09-21' })).toBeNull()
     expect(pruefeWochenberichtText({ texte, woche: '2026-09-14', erstellt: '2026-09-21T00:00:00Z' })).not.toBeNull()
+  })
+  it('fasst die Aktivitaeten aller sechs Bereiche gleichwertig zusammen', () => {
+    const daten = {
+      woche: '2026-09-07',
+      zustand: {
+        einheiten: {
+          'koray|boxen|2026-09-09': [{ id: '1', user: 'koray', area: 'boxen', tag: '2026-09-09' }],
+        },
+        aufenthalte: [
+          { user: 'erijon', bereich: 'lernen', ankunft: '2026-09-09T17:00:00Z' },
+          { user: 'erijon', bereich: 'lernen', ankunft: '2026-09-13T16:00:00Z' },
+          { user: 'koray', bereich: 'boxen', ankunft: '2026-09-10T20:00:00Z' },
+          { user: 'koray', bereich: 'lesen', ankunft: '2026-09-11T09:00:00Z' },
+        ],
+        gewichte: {
+          'erijon|2026-09-10': 69,
+          'koray|2026-09-09': 74.5,
+          'koray|2026-09-10': 74.2,
+          'koray|2026-09-11': 73.5,
+        },
+      },
+      naechte: [
+        { user: 'erijon', nacht: '2026-09-09' },
+        { user: 'erijon', nacht: '2026-09-10' },
+        { user: 'erijon', nacht: '2026-09-11' },
+        { user: 'koray', nacht: '2026-09-09' },
+        { user: 'koray', nacht: '2026-09-10' },
+        { user: 'koray', nacht: '2026-09-11' },
+      ],
+    }
+    const res = fasseBerichtWocheZusammen(daten) as any
+    expect(res.berichtswoche).toBe('2026-09-07 bis 2026-09-13')
+    expect(res.personen.erijon.vierFelder.lernen).toContain('Mittwoch')
+    expect(res.personen.erijon.vierFelder.lernen).toContain('Sonntag')
+    expect(res.personen.erijon.vierFelder.gym).toBe('keine Aktivitaet')
+    expect(res.personen.erijon.gewicht).toBe('vereinzelt gewogen')
+    expect(res.personen.erijon.schlaf).toBe('regelmaessig erfasst')
+    expect(res.personen.koray.vierFelder.boxen).toContain('Mittwoch')
+    expect(res.personen.koray.vierFelder.boxen).toContain('Donnerstag')
+    expect(res.personen.koray.vierFelder.lesen).toContain('Freitag')
+    expect(res.personen.koray.vierFelder.gym).toBe('keine Aktivitaet')
+    expect(res.personen.koray.gewicht).toBe('oft gewogen')
+    expect(res.personen.koray.schlaf).toBe('regelmaessig erfasst')
   })
 })

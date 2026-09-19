@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4'
 import { ANBIETER, STANDARD_ANBIETER, mitVordenken } from '../_shared/eniAnbieter.ts'
-import { behandleBericht, BERICHT_ANWEISUNG } from '../_shared/wochenberichtHandler.ts'
+import { behandleBericht, BERICHT_ANWEISUNG, fasseBerichtWocheZusammen } from '../_shared/wochenberichtHandler.ts'
 import type { BerichtArchiv } from '../_shared/wochenberichtHandler.ts'
 
 Deno.serve((request) => {
@@ -36,13 +36,14 @@ Deno.serve((request) => {
       const anbieter = mitVordenken(ANBIETER.find(a => a.id === STANDARD_ANBIETER)!, false)
       const secret = Deno.env.get(anbieter.schluessel)
       if (!secret) throw new Error('modell fehlt')
+      const zusammenfassung = fasseBerichtWocheZusammen(daten)
       const response = await fetch(anbieter.endpunkt, {
         method: 'POST', signal: AbortSignal.timeout(45_000),
         headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
         body: JSON.stringify({ model: anbieter.modell, ...anbieter.denken, max_tokens: 1200,
           response_format: { type: 'json_object' },
           messages: [{ role: 'system', content: BERICHT_ANWEISUNG },
-            { role: 'user', content: JSON.stringify(daten) }] }),
+            { role: 'user', content: JSON.stringify(zusammenfassung) }] }),
       })
       if (!response.ok) { await response.body?.cancel(); throw new Error('modell nicht erreichbar') }
       const result = await response.json()
