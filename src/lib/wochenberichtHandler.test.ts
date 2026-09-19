@@ -3,7 +3,7 @@ import { abgeschlosseneBerichtWoche, behandleBericht, fasseBerichtWocheZusammen 
 import type { BerichtArchiv, BerichtDienste } from '../../supabase/functions/_shared/wochenberichtHandler'
 import { pruefeTexte, pruefeWochenberichtText } from './wochenberichtTexte'
 
-const texte = { ueberschrift: 'Drangeblieben', lief: 'Erijon und Koray waren aktiv.', muster: 'Die Tage waren unterschiedlich.', naechste: ['Erijon: Lesen einplanen.', 'Koray: Lernen einplanen.'] }
+const texte = { ueberschrift: 'Drangeblieben', lief: 'Erijon und Koray waren aktiv.', muster: 'Die Tage waren unterschiedlich.', naechste: ['Erijon: Lesen einplanen.', 'Koray: Lernen einplanen.'] as [string, string] }
 function umgebung() {
   const archiv: BerichtArchiv = { woche: '2026-09-14', daten: { woche: '2026-09-14' }, eingefroren: '2026-09-20T22:00:00Z', quelle: 'montag', texte: null, modell: null, text_erstellt: null }
   const dienste: BerichtDienste = {

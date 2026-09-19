@@ -452,10 +452,10 @@ export function ermittleHighlight(
     return { titel: 'bessere erholung', text: `+${qualitaetDelta} punkte schlafqualität` }
   }
 
-  if (bericht.gewicht.person[u].punkte.length >= 3) {
+  if (bericht.gewicht[u].punkte.length >= 3) {
     return {
       titel: 'gewichtskonstanz',
-      text: `${bericht.gewicht.person[u].punkte.length} messungen eingetragen`,
+      text: `${bericht.gewicht[u].punkte.length} messungen eingetragen`,
     }
   }
 
