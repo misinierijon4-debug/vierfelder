@@ -1,4 +1,4 @@
-import { fromKey, toKey } from './dates'
+import { addDays, fromKey, toKey } from './dates'
 
 export type KalenderMonat = {
   key: string
@@ -80,4 +80,48 @@ export function wochenZeitraum(woche: string[]): string {
 
   if (gleicherMonat) return `${von.getDate()}.–${bis.getDate()}. ${monat.format(von).toLowerCase()}`
   return `${von.getDate()}. ${monat.format(von).toLowerCase()} – ${bis.getDate()}. ${monat.format(bis).toLowerCase()}`
+}
+
+export type KalenderWoche = {
+  /** montag dieser zeile, auch wenn er im vormonat liegt */
+  montag: string
+  /** dieselben sieben felder wie im raster, leere tage bleiben null */
+  tage: Array<string | null>
+  /**
+   * ob der Bericht dieser Woche an dieser Zeile haengt.
+   *
+   * Eine Woche ueber den Monatswechsel steht in zwei Monatsrastern — sonst
+   * haette sie zwei Berichtszeichen, die dasselbe oeffnen. Sie gehoert dem
+   * Monat, in dem ihr Donnerstag liegt; das ist dieselbe Regel, nach der die
+   * ISO-Kalenderwoche ihrem Jahr zugeordnet wird, und praktisch immer der
+   * Monat, in dem die meisten ihrer Tage liegen.
+   */
+  traegtBericht: boolean
+}
+
+/**
+ * Das Monatsraster in Wochenzeilen, damit rechts neben jeder Zeile der
+ * Wochenbericht stehen kann — so wie Sleep Cycle es macht.
+ *
+ * Der Montag einer Zeile steht auch dann fest, wenn das Feld leer ist: die
+ * erste Zeile eines Monats beginnt meist im Vormonat, und der Bericht gehoert
+ * trotzdem zu dieser Woche. Er wird deshalb aus dem ersten belegten Tag der
+ * Zeile zurueckgerechnet, nie aus der Position im Raster.
+ */
+export function wochenImMonat(tage: Array<string | null>): KalenderWoche[] {
+  const wochen: KalenderWoche[] = []
+
+  for (let i = 0; i < tage.length; i += 7) {
+    const zeile = tage.slice(i, i + 7)
+    const ersterTag = zeile.find((tag): tag is string => tag !== null)
+    if (!ersterTag) continue
+    const versatz = zeile.indexOf(ersterTag)
+    wochen.push({
+      montag: toKey(addDays(fromKey(ersterTag), -versatz)),
+      tage: zeile,
+      traegtBericht: zeile[3] !== null && zeile[3] !== undefined,
+    })
+  }
+
+  return wochen
 }

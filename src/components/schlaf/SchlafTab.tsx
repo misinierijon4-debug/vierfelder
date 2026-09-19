@@ -10,6 +10,7 @@ import { SchlafNachtVergleich } from './SchlafNachtVergleich'
 import { SchlafRhythmus } from './SchlafRhythmus'
 import { SchlafKalender } from './SchlafKalender'
 import type { PhasenLadezustand } from '../../lib/schlafLaden'
+import type { WochenMarke } from '../../lib/wochenbericht'
 
 type Props = {
   naechte: Schlafnacht[]
@@ -18,9 +19,12 @@ type Props = {
   me: UserId
   istPrototyp: boolean
   phasenLadezustaende: Record<string, PhasenLadezustand>
+  /** je woche mit daten eine marke fuer den rand der kalenderzeile */
+  wochenMarken: Map<string, WochenMarke>
   /** der verlauf aelterer naechte kommt erst, wenn eine davon geoeffnet wird */
   onVerlaufBrauchen: (user: UserId, nacht: string) => (() => void) | void
   onVerlaufErneut: (user: UserId, nacht: string) => void
+  onBerichtOeffnen: (woche: string) => void
 }
 
 export function SchlafTab({
@@ -30,8 +34,10 @@ export function SchlafTab({
   me,
   istPrototyp,
   phasenLadezustaende,
+  wochenMarken,
   onVerlaufBrauchen,
   onVerlaufErneut,
+  onBerichtOeffnen,
 }: Props) {
   const registrierte = registrierteSchlafNutzer(naechte)
   const detailRef = useRef<HTMLDivElement>(null)
@@ -167,7 +173,9 @@ export function SchlafTab({
         gewaehlterTag={gewaehlterTag}
         heuteKey={heuteKey}
         istPrototyp={istPrototyp}
+        wochenMarken={wochenMarken}
         onTagWaehlen={waehleKalenderTag}
+        onBerichtOeffnen={onBerichtOeffnen}
         onSchliessen={() => setKalenderOffen(false)}
       />
     </motion.div>

@@ -53,12 +53,22 @@ const WochenRueckblickEinladung = lazy(() =>
     default: modul.WochenRueckblickEinladung,
   }))
 )
+/**
+ * Auch das Berichtsblatt haengt nicht am Startpfad: es sind fuenf Diagramme,
+ * die niemand sieht, bevor er den Kalender oeffnet.
+ */
+const WochenberichtBlatt = lazy(() =>
+  import('./components/wochenbericht/WochenberichtBlatt').then((modul) => ({
+    default: modul.WochenberichtBlatt,
+  }))
+)
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
 import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
 import { abrechnungFuerWoche, berechneDuell, fehlendeAbschlussWochen } from './lib/duell'
+import { wochenMarken } from './lib/wochenbericht'
 
 const UNDO_MS = 5000
 
@@ -163,6 +173,13 @@ function Tracker({
   const [undoFuer, setUndoFuer] = useState<AreaId | null>(null)
   const [detail, setDetail] = useState<Tagesauswahl | null>(null)
   const [kalenderOffen, setKalenderOffen] = useState(false)
+  /** montag der woche, deren bericht offen ist. null heisst: kein bericht */
+  const [berichtWoche, setBerichtWoche] = useState<string | null>(null)
+  /**
+   * einmal geoeffnet, bleibt das blatt im baum. sonst nimmt React es im selben
+   * schritt heraus, in dem es zugeht — und die ausblendbewegung faellt aus.
+   */
+  const [berichtGeladen, setBerichtGeladen] = useState(false)
   /**
    * der tag, den das raster zeigt. `null` heißt heute — so wandert die ansicht
    * um mitternacht von allein mit, statt auf einem datum stehen zu bleiben.
@@ -186,6 +203,19 @@ function Tracker({
     () => berechneDuell(zustand, woche, heuteKey, me),
     [zustand, woche, heuteKey, me]
   )
+
+  // je woche mit daten eine marke fuer den kalenderrand. einmal gerechnet,
+  // nicht je sichtbarer zeile — der kalender zeigt monate am stueck
+  const marken = useMemo(
+    () => wochenMarken(zustand, schlaf, heuteKey),
+    [zustand, schlaf, heuteKey]
+  )
+  const ersteWoche = useMemo(() => [...marken.keys()].sort()[0] ?? null, [marken])
+
+  const oeffneBericht = useCallback((wocheKey: string) => {
+    setBerichtWoche(wocheKey)
+    setBerichtGeladen(true)
+  }, [])
 
   useEffect(() => {
     onDuellStand?.({
@@ -564,8 +594,10 @@ function Tracker({
                 me={me}
                 istPrototyp={backend.art === 'lokal'}
                 phasenLadezustaende={phasenLadezustaende}
+                wochenMarken={marken}
                 onVerlaufBrauchen={phasenNachladen}
                 onVerlaufErneut={phasenNeuLaden}
+                onBerichtOeffnen={oeffneBericht}
               />
             </motion.div>
           ) : (
@@ -601,9 +633,30 @@ function Tracker({
         me={me}
         gewaehlterTag={gewaehlterTag}
         heuteKey={heuteKey}
+        wochenMarken={marken}
         onTagWaehlen={waehleTag}
+        onBerichtOeffnen={oeffneBericht}
         onSchliessen={() => setKalenderOffen(false)}
       />
+
+      {/* der bericht legt sich ueber den kalender, statt ihn zu ersetzen:
+          wer ihn schliesst, steht wieder in derselben monatszeile */}
+      {berichtGeladen && (
+        <Suspense fallback={null}>
+          <WochenberichtBlatt
+            woche={berichtWoche}
+            zustand={zustand}
+            naechte={schlaf}
+            heuteKey={heuteKey}
+            ersteWoche={ersteWoche}
+            eniStatus={backend.art === 'lokal' ? 'aus' : 'fehlt'}
+            eniTexte={null}
+            onWocheWechseln={setBerichtWoche}
+            onSchliessen={() => setBerichtWoche(null)}
+            onMitEniReden={oeffneEniWoche}
+          />
+        </Suspense>
+      )}
 
       <AnimatePresence>
         {detail && (
