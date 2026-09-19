@@ -56,20 +56,16 @@ Die Texte werden bei Bedarf beim Oeffnen erzeugt, nicht im Mitternachtsjob.
   Migrationstest gegen ein vollstaendiges Staging-Schema. pg_cron ist gestubbt.
 - Mobile Browserprobe im Prototyp bei 390 x 844.
 
-## Produktionsfreigabe separat
+## Produktionsfreigabe erfolgt (19.09.2026)
 
-Diese Aenderung wendet keine Produktionsmigration an und deployt keine Function.
-Nach Freigabe gemaess `release-und-migrationen.md`:
+Gemäß `release-und-migrationen.md` nach ausdrücklicher Freigabe durchgeführt:
 
-1. Migration `20260919154400_wochenbericht_archiv.sql` gegen Staging pruefen,
-   History abgleichen, Backup sicherstellen und genau diese Migration anwenden.
-   Kein pauschales `supabase db push`.
-2. Function `wochenbericht` mit JWT-Pruefung deployen. Der vorhandene
-   Modellschluessel muss in der Function-Umgebung verfuegbar sein.
-3. Frontend veroeffentlichen. Mit beiden Konten dieselbe abgeschlossene Woche
+1. Migration `20260919154400_wochenbericht_archiv.sql` einzeln über `apply_migration`
+   als produktive Version `20260919160732_wochenbericht_archiv` angewandt. RLS aktiv,
+   Cronjob `wochenbericht-montag` aktiv, Security Advisors ohne Befund.
+2. Function `wochenbericht` mit JWT-Prüfung (`verify_jwt: true`, Version 1) deployed.
+   Unautorisierte Aufrufe werden mit HTTP 401 abgewiesen.
+3. Nach Merge auf `main` wird das Frontend über GitHub Pages veröffentlicht.
+   Danach mit beiden Konten dieselbe Woche
    oeffnen, Archiv-/Textgleichheit pruefen, Scheduler und RLS-Advisors kontrollieren.
 4. Ersten echten Montagslauf und einen echten Modellaufruf bestaetigen.
-
-Noch nicht live belegt: produktive Migration, pg_cron-Ausfuehrung, Modellantwort
-und beide authentifizierten Browserkonten. Zahlen funktionieren ohne Modell;
-fehlende Serverbereitstellung ist in der Oberflaeche sichtbar.
