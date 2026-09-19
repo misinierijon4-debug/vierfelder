@@ -3,6 +3,14 @@ import { ShieldCheck } from '@phosphor-icons/react'
 import { user as userDef } from '../../lib/types'
 import type { UserId, Zustand } from '../../lib/types'
 import { duellTickerEintraege } from '../../lib/duell'
+import type { DruckStatus } from '../../lib/duell'
+import {
+  BADGE_KURZ,
+  BADGE_LANG,
+  heuristischesBadge,
+  klassifiziereTickerEreignis,
+} from '../../lib/duellKlassifizierung'
+import type { RivalitaetsBadge } from '../../lib/duellKlassifizierung'
 
 type Props = {
   zustand: Zustand
@@ -10,15 +18,77 @@ type Props = {
   me: UserId
   kompakt?: boolean
   limit?: number
+  /** die drucklage der laufenden woche; ohne sie bleibt das badge neutral */
+  druck?: DruckStatus
 }
 
-export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit = 5 }: Props) {
+/**
+ * Feste breite für jedes badge.
+ *
+ * Das urteil kommt asynchron und kann sich ändern, sobald der dienst antwortet
+ * — „routine“ heute, „kraftakt“ eine sekunde später. Ein kasten, der mit dem
+ * wort wächst, würde in genau dem moment die zeitangabe verschieben. Deshalb
+ * steht die breite vorher fest und nur der text darin wechselt.
+ */
+const BADGE_STIL =
+  'inline-block min-w-[62px] shrink-0 rounded-[2px] border border-linie px-1 py-0.5 text-center text-[9px] font-semibold text-kreide'
+
+/** im kompaktmodus fällt nur auf, was die lage wirklich dreht */
+const KOMPAKT_AKZENT: readonly RivalitaetsBadge[] = ['konter', 'aufholjagd']
+
+export function RivalitaetsTicker({
+  zustand,
+  woche,
+  me,
+  kompakt = false,
+  limit = 5,
+  druck = 'offen',
+}: Props) {
   const [jetzt, setJetzt] = useState(() => new Date())
   useEffect(() => {
     const timer = window.setInterval(() => setJetzt(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
   const eintraege = duellTickerEintraege(zustand, woche, jetzt, limit)
+
+  const [badges, setBadges] = useState<Record<string, RivalitaetsBadge>>({})
+  const ids = eintraege.map((e) => e.id).join('|')
+  useEffect(() => {
+    let aktiv = true
+    // `klassifiziereTickerEreignis` wirft nur bei einem abbruch von außen; hier
+    // geht kein signal hinein, also kann diese kette nicht scheitern. Ein
+    // aufruf, der nach dem ausblenden zurückkommt, füllt nur den speicher.
+    void Promise.all(
+      eintraege.map((eintrag) =>
+        klassifiziereTickerEreignis({
+          eintrag,
+          druckStatus: druck,
+          istIch: eintrag.userId === me,
+        }),
+      ),
+    ).then((urteile) => {
+      if (!aktiv) return
+      setBadges((alt) => {
+        const neu: Record<string, RivalitaetsBadge> = {}
+        eintraege.forEach((eintrag, i) => {
+          neu[eintrag.id] = urteile[i]!
+        })
+        const unveraendert =
+          Object.keys(neu).length === Object.keys(alt).length &&
+          Object.entries(neu).every(([id, wert]) => alt[id] === wert)
+        return unveraendert ? alt : neu
+      })
+    })
+    return () => {
+      aktiv = false
+    }
+    // `eintraege` entsteht bei jedem rendern neu und taugt nicht als abhängigkeit;
+    // `ids` ist derselbe inhalt als stabiler schlüssel.
+  }, [ids, druck, me])
+
+  /** solange der dienst noch antwortet, steht die heuristik da — nie eine lücke */
+  const badgeVon = (eintragId: string, istIch: boolean): RivalitaetsBadge =>
+    badges[eintragId] ?? heuristischesBadge(druck, istIch)
 
   if (eintraege.length === 0) {
     return kompakt ? null : (
@@ -32,6 +102,8 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
     const top = eintraege[0]
     const u = userDef(top.userId)
     const istIch = top.userId === me
+    const badge = badgeVon(top.id, istIch)
+    const akzent = KOMPAKT_AKZENT.includes(badge)
 
     return (
       <div className="mb-2 flex min-h-11 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-[2px] border border-linie bg-flaeche/60 px-2.5 py-1 text-[11px] text-kreide-60 min-[260px]:flex-nowrap">
@@ -54,6 +126,14 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
             </span>
           )}
         </div>
+        {/* der platz steht immer, auch wenn nichts darin steht: sonst rutschte
+            die zeitangabe, sobald der dienst „konter“ meldet */}
+        <span
+          className={BADGE_STIL + (akzent ? '' : ' invisible')}
+          title={akzent ? BADGE_LANG[badge] : undefined}
+        >
+          {BADGE_KURZ[badge]}
+        </span>
         <span className="shrink-0 text-[10px] text-kreide-52">{top.relativeZeit}</span>
       </div>
     )
@@ -64,6 +144,7 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
       {eintraege.map((e) => {
         const u = userDef(e.userId)
         const istIch = e.userId === me
+        const badge = badgeVon(e.id, istIch)
         return (
           <div
             key={e.id}
@@ -95,7 +176,12 @@ export function RivalitaetsTicker({ zustand, woche, me, kompakt = false, limit =
                 </span>
               )}
             </div>
-            <span className="shrink-0 text-[11px] text-kreide-52">{e.relativeZeit}</span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className={BADGE_STIL} title={BADGE_LANG[badge]}>
+                {BADGE_KURZ[badge]}
+              </span>
+              <span className="text-[11px] text-kreide-52">{e.relativeZeit}</span>
+            </div>
           </div>
         )
       })}

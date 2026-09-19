@@ -219,7 +219,7 @@ export function DuellTab({
           </h2>
           <span className="text-[11px] text-kreide-52">gemessen oder getippt</span>
         </div>
-        <RivalitaetsTicker zustand={zustand} woche={woche} me={me} limit={5} />
+        <RivalitaetsTicker zustand={zustand} woche={woche} me={me} limit={5} druck={match.druck} />
       </section>
 
       <section aria-labelledby="bilanz-titel" className="mt-5 border-t border-linie pt-3">

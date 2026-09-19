@@ -432,7 +432,7 @@ function Tracker({
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.18 }}
             >
-              <RivalitaetsTicker zustand={zustand} woche={woche} me={me} kompakt={true} />
+              <RivalitaetsTicker zustand={zustand} woche={woche} me={me} kompakt={true} druck={match.druck} />
 
               <section
                 aria-label="heute eintragen"
