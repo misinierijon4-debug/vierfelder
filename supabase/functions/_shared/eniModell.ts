@@ -32,6 +32,7 @@ import {
   istWochenMontag,
   type WochenDatenbank,
 } from './eniWochenlage.ts'
+import { ermittleRouting } from './eniRouting.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
@@ -257,6 +258,11 @@ export type EniAbhaengigkeiten = {
    * Optional, damit die Tests ihn weglassen koennen.
    */
   dienstDatenbank?(): EniDatenbank | null
+  /**
+   * Sortiert die Nachricht vor, damit nur geladen wird, was sie braucht.
+   * Injiziert wie `webSuche`: die Tests sollen kein Netz brauchen.
+   */
+  routing?: typeof ermittleRouting
   /** ruft das modell. injiziert, damit die tests kein netz brauchen */
   modell(anfrage: ModellAnfrage, anbieter: Gegenstelle, schluessel: string): Promise<string>
   protokoll: Pick<Console, 'error'>
@@ -1130,23 +1136,47 @@ export async function behandleEni(
     }
   }
 
+  /**
+   * Was diese eine Nachricht ueberhaupt braucht, siehe `eniRouting.ts`.
+   *
+   * Steht vor den beiden Datenbankwegen, weil genau das der Punkt ist: „danke
+   * fuer gestern“ soll weder die Trackerzahlen noch das Gedaechtnis anfassen.
+   * Faellt der Dienst aus, kommt alles zurueck — die Antwort haengt nie daran.
+   */
+  const routing = await (deps.routing ?? ermittleRouting)(vorlageText)
+
   // die zahlen kommen aus der datenbank, nie aus der anfrage. faellt ein
   // abschnitt aus, steht das drin, statt dass ENI ihn sich ausdenkt.
   let lage: string
-  try {
-    lage = await baueLage(db, personen, deps.jetzt?.() ?? new Date())
-  } catch (ursache) {
-    deps.protokoll.error('eni: lage nicht lesbar', ursache)
-    lage = 'LAGE. die zahlen sind gerade nicht lesbar. nenne keine, frage nach.'
+  if (!routing.brauchtLage) {
+    // Nicht geladen ist nicht dasselbe wie null: waere hier gar nichts, wuerde
+    // eine falsch einsortierte Zahlenfrage frei erfunden beantwortet. Also
+    // steht da, dass die Zahlen fehlen, und wie ENI damit umzugehen hat.
+    lage =
+      'LAGE. Fuer diese Nachricht wurden keine Trackerzahlen geladen, weil sie nach keinen gefragt hat. Nenne keine Zahlen zu Schlaf, Training, Gewicht oder Duellstand und erfinde keine. Wird doch danach gefragt, sage, dass du sie gerade nicht vorliegen hast, und lass danach fragen.'
+  } else {
+    try {
+      lage = await baueLage(db, personen, deps.jetzt?.() ?? new Date())
+    } catch (ursache) {
+      deps.protokoll.error('eni: lage nicht lesbar', ursache)
+      lage = 'LAGE. die zahlen sind gerade nicht lesbar. nenne keine, frage nach.'
+    }
   }
 
+  /**
+   * Leer heisst hier wirklich leer: `eniSystemPrompt` wirft leere Bloecke
+   * heraus, es steht also kein Platzhalter im Prompt. Anders als bei der Lage
+   * ist das unbedenklich — ohne Erinnerungsblock behauptet ENI ohnehin keine.
+   */
   let wissen = ''
-  try {
-    const gelesen = await db.from('eni_erinnerungen').select('*').order('geaendert', { ascending: false }).limit(200)
-    if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
-    wissen = wissenText(waehleWissen((gelesen.data ?? []) as unknown as Erinnerung[], userId, vorlageText, lokaleMinute(deps.jetzt?.() ?? new Date()).tag), userId)
-  } catch {
-    wissen = 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
+  if (routing.brauchtWissen) {
+    try {
+      const gelesen = await db.from('eni_erinnerungen').select('*').order('geaendert', { ascending: false }).limit(200)
+      if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
+      wissen = wissenText(waehleWissen((gelesen.data ?? []) as unknown as Erinnerung[], userId, vorlageText, lokaleMinute(deps.jetzt?.() ?? new Date()).tag), userId)
+    } catch {
+      wissen = 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
+    }
   }
 
   /**
@@ -1178,7 +1208,13 @@ export async function behandleEni(
   try {
     // Der Schalter erlaubt die Suche, er erzwingt sie nicht: was nichts zum
     // Nachschlagen ist, geht auch nicht an eine Suchmaschine.
-    const auftrag = anfrage.internet === true ? suchauftrag(vorlageText) : null
+    //
+    // Drei Bedingungen, und alle drei koennen nur wegnehmen: der Schalter des
+    // Nutzers, das Urteil des Routings und `suchauftrag`. Letzteres bleibt
+    // bewusst die letzte Instanz — die Sperre fuer Krisen- und Ich-Saetze darf
+    // kein fremder Dienst aufmachen koennen.
+    const auftrag =
+      anfrage.internet === true && routing.darfSuchen ? suchauftrag(vorlageText) : null
     if (auftrag) {
       melde?.({ schritt: 'sucht' })
       try {

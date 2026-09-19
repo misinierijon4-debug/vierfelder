@@ -14,6 +14,7 @@ import {
   type ModellAnfrage,
 } from '../../supabase/functions/_shared/eniModell.ts'
 import { ANBIETER, type Gegenstelle } from '../../supabase/functions/_shared/eniAnbieter.ts'
+import { ROUTING_FALLBACK, type EniRouting } from '../../supabase/functions/_shared/eniRouting.ts'
 
 const JETZT = new Date('2026-09-10T17:00:00Z') // donnerstag, kw 37
 const ICH = 'konto-erijon'
@@ -167,6 +168,12 @@ function deps(
     anhaengeNurMitDienst?: boolean
     /** kein dienstschluessel gesetzt — dann muss der anhang ehrlich scheitern */
     ohneDienst?: boolean
+    /**
+     * Das Urteil des Intent-Routings. Standard ist der Fallback: voller
+     * Kontext, also genau das Verhalten von vor dem Routing. Ohne diese
+     * Attrappe telefonierte jeder Test nach classifier.dev.
+     */
+    routing?: EniRouting
   } = {}
 ) {
   const tabellen = optionen.tabellen ?? grunddaten()
@@ -192,6 +199,7 @@ function deps(
     dienstDatenbank: optionen.ohneDienst
       ? () => null
       : () => baueDatenbank(tabellen, optionen.nutzer === undefined ? ICH : optionen.nutzer),
+    routing: async () => optionen.routing ?? ROUTING_FALLBACK,
     modell: async (anfrage, anbieter, schluessel) => {
       gesehen.push(anfrage)
       gerufen.push({ anbieter, schluessel })
@@ -1342,6 +1350,106 @@ describe('Internet im authentifizierten Chat', () => {
     )
     expect(tabellen.eni_quellen ?? []).toHaveLength(0)
     expect(tabellen.eni_nachrichten).toHaveLength(2)
+  })
+})
+
+/*
+  Das vorgeschaltete Intent-Routing, siehe `eniRouting.ts`. Hier steht nur,
+  was sein Urteil im Handler bewirkt — was der Dienst selbst antwortet, prueft
+  `eniRouting.test.ts`.
+*/
+describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
+  const nur = (teil: Partial<EniRouting>): EniRouting => ({
+    brauchtLage: false,
+    brauchtWissen: false,
+    darfSuchen: false,
+    erkannterIntent: 'test',
+    ...teil,
+  })
+
+  it('laedt fuer smalltalk weder zahlen noch erinnerungen', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({}) })
+    tabellen.eni_erinnerungen = [
+      { id: 'e1', user_id: ICH, text: 'Geheime Notiz', art: 'profil', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' },
+    ]
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Hallo Eni, danke für gestern!' }),
+      abhaengigkeiten
+    )
+
+    expect(res.status).toBe(200)
+    const system = gesehen[0]!.system
+    expect(system).not.toContain('PERSOENLICHER KONTEXT')
+    expect(system).not.toContain('Geheime Notiz')
+    // Nicht geladen ist nicht null: ENI muss wissen, dass ihm Zahlen fehlen,
+    // sonst denkt er sich welche aus.
+    expect(system).toContain('keine Trackerzahlen geladen')
+    expect(system).toContain('erfinde keine')
+  })
+
+  it('haengt die echten zahlen an, sobald das routing sie anfordert', async () => {
+    const { abhaengigkeiten, gesehen } = deps({ routing: nur({ brauchtLage: true }) })
+    await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Wie viele Punkte brauche ich noch gegen Koray?' }),
+      abhaengigkeiten
+    )
+    const system = gesehen[0]!.system
+    expect(system).not.toContain('keine Trackerzahlen geladen')
+    expect(system).toContain('LAGE')
+    expect(system).toContain('81,4')
+  })
+
+  it('haengt die erinnerungen nur an, wenn das routing sie anfordert', async () => {
+    const eintrag = { id: 'e1', user_id: ICH, text: 'Ziel: 78 kg bis Dezember', art: 'aktuell', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' }
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({ brauchtWissen: true }) })
+    tabellen.eni_erinnerungen = [eintrag]
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was war mein Ziel?' }), abhaengigkeiten)
+    expect(gesehen[0]!.system).toContain('Ziel: 78 kg bis Dezember')
+  })
+
+  it('sucht nicht, wenn das routing die frage fuer keine sachfrage haelt', async () => {
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test', routing: nur({ brauchtLage: true }) })
+    const suche = vi.fn().mockResolvedValue([])
+    abhaengigkeiten.webSuche = suche
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Wie stehe ich gerade?', internet: true }),
+      abhaengigkeiten
+    )
+    expect(res.status).toBe(200)
+    expect(suche).not.toHaveBeenCalled()
+  })
+
+  /*
+    Die wichtigste Eigenschaft des Routings: es darf nur wegnehmen. Ein
+    fremder Sortierdienst kann die Sperre fuer Krisensaetze nicht aufmachen
+    — die liegt in `suchauftrag` und kommt nach ihm.
+  */
+  it('oeffnet die suche nicht fuer saetze, die suchauftrag sperrt', async () => {
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test', routing: nur({ darfSuchen: true }) })
+    const suche = vi.fn().mockResolvedValue([])
+    abhaengigkeiten.webSuche = suche
+    await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'ich denke oft an selbstmord', internet: true }),
+      abhaengigkeiten
+    )
+    expect(suche).not.toHaveBeenCalled()
+  })
+
+  /*
+    Faellt classifier.dev aus, laeuft alles wie vorher. Der Standard der
+    Attrappe ist genau dieser Fallback, aber die Zusicherung soll namentlich
+    dastehen: ENIs Antwort haengt nie an einem Sortierdienst.
+  */
+  it('laedt bei ausgefallenem routing wieder alles', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: ROUTING_FALLBACK })
+    tabellen.eni_erinnerungen = [
+      { id: 'e1', user_id: ICH, text: 'Ziel: 78 kg bis Dezember', art: 'aktuell', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' },
+    ]
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Hallo' }), abhaengigkeiten)
+    const system = gesehen[0]!.system
+    expect(system).toContain('81,4')
+    expect(system).toContain('Ziel: 78 kg bis Dezember')
+    expect(system).not.toContain('keine Trackerzahlen geladen')
   })
 })
 
