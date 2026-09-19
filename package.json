@@ -17,7 +17,7 @@
     "check:eni": "node scripts/check-eni.mjs",
     "check:agentendoku": "node scripts/check-agentendoku.mjs",
     "sync:agentendoku": "node scripts/check-agentendoku.mjs --schreiben",
-    "check:edge": "deno check --no-config --lock=supabase/functions/deno.lock --frozen-lockfile --node-modules-dir=none supabase/functions/fokus/index.ts supabase/functions/schlaf-import/index.ts supabase/functions/push-test/index.ts supabase/functions/gewicht-erinnerung/index.ts supabase/functions/schlaf-erinnerung/index.ts supabase/functions/aktivitaets-erinnerung/index.ts supabase/functions/eni/index.ts supabase/functions/eni-stimme/index.ts",
+    "check:edge": "deno check --no-config --lock=supabase/functions/deno.lock --frozen-lockfile --node-modules-dir=none supabase/functions/fokus/index.ts supabase/functions/schlaf-import/index.ts supabase/functions/push-test/index.ts supabase/functions/gewicht-erinnerung/index.ts supabase/functions/schlaf-erinnerung/index.ts supabase/functions/aktivitaets-erinnerung/index.ts supabase/functions/eni/index.ts supabase/functions/eni-stimme/index.ts supabase/functions/wochenbericht/index.ts",
     "check:web": "npm test && npm run build:web && npm run check:dist",
     "check:all": "npm run check:agentendoku && npm run check:web && npm run check:edge",
     "check": "npm run check:all",

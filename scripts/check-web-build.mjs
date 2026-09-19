@@ -189,8 +189,12 @@ for (const name of jsDateien) {
 // Byte gesamt. Der Einstieg traegt die sichtbaren Reste des Badges und erhaelt
 // dafuer ein KiB, die Gesamtsumme zwei KiB kontrollierten Spielraum. Beide
 // Pruefungen bleiben harte Buildfehler; keine Budgetabschaltung.
-const INITIAL_GZIP_BUDGET = 234 * 1024
-const GESAMT_GZIP_BUDGET = 274 * 1024
+// Wochenbericht: Kalenderzeichen und Wochenauswahl erweitern den Einstieg;
+// Blatt, Diagramme, Archivzugriff und Textpruefung bleiben im Lazy-Chunk.
+// Lokal gemessen: 241694 Byte initial, 292168 Byte gesamt (gzip).
+// Dafuer 3 KiB initial und 13 KiB insgesamt, weiterhin harte Grenzen.
+const INITIAL_GZIP_BUDGET = 237 * 1024
+const GESAMT_GZIP_BUDGET = 287 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`

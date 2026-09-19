@@ -146,6 +146,32 @@ Altbestand und der gewollte Zugang des Kurzbefehls — die Identität kommt aus
 `p_token` gegen `schlaf_import_tokens`. Die übrigen Meldungen sind ebenfalls
 Altbestand.
 
+## Neue Migration `wochenbericht_archiv` (19.09.2026)
+
+Der Wochenbericht sichert montags um 00:00 Uhr Europe/Berlin einen unveränderlichen
+Datenstand für beide Personen in `public.wochenberichte`. Die Migration wurde nach
+ausdrücklicher Freigabe einzeln über `apply_migration` angewandt, nicht über `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260919154400_wochenbericht_archiv.sql` | `20260919160732_wochenbericht_archiv` |
+
+**Auch hier weicht die Versionsnummer ab, der Name stimmt überein.** Die Sperre
+gegen ungeprüftes `db push` gilt unverändert weiter.
+
+Vor der Anwendung geprüft: `public.wochenberichte` existierte noch nicht, `profile`,
+`einheiten`, `aufenthalte`, `gewicht` und der View `public.schlafnaechte_ansicht`
+standen, `pg_cron` war aktiv. Nach der Anwendung bestätigt: RLS aktiv auf
+`wochenberichte`, Policy `mitglieder lesen wochenberichte` für `authenticated` aktiv,
+Schreibrechte (`select, insert, update`) liegen ausschließlich bei `service_role`.
+`private.sichere_wochenbericht` und `private.wochenbericht_montag` sind vor unbefugtem
+Aufruf geschützt. Der Cronjob `wochenbericht-montag` ist mit Zeitplan `0 22,23 * * 0`
+eingerichtet.
+
+Der Sicherheitsbericht meldet für diese Änderung keine neuen Befunde. Die Edge
+Function `wochenbericht` wurde mit aktiver JWT-Prüfung (`verify_jwt: true`, Version 1)
+bereitgestellt; Aufrufe ohne Autorisierung werden mit HTTP 401 abgewiesen.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

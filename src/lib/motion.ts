@@ -65,3 +65,29 @@ export const DIAGRAMM = {
   linienPause: 0.16,
   linienDauer: 0.55,
 }
+
+/**
+ * der wochenbericht baut sich einmal auf, von oben nach unten.
+ *
+ * er ist ein blatt, das man aufschlaegt: die abschnitte kommen gestaffelt,
+ * jedes diagramm zeichnet sich danach selbst — erst die linie, dann die
+ * punkte. schneller als hier waere es ein aufblitzen, langsamer wuerde man
+ * warten, statt zu lesen.
+ */
+export const BERICHT = {
+  /** vorlauf, bis das blatt selbst steht */
+  vorlauf: 0.08,
+  abschnittDauer: 0.26,
+  abschnittVersatz: 0.05,
+  abschnittWeg: 8,
+  /** eine rasterzelle; der versatz laeuft diagonal durch das gitter */
+  zelleDauer: 0.2,
+  zelleVersatz: 0.016,
+  /** linien zeichnen sich von links nach rechts */
+  linieDauer: 0.62,
+  /** punkte auf der linie kommen hinterher */
+  punktDauer: 0.18,
+  punktVersatz: 0.045,
+  balkenDauer: 0.42,
+  balkenVersatz: 0.04,
+}

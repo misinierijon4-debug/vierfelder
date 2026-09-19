@@ -51,6 +51,19 @@ afterEach(() => {
   kalenderMonateSpion.mockClear()
 })
 
+const berichtSpion = vi.fn()
+const MARKEN = new Map([
+  [
+    '2026-08-31',
+    {
+      woche: '2026-08-31',
+      punkte: { erijon: 9, koray: 8 },
+      sieger: 'erijon' as const,
+      laeuft: false,
+    },
+  ],
+])
+
 function KalenderAblauf() {
   const [offen, setOffen] = useState(false)
   const [tag, setTag] = useState('2026-09-06')
@@ -68,10 +81,12 @@ function KalenderAblauf() {
         gewaehlterTag={tag}
         heuteKey="2026-09-06"
         istPrototyp={false}
+        wochenMarken={MARKEN}
         onTagWaehlen={(naechsterTag) => {
           setTag(naechsterTag)
           setOffen(false)
         }}
+        onBerichtOeffnen={berichtSpion}
         onSchliessen={() => setOffen(false)}
       />
     </>
@@ -95,7 +110,9 @@ describe('SchlafKalender bedarfsweises Rendering', () => {
         gewaehlterTag="2026-09-06"
         heuteKey="2026-09-06"
         istPrototyp={false}
+        wochenMarken={MARKEN}
         onTagWaehlen={vi.fn()}
+        onBerichtOeffnen={vi.fn()}
         onSchliessen={vi.fn()}
       />
     )

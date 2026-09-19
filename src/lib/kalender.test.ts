@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { kalenderMonate, tageImMonat, wochenZeitraum } from './kalender'
+import { kalenderMonate, tageImMonat, wochenImMonat, wochenZeitraum } from './kalender'
 
 describe('schlafkalender', () => {
   it('ordnet einen monat montagsbasiert in volle wochen ein', () => {
@@ -36,5 +36,29 @@ describe('schlafkalender', () => {
         '2026-08-23',
       ])
     ).toBe('17.–23. august')
+  })
+
+  it('gruppiert das monatsraster in wochenzeilen mit ihrem montag', () => {
+    // september 2026 beginnt an einem dienstag: die erste zeile startet im august
+    const wochen = wochenImMonat(tageImMonat(2026, 8))
+    expect(wochen[0]!.montag).toBe('2026-08-31')
+    expect(wochen[0]!.tage[0]).toBeNull()
+    expect(wochen[0]!.tage[1]).toBe('2026-09-01')
+    expect(wochen[2]!.montag).toBe('2026-09-14')
+    expect(wochen[2]!.tage[0]).toBe('2026-09-14')
+    expect(wochen.every((w) => w.tage.length === 7)).toBe(true)
+  })
+
+  it('hängt den bericht einer woche über den monatswechsel an genau eine zeile', () => {
+    // dieselbe woche 31.08.–06.09. steht in beiden monatsrastern
+    const august = wochenImMonat(tageImMonat(2026, 7))
+    const september = wochenImMonat(tageImMonat(2026, 8))
+    const inAugust = august.find((w) => w.montag === '2026-08-31')!
+    const inSeptember = september.find((w) => w.montag === '2026-08-31')!
+
+    expect(inAugust.traegtBericht).toBe(false)
+    expect(inSeptember.traegtBericht).toBe(true)
+    // jede woche taucht genau einmal mit zeichen auf
+    expect(august.filter((w) => w.traegtBericht)).toHaveLength(4)
   })
 })

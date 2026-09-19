@@ -83,6 +83,10 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | ENI Intent-Routing (was in den Prompt kommt) | `supabase/functions/_shared/eniRouting.ts`, `src/lib/eniRouting.test.ts` |
 | ENI Sprachausgabe/Diktat | `src/lib/eniStimme.ts`, `src/lib/eniDiktat.ts` |
 | ENI Wochenvorlage (Wortlaut wird wiedererkannt) | `supabase/functions/_shared/eniVorlagen.ts` |
+| **Wochenbericht: Zahlen** (rechnet der Client, nie ENI) | `src/lib/wochenbericht.ts` |
+| Wochenbericht: Blatt, Diagramme, Kalenderzeichen | `src/components/wochenbericht/` |
+| Wochenbericht: Archiv, Montag-Abschluss und ENI-Texte | `src/lib/wochenberichtArchiv.ts`, `supabase/functions/wochenbericht/index.ts`, `supabase/functions/_shared/wochenberichtHandler.ts`, `docs/wochenbericht.md` |
+| Wochenbericht: gemeinsames Textschema | `supabase/functions/_shared/wochenberichtTexte.ts` (Client-Reexport: `src/lib/wochenberichtTexte.ts`) |
 | Push, Erinnerungen, VAPID | `src/lib/push.ts`, `src/lib/erinnerung.ts`, `supabase/functions/_shared/versand.ts` |
 | Kalenderraster (Tracker + Schlaf) | `src/lib/kalender.ts` |
 | Animationsdauern (alle an einer Stelle) | `src/lib/motion.ts` |

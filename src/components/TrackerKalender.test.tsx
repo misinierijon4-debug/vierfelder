@@ -53,6 +53,19 @@ afterEach(() => {
   kalenderMonateSpion.mockClear()
 })
 
+const berichtSpion = vi.fn()
+const MARKEN = new Map([
+  [
+    '2026-08-31',
+    {
+      woche: '2026-08-31',
+      punkte: { erijon: 9, koray: 8 },
+      sieger: 'erijon' as const,
+      laeuft: false,
+    },
+  ],
+])
+
 function KalenderAblauf() {
   const [offen, setOffen] = useState(false)
   const [tag, setTag] = useState('2026-09-06')
@@ -69,10 +82,12 @@ function KalenderAblauf() {
         me="erijon"
         gewaehlterTag={tag}
         heuteKey="2026-09-06"
+        wochenMarken={MARKEN}
         onTagWaehlen={(naechsterTag) => {
           setTag(naechsterTag)
           setOffen(false)
         }}
+        onBerichtOeffnen={berichtSpion}
         onSchliessen={() => setOffen(false)}
       />
     </>
@@ -127,5 +142,22 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
       'aria-pressed',
       'true'
     )
+  })
+
+  it('hängt den wochenbericht an den rechten rand der zeile und öffnet ihn genau einmal', async () => {
+    const user = userEvent.setup()
+    render(<KalenderAblauf />)
+    await user.click(screen.getByRole('button', { name: 'tracker-kalender öffnen' }))
+
+    // die woche 31.08.–06.09. steht in beiden monatsrastern, das zeichen nur einmal
+    const zeichen = screen.getAllByRole('button', { name: /^Wochenbericht 31\. august/ })
+    expect(zeichen).toHaveLength(1)
+    expect(zeichen[0]).toHaveAccessibleName(/9 zu 8, erijon vorn/)
+
+    await user.click(zeichen[0]!)
+    expect(berichtSpion).toHaveBeenCalledWith('2026-08-31')
+
+    // wochen ohne daten bekommen kein zeichen
+    expect(screen.queryByRole('button', { name: /^Wochenbericht 7\. september/ })).toBeNull()
   })
 })

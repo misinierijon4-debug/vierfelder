@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef } from 'react'
 import { X } from '@phosphor-icons/react'
 import { FELDER, user as userDef } from '../lib/types'
 import type { UserId, Zustand } from '../lib/types'
-import { TAGKUERZEL, fromKey } from '../lib/dates'
-import { kalenderMonate } from '../lib/kalender'
+import { TAGKUERZEL, fromKey, weekDays } from '../lib/dates'
+import { kalenderMonate, wochenImMonat, wochenZeitraum } from '../lib/kalender'
 import { fokusRingLoesen } from '../lib/dialogFokus'
 import { useScrollSperre } from '../lib/scrollsperre'
 import { erledigteFelder, tageMitDaten } from '../lib/tracker'
 import { useDialogNachlauf } from '../lib/dialogNachlauf'
+import { BerichtZeichen, KALENDER_SPALTEN } from './wochenbericht/BerichtZeichen'
+import type { WochenMarke } from '../lib/wochenbericht'
 
 const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
 const DATUM = new Intl.DateTimeFormat('de-DE', {
@@ -23,7 +25,10 @@ type Props = {
   me: UserId
   gewaehlterTag: string
   heuteKey: string
+  /** je woche mit daten eine marke fuer den rand der zeile */
+  wochenMarken: Map<string, WochenMarke>
   onTagWaehlen: (tag: string) => void
+  onBerichtOeffnen: (woche: string) => void
   onSchliessen: () => void
 }
 
@@ -39,7 +44,9 @@ export function TrackerKalender({
   me,
   gewaehlterTag,
   heuteKey,
+  wochenMarken,
   onTagWaehlen,
+  onBerichtOeffnen,
   onSchliessen,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -117,7 +124,7 @@ export function TrackerKalender({
             das polster der scrollflaeche offen — und durch diesen spalt liefen
             die ringe des naechsten monats sichtbar nach oben davon. */}
         <div className="vollbild-safe-x shrink-0 border-b border-linie">
-          <div className="mx-auto grid w-full max-w-[420px] grid-cols-7 pb-2 pt-3">
+          <div className={`mx-auto grid w-full max-w-[420px] pb-2 pt-3 ${KALENDER_SPALTEN}`}>
             {TAGKUERZEL.map((tag) => (
               <span
                 key={tag}
@@ -126,6 +133,7 @@ export function TrackerKalender({
                 {tag}
               </span>
             ))}
+            <span aria-hidden="true" />
           </div>
         </div>
 
@@ -148,66 +156,79 @@ export function TrackerKalender({
                     )}
                   </h3>
 
-                  <div className="mt-3 grid grid-cols-7">
-                    {monat.tage.map((tag, index) => {
-                      if (!tag) return <span key={`${monat.key}-leer-${index}`} aria-hidden="true" />
+                  <div className={`mt-3 grid ${KALENDER_SPALTEN}`}>
+                    {wochenImMonat(monat.tage).map((woche) => (
+                      <div key={woche.montag} className="contents">
+                      {woche.tage.map((tag, index) => {
+                        if (!tag) return <span key={`${woche.montag}-leer-${index}`} aria-hidden="true" />
 
-                      const datum = fromKey(tag)
-                      const istGewaehlt = tag === gewaehlterTag
-                      const istHeute = tag === heuteKey
-                      const istZukunft = tag > heuteKey
-                      const erledigt = istZukunft ? 0 : erledigteFelder(zustand, me, tag)
-                      const grad = (erledigt / FELDER.length) * 360
-                      const ring =
-                        erledigt === 0
-                          ? 'var(--linie)'
-                          : `conic-gradient(from -90deg, ${person.farbe} 0deg ${grad}deg, var(--linie) ${grad}deg 360deg)`
-                      const status =
-                        erledigt === 0
-                          ? 'nichts eingetragen'
-                          : `${erledigt} von ${FELDER.length} feldern`
+                        const datum = fromKey(tag)
+                        const istGewaehlt = tag === gewaehlterTag
+                        const istHeute = tag === heuteKey
+                        const istZukunft = tag > heuteKey
+                        const erledigt = istZukunft ? 0 : erledigteFelder(zustand, me, tag)
+                        const grad = (erledigt / FELDER.length) * 360
+                        const ring =
+                          erledigt === 0
+                            ? 'var(--linie)'
+                            : `conic-gradient(from -90deg, ${person.farbe} 0deg ${grad}deg, var(--linie) ${grad}deg 360deg)`
+                        const status =
+                          erledigt === 0
+                            ? 'nichts eingetragen'
+                            : `${erledigt} von ${FELDER.length} feldern`
 
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          disabled={istZukunft}
-                          aria-current={istHeute ? 'date' : undefined}
-                          aria-pressed={istGewaehlt}
-                          aria-label={`${DATUM.format(datum)}, ${status}`}
-                          onClick={() => onTagWaehlen(tag)}
-                          className={`flex min-h-[72px] min-w-0 flex-col items-center justify-start rounded-[2px] pt-1 focus-visible:outline-none ${
-                            istZukunft ? 'cursor-default opacity-25' : 'hover:bg-flaeche/60'
-                          }`}
-                        >
-                          <span className="tnum text-[11px] font-semibold text-kreide">
-                            {datum.getDate()}
-                          </span>
-                          <span
-                            aria-hidden="true"
-                            className="relative mt-1 size-9 rounded-full min-[360px]:size-10"
-                            style={{
-                              background: ring,
-                              boxShadow: istGewaehlt ? '0 0 0 2px var(--kreide)' : undefined,
-                            }}
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            disabled={istZukunft}
+                            aria-current={istHeute ? 'date' : undefined}
+                            aria-pressed={istGewaehlt}
+                            aria-label={`${DATUM.format(datum)}, ${status}`}
+                            onClick={() => onTagWaehlen(tag)}
+                            className={`flex min-h-[72px] min-w-0 flex-col items-center justify-start rounded-[2px] pt-1 focus-visible:outline-none ${
+                              istZukunft ? 'cursor-default opacity-25' : 'hover:bg-flaeche/60'
+                            }`}
                           >
-                            {/* die zahl in der mitte, weil fünf felder ein
-                                abzählbarer stand sind und kein prozentwert */}
-                            <span className="absolute inset-1 flex items-center justify-center rounded-full bg-grund">
-                              {erledigt > 0 && (
-                                <span className="tnum text-[11px] font-semibold text-kreide-60">
-                                  {erledigt}
-                                </span>
-                              )}
+                            <span className="tnum text-[11px] font-semibold text-kreide">
+                              {datum.getDate()}
                             </span>
-                          </span>
-                          <span
-                            aria-hidden="true"
-                            className={`mt-1 size-1 rounded-full ${istHeute ? 'bg-kreide' : 'bg-transparent'}`}
+                            <span
+                              aria-hidden="true"
+                              className="relative mt-1 size-9 rounded-full min-[360px]:size-10"
+                              style={{
+                                background: ring,
+                                boxShadow: istGewaehlt ? '0 0 0 2px var(--kreide)' : undefined,
+                              }}
+                            >
+                              {/* die zahl in der mitte, weil fünf felder ein
+                                  abzählbarer stand sind und kein prozentwert */}
+                              <span className="absolute inset-1 flex items-center justify-center rounded-full bg-grund">
+                                {erledigt > 0 && (
+                                  <span className="tnum text-[11px] font-semibold text-kreide-60">
+                                    {erledigt}
+                                  </span>
+                                )}
+                              </span>
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              className={`mt-1 size-1 rounded-full ${istHeute ? 'bg-kreide' : 'bg-transparent'}`}
+                            />
+                          </button>
+                        )
+                      })}
+                        {woche.traegtBericht ? (
+                          <BerichtZeichen
+                            marke={wochenMarken.get(woche.montag)}
+                            zeitraum={wochenZeitraum(weekDays(fromKey(woche.montag)))}
+                            onOeffnen={onBerichtOeffnen}
                           />
-                        </button>
-                      )
-                    })}
+                        ) : (
+                          <span aria-hidden="true" />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </section>
               ))}
