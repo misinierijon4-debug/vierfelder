@@ -10,6 +10,7 @@ import {
   webLage,
   nurGepruefteLinks,
   mitBezug,
+  mitSemantischemBezug,
   ohneEmoji,
   suchauftrag,
   WEB_RUECKBLICK_BUDGET,
@@ -54,11 +55,17 @@ describe('Eni Websuche', () => {
     geht deshalb vor, auch wenn beide Schluessel dastehen.
   */
   it('sucht kostenlos bei Tavily und holt keine Seiteninhalte nach', async () => {
-    const http = vi.fn().mockResolvedValue(Response.json({ results: [wetterTreffer] }))
+    const http = vi.fn().mockImplementation(async (url: string) => {
+      if (url === 'https://classifier.dev') {
+        return Response.json({ results: [{ label: 'relevant', confidence: 0.9 }] })
+      }
+      return Response.json({ results: [wetterTreffer] })
+    })
     const ergebnis = await sucheWeb('Wetter heute', NUR_TAVILY, undefined, http)
     expect(ergebnis).toEqual([{ url: 'https://example.org/artikel', titel: 'Wetter Berlin', text: WETTER }])
-    expect(http).toHaveBeenCalledTimes(1)
+    expect(http).toHaveBeenCalledTimes(2)
     expect(http.mock.calls[0]![0]).toBe('https://api.tavily.com/search')
+    expect(http.mock.calls[1]![0]).toBe('https://classifier.dev')
     const body = JSON.parse(http.mock.calls[0]![1].body)
     expect(body).toEqual({ query: 'Wetter heute', search_depth: 'basic', max_results: 5 })
     // include_raw_content waere ein zweiter Abruf je Seite und wird extra berechnet
@@ -73,11 +80,17 @@ describe('Eni Websuche', () => {
   })
 
   it('sucht einmal und gibt keine generierten Recherchebehauptungen als Quelldaten weiter', async () => {
-    const http = vi.fn().mockResolvedValue(Response.json({ choices: [{ message: { content: 'Unbelegtes', annotations: [wetterQuelle] } }] }))
+    const http = vi.fn().mockImplementation(async (url: string) => {
+      if (url === 'https://classifier.dev') {
+        return Response.json({ results: [{ label: 'relevant', confidence: 0.9 }] })
+      }
+      return Response.json({ choices: [{ message: { content: 'Unbelegtes', annotations: [wetterQuelle] } }] })
+    })
     const ergebnis = await sucheWeb('Wetter heute', NUR_OPENROUTER, undefined, http)
     expect(ergebnis[0]?.text).toBe(WETTER)
-    expect(http).toHaveBeenCalledTimes(1)
+    expect(http).toHaveBeenCalledTimes(2)
     expect(http.mock.calls[0]![0]).toBe('https://openrouter.ai/api/v1/chat/completions')
+    expect(http.mock.calls[1]![0]).toBe('https://classifier.dev')
     const body = JSON.parse(http.mock.calls[0]![1].body)
     expect(body.plugins).toEqual([{ id: 'web', engine: 'exa', max_results: 5 }])
     expect(body.messages[1].content).toBe('Wetter heute')
@@ -358,5 +371,92 @@ describe('Emojis in Quellentiteln', () => {
     expect(
       tavilyQuellen([{ url: 'https://example.org/a', title: 'Protein pro Tag', content: 'Inhalt' }])[0]!.titel
     ).toBe('Protein pro Tag')
+  })
+})
+
+describe('mitSemantischemBezug (classifier.dev)', () => {
+  const trefferRelevant = {
+    url: 'https://example.org/protein',
+    titel: 'Proteinbedarf im Alltag',
+    text: 'Ein Erwachsener benötigt etwa 1.5 bis 2 Gramm Protein pro Kilogramm Körpergewicht.',
+  }
+  const trefferIrrelevant = {
+    url: 'https://example.org/schuhe',
+    titel: 'Sneakers und Schuhe günstig kaufen',
+    text: 'Unser Online-Shop bietet beste Angebote, Rabatte und kostenlosen Versand.',
+  }
+  const trefferUnsicher = {
+    url: 'https://example.org/blog',
+    titel: 'Fitness und Lifestyle Blog',
+    text: 'Hier diskutieren wir allgemeine Themen rund um Sport, Ernährung und Wohlbefinden.',
+  }
+
+  it('behaelt echte Treffer mit hoher Konfidenz (relevant, 0.9)', async () => {
+    const http = vi.fn().mockResolvedValue(
+      Response.json({
+        results: [{ label: 'relevant', confidence: 0.9 }],
+      })
+    )
+    const ergebnis = await mitSemantischemBezug([trefferRelevant], 'wie viel protein brauche ich', http)
+    expect(ergebnis).toEqual([trefferRelevant])
+    expect(http).toHaveBeenCalledTimes(1)
+    expect(http.mock.calls[0]![0]).toBe('https://classifier.dev')
+    const req = http.mock.calls[0]![1]
+    expect(req.method).toBe('POST')
+    expect(req.headers['content-type']).toBe('application/json')
+    expect(req.headers['user-agent']).toBe('vierfelder-eni/1.0')
+    const body = JSON.parse(req.body)
+    expect(body.labels).toEqual(['relevant', 'nicht relevant'])
+    expect(body.inputs).toEqual([`Titel: ${trefferRelevant.titel}\nAuszug: ${trefferRelevant.text}`])
+    expect(body.instructions).toBe(
+      'Relevant bedeutet, der Auszug enthält konkrete Fakten oder Antworten zur Frage. Reine Werbung, Produktshops, Cookies oder Navigation sind nicht relevant. Im Zweifel behalten.'
+    )
+  })
+
+  it('filtert eindeutig irrelevante Treffer heraus (nicht relevant, 0.9)', async () => {
+    const http = vi.fn().mockResolvedValue(
+      Response.json({
+        results: [
+          { label: 'relevant', confidence: 0.95 },
+          { label: 'nicht relevant', confidence: 0.9 },
+        ],
+      })
+    )
+    const ergebnis = await mitSemantischemBezug(
+      [trefferRelevant, trefferIrrelevant],
+      'wie viel protein brauche ich',
+      http,
+    )
+    expect(ergebnis).toEqual([trefferRelevant])
+  })
+
+  it('behaelt unsichere Treffer im Zweifel drin (nicht relevant, 0.6)', async () => {
+    const http = vi.fn().mockResolvedValue(
+      Response.json({
+        results: [{ label: 'nicht relevant', confidence: 0.6 }],
+      })
+    )
+    const ergebnis = await mitSemantischemBezug([trefferUnsicher], 'wie viel protein brauche ich', http)
+    expect(ergebnis).toEqual([trefferUnsicher])
+  })
+
+  it('faellt bei Netzwerk- oder HTTP-Fehlern lautlos auf mitBezug zurueck', async () => {
+    const quellen = [trefferRelevant, trefferIrrelevant]
+
+    // 1. HTTP 500 Fehler
+    const http500 = vi.fn().mockResolvedValue(new Response('Server Error', { status: 500 }))
+    const ergebnis500 = await mitSemantischemBezug(quellen, 'wie viel protein brauche ich', http500)
+    // mitBezug behaelt trefferRelevant (enthaelt "protein"), verwirft trefferIrrelevant
+    expect(ergebnis500).toEqual([trefferRelevant])
+
+    // 2. HTTP 429 Rate Limit
+    const http429 = vi.fn().mockResolvedValue(new Response('Too Many Requests', { status: 429 }))
+    const ergebnis429 = await mitSemantischemBezug(quellen, 'wie viel protein brauche ich', http429)
+    expect(ergebnis429).toEqual([trefferRelevant])
+
+    // 3. Netzwerk-Exception
+    const httpNetzwerk = vi.fn().mockRejectedValue(new Error('Network offline'))
+    const ergebnisNetzwerk = await mitSemantischemBezug(quellen, 'wie viel protein brauche ich', httpNetzwerk)
+    expect(ergebnisNetzwerk).toEqual([trefferRelevant])
   })
 })

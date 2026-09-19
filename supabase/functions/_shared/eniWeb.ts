@@ -33,6 +33,9 @@ export const MAX_WEB_AUSZUG = 3000
 /** die freie Suche; das Schema steht nur hier und nirgends im Text */
 const TAVILY = 'https://api.tavily.com/search'
 
+/** semantischer Filter fuer gefundene Quellen ueber classifier.dev */
+const CLASSIFIER = 'https://classifier.dev'
+
 /** so lang nimmt Tavily eine Suchfrage an */
 const MAX_TAVILY_FRAGE = 400
 
@@ -297,6 +300,71 @@ export function mitBezug(quellen: WebQuelle[], frage: string): WebQuelle[] {
   })
 }
 
+const CLASSIFIER_ANWEISUNG =
+  'Relevant bedeutet, der Auszug enthält konkrete Fakten oder Antworten zur Frage. Reine Werbung, Produktshops, Cookies oder Navigation sind nicht relevant. Im Zweifel behalten.'
+
+/**
+ * Semantische Filterung der Quellen mit classifier.dev und fail-safe Fallback.
+ *
+ * Suchmaschinen liefern oft Seiten mit passenden Stichworten, deren Inhalt
+ * aber reine Werbung, Cookie-Banner oder Navigationsleisten sind. Der
+ * Zero-Shot-Endpunkt bewertet alle Quellen in einem Aufruf. Bei Unsicherheit
+ * (< 0.75) oder Fehlern greift der Recall-Bias bzw. der Wortabgleich `mitBezug`.
+ */
+export async function mitSemantischemBezug(
+  quellen: WebQuelle[],
+  frage: string,
+  http: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<WebQuelle[]> {
+  if (!quellen.length) return []
+  try {
+    const timeout = AbortSignal.timeout(4_000)
+    const abbruch = signal ? AbortSignal.any([signal, timeout]) : timeout
+
+    const inputs = quellen.map((q) => `Titel: ${q.titel}\nAuszug: ${q.text}`)
+    const antwort = await http(CLASSIFIER, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': 'vierfelder-eni/1.0',
+      },
+      signal: abbruch,
+      body: JSON.stringify({
+        labels: ['relevant', 'nicht relevant'],
+        inputs,
+        instructions: CLASSIFIER_ANWEISUNG,
+      }),
+    })
+
+    if (!antwort.ok) {
+      await antwort.body?.cancel()
+      return mitBezug(quellen, frage)
+    }
+
+    const daten = await antwort.json()
+    const ergebnisse = daten?.results
+    if (!Array.isArray(ergebnisse) || ergebnisse.length !== quellen.length) {
+      return mitBezug(quellen, frage)
+    }
+
+    const ergebnis: WebQuelle[] = []
+    for (let i = 0; i < quellen.length; i++) {
+      const res = ergebnisse[i]
+      const istRelevant = res?.label === 'relevant'
+      const istUnsicher = typeof res?.confidence !== 'number' || res.confidence < 0.75
+      if (istRelevant || istUnsicher) {
+        ergebnis.push(quellen[i]!)
+      }
+    }
+
+    return ergebnis
+  } catch (fehler) {
+    if (signal?.aborted) throw fehler
+    return mitBezug(quellen, frage)
+  }
+}
+
 export async function sucheWeb(
   frage: string,
   umgebung: (name: string) => string | undefined,
@@ -315,7 +383,7 @@ export async function sucheWeb(
       ? await beiTavily(suchfrage, schluessel(umgebung, 'TAVILY_API_KEY'), abbruch, http)
       : await beiOpenRouter(suchfrage, schluessel(umgebung, 'OPENROUTER_API_KEY'), abbruch, http)
     if (!quellen.length) throw new EniWebFehler('Die Suche hat keine auswertbaren Quellen geliefert. Formuliere die Frage genauer oder schalte Internet aus.')
-    return mitBezug(quellen, suchfrage)
+    return await mitSemantischemBezug(quellen, suchfrage, http, abbruch)
   } catch (fehler) {
     if (signal?.aborted) throw fehler
     if (fehler instanceof EniWebFehler) throw fehler
