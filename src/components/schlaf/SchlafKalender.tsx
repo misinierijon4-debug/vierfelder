@@ -3,12 +3,12 @@ import { X } from '@phosphor-icons/react'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import { TAGKUERZEL, fromKey, weekDays } from '../../lib/dates'
 import { abendDatum, qualitaet } from '../../lib/schlafPhasen'
-import { kalenderMonate, wochenImMonat, wochenZeitraum } from '../../lib/kalender'
+import { kalenderMonate, wochenImMonat, wochenZeitraum, wochenZeitraumKurz } from '../../lib/kalender'
 import { fokusRingLoesen } from '../../lib/dialogFokus'
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { user as userDef } from '../../lib/types'
 import { useDialogNachlauf } from '../../lib/dialogNachlauf'
-import { BerichtZeichen, KALENDER_SPALTEN } from '../wochenbericht/BerichtZeichen'
+import { BerichtZeile, KALENDER_SPALTEN } from '../wochenbericht/BerichtZeile'
 import type { WochenMarke } from '../../lib/wochenbericht'
 
 const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
@@ -26,7 +26,7 @@ type Props = {
   gewaehlterTag: string
   heuteKey: string
   istPrototyp: boolean
-  /** je woche mit daten eine marke fuer den rand der zeile */
+  /** je woche mit daten eine marke fuer die berichtszeile unter der woche */
   wochenMarken: Map<string, WochenMarke>
   onTagWaehlen: (tag: string) => void
   onBerichtOeffnen: (woche: string) => void
@@ -150,7 +150,6 @@ export function SchlafKalender({
                 {tag}
               </span>
             ))}
-            <span aria-hidden="true" />
           </div>
         </div>
 
@@ -241,14 +240,13 @@ export function SchlafKalender({
                           </button>
                         )
                       })}
-                        {woche.traegtBericht ? (
-                          <BerichtZeichen
+                        {woche.traegtBericht && (
+                          <BerichtZeile
                             marke={wochenMarken.get(woche.montag)}
+                            kurz={wochenZeitraumKurz(weekDays(fromKey(woche.montag)))}
                             zeitraum={wochenZeitraum(weekDays(fromKey(woche.montag)))}
                             onOeffnen={onBerichtOeffnen}
                           />
-                        ) : (
-                          <span aria-hidden="true" />
                         )}
                       </div>
                     ))}

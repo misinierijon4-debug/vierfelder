@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { kalenderMonate, tageImMonat, wochenImMonat, wochenZeitraum } from './kalender'
+import {
+  kalenderMonate,
+  tageImMonat,
+  wochenImMonat,
+  wochenZeitraum,
+  wochenZeitraumKurz,
+} from './kalender'
 
 describe('schlafkalender', () => {
   it('ordnet einen monat montagsbasiert in volle wochen ein', () => {
@@ -36,6 +42,31 @@ describe('schlafkalender', () => {
         '2026-08-23',
       ])
     ).toBe('17.–23. august')
+  })
+
+  it('kuerzt die woche fuer die berichtszeile und haelt den monatswechsel lesbar', () => {
+    const imMonat = [
+      '2026-09-14',
+      '2026-09-15',
+      '2026-09-16',
+      '2026-09-17',
+      '2026-09-18',
+      '2026-09-19',
+      '2026-09-20',
+    ]
+    expect(wochenZeitraumKurz(imMonat)).toBe('14.–20.')
+
+    // ueber den monatswechsel saehe `31.–6.` wie ein rueckwaertszaehler aus
+    const ueberDenWechsel = [
+      '2026-08-31',
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+      '2026-09-04',
+      '2026-09-05',
+      '2026-09-06',
+    ]
+    expect(wochenZeitraumKurz(ueberDenWechsel)).toBe('31.8.–6.9.')
   })
 
   it('gruppiert das monatsraster in wochenzeilen mit ihrem montag', () => {
