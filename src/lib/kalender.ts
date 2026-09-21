@@ -82,6 +82,23 @@ export function wochenZeitraum(woche: string[]): string {
   return `${von.getDate()}. ${monat.format(von).toLowerCase()} – ${bis.getDate()}. ${monat.format(bis).toLowerCase()}`
 }
 
+/**
+ * Dieselbe Woche, kurz genug fuer die Berichtszeile im Raster.
+ *
+ * Der Monat steht als Ueberschrift ueber dem Raster und die Tage stehen
+ * direkt ueber der Zeile — innerhalb eines Monats reichen die beiden Zahlen.
+ * Nur die Woche ueber den Monatswechsel muss ihre Monate mitbringen, sonst
+ * liest sich `31.–6.` wie ein Rueckwaertszaehler.
+ */
+export function wochenZeitraumKurz(woche: string[]): string {
+  const von = fromKey(woche[0]!)
+  const bis = fromKey(woche[6]!)
+  const gleicherMonat = von.getMonth() === bis.getMonth() && von.getFullYear() === bis.getFullYear()
+
+  if (gleicherMonat) return `${von.getDate()}.–${bis.getDate()}.`
+  return `${von.getDate()}.${von.getMonth() + 1}.–${bis.getDate()}.${bis.getMonth() + 1}.`
+}
+
 export type KalenderWoche = {
   /** montag dieser zeile, auch wenn er im vormonat liegt */
   montag: string

@@ -144,12 +144,12 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
     )
   })
 
-  it('hängt den wochenbericht an den rechten rand der zeile und öffnet ihn genau einmal', async () => {
+  it('stellt den wochenbericht unter die woche und öffnet ihn genau einmal', async () => {
     const user = userEvent.setup()
     render(<KalenderAblauf />)
     await user.click(screen.getByRole('button', { name: 'tracker-kalender öffnen' }))
 
-    // die woche 31.08.–06.09. steht in beiden monatsrastern, das zeichen nur einmal
+    // die woche 31.08.–06.09. steht in beiden monatsrastern, die zeile nur einmal
     const zeichen = screen.getAllByRole('button', { name: /^Wochenbericht 31\. august/ })
     expect(zeichen).toHaveLength(1)
     expect(zeichen[0]).toHaveAccessibleName(/9 zu 8, erijon vorn/)
@@ -157,7 +157,7 @@ describe('TrackerKalender bedarfsweises Rendering', () => {
     await user.click(zeichen[0]!)
     expect(berichtSpion).toHaveBeenCalledWith('2026-08-31')
 
-    // wochen ohne daten bekommen kein zeichen
+    // wochen ohne daten bekommen keine zeile
     expect(screen.queryByRole('button', { name: /^Wochenbericht 7\. september/ })).toBeNull()
   })
 })
