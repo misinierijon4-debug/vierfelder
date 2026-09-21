@@ -40,6 +40,12 @@ das Blatt auf und raeumt den Hash sofort wieder ab, damit er nicht auf einer
 Woche stehen bleibt, die man inzwischen weitergeblaettert hat. Abschalten geht
 unter Benachrichtigungen (`wochenbericht_aktiv`).
 
+Der Wortlaut ist **„dein wochenbericht für letzte woche ist fertig."** — sonst
+nichts. Die erste Fassung haengte „— mit der letzten nacht" an; das war beim
+ersten Lauf eine Antwort auf eine frische Beschwerde und als Dauertext eine
+Mechanikerklaerung, die sich jeden Montag wiederholt. Nachgetragen wird die
+Nacht weiterhin, die Meldung schweigt nur darueber.
+
 Noch nicht archivierte alte Wochen werden beim ersten Aufruf serverseitig
 nachgeholt und sichtbar als „nachtraeglich gesichert“ bezeichnet. Sie behaupten
 keinen historischen Montagsstand. Im Prototyp erfolgt die Sicherung beim ersten
@@ -178,13 +184,35 @@ herausgegangen sein.
 Migration. `aktivitaets_kandidaten` liefert sie, aber `istNochImFenster` im
 Worker muss sie kennen, sonst wird jede Meldung still uebersprungen.
 
-### Offen
+## Nachtrag am selben Abend: der Wortlaut (21.09.2026)
 
-Das Frontend ist noch nicht veroeffentlicht. Bis der Pull Request auf `main`
-ist und Pages baut, oeffnet ein Tippen auf die Meldung die App, aber nicht das
-Blatt: die laufende Fassung kennt `#/bericht` noch nicht und faellt auf die
-Anzeigetafel zurueck. Danach mit beiden Konten dieselbe Woche oeffnen und
-pruefen: gleiche Zahlen, **verschiedene** ENI-Texte.
+Der Zusatz „— mit der letzten nacht" sollte nicht jede Woche wiederkommen. Er
+war die Antwort auf eine frische Beschwerde, nicht der Dauertext. Angewandt
+nach ausdruecklicher Freigabe:
+
+| Datei | produktive Version |
+|---|---|
+| `20260921193000_wochenbericht_meldung_ohne_nachtzusatz.sql` | `20260921170717_wochenbericht_meldung_ohne_nachtzusatz` |
+
+Geaendert ist **genau eine Zeichenkette**; ein Vitest vergleicht die neue
+Funktion Zeile fuer Zeile mit der Vorgaengerfassung und laesst nur diesen einen
+Unterschied durch. Die PGlite-Probe zeigt vorher den Zusatz, nachher den kurzen
+Satz, bei unveraendertem Fenster, unveraenderter Archivbindung und unveraenderten
+uebrigen Erinnerungen. Produktiv geprueft: beide Konten bekommen
+„dein wochenbericht für letzte woche ist fertig." Die Zeilen vom 21.09. stehen
+bereits auf `gesendet`, heute geht also nichts ein zweites Mal raus.
+
+### Veroeffentlicht und einmal echt durchgelaufen
+
+Pull Request #49 ist auf `main`, Pages hat um 18:56 Uhr gebaut. Der ganze Weg
+ist damit am selben Abend einmal echt gelaufen: 18:50 Meldung an beide Konten,
+18:51 Bericht geoeffnet und ENIs persoenlicher Text erzeugt
+(„Deine Woche im Rückblick", `deepseek-flash`), 18:56 neue App-Fassung live.
+In `wochenbericht_texte` stand danach genau eine Zeile — die des Kontos, das
+geoeffnet hatte. Die Trennung je Person greift also im Betrieb.
+
+Offen bleibt nur die Gegenprobe mit dem zweiten Konto: gleiche Zahlen,
+**verschiedener** ENI-Text.
 
 Die alte Spalte `wochenberichte.texte` bleibt stehen und wird nicht mehr
 gelesen. Sie zu loeschen ist eine eigene spaetere Migration, kein Teil davon.
