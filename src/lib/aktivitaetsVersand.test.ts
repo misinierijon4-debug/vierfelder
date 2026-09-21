@@ -64,7 +64,7 @@ describe('aktivitaeten ohne doppelte oder veraltete Pushs', () => {
       art: 'wochenbericht' as const,
       tag: '2026-09-14',
       sendetag: '2026-09-21',
-      nachricht: 'dein wochenbericht für letzte woche ist fertig — mit der letzten nacht.',
+      nachricht: 'dein wochenbericht für letzte woche ist fertig.',
       url: './#/bericht?woche=2026-09-14' as const,
     }
     rpc.mockImplementation(async (name: string) =>
