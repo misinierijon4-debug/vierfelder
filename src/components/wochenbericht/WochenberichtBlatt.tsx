@@ -35,6 +35,8 @@ type Props = {
   eniTexte: WochenberichtTexte | null
   archivBericht?: Wochenbericht | null
   archivHinweis?: string | null
+  /** das archiv ist unterwegs — bis dahin gibt es kein ergebnis zu zeigen */
+  wartetAufArchiv?: boolean
   onEniErneut?: () => void
   onNeuFormulieren?: () => void
   onWocheWechseln: (woche: string) => void
@@ -46,7 +48,8 @@ type Props = {
 export function WochenberichtVerbunden({ lokal, bereit, ...props }: Omit<Props, 'eniStatus' | 'eniTexte'> & { lokal: boolean; bereit: boolean }) {
   const archiv = useWochenberichtArchiv(props.woche, props.zustand, props.naechte, props.heuteKey, lokal, bereit)
   return <WochenberichtBlatt {...props} eniStatus={archiv.status} eniTexte={archiv.texte}
-    archivBericht={archiv.bericht} archivHinweis={archiv.hinweis} onEniErneut={archiv.erneut}
+    archivBericht={archiv.bericht} archivHinweis={archiv.hinweis}
+    wartetAufArchiv={archiv.wartetAufArchiv} onEniErneut={archiv.erneut}
     onNeuFormulieren={archiv.neuFormulieren} />
 }
 
@@ -71,6 +74,7 @@ export function WochenberichtBlatt({
   eniTexte,
   archivBericht,
   archivHinweis,
+  wartetAufArchiv,
   onEniErneut,
   onNeuFormulieren,
   onWocheWechseln,
@@ -192,24 +196,65 @@ export function WochenberichtBlatt({
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}
           >
             <div className="mx-auto w-full max-w-[420px]">
-              <Inhalt
-                key={woche}
-                woche={woche}
-                zustand={zustand}
-                naechte={naechte}
-                heuteKey={heuteKey}
-                eniStatus={eniStatus}
-                eniTexte={eniTexte}
-                archivBericht={archivBericht}
-                onEniErneut={onEniErneut}
-                onNeuFormulieren={onNeuFormulieren}
-                onMitEniReden={onMitEniReden}
-              />
+              {wartetAufArchiv ? (
+                <BerichtWartet />
+              ) : (
+                <Inhalt
+                  key={woche}
+                  woche={woche}
+                  zustand={zustand}
+                  naechte={naechte}
+                  heuteKey={heuteKey}
+                  eniStatus={eniStatus}
+                  eniTexte={eniTexte}
+                  archivBericht={archivBericht}
+                  onEniErneut={onEniErneut}
+                  onNeuFormulieren={onNeuFormulieren}
+                  onMitEniReden={onMitEniReden}
+                />
+              )}
             </div>
           </div>
         </div>
       )}
     </dialog>
+  )
+}
+
+/**
+ * Das blatt, solange der eingefrorene stand noch unterwegs ist.
+ *
+ * Die zahlen von heute liegen bereit, sind aber nicht das ergebnis dieser
+ * woche — wer sie zeigt, nennt einen sieger, der gleich ein anderer ist. Also
+ * lieber zwei sekunden ein platzhalter als ein widerrufenes ergebnis. Die
+ * kopfzeile sagt ohnehin schon, worauf gewartet wird.
+ */
+function BerichtWartet() {
+  return (
+    <section aria-busy="true" className="pt-4">
+      <div aria-hidden="true">
+        {/* dieselben drei felder in leserichtung wie beim echten stand, damit
+            das blatt beim eintreffen der zahlen nicht springt */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-baseline gap-3">
+          <span className="tnum text-right text-[44px] font-extrabold leading-none opacity-30" style={{ color: USERS[0]!.farbe }}>
+            –
+          </span>
+          <span className="text-[26px] font-bold leading-none text-kreide-52">:</span>
+          <span className="tnum text-left text-[44px] font-extrabold leading-none opacity-30" style={{ color: USERS[1]!.farbe }}>
+            –
+          </span>
+        </div>
+        <div className="mt-1.5 grid grid-cols-[1fr_auto_1fr] gap-3 text-[11px] text-kreide-52">
+          <span className="truncate text-right">{USERS[0]!.name}</span>
+          <span className="w-[0.55rem]" />
+          <span className="truncate text-left">{USERS[1]!.name}</span>
+        </div>
+      </div>
+
+      <p role="status" className="mt-2 text-center text-[11px] text-kreide-52">
+        ergebnis vom montag wird geladen …
+      </p>
+    </section>
   )
 }
 

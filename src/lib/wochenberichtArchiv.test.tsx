@@ -37,6 +37,27 @@ describe('berichtarchiv', () => {
     // Die Zahlen stehen trotzdem alle da — es fehlt nur eine Nacht.
     expect(result.current.bericht?.punkte.erijon).toBe(1)
   })
+  it('wartet mit dem ergebnis, bis der eingefrorene stand da ist', async () => {
+    let antwort!: (value: unknown) => void
+    invoke.mockImplementationOnce(() => new Promise(resolve => { antwort = resolve }))
+    const { result } = renderHook(() => useWochenberichtArchiv('2026-09-14', zustand, [], '2026-09-21', false, true))
+    expect(result.current.wartetAufArchiv).toBe(true)
+    await act(async () => antwort({ data: archiv(), error: null }))
+    expect(result.current.wartetAufArchiv).toBe(false)
+  })
+  it('wartet nach einem Archivfehler nicht weiter, sondern zeigt den Rohdatenstand', async () => {
+    invoke.mockResolvedValue({ data: null, error: new Error('offline') })
+    const { result } = renderHook(() => useWochenberichtArchiv('2026-09-14', zustand, [], '2026-09-21', false, true))
+    await waitFor(() => expect(result.current.status).toBe('fehlt'))
+    expect(result.current.wartetAufArchiv).toBe(false)
+    expect(result.current.hinweis).toBe('archiv nicht erreichbar · aktueller datenstand')
+  })
+  it('wartet weder in der laufenden Woche noch im Prototyp', () => {
+    const { result: laufend } = renderHook(() => useWochenberichtArchiv('2026-09-21', zustand, [], '2026-09-21', false, true))
+    expect(laufend.current.wartetAufArchiv).toBe(false)
+    const { result: prototyp } = renderHook(() => useWochenberichtArchiv('2026-09-14', zustand, [], '2026-09-21', true, true))
+    expect(prototyp.current.wartetAufArchiv).toBe(false)
+  })
   it('verwirft verspaetete Antworten nach dem Wochenwechsel', async () => {
     let antwort!: (value: unknown) => void
     invoke.mockImplementationOnce(() => new Promise(resolve => { antwort = resolve }))
