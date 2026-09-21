@@ -6,10 +6,11 @@ export const AKTIVITAETS_ERINNERUNGEN = [
   { art: 'wochenblick', label: 'wochenendspurt', beschreibung: 'sonntag · 18:00 · euer aktueller wochenstand' },
   { art: 'partner', label: 'partnerfortschritt', beschreibung: 'täglich · 09:00–21:00 · wenn dein Partner Punkte sammelt oder vorzieht' },
   { art: 'wochenrueckblick', label: 'wochenrückblick', beschreibung: 'sonntag · 20:00 · ENI fasst deine Woche zusammen' },
+  { art: 'wochenbericht', label: 'wochenbericht', beschreibung: 'montag · sobald die letzte nacht drin ist · dein bericht ist fertig' },
 ] as const
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>
-const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv'
+const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv'
 const ALTE_SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv'
 const STANDARD: AktivitaetsEinstellungen = {
   lernen_aktiv: true,
@@ -17,6 +18,7 @@ const STANDARD: AktivitaetsEinstellungen = {
   wochenblick_aktiv: true,
   partner_aktiv: true,
   wochenrueckblick_aktiv: true,
+  wochenbericht_aktiv: true,
 }
 
 const FEHLENDE_SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'])
@@ -35,6 +37,7 @@ function vervollstaendigeEinstellungen(roh: unknown): AktivitaetsEinstellungen {
     wochenblick_aktiv: typeof daten.wochenblick_aktiv === 'boolean' ? daten.wochenblick_aktiv : STANDARD.wochenblick_aktiv,
     partner_aktiv: typeof daten.partner_aktiv === 'boolean' ? daten.partner_aktiv : STANDARD.partner_aktiv,
     wochenrueckblick_aktiv: typeof daten.wochenrueckblick_aktiv === 'boolean' ? daten.wochenrueckblick_aktiv : STANDARD.wochenrueckblick_aktiv,
+    wochenbericht_aktiv: typeof daten.wochenbericht_aktiv === 'boolean' ? daten.wochenbericht_aktiv : STANDARD.wochenbericht_aktiv,
   }
 }
 
