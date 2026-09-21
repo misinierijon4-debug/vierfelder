@@ -128,9 +128,20 @@ export function useWochenberichtArchiv(woche: string | null, zustand: Zustand, n
       setStand((s) => (s ? { ...s, status: 'fehlt' } : null))
     }
   }
+  /**
+   * Solange der eingefrorene stand fehlt, ist der rohdatenstand von heute
+   * nicht dasselbe ergebnis: eine sitzung, die um mitternacht noch lief, hat
+   * am montag keine dauer und zaehlt im archiv nicht, heute aber schon. Ein
+   * sieger, der zwei sekunden spaeter wechselt, ist schlimmer als ein blatt,
+   * das kurz keine zahl zeigt. Ist das archiv nicht erreichbar, bleibt es
+   * beim rohdatenstand — der ist dann ausdruecklich so bezeichnet.
+   * Im prototyp entsteht das archiv ohne serverweg; da gibt es kein warten.
+   */
+  const wartetAufArchiv = abgeschlossen && !lokal && !aktuell?.bericht && aktuell?.status !== 'fehlt'
   return { bericht: aktuell?.bericht ?? null, texte: aktuell?.texte ?? null,
     status: abgeschlossen ? aktuell?.status ?? (lokal ? 'aus' : 'laedt') : lokal ? 'aus' : 'offen',
     hinweis: abgeschlossen ? aktuell?.hinweis ?? 'archiv wird geladen …' : null,
+    wartetAufArchiv,
     erneut: () => setVersuch(v => v + 1),
     neuFormulieren } as const
 }

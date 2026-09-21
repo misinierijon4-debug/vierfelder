@@ -115,6 +115,24 @@ describe('WochenberichtBlatt', () => {
     expect(screen.getByRole('table', { name: 'schlaf je nacht' })).toBeInTheDocument()
   })
 
+  it('nennt keinen sieger, solange das archiv unterwegs ist', () => {
+    render(blatt({ wartetAufArchiv: true, archivHinweis: 'archiv wird geladen …' }))
+
+    expect(screen.getByText('archiv wird geladen …')).toBeInTheDocument()
+    expect(screen.getByText('ergebnis vom montag wird geladen …')).toBeInTheDocument()
+    // der rohdatenstand von heute ist nicht das ergebnis der woche
+    expect(screen.queryByText(/gewinnt mit/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/unentschieden/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'woche auf einen blick' })).not.toBeInTheDocument()
+  })
+
+  it('zeigt den rohdatenstand, wenn das archiv nicht erreichbar ist', () => {
+    render(blatt({ wartetAufArchiv: false, archivHinweis: 'archiv nicht erreichbar · aktueller datenstand' }))
+
+    expect(screen.getByText('archiv nicht erreichbar · aktueller datenstand')).toBeInTheDocument()
+    expect(screen.getByText(/erijon gewinnt mit/)).toBeInTheDocument()
+  })
+
   it('nennt die laufende woche einen stand und keinen abschluss', () => {
     render(blatt({ heuteKey: '2026-09-17' }))
     expect(screen.getByText('läuft noch · stand von heute')).toBeInTheDocument()

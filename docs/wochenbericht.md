@@ -53,9 +53,26 @@ Oeffnen nach Wochenabschluss lokal im Browser, erst bei vollstaendig geladenen
 Daten; die Anzeige sagt „auf diesem geraet gesichert“.
 
 Der Kalenderrand bleibt ein Einstieg auf Basis des aktuellen Rohdatenstands.
-Das geoeffnete Blatt zeigt den archivierten Stand, sobald dieser geladen ist.
-Wenn das Archiv nicht erreichbar ist, werden die Zahlen ausdruecklich als
-aktueller Datenstand gekennzeichnet, nicht als eingefroren.
+Das geoeffnete Blatt zeigt den archivierten Stand, sobald dieser geladen ist —
+vorher **kein** Ergebnis, nur einen Platzhalter (`wartetAufArchiv`). Die erste
+Fassung rechnete waehrenddessen aus den Rohdaten und nannte gross einen
+Sieger, der zwei Sekunden spaeter ein anderer war. Eine kurze Luecke ist
+ehrlicher als ein widerrufenes Ergebnis. Wenn das Archiv nicht erreichbar ist,
+werden die Zahlen ausdruecklich als aktueller Datenstand gekennzeichnet, nicht
+als eingefroren — dann sind sie das Einzige, was es gibt.
+
+### Was um Mitternacht noch laeuft, fehlt im Archiv
+
+Ein Aufenthalt ohne `abgang` hat keine Dauer und zaehlt darum nicht
+(`zaehlt` in `src/lib/training.ts`). Eine Sitzung gehoert aber zu dem Tag, an
+dem sie begann. Wer sonntags um 23:45 startet und um 00:20 aufhoert, hat den
+Tick in der App — im Montagsstand nicht, weil der um 00:00 einen noch offenen
+Aufenthalt fotografiert.
+
+In der Nacht auf den 21.09.2026 hat genau das einen Boxpunkt gekostet:
+`fokus boxen` von 23:45:58 bis 00:20:49, live 11:12, im Archiv 11:11. Der
+Nachtrag ergaenzt nur Naechte, keine Aufenthalte — die Abweichung bleibt also
+stehen. Sie ist bekannt und in Kauf genommen; behoben ist nur die Anzeige.
 
 ## ENI und Zugriffsrechte
 
