@@ -92,6 +92,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Adressen der App (`#/eni`, `#/bericht`) | `src/lib/eniRoute.ts` |
 | Push, Erinnerungen, VAPID | `src/lib/push.ts`, `src/lib/erinnerung.ts`, `supabase/functions/_shared/versand.ts` |
 | Push-Arten, Sendefenster, Schalter | `supabase/functions/_shared/aktivitaetsVersand.ts`, `src/lib/aktivitaetsErinnerung.ts` |
+| **Neue Push-Art bauen** — Migration **und** Worker, sonst still übersprungen | `docs/wochenbericht.md` („Der Worker musste mit") |
 | Kalenderraster (Tracker + Schlaf) | `src/lib/kalender.ts` |
 | Animationsdauern (alle an einer Stelle) | `src/lib/motion.ts` |
 | Tabs, oberste Verdrahtung | `src/App.tsx`, `src/components/TabLeiste.tsx` |

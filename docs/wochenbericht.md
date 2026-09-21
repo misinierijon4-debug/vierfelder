@@ -117,24 +117,74 @@ Gemäß `release-und-migrationen.md` nach ausdrücklicher Freigabe durchgeführt
    oeffnen, Archiv-/Textgleichheit pruefen, Scheduler und RLS-Advisors kontrollieren.
 4. Ersten echten Montagslauf und einen echten Modellaufruf bestaetigen.
 
-## Noch nicht freigegeben (21.09.2026)
+## Produktionsfreigabe erfolgt (21.09.2026)
 
-`20260921180000_wochenbericht_nachtrag_push_und_persoenliche_texte.sql` ist
-geschrieben und in PGlite ausgefuehrt, aber **nicht** angewandt. Reihenfolge
-nach `release-und-migrationen.md`, erst nach ausdruecklicher Freigabe:
+Gemaess `release-und-migrationen.md` nach ausdruecklicher Freigabe durchgefuehrt:
 
-1. Migration einzeln ueber `apply_migration` anwenden. Danach pruefen:
-   `wochenberichte.naechte_vollstaendig` gefuellt, Cronjob
-   `wochenbericht-nachtrag` aktiv, `wochenbericht_texte` mit RLS und ohne
-   Client-Grant, Security Advisors ohne neuen Befund.
-   Die Migration traegt dabei die fehlende Sonntagnacht der Woche vom
-   14.09. nach; sie war der Anlass.
-2. Function `wochenbericht` neu deployen (`verify_jwt: true`). Vorher nicht:
-   die alte Version schreibt noch nach `wochenberichte.texte`.
-3. Nach Merge auf `main` das Frontend veroeffentlichen. Dann mit beiden Konten
-   dieselbe Woche oeffnen: gleiche Zahlen, **verschiedene** ENI-Texte.
-4. Ersten echten Montagslauf bestaetigen: Nacht im Bericht, Meldung auf dem
-   Handy, Tippen oeffnet das richtige Blatt.
+| Datei | produktive Version |
+|---|---|
+| `20260921180000_wochenbericht_nachtrag_push_und_persoenliche_texte.sql` | `20260921164009_wochenbericht_nachtrag_push_und_persoenliche_texte` |
+
+**Auch hier stimmen die Versionsnummern nicht ueberein, die Namen schon.** Der
+Versatz in `release-und-migrationen.md` waechst um eine Zeile; die Sperre gegen
+`db push` gilt unveraendert weiter.
+
+Vor der Anwendung gelesen und bestaetigt: `wochenbericht_texte` gab es noch
+nicht, `naechte_vollstaendig` und `wochenbericht_aktiv` fehlten, der Cronjob
+`wochenbericht-nachtrag` existierte nicht, und `public.aktivitaets_kandidaten`
+hatte genau die Signatur und Rueckgabeform, die `create or replace` braucht.
+
+Nach der Anwendung: Die Woche vom 14.09. hat 24 statt 22 Naechte — beide
+Sonntagnaechte sind nachgetragen, und genau die hatten gefehlt. Beide Wochen
+tragen `naechte_vollstaendig`. Der Cronjob laeuft. Der Sicherheitsbericht
+meldet nur `rls_enabled_no_policy` fuer `wochenbericht_texte`, Stufe INFO —
+das ist die Absicht: RLS an, keine Policy, kein Client-Grant, also kommt
+niemand ausser `service_role` heran. Dieselbe Rollenverteilung wie bei
+`aktivitaets_versand` und `erinnerungs_versand`. `reserviere_wochenbericht_text`
+taucht in keiner Definer-Warnung auf, weil `anon` und `authenticated` kein
+Execute haben. Keine neue WARN- oder ERROR-Meldung.
+
+Deployt: `wochenbericht` Version 5 (`verify_jwt: true`).
+
+### Der Worker musste mit (derselbe Lauf)
+
+Der erste Versandlauf um 18:40 hat die Meldung fuer beide **uebersprungen**.
+Grund war nicht diese Migration: `aktivitaets-erinnerung` lief produktiv noch
+in der Fassung von vor `wochen_partner_erinnerungen` (20260913). Die Migration
+war angewandt, die Function nie neu deployt. Diese alte Fassung kennt weder
+`sendetag` noch die Arten `partner`, `wochenrueckblick`, `wochenbericht`; ihre
+letzte Schranke lautete schlicht `ort.tag !== k.tag`. Fuer jede Wochenart ist
+`tag` der Montag und `ort.tag` der Sendetag — das ist nie gleich.
+
+Damit war auch die Sonntagseinladung „Willst du, dass Eni deine Woche
+zusammenfasst?" seit ihrem Release **nie zugestellt**: `aktivitaets_versand`
+hatte zur Art `wochenrueckblick` null Zeilen. `partner` kam nur durch, weil
+dessen `tag` zufaellig der Sendetag ist, und dann mit `url: './'` statt dem
+Wochenlink, weil die alte Fassung die Adresse gar nicht ausliest.
+
+`aktivitaets-erinnerung` wurde deshalb auf den Repo-Stand gebracht (Version 9,
+`verify_jwt: false`, Autorisierung weiterhin ueber `x-erinnerungs-secret`). Das
+repariert die Montagsmeldung, die Sonntagseinladung, die Deep Links und den
+Aufruf von `sichere_faellige_eni_wochen_einladungen`.
+
+Die beiden `uebersprungen`-Zeilen vom 18:40-Lauf wurden geloescht, damit die
+Meldung am selben Montag noch faellig werden konnte. Das ist unbedenklich und
+bleibt die Ausnahme: `uebersprungen` wird ausschliesslich auf Pfaden gesetzt,
+die **vor** jedem Provideraufruf abbrechen. Eine Zeile in `gesendet` oder
+`unbestaetigt` darf nie geloescht werden — dort kann eine Nachricht
+herausgegangen sein.
+
+**Merksatz fuer den naechsten Release:** Eine neue Push-Art ist nie nur eine
+Migration. `aktivitaets_kandidaten` liefert sie, aber `istNochImFenster` im
+Worker muss sie kennen, sonst wird jede Meldung still uebersprungen.
+
+### Offen
+
+Das Frontend ist noch nicht veroeffentlicht. Bis der Pull Request auf `main`
+ist und Pages baut, oeffnet ein Tippen auf die Meldung die App, aber nicht das
+Blatt: die laufende Fassung kennt `#/bericht` noch nicht und faellt auf die
+Anzeigetafel zurueck. Danach mit beiden Konten dieselbe Woche oeffnen und
+pruefen: gleiche Zahlen, **verschiedene** ENI-Texte.
 
 Die alte Spalte `wochenberichte.texte` bleibt stehen und wird nicht mehr
 gelesen. Sie zu loeschen ist eine eigene spaetere Migration, kein Teil davon.
