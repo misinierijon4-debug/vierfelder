@@ -7,24 +7,28 @@ import { lokaleMinute } from './erinnerung.ts'
  * Ein Abbruch kann eine Nachricht kosten, aber niemals eine zweite erzeugen.
  * Auch nach einer verlorenen Providerantwort bleibt die Reservierung bestehen.
  */
-export type AktivitaetsArt = 'lernen' | 'lesen' | 'wochenblick' | 'partner' | 'wochenrueckblick'
+export type AktivitaetsArt = 'lernen' | 'lesen' | 'wochenblick' | 'partner' | 'wochenrueckblick' | 'wochenbericht'
 export type Kandidat = {
   user_id: string
   art: AktivitaetsArt
-  /** Idempotenz: der Berliner Versandtag, ausser beim Wochenrueckblick der Montag. */
+  /** Idempotenz: der Berliner Versandtag, ausser bei den Wochenarten der Montag. */
   tag: string
   /** Berliner Tag des aktuellen Worker-Laufs. */
   sendetag: string
   nachricht: string
-  url: './' | `./#/eni?woche=${string}`
+  url: './' | `./#/eni?woche=${string}` | `./#/bericht?woche=${string}`
 }
 type Optionen = { senden?: typeof sende; jetzt?: () => Date }
 
-function istSonntag(jetzt: Date): boolean {
+function wochentag(jetzt: Date): string {
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'Europe/Berlin',
     weekday: 'short',
-  }).format(jetzt) === 'Sun'
+  }).format(jetzt)
+}
+
+function istSonntag(jetzt: Date): boolean {
+  return wochentag(jetzt) === 'Sun'
 }
 
 /** Die letzte Schranke bleibt im Worker: ein langsamer Lauf darf keine alte
@@ -36,15 +40,16 @@ function istNochImFenster(kandidat: Kandidat, jetzt: Date): boolean {
   if (kandidat.art === 'wochenrueckblick') {
     return istSonntag(jetzt) && minute >= '20:00' && minute < '22:00'
   }
+  // Die Bericht-Meldung faellt am Montag an, sobald keine Nacht mehr nachlaeuft.
+  // Nachts weckt sie niemanden: erst ab 07:00 Uhr, und nach 21:00 gar nicht mehr.
+  if (kandidat.art === 'wochenbericht') {
+    return wochentag(jetzt) === 'Mon' && minute >= '07:00' && minute < '21:00'
+  }
   if (kandidat.art === 'wochenblick') {
     return istSonntag(jetzt) && minute >= '18:00' && minute < '19:00'
   }
   if (kandidat.art === 'lernen') {
-    const wochentag = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Europe/Berlin',
-      weekday: 'short',
-    }).format(jetzt)
-    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(wochentag) &&
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(wochentag(jetzt)) &&
       minute >= '18:30' && minute < '20:00'
   }
   return minute >= '20:45' && minute < '22:00'

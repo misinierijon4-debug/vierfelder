@@ -1,18 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import { abgeschlosseneBerichtWoche, behandleBericht, fasseBerichtWocheZusammen } from '../../supabase/functions/_shared/wochenberichtHandler'
-import type { BerichtArchiv, BerichtDienste } from '../../supabase/functions/_shared/wochenberichtHandler'
+import type { BerichtArchiv, BerichtDienste, BerichtPerson } from '../../supabase/functions/_shared/wochenberichtHandler'
 import { pruefeTexte, pruefeWochenberichtText } from './wochenberichtTexte'
 
-const texte = { ueberschrift: 'Drangeblieben', lief: 'Erijon und Koray waren aktiv.', muster: 'Die Tage waren unterschiedlich.', naechste: ['Erijon: Lesen einplanen.', 'Koray: Lernen einplanen.'] as [string, string] }
-function umgebung() {
+const texte = { ueberschrift: 'Drangeblieben', lief: 'Du warst aktiv.', muster: 'Die Tage waren unterschiedlich.', naechste: ['Lesen einplanen.', 'Lernen einplanen.'] as [string, string] }
+/** Je Person eine eigene Textzeile — genau wie in `wochenbericht_texte`. */
+function umgebung(wer: BerichtPerson = 'erijon') {
   const archiv: BerichtArchiv = { woche: '2026-09-14', daten: { woche: '2026-09-14' }, eingefroren: '2026-09-20T22:00:00Z', quelle: 'montag', texte: null, modell: null, text_erstellt: null }
+  const zeilen: Record<string, Pick<BerichtArchiv, 'texte' | 'modell'>> = {}
   const dienste: BerichtDienste = {
-    mitglied: vi.fn(async () => true), laden: vi.fn(async () => ({ ...archiv })),
-    reservieren: vi.fn(async () => true), schreiben: vi.fn(async () => ({ texte, modell: 'test' })),
-    speichern: vi.fn(async (_w, t, m) => { archiv.texte = t; archiv.modell = m }),
+    person: vi.fn(async () => wer),
+    laden: vi.fn(async (_w, p) => ({ ...archiv, texte: zeilen[p]?.texte ?? null, modell: zeilen[p]?.modell ?? null })),
+    reservieren: vi.fn(async () => true),
+    schreiben: vi.fn(async (_d, p) => ({ texte: { ...texte, ueberschrift: `Woche von ${p}` }, modell: 'test' })),
+    speichern: vi.fn(async (_w, p, t, m) => { zeilen[p] = { texte: t, modell: m } }),
     jetzt: () => new Date('2026-09-20T22:00:00Z'),
   }
-  return { archiv, dienste }
+  return { archiv, zeilen, dienste }
 }
 const anfrage = (body: unknown, token = 'Bearer test') => new Request('https://example.test', { method: 'POST', headers: { authorization: token }, body: JSON.stringify(body) })
 
@@ -28,7 +32,7 @@ describe('wochenbericht zugriff und generation', () => {
   it('liest ohne Mitgliedschaft weder Archiv noch Modell', async () => {
     const { dienste } = umgebung()
     expect((await behandleBericht(anfrage({}, ''), dienste)).status).toBe(401)
-    vi.mocked(dienste.mitglied).mockResolvedValue(false)
+    vi.mocked(dienste.person).mockResolvedValue(null)
     expect((await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'text' }), dienste)).status).toBe(403)
     expect(dienste.laden).not.toHaveBeenCalled()
     expect(dienste.schreiben).not.toHaveBeenCalled()
@@ -38,13 +42,27 @@ describe('wochenbericht zugriff und generation', () => {
     expect((await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'laden' }), dienste)).status).toBe(200)
     expect(dienste.schreiben).not.toHaveBeenCalled()
   })
-  it('schreibt einmal fuer beide und verwendet nur serverseitige Daten', async () => {
+  it('schreibt je person einmal und verwendet nur serverseitige Daten', async () => {
     const { dienste, archiv } = umgebung()
     const req = () => anfrage({ woche: '2026-09-14', aktion: 'text', daten: 'manipuliert' })
     expect((await behandleBericht(req(), dienste)).status).toBe(200)
     expect((await behandleBericht(req(), dienste)).status).toBe(200)
-    expect(dienste.schreiben).toHaveBeenCalledExactlyOnceWith(archiv.daten)
+    expect(dienste.schreiben).toHaveBeenCalledExactlyOnceWith(archiv.daten, 'erijon')
     expect(dienste.speichern).toHaveBeenCalledTimes(1)
+  })
+  it('gibt jeder person ihren eigenen text und nie den der anderen', async () => {
+    const meiner = umgebung('erijon')
+    const req = () => anfrage({ woche: '2026-09-14', aktion: 'text' })
+    const eigen = await (await behandleBericht(req(), meiner.dienste)).json()
+    expect(eigen.texte.ueberschrift).toBe('Woche von erijon')
+
+    // Dieselbe Woche, dasselbe Archiv, anderes Konto: eigene Zeile, eigener Lauf.
+    const anderer = umgebung('koray')
+    const fremd = await (await behandleBericht(req(), anderer.dienste)).json()
+    expect(fremd.texte.ueberschrift).toBe('Woche von koray')
+    expect(anderer.zeilen.erijon).toBeUndefined()
+    expect(meiner.zeilen.koray).toBeUndefined()
+    expect(anderer.dienste.schreiben).toHaveBeenCalledExactlyOnceWith(meiner.archiv.daten, 'koray')
   })
   it('reserviert parallele Versuche und speichert keine kaputten Antworten', async () => {
     const { dienste } = umgebung()
@@ -56,12 +74,12 @@ describe('wochenbericht zugriff und generation', () => {
     expect(dienste.speichern).not.toHaveBeenCalled()
   })
   it('erzwingt mit aktion neu das neuschreiben des textes', async () => {
-    const { dienste, archiv } = umgebung()
-    archiv.texte = texte
+    const { dienste, zeilen } = umgebung()
+    zeilen.erijon = { texte, modell: 'alt' }
     vi.mocked(dienste.reservieren).mockResolvedValue(true)
     const res = await behandleBericht(anfrage({ woche: '2026-09-14', aktion: 'neu' }), dienste)
     expect(res.status).toBe(200)
-    expect(dienste.reservieren).toHaveBeenCalledWith('2026-09-14', true)
+    expect(dienste.reservieren).toHaveBeenCalledWith('2026-09-14', 'erijon', true)
     expect(dienste.schreiben).toHaveBeenCalled()
   })
   it('liefert bei Modellfehlern keine Geheimnisse', async () => {
@@ -84,7 +102,7 @@ describe('ENI textschema', () => {
     expect(pruefeWochenberichtText({ texte, woche: '2026-02-31', erstellt: '2026-09-21' })).toBeNull()
     expect(pruefeWochenberichtText({ texte, woche: '2026-09-14', erstellt: '2026-09-21T00:00:00Z' })).not.toBeNull()
   })
-  it('fasst die Aktivitaeten aller sechs Bereiche gleichwertig zusammen', () => {
+  it('zeigt dem modell alle sechs Bereiche, aber nur die eigene person', () => {
     const daten = {
       woche: '2026-09-07',
       zustand: {
@@ -113,18 +131,26 @@ describe('ENI textschema', () => {
         { user: 'koray', nacht: '2026-09-11' },
       ],
     }
-    const res = fasseBerichtWocheZusammen(daten) as any
-    expect(res.berichtswoche).toBe('2026-09-07 bis 2026-09-13')
-    expect(res.personen.erijon.vierFelder.lernen).toContain('Mittwoch')
-    expect(res.personen.erijon.vierFelder.lernen).toContain('Sonntag')
-    expect(res.personen.erijon.vierFelder.gym).toBe('keine Aktivitaet')
-    expect(res.personen.erijon.gewicht).toBe('vereinzelt gewogen')
-    expect(res.personen.erijon.schlaf).toBe('regelmaessig erfasst')
-    expect(res.personen.koray.vierFelder.boxen).toContain('Mittwoch')
-    expect(res.personen.koray.vierFelder.boxen).toContain('Donnerstag')
-    expect(res.personen.koray.vierFelder.lesen).toContain('Freitag')
-    expect(res.personen.koray.vierFelder.gym).toBe('keine Aktivitaet')
-    expect(res.personen.koray.gewicht).toBe('oft gewogen')
-    expect(res.personen.koray.schlaf).toBe('regelmaessig erfasst')
+    const meins = fasseBerichtWocheZusammen(daten, 'erijon') as any
+    expect(meins.berichtswoche).toBe('2026-09-07 bis 2026-09-13')
+    expect(meins.fuer).toBe('Erijon')
+    expect(meins.vierFelder.lernen).toContain('Mittwoch')
+    expect(meins.vierFelder.lernen).toContain('Sonntag')
+    expect(meins.vierFelder.gym).toBe('keine Aktivitaet')
+    expect(meins.gewicht).toBe('vereinzelt gewogen')
+    expect(meins.schlaf).toBe('regelmaessig erfasst')
+
+    const seins = fasseBerichtWocheZusammen(daten, 'koray') as any
+    expect(seins.fuer).toBe('Koray')
+    expect(seins.vierFelder.boxen).toContain('Mittwoch')
+    expect(seins.vierFelder.boxen).toContain('Donnerstag')
+    expect(seins.vierFelder.lesen).toContain('Freitag')
+    expect(seins.vierFelder.gym).toBe('keine Aktivitaet')
+    expect(seins.gewicht).toBe('oft gewogen')
+    expect(seins.schlaf).toBe('regelmaessig erfasst')
+
+    // Das Modell darf die andere Person nirgends sehen — auch nicht als Name.
+    expect(JSON.stringify(meins)).not.toContain('oray')
+    expect(JSON.stringify(seins)).not.toContain('rijon')
   })
 })

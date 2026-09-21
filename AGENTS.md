@@ -56,7 +56,8 @@ docs/                  Architektur, Datenschutz, Release-Runbook
 
 Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 `schlafnaechte`, `gewicht`, `duell_wetten`, `faecher`, `noten`,
-`schlaf_import_tokens` (+ `eni_*` aus späteren Migrationen).
+`schlaf_import_tokens`, `wochenberichte`, `wochenbericht_texte`
+(+ `eni_*` aus späteren Migrationen).
 
 ## Sprungtabelle: Aufgabe → Datei
 
@@ -86,8 +87,11 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | **Wochenbericht: Zahlen** (rechnet der Client, nie ENI) | `src/lib/wochenbericht.ts` |
 | Wochenbericht: Blatt, Diagramme, Kalenderzeichen | `src/components/wochenbericht/` |
 | Wochenbericht: Archiv, Montag-Abschluss und ENI-Texte | `src/lib/wochenberichtArchiv.ts`, `supabase/functions/wochenbericht/index.ts`, `supabase/functions/_shared/wochenberichtHandler.ts`, `docs/wochenbericht.md` |
+| **Wochenbericht: letzte Nacht nachtragen, Montagsmeldung** | Migration `*_wochenbericht_nachtrag_push_und_persoenliche_texte.sql`, `src/lib/wochenberichtNachtragMigration.test.ts`, `scripts/check-wochenbericht-archiv.mjs` |
 | Wochenbericht: gemeinsames Textschema | `supabase/functions/_shared/wochenberichtTexte.ts` (Client-Reexport: `src/lib/wochenberichtTexte.ts`) |
+| Adressen der App (`#/eni`, `#/bericht`) | `src/lib/eniRoute.ts` |
 | Push, Erinnerungen, VAPID | `src/lib/push.ts`, `src/lib/erinnerung.ts`, `supabase/functions/_shared/versand.ts` |
+| Push-Arten, Sendefenster, Schalter | `supabase/functions/_shared/aktivitaetsVersand.ts`, `src/lib/aktivitaetsErinnerung.ts` |
 | Kalenderraster (Tracker + Schlaf) | `src/lib/kalender.ts` |
 | Animationsdauern (alle an einer Stelle) | `src/lib/motion.ts` |
 | Tabs, oberste Verdrahtung | `src/App.tsx`, `src/components/TabLeiste.tsx` |

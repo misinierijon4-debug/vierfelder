@@ -153,7 +153,7 @@ describe('WochenberichtBlatt', () => {
 
   it('bleibt vollständig, wenn ENI nichts geschrieben hat', () => {
     render(blatt())
-    expect(screen.getByText(/ENIs Rückblick ist gerade nicht verfügbar/)).toBeInTheDocument()
+    expect(screen.getByText(/dein Rückblick von ENI ist gerade nicht verfügbar/)).toBeInTheDocument()
     // die zahlen stehen trotzdem
     expect(screen.getByRole('heading', { name: 'bereiche' })).toBeInTheDocument()
   })

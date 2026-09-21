@@ -19,6 +19,11 @@ type Props = {
  * liest man, was jemand dazu meint. Und er ist ersetzbar — faellt er aus, ist
  * der Bericht trotzdem vollstaendig. Genau darum sind hier nur Saetze und
  * keine Werte.
+ *
+ * Der Text gehoert einer Person. Die Zahlen oben zeigen beide nebeneinander,
+ * denn darum geht das Duell; der Rueckblick hier spricht nur dich an und sieht
+ * auch nur deine Woche. Der andere Text existiert, aber nicht auf diesem
+ * Blatt — jeder liest seinen eigenen.
  */
 export function BerichtEni({ status, texte, onErneut, onNeuFormulieren }: Props) {
   const reduced = useReducedMotion()
@@ -33,7 +38,7 @@ export function BerichtEni({ status, texte, onErneut, onNeuFormulieren }: Props)
         className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-kreide-52"
       >
         <span className="size-2 rounded-full bg-kreide-60" aria-hidden="true" />
-        was ENI dazu sagt
+        was ENI dir sagt
       </h3>
 
       {status === 'da' && texte ? (
@@ -79,8 +84,8 @@ export function BerichtEni({ status, texte, onErneut, onNeuFormulieren }: Props)
             {status === 'aus'
               ? 'im prototyp schreibt ENI nichts — die zahlen oben stehen trotzdem alle da.'
               : status === 'offen'
-                ? 'ENI blickt am montag auf die abgeschlossene woche zurück.'
-                : 'ENIs Rückblick ist gerade nicht verfügbar. Bei einem laufenden Versuch bitte kurz warten.'}
+                ? 'ENI blickt am montag auf deine abgeschlossene woche zurück.'
+                : 'dein Rückblick von ENI ist gerade nicht verfügbar. Bei einem laufenden Versuch bitte kurz warten.'}
           </p>
           {status === 'fehlt' && onErneut && (
             <button

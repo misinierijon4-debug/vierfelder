@@ -1,13 +1,17 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
 import {
+  BERICHT_HASH,
   ENI_HASH,
   istEniWochenbeginn,
   oeffneEni,
   oeffneEniWoche,
   routeZuruecksetzen,
   schliesseEni,
+  useBerichtWoche,
+  verlasseBericht,
 } from './eniRoute'
 
 beforeEach(() => {
@@ -74,5 +78,30 @@ describe('der weg zu ENI', () => {
     // Der Hook wird im Browser ueber hashchange invalidiert; die reine
     // Auslese prueft dieselbe strikte Grundlage fuer Deep Links.
     expect(istEniWochenbeginn(new URLSearchParams(window.location.hash.slice(ENI_HASH.length)).get('woche'))).toBe(true)
+  })
+})
+
+describe('der weg zum wochenbericht', () => {
+  it('schlaegt die woche auf, von der die push-meldung spricht', () => {
+    window.location.hash = `${BERICHT_HASH}?woche=2026-09-14`
+    const { result } = renderHook(() => useBerichtWoche())
+    expect(result.current).toBe('2026-09-14')
+  })
+
+  it('nimmt keine erfundene und keine halbe woche aus der adresse an', () => {
+    for (const hash of [`${BERICHT_HASH}?woche=2026-02-30`, `${BERICHT_HASH}?woche=2026-09-13`, BERICHT_HASH, ENI_HASH]) {
+      window.location.hash = hash
+      const { result } = renderHook(() => useBerichtWoche())
+      expect(result.current).toBeNull()
+    }
+  })
+
+  it('raeumt die adresse nach dem oeffnen ab und laesst den ENI-hash in ruhe', () => {
+    window.location.hash = `${BERICHT_HASH}?woche=2026-09-14`
+    verlasseBericht()
+    expect(window.location.hash).toBe('')
+    window.location.hash = `${ENI_HASH}?woche=2026-09-14`
+    verlasseBericht()
+    expect(window.location.hash).toBe(`${ENI_HASH}?woche=2026-09-14`)
   })
 })
