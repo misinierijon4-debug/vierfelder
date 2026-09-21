@@ -11,9 +11,26 @@ type Archiv = {
   daten: { zustand: Zustand; naechte: Schlafnacht[] }
   eingefroren: string
   quelle: 'montag' | 'nachgeholt' | 'lokal'
+  /** null heisst: die sonntagnacht wird montags noch erwartet */
+  naechte_vollstaendig?: string | null
   texte: WochenberichtTexte | null
   modell: string | null
   text_erstellt: string | null
+}
+
+/**
+ * Woher die zahlen stammen — und ob sie schon alle da sind.
+ *
+ * Der montagsstand friert um mitternacht ein, die sonntagnacht wird aber erst
+ * im laufe des montags importiert. Dass sie fehlt, ist dann kein ergebnis,
+ * sondern ein zwischenstand — und das steht dann auch da.
+ */
+function berichtHinweis(archiv: Archiv): string {
+  if (archiv.quelle === 'lokal') return 'auf diesem gerät gesichert'
+  if (archiv.quelle === 'nachgeholt') return 'nachträglich gesichert'
+  return archiv.naechte_vollstaendig === null
+    ? 'am montag eingefroren · letzte nacht fehlt noch'
+    : 'am montag eingefroren'
 }
 export type BerichtStand = {
   woche: string
@@ -34,7 +51,8 @@ export function lokalesBerichtArchiv(woche: string, zustand: Zustand, naechte: S
     } catch { /* beschaedigtes lokales archiv neu sichern */ }
   }
   const archiv: Archiv = { woche, daten: structuredClone({ zustand, naechte }),
-    eingefroren: new Date().toISOString(), quelle: 'lokal', texte: null, modell: null, text_erstellt: null }
+    eingefroren: new Date().toISOString(), quelle: 'lokal', naechte_vollstaendig: null,
+    texte: null, modell: null, text_erstellt: null }
   speicher.setItem(key, JSON.stringify(archiv))
   return archiv
 }
@@ -53,8 +71,7 @@ export function useWochenberichtArchiv(woche: string | null, zustand: Zustand, n
       const text = pruefeWochenberichtText({ woche, texte: archiv.texte, erstellt: archiv.text_erstellt, modell: archiv.modell })
       archivStand = { woche, bericht: baueWochenbericht(woche, archiv.daten.zustand, archiv.daten.naechte, heute),
         texte: text?.texte ?? null, status: lokal ? 'aus' : text ? 'da' : 'laedt',
-        hinweis: archiv.quelle === 'montag' ? 'am montag eingefroren' : archiv.quelle === 'lokal'
-          ? 'auf diesem gerät gesichert' : 'nachträglich gesichert' }
+        hinweis: berichtHinweis(archiv) }
       if (aktiv) setStand(archivStand)
       return Boolean(text)
     }

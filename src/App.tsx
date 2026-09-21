@@ -38,7 +38,7 @@ import {
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
-import { oeffneEni, oeffneEniWoche, schliesseEni, useRoute } from './lib/eniRoute'
+import { oeffneEni, oeffneEniWoche, schliesseEni, useBerichtWoche, useRoute, verlasseBericht } from './lib/eniRoute'
 import type { DuellKontext } from './lib/eniSpeicher'
 /**
  * ENI haengt am startpfad nicht mit drin. die anzeigetafel startet ohne sie,
@@ -216,6 +216,16 @@ function Tracker({
     setBerichtWoche(wocheKey)
     setBerichtGeladen(true)
   }, [])
+
+  // die push-meldung am montag zeigt auf `#/bericht?woche=…`. der hash wird
+  // beim oeffnen wieder abgeraeumt, damit er nicht auf einer woche stehen
+  // bleibt, die man inzwischen weitergeblaettert hat.
+  const berichtAusAdresse = useBerichtWoche()
+  useEffect(() => {
+    if (!berichtAusAdresse) return
+    oeffneBericht(berichtAusAdresse)
+    verlasseBericht()
+  }, [berichtAusAdresse, oeffneBericht])
 
   useEffect(() => {
     onDuellStand?.({

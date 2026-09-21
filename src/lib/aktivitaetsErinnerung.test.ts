@@ -52,6 +52,7 @@ it('faellt bei fehlenden neuen Spalten auf den alten Einstellungen-Vertrag zurue
     wochenblick_aktiv: false,
     partner_aktiv: true,
     wochenrueckblick_aktiv: true,
+    wochenbericht_aktiv: true,
   })
 })
 it('akzeptiert keinen RLS-Nulltreffer als gespeichert', async () => {

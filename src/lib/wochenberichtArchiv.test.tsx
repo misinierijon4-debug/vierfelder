@@ -30,6 +30,13 @@ describe('berichtarchiv', () => {
     expect(result.current.bericht?.punkte.erijon).toBe(1)
     expect(result.current.hinweis).toBe('am montag eingefroren')
   })
+  it('sagt am Montag, dass die letzte Nacht noch fehlt', async () => {
+    invoke.mockResolvedValue({ data: { ...archiv(), naechte_vollstaendig: null }, error: null })
+    const { result } = renderHook(() => useWochenberichtArchiv('2026-09-14', zustand, [], '2026-09-21', false, true))
+    await waitFor(() => expect(result.current.hinweis).toBe('am montag eingefroren · letzte nacht fehlt noch'))
+    // Die Zahlen stehen trotzdem alle da — es fehlt nur eine Nacht.
+    expect(result.current.bericht?.punkte.erijon).toBe(1)
+  })
   it('verwirft verspaetete Antworten nach dem Wochenwechsel', async () => {
     let antwort!: (value: unknown) => void
     invoke.mockImplementationOnce(() => new Promise(resolve => { antwort = resolve }))
