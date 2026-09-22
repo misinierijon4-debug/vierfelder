@@ -12,6 +12,8 @@ export const AKTIVITAETS_ERINNERUNGEN = [
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>
 const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv'
+/** stand vor den ansagen: ohne `ansage_aktiv` */
+const SPALTEN_OHNE_ANSAGE = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv'
 const ALTE_SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv'
 const STANDARD: AktivitaetsEinstellungen = {
   lernen_aktiv: true,
@@ -56,6 +58,11 @@ export async function ladeAktivitaetsErinnerungen(): Promise<AktivitaetsEinstell
   if (!istFehlendesSchema(aktuelle.error)) {
     throw new Error('erinnerungen konnten nicht geladen werden.')
   }
+  // Frontend vor der Ansagen-Migration: die uebrigen Schalter behalten ihren
+  // gespeicherten Stand, nur der neue steht auf seinem Standard.
+  const ohneAnsage = await supabase.from('erinnerungs_einstellungen').select(SPALTEN_OHNE_ANSAGE).maybeSingle()
+  if (!ohneAnsage.error) return vervollstaendigeEinstellungen(ohneAnsage.data)
+  if (!istFehlendesSchema(ohneAnsage.error)) throw new Error('erinnerungen konnten nicht geladen werden.')
   const alte = await supabase.from('erinnerungs_einstellungen').select(ALTE_SPALTEN).maybeSingle()
   if (alte.error && istFehlendesSchema(alte.error)) return null
   if (alte.error) throw new Error('erinnerungen konnten nicht geladen werden.')

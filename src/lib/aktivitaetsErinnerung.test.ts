@@ -56,6 +56,25 @@ it('faellt bei fehlenden neuen Spalten auf den alten Einstellungen-Vertrag zurue
     ansage_aktiv: true,
   })
 })
+it('behaelt vor der ansagen-migration die gespeicherten uebrigen schalter', async () => {
+  m.select.mockImplementation((spalten: string) => ({
+    maybeSingle: spalten.includes('ansage_aktiv')
+      ? async () => ({ data: null, error: { code: '42703' } })
+      : async () => ({
+          data: {
+            lernen_aktiv: true, lesen_aktiv: true, wochenblick_aktiv: true,
+            partner_aktiv: false, wochenrueckblick_aktiv: true, wochenbericht_aktiv: false,
+          },
+          error: null,
+        }),
+  }))
+
+  await expect(ladeAktivitaetsErinnerungen()).resolves.toMatchObject({
+    partner_aktiv: false,
+    wochenbericht_aktiv: false,
+    ansage_aktiv: true,
+  })
+})
 it('akzeptiert keinen RLS-Nulltreffer als gespeichert', async () => {
   m.upsert.mockReturnValue({ select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) })
   await expect(setzeAktivitaetsErinnerung('lernen', false)).rejects.toThrow('nicht bestätigt')
