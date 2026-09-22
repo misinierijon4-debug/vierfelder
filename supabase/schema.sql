@@ -70,6 +70,8 @@ create table if not exists gewicht (
   user_id uuid not null references auth.users on delete cascade default auth.uid(),
   tag date not null,
   kg numeric(5,2) not null check (kg > 20 and kg < 400),
+  -- setzt ab 22.09.2026 nur die datenbank (trigger `gewicht_erstellt_fest`):
+  -- eine ansage zaehlt ein gewicht nur, wenn es am selben tag kam
   erstellt timestamptz not null default now(),
   primary key (user_id, tag)
 );
@@ -330,6 +332,42 @@ exception
   when duplicate_object then null;
 end
 $$;
+
+-- ansagen: eine person wettet einen punkt darauf, dass die andere ein ziel bis
+-- samstag verfehlt. beide lesen, niemand schreibt direkt: anlegen nur ueber
+-- `sage_an` (ziel, zeitraum und kontingent rechnet die datenbank), das ergebnis
+-- schreibt nur `private.entscheide_duell_ansagen` (cron alle fuenf minuten und
+-- vor jeder wochenabrechnung). funktionen, cron, abrechnung version 2 und push:
+-- migration `20260922120000_duell_ansagen.sql`, regeln in `docs/ansagen.md`.
+create table if not exists duell_ansagen (
+  id uuid primary key,
+  von uuid not null references profile(id) on delete cascade,
+  an uuid not null references profile(id) on delete cascade,
+  feld text not null check (feld in ('gym', 'boxen', 'lesen', 'gewicht')),
+  ab date not null,
+  bis date not null,
+  ziel smallint not null,
+  erstellt_am timestamptz not null default now(),
+  ergebnis text check (ergebnis in ('geschafft', 'verfehlt')),
+  entschieden_am timestamptz,
+  constraint duell_ansagen_nicht_selbst check (von <> an),
+  constraint duell_ansagen_zeitraum check (
+    extract(isodow from bis) = 6 and ab between bis - 4 and bis - 1
+  ),
+  constraint duell_ansagen_ziel check (ziel >= 1 and ziel <= bis - ab),
+  constraint duell_ansagen_entschieden check ((ergebnis is null) = (entschieden_am is null)),
+  constraint duell_ansagen_feld_je_woche unique (von, feld, bis)
+);
+
+alter table duell_ansagen enable row level security;
+revoke all on table duell_ansagen from public, anon, authenticated;
+grant select on table duell_ansagen to authenticated, service_role;
+
+drop policy if exists "duell ansagen lesen" on duell_ansagen;
+create policy "duell ansagen lesen" on duell_ansagen
+  for select to authenticated using ((select private.ist_duellprofil()));
+
+alter table duell_ansagen replica identity full;
 
 -- eingespielt am 26.08.2026 in projekt ogxwazageufvalkocywh (eu-central-1).
 --

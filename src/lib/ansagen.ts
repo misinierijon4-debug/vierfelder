@@ -5,7 +5,7 @@ import type { UserId, Zustand } from './types'
 
 /**
  * ansagen: die herausforderungen zwischen den beiden. wer ansagt, wettet, dass
- * die andere person ein ziel bis sonntag *nicht* schafft, und setzt dafür
+ * die andere person ein ziel bis samstag *nicht* schafft, und setzt dafür
  * einen punkt. scheitert die andere person, kommt der einsatz zurück und ein
  * punkt obendrauf. schafft sie es, ist er weg. so hat jede ansage ein risiko,
  * und niemand drückt zwei im vorbeigehen raus.
@@ -16,8 +16,10 @@ import type { UserId, Zustand } from './types'
  * gym, das man oft macht. eni wählt später aus diesen kandidaten aus und
  * schreibt den spruch, rechnet aber nie selbst.
  *
- * noch nicht in der oberfläche und noch nicht im wochenstand — siehe
- * `docs/ansagen.md`.
+ * der zeitraum endet samstag: die wochenabrechnung beginnt sonntag um 18 uhr,
+ * und bis dahin muss jede ansage entschieden sein. regeln und begründungen
+ * stehen in `docs/ansagen.md`, die serverseitige wahrheit in der migration
+ * `*_duell_ansagen.sql` — beide rechnen dasselbe.
  */
 
 /**
@@ -56,7 +58,7 @@ export type Ansage = {
   feld: AnsageFeld
   /** erster tag des zeitraums, immer der tag nach der ansage */
   ab: string
-  /** letzter tag des zeitraums, immer der sonntag derselben woche */
+  /** letzter tag des zeitraums, immer der samstag derselben woche */
   bis: string
   /** an so vielen tagen im zeitraum muss das feld zählen */
   ziel: number
@@ -130,12 +132,13 @@ export function verbleibendeAnsagen(ansagen: Ansage[], u: UserId, jetzt: Date): 
 }
 
 /**
- * der zeitraum einer ansage, die jetzt gemacht würde: morgen bis sonntag.
- * null ab samstag — ein einziger tag lässt keinen ausrutscher mehr zu.
+ * der zeitraum einer ansage, die jetzt gemacht würde: morgen bis samstag.
+ * null ab freitag — ein einziger tag lässt keinen ausrutscher mehr zu. der
+ * sonntag gehört der abrechnung: um 18 uhr muss jede ansage entschieden sein.
  */
 export function ansageZeitraum(jetzt: Date): { ab: string; bis: string } | null {
   const ab = toKey(addDays(jetzt, 1))
-  const bis = toKey(addDays(startOfWeek(jetzt), 6))
+  const bis = toKey(addDays(startOfWeek(jetzt), 5))
   return tage(ab, bis).length >= 2 ? { ab, bis } : null
 }
 
@@ -283,7 +286,7 @@ function sitzungLaeuftNoch(z: Zustand, a: Ansage): boolean {
  * was jetzt festgeschrieben werden darf, oder null. geschafft sofort — das
  * kann nichts mehr ändern, was fair wäre. verfehlt erst nach dem letzten tag,
  * auch wenn es rechnerisch früher feststeht: eine laufende sitzung vom
- * sonntagabend bekommt bis `NACHLAUF_STUNDEN` nach mitternacht zeit.
+ * samstagabend bekommt bis `NACHLAUF_STUNDEN` nach mitternacht zeit.
  */
 export function festzuschreiben(
   z: Zustand,
@@ -335,3 +338,112 @@ export function wochenAnsagePunkte(
   return summe
 }
 
+
+/**
+ * wie viel punkte die laufenden ansagen einer woche noch drehen können, je
+ * herausforderer: aus −1 wird +1, wenn die andere person scheitert. der
+ * rechner braucht das, sonst nennt er einen vorsprung sicher, den eine offene
+ * ansage noch kippt.
+ */
+export function offeneAnsageWende(
+  zaehlt: Zaehlt,
+  ansagen: Ansage[],
+  montag: string,
+  jetzt: Date
+): AnsagePunkte {
+  const wende = { erijon: 0, koray: 0 } as AnsagePunkte
+  for (const a of ansagen) {
+    if (montagVon(a.bis) !== montag) continue
+    if (ansageStand(zaehlt, a, jetzt).status === 'laeuft') wende[a.von] += 2 * EINSATZ
+  }
+  return wende
+}
+
+/** so heißt ein feld in einer ansage: „2× boxen“, „3× wiegen“ */
+export const ANSAGE_WORT: Record<AnsageFeld, string> = {
+  gym: 'gym',
+  boxen: 'boxen',
+  lesen: 'lesen',
+  gewicht: 'wiegen',
+}
+
+export function ansageZielText(feld: AnsageFeld, ziel: number): string {
+  return `${ziel}× ${ANSAGE_WORT[feld]}`
+}
+
+/**
+ * der spruch, wenn eni gerade nicht antwortet — im prototyp immer. er nennt
+ * nur zahlen aus dem vorschlag, genau wie eni.
+ */
+export function vorlageSpruch(v: Pick<AnsageVorschlag, 'feld' | 'ziel' | 'verlauf'>, name: string): string {
+  const ueblich = [...v.verlauf].sort((a, b) => a - b)[Math.floor(v.verlauf.length / 2)] ?? 0
+  const bisher = ueblich === 0 ? 'sonst fast nie' : `sonst ${ueblich}× die woche`
+  switch (v.feld) {
+    case 'gym':
+      return `${name} war ${bisher} im gym. ${v.ziel}× bis samstag — schafft ${name} das?`
+    case 'boxen':
+      return `${name} boxt ${bisher}. ${v.ziel}× bis samstag wird eng.`
+    case 'lesen':
+      return `${name} liest ${bisher}. ${v.ziel === 1 ? 'ein lesetag' : `${v.ziel} lesetage`} bis samstag, gemessen.`
+    case 'gewicht':
+      return `${name} wiegt sich ${bisher}. ${v.ziel}× bis samstag, am selben tag eingetragen.`
+  }
+}
+
+/** was ein fehler von `neueAnsage` oder vom server für die person heißt */
+export const ANSAGE_FEHLERTEXT: Record<AnsageFehler, string> = {
+  selbst: 'an dich selbst geht keine ansage.',
+  keineAnsagenMehr: 'deine zwei ansagen dieser woche sind weg.',
+  zuSpaet: 'ab freitag gibt es keine ansagen mehr — nächsten montag wieder.',
+  schonAngesagt: 'in diesem feld hast du diese woche schon angesagt.',
+  keinZiel: 'für dieses feld gibt es gerade kein faires ziel.',
+}
+
+/**
+ * eine ansage, die das backend abgelehnt hat — mit demselben grund wie die
+ * vorprüfung. die datenbank schreibt ihn als `ansage:<grund>` in die meldung.
+ */
+export class AnsageAbgelehnt extends Error {
+  readonly grund: AnsageFehler
+
+  constructor(grund: AnsageFehler) {
+    super(`ansage:${grund}`)
+    this.name = 'AnsageAbgelehnt'
+    this.grund = grund
+  }
+}
+
+const ANSAGE_FEHLER = Object.keys(ANSAGE_FEHLERTEXT) as AnsageFehler[]
+
+/** liest den grund aus einer abgelehnten ansage, lokal wie vom server */
+export function ansageFehlerAus(fehler: unknown): AnsageFehler | null {
+  if (fehler instanceof AnsageAbgelehnt) return fehler.grund
+  const text = fehler && typeof fehler === 'object' ? (fehler as { message?: unknown }).message : null
+  if (typeof text !== 'string') return null
+  const treffer = /^ansage:(\w+)$/.exec(text.trim())
+  const grund = treffer?.[1] as AnsageFehler | undefined
+  return grund && ANSAGE_FEHLER.includes(grund) ? grund : null
+}
+
+const DATUM = /^\d{4}-\d{2}-\d{2}$/
+
+/** prüft eine gespeicherte oder empfangene ansage, bevor sie in den zustand kommt */
+export function istAnsage(wert: unknown): wert is Ansage {
+  if (!wert || typeof wert !== 'object' || Array.isArray(wert)) return false
+  const a = wert as Record<string, unknown>
+  const person = (x: unknown) => x === 'erijon' || x === 'koray'
+  if (typeof a.id !== 'string' || !a.id) return false
+  if (!person(a.von) || !person(a.an) || a.von === a.an) return false
+  if (!(ANSAGE_FELDER as readonly unknown[]).includes(a.feld)) return false
+  if (typeof a.ab !== 'string' || !DATUM.test(a.ab) || typeof a.bis !== 'string' || !DATUM.test(a.bis)) return false
+  if (a.ab > a.bis) return false
+  if (typeof a.ziel !== 'number' || !Number.isInteger(a.ziel) || a.ziel < 1 || a.ziel > 6) return false
+  if (typeof a.erstelltAm !== 'string' || Number.isNaN(Date.parse(a.erstelltAm))) return false
+  if (a.entschieden === undefined) return true
+  const e = a.entschieden as Record<string, unknown> | null
+  return Boolean(e)
+    && typeof e === 'object'
+    && (e!.ergebnis === 'geschafft' || e!.ergebnis === 'verfehlt')
+    && typeof e!.am === 'string'
+    && !Number.isNaN(Date.parse(e!.am as string))
+}

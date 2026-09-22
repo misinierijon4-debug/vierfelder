@@ -3,6 +3,17 @@ import type { Abrechnung, FeldId, TickQuelle, UserId, Zustand } from './types'
 import { addDays, fromKey, isoWeek, startOfWeek, toKey, weekDays } from './dates'
 import { dauerMinuten, messungen, tagVon } from './training'
 import { erledigteFelder, quelle, tageMitDaten, wocheBereich, wocheGesamt } from './tracker'
+import type { AnsagePunkte } from './ansagen'
+
+/**
+ * was die ansagen einer woche zur wertung beitragen: `punkte` ist der stand
+ * jetzt (laufende einsätze als −1), `wende` das, was offene ansagen noch
+ * drehen können. beides kommt aus `ansagen.ts`; duell.ts rechnet nur damit.
+ */
+export type AnsageWertung = {
+  punkte: AnsagePunkte
+  wende: AnsagePunkte
+}
 
 export type DruckStatus =
   | 'offen'
@@ -55,9 +66,13 @@ export type DuellMatch = {
   heuteIch: number
   heuteEr: number
 
+  /** wertung der woche: feldpunkte plus ansage-punkte */
   wocheIch: number
   wocheEr: number
   wocheDiff: number
+  /** der anteil der ansagen an `wocheIch` und `wocheEr` */
+  ansageIch: number
+  ansageEr: number
 
   dominanzVerhaeltnis: number
   statusText: string
@@ -173,10 +188,12 @@ export function belegQuote(z: Zustand, u: UserId, woche: string[]): BelegInfo {
 export function abrechnungFuerWoche(
   z: Zustand,
   woche: string[],
-  wetteText: string | null
+  wetteText: string | null,
+  /** ansage-punkte der woche, wie `wochenAnsagePunkte` sie rechnet */
+  ansagePunkte?: AnsagePunkte
 ): Abrechnung {
-  const punkteErijon = wocheGesamt(z, 'erijon', woche)
-  const punkteKoray = wocheGesamt(z, 'koray', woche)
+  const punkteErijon = wocheGesamt(z, 'erijon', woche) + (ansagePunkte?.erijon ?? 0)
+  const punkteKoray = wocheGesamt(z, 'koray', woche) + (ansagePunkte?.koray ?? 0)
   const belegErijon = belegQuote(z, 'erijon', woche).belegt
   const belegKoray = belegQuote(z, 'koray', woche).belegt
   const entscheidung = entscheideDuell(punkteErijon, punkteKoray, belegErijon, belegKoray)
@@ -190,7 +207,7 @@ export function abrechnungFuerWoche(
     belegKoray,
     wette,
     abgeschlossen: new Date().toISOString(),
-    berechnungVersion: 1,
+    berechnungVersion: 2,
     archivQuelle: 'lokal',
     punkteErijon,
     punkteKoray,
@@ -220,14 +237,17 @@ export function berechneRestprogramm(
   punkteIch: number,
   punkteEr: number,
   heuteIch: number = 0,
-  heuteEr: number = 0
+  heuteEr: number = 0,
+  /** was offene ansagen jeder person noch bringen können */
+  wendeIch: number = 0,
+  wendeEr: number = 0
 ): RestprogrammInfo {
   const heuteIdx = woche.indexOf(heuteKey)
   const nachHeute = heuteIdx >= 0 ? Math.max(0, 6 - heuteIdx) * 5 : 0
   const heuteRestIch = heuteIdx >= 0 ? Math.max(0, 5 - heuteIch) : 0
   const heuteRestEr = heuteIdx >= 0 ? Math.max(0, 5 - heuteEr) : 0
-  const restMaxIch = nachHeute + heuteRestIch
-  const restMaxEr = nachHeute + heuteRestEr
+  const restMaxIch = nachHeute + heuteRestIch + wendeIch
+  const restMaxEr = nachHeute + heuteRestEr + wendeEr
 
   const uneinholbarIch = punkteIch > punkteEr + restMaxEr
   const uneinholbarEr = punkteEr > punkteIch + restMaxIch
@@ -359,18 +379,22 @@ export function berechneDuell(
   z: Zustand,
   woche: string[],
   heuteKey: string,
-  ichId: UserId
+  ichId: UserId,
+  ansage?: AnsageWertung
 ): DuellMatch {
   const er = other(ichId)
   const heuteIch = erledigteFelder(z, ichId, heuteKey)
   const heuteEr = erledigteFelder(z, er.id, heuteKey)
 
-  const wocheIch = wocheGesamt(z, ichId, woche)
-  const wocheEr = wocheGesamt(z, er.id, woche)
+  const ansageIch = ansage?.punkte[ichId] ?? 0
+  const ansageEr = ansage?.punkte[er.id] ?? 0
+  const wocheIch = wocheGesamt(z, ichId, woche) + ansageIch
+  const wocheEr = wocheGesamt(z, er.id, woche) + ansageEr
   const wocheDiff = wocheIch - wocheEr
 
-  const gesamtSumme = wocheIch + wocheEr
-  const dominanzVerhaeltnis = gesamtSumme > 0 ? wocheIch / gesamtSumme : 0.5
+  // negative ansage-punkte dürfen das verhältnis nicht über 1 treiben
+  const gesamtSumme = Math.max(0, wocheIch) + Math.max(0, wocheEr)
+  const dominanzVerhaeltnis = gesamtSumme > 0 ? Math.max(0, wocheIch) / gesamtSumme : 0.5
 
   const restprogramm = berechneRestprogramm(
     woche,
@@ -378,7 +402,9 @@ export function berechneDuell(
     wocheIch,
     wocheEr,
     heuteIch,
-    heuteEr
+    heuteEr,
+    ansage?.wende[ichId] ?? 0,
+    ansage?.wende[er.id] ?? 0
   )
   const fronten = duellFronten(z, woche, ichId, er.id)
 
@@ -408,6 +434,8 @@ export function berechneDuell(
     wocheIch,
     wocheEr,
     wocheDiff,
+    ansageIch,
+    ansageEr,
     dominanzVerhaeltnis,
     statusText,
     druck,
@@ -598,7 +626,9 @@ export function saisonHistorie(
   aktuelleWocheStart: Date,
   wochenZurueck: number = 6,
   me: UserId,
-  abrechnungen: Abrechnung[] = []
+  abrechnungen: Abrechnung[] = [],
+  /** ansage-punkte einer noch nicht archivierten woche, nach ihrem montag */
+  ansagePunkteFuer?: (montag: string) => AnsagePunkte
 ): DuellHistorie {
   const er = other(me)
   const aktuellerMontag = startOfWeek(aktuelleWocheStart)
@@ -662,12 +692,15 @@ export function saisonHistorie(
     // ausschließlich der Tiebreak der vier automatisierbaren Bereiche.
     const belegIch = belegQuote(z, me, wocheTage)
     const belegEr = belegQuote(z, er.id, wocheTage)
-    const pIch = wocheGesamt(z, me, wocheTage)
-    const pEr = wocheGesamt(z, er.id, wocheTage)
+    const ansage = ansagePunkteFuer?.(wocheKey)
+    const feldIch = wocheGesamt(z, me, wocheTage)
+    const feldEr = wocheGesamt(z, er.id, wocheTage)
+    const pIch = feldIch + (ansage?.[me] ?? 0)
+    const pEr = feldEr + (ansage?.[er.id] ?? 0)
     const bIch = belegIch.belegt
     const bEr = belegEr.belegt
 
-    if (pIch === 0 && pEr === 0) continue
+    if (feldIch === 0 && feldEr === 0 && pIch === 0 && pEr === 0) continue
 
     const entscheidung = entscheideDuell(pIch, pEr, bIch, bEr)
     const sieger = entscheidung.sieger

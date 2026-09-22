@@ -16,7 +16,9 @@ import {
   vergleicheWetteVersion,
 } from './backend'
 import { addDays, toKey, weekDays } from './dates'
-import { gewichtKey, neueEinheitId, tickKey, wertKey } from './types'
+import { AnsageAbgelehnt, festzuschreiben, istAnsage, neueAnsage, zaehltAusZustand } from './ansagen'
+import type { Ansage, AnsageFeld } from './ansagen'
+import { gewichtKey, neueEinheitId, other, tickKey, wertKey } from './types'
 import { notenGewicht } from './noten'
 import type {
   Abrechnung,
@@ -54,6 +56,8 @@ const WETTEN_KEY = 'vierfelder.wetten.v1'
 const WETTEN_META_KEY = 'vierfelder.wetten.meta.v1'
 const ABRECHNUNG_KEY = 'vierfelder.abrechnung.v1'
 const FAECHER_KEY = 'vierfelder.faecher.v2'
+/** alle ansagen beider personen, flach wie die einheiten */
+const ANSAGEN_KEY = 'vierfelder.ansagen.v1'
 const NOTEN_KEY = 'vierfelder.noten.v2'
 /** damit die übernahme des altbestands genau einmal läuft */
 const MIGRIERT_KEY = 'vierfelder.einheiten.migriert.v1'
@@ -838,6 +842,46 @@ function alleAbrechnungen(): Abrechnung[] {
 }
 
 /**
+ * eine ansage von koray an erijon, damit der prototyp zeigt, wie eine
+ * laufende aussieht. gemacht am montag dieser woche, bis samstag.
+ */
+function beispielAnsagen(): Ansage[] {
+  const woche = weekDays(new Date())
+  const [j, m, t] = woche[0]!.split('-').map(Number)
+  return [
+    {
+      id: 'beispiel-ansage-lesen',
+      von: 'koray',
+      an: 'erijon',
+      feld: 'lesen',
+      ab: woche[1]!,
+      bis: woche[5]!,
+      ziel: 2,
+      erstelltAm: new Date(j!, m! - 1, t!, 8, 0).toISOString(),
+    },
+  ]
+}
+
+function alleAnsagen(): Ansage[] {
+  if (leseRoh(ANSAGEN_KEY) === null) return beispielAnsagen()
+  return lade<Ansage[]>(ANSAGEN_KEY, [], (wert): wert is Ansage[] => istObjektListe(wert, istAnsage))
+}
+
+/** der zustand, aus dem der prototyp ziele und ergebnisse rechnet — derselbe wie im tracker */
+function lokalerZustand() {
+  const einheiten: Einheiten = {}
+  for (const e of alleEinheiten()) {
+    const key = tickKey(e.user, e.area, e.tag)
+    ;(einheiten[key] ??= []).push(e)
+  }
+  return {
+    einheiten,
+    gewichte: lade<Gewichte>(GEWICHT_KEY, {}, istGewichte),
+    aufenthalte: erzeugeBeispielAufenthalte(),
+  }
+}
+
+/**
  * Kein Migrations-, Beispiel- oder Meta-Write darf beginnen, bevor jeder von
  * diesem Backend verwaltete Key wenigstens einmal lesbar und typgerecht war.
  */
@@ -864,6 +908,7 @@ function pruefeLokalenSpeicherbestand(): void {
   )
   lade<Fach[]>(FAECHER_KEY, [], (wert): wert is Fach[] => istObjektListe(wert, istFach))
   lade<Note[]>(NOTEN_KEY, [], (wert): wert is Note[] => istObjektListe(wert, istNote))
+  alleAnsagen()
 }
 
 let kanal: BroadcastChannel | null | undefined
@@ -961,6 +1006,22 @@ export function lokalesBackend(): Backend {
           else if (!liste.some((x) => x.id === e.id)) liste.push(e)
         }
 
+        // was die datenbank per cron festschreibt, schreibt der prototyp beim laden fest
+        const ansagen = await mitLokalerSperre(ANSAGEN_KEY, () => {
+          const zustand = lokalerZustand()
+          const zaehlt = zaehltAusZustand(zustand)
+          const jetzt = new Date()
+          let geaendert = false
+          const alle = alleAnsagen().map((a) => {
+            const entschieden = festzuschreiben(zustand, zaehlt, a, jetzt)
+            if (!entschieden) return a
+            geaendert = true
+            return { ...a, entschieden }
+          })
+          if (geaendert) localStorage.setItem(ANSAGEN_KEY, JSON.stringify(alle))
+          return alle
+        })
+
         const anfang: Anfangszustand = {
           me,
           einheiten,
@@ -973,6 +1034,7 @@ export function lokalesBackend(): Backend {
           wetten: wetteStand.wetten,
           wettenMeta: wetteStand.meta.wochen,
           abrechnungen: alleAbrechnungen(),
+          ansagen,
           noten: { faecher: alleFaecher(), noten: alleNoten() },
           einheitVonVerfuegbar: true,
           altbestand: false,
@@ -1171,6 +1233,34 @@ export function lokalesBackend(): Backend {
           abrechnung: kanonisch,
         } satisfies Nachricht)
         return kanonisch
+      })
+    },
+
+    async sageAn(id: string, feld: AnsageFeld) {
+      return mitSichererMutation(ANSAGEN_KEY, () => {
+        const alle = alleAnsagen()
+        const vorhanden = alle.find((a) => a.id === id)
+        if (vorhanden) {
+          if (vorhanden.von !== me || vorhanden.feld !== feld) throw new Error('ansage-id ist schon vergeben')
+          return vorhanden
+        }
+        const ergebnis = neueAnsage(
+          zaehltAusZustand(lokalerZustand()),
+          alle,
+          me,
+          other(me).id,
+          feld,
+          new Date(),
+          id
+        )
+        if ('fehler' in ergebnis) throw new AnsageAbgelehnt(ergebnis.fehler)
+        localStorage.setItem(ANSAGEN_KEY, JSON.stringify([...alle, ergebnis.ansage]))
+        holeKanal()?.postMessage({
+          von: absender,
+          typ: 'ansage',
+          ansage: ergebnis.ansage,
+        } satisfies Nachricht)
+        return ergebnis.ansage
       })
     },
 

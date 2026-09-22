@@ -12,8 +12,11 @@ import {
   vergleicheWetteVersion,
 } from './backend'
 import { leseStand, merkeStand } from './offlineStand'
+import { ansageFehlerAus } from './ansagen'
+import type { Ansage, AnsageFehler, AnsageFeld } from './ansagen'
 import {
   gewichtKey,
+  neueEinheitId,
   neueNotenId,
   tickKey,
 } from './types'
@@ -118,6 +121,9 @@ export function useTracker(backend: Backend) {
   const [abrechnungStatus, setAbrechnungStatus] = useState<Record<string, AbrechnungSchreibstatus>>({})
   const [faecher, setFaecher] = useState<Fach[]>([])
   const [noten, setNoten] = useState<Note[]>([])
+  /** ansagen beider personen. das ziel rechnet das backend, deshalb nie optimistisch */
+  const [ansagen, setAnsagen] = useState<Ansage[]>([])
+  const [ansagenVerfuegbar, setAnsagenVerfuegbar] = useState(false)
   const [ladezustand, setLadezustand] = useState<Ladezustand>('laden')
   /**
    * Der Offlinemodus zeigt den zuletzt vom Server gelesenen Stand, wenn das
@@ -192,6 +198,7 @@ export function useTracker(backend: Backend) {
   const abrechnungStatusRef = useRef<Record<string, AbrechnungSchreibstatus>>({})
   const faecherRef = useRef<Fach[]>([])
   const notenRef = useRef<Note[]>([])
+  const ansagenRef = useRef<Ansage[]>([])
 
   /**
    * je einheit der zuletzt losgeschickte schreibvorgang. schreiben derselben
@@ -406,6 +413,7 @@ export function useTracker(backend: Backend) {
     abrechnungenRef.current = anfang.abrechnungen
     faecherRef.current = anfang.noten.faecher
     notenRef.current = anfang.noten.noten
+    ansagenRef.current = anfang.ansagen ?? []
 
     // Ein Kontrollabgleich laedt alte Schlafphasen absichtlich nicht erneut.
     // Bereits geoeffnete Verlaeufe bleiben deshalb erhalten, solange die Nacht
@@ -432,6 +440,8 @@ export function useTracker(backend: Backend) {
     setAbrechnungen(anfang.abrechnungen)
     setFaecher(anfang.noten.faecher)
     setNoten(anfang.noten.noten)
+    setAnsagen(ansagenRef.current)
+    setAnsagenVerfuegbar(anfang.ansagen !== undefined)
     setEinheitVonVerfuegbar(anfang.einheitVonVerfuegbar)
     setAltbestand(anfang.altbestand)
     if (ersterLauf) {
@@ -481,7 +491,24 @@ export function useTracker(backend: Backend) {
     return true
   }, [])
 
+  /** eine ansage kommt dazu oder ersetzt die mit derselben id — ein ergebnis wird nie zurückgenommen */
+  const uebernimmAnsage = useCallback((ansage: Ansage) => {
+    const vorher = ansagenRef.current
+    const alt = vorher.find((a) => a.id === ansage.id)
+    if (alt?.entschieden && !ansage.entschieden) return
+    const next = alt
+      ? vorher.map((a) => (a.id === ansage.id ? ansage : a))
+      : [...vorher, ansage].sort((a, b) => (a.erstelltAm < b.erstelltAm ? -1 : 1))
+    ansagenRef.current = next
+    setAnsagen(next)
+  }, [])
+
   const verarbeiteBackendEreignis = useCallback((e: BackendDatenEreignis) => {
+    if (e.typ === 'ansage') {
+      uebernimmAnsage(e.ansage)
+      return
+    }
+
     if (e.typ === 'wette') {
       if (e.art === 'invalidierung') {
         abgleichAnfordernRef.current(true)
@@ -625,6 +652,7 @@ export function useTracker(backend: Backend) {
     merkeGewichtQuelle,
     merkePhasenTransport,
     uebernimm,
+    uebernimmAnsage,
     uebernimmSchlaf,
     uebernimmWetteStand,
   ])
@@ -1683,6 +1711,33 @@ export function useTracker(backend: Backend) {
     return () => window.removeEventListener('online', beiOnline)
   }, [ladenNeu, offlineStand])
 
+  /**
+   * sagt der anderen person an. anders als ticks nicht optimistisch: ziel und
+   * zeitraum kommen vom backend, und eine erfundene zahl, die danach springt,
+   * wäre schlimmer als eine sekunde warten. der aufrufer bekommt die ansage
+   * oder den grund der ablehnung zurück.
+   */
+  const sageAn = useCallback(
+    async (feld: AnsageFeld): Promise<{ ansage: Ansage } | { fehler: AnsageFehler | 'gesperrt' | 'netz' }> => {
+      if (!darfMutationStarten()) return { fehler: 'gesperrt' }
+      setFehler(null)
+      // dieselbe id bei einem wiederholten versuch legt keine zweite an
+      const id = neueEinheitId()
+      try {
+        const ansage = await verfolgeMutation(() => backend.sageAn(id, feld))
+        if (darfSchreiben()) uebernimmAnsage(ansage)
+        return { ansage }
+      } catch (error) {
+        const grund = ansageFehlerAus(error)
+        if (grund) return { fehler: grund }
+        // unbekannt, ob sie angekommen ist: der abgleich zeigt den echten stand
+        if (darfSchreiben()) abgleichAnfordernRef.current(true)
+        return { fehler: 'netz' }
+      }
+    },
+    [backend, darfMutationStarten, darfSchreiben, uebernimmAnsage, verfolgeMutation]
+  )
+
   const notenstand = useMemo<Notenstand>(() => ({ faecher, noten }), [faecher, noten])
 
   const phasenLadezustaende = useMemo<Record<string, PhasenLadezustand>>(() => {
@@ -1702,6 +1757,9 @@ export function useTracker(backend: Backend) {
     wetten,
     abrechnungen,
     abrechnungStatus,
+    ansagen,
+    /** ob das backend ansagen kennt. vor der migration bietet die app keine an */
+    ansagenVerfuegbar,
     notenstand,
     ladezustand,
     synchronisationszustand,
@@ -1725,6 +1783,7 @@ export function useTracker(backend: Backend) {
     setzeGewicht,
     setzeWette,
     abrechnungHinzu,
+    sageAn,
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,

@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
   ANSAGEN_JE_WOCHE,
+  AnsageAbgelehnt,
+  ansageFehlerAus,
+  istAnsage,
   ansagePunkte,
+  ansageZielText,
   ansageStand,
   ansageVorschlaege,
   ansageZeitraum,
   ansageZiel,
   festzuschreiben,
   neueAnsage,
+  offeneAnsageWende,
   verbleibendeAnsagen,
+  vorlageSpruch,
   wochenAnsagePunkte,
   wochenVerlauf,
   zaehltAusZustand,
@@ -19,8 +25,8 @@ import { setzeTick } from './tracker'
 import { gewichtKey } from './types'
 import type { AreaId, UserId, Zustand } from './types'
 
-// die woche läuft von mo 21.09. bis so 27.09.2026, der rückblick über die vier
-// wochen ab mo 24.08.
+// die woche läuft von mo 21.09. bis so 27.09.2026, ansagen bis sa 26.09. der
+// rückblick geht über die vier wochen ab mo 24.08.
 const MONTAG = new Date(2026, 8, 21, 12)
 const DIENSTAG = new Date(2026, 8, 22, 12)
 
@@ -64,7 +70,7 @@ function ansage(rest: Partial<Ansage> = {}): Ansage {
     an: 'koray',
     feld: 'boxen',
     ab: '2026-09-22',
-    bis: '2026-09-27',
+    bis: '2026-09-26',
     ziel: 2,
     erstelltAm: MONTAG.toISOString(),
     ...rest,
@@ -87,13 +93,13 @@ describe('zaehltAusZustand', () => {
 })
 
 describe('ansageZeitraum', () => {
-  it('läuft von morgen bis sonntag', () => {
-    expect(ansageZeitraum(MONTAG)).toEqual({ ab: '2026-09-22', bis: '2026-09-27' })
-    expect(ansageZeitraum(new Date(2026, 8, 25, 23, 59))).toEqual({ ab: '2026-09-26', bis: '2026-09-27' })
+  it('läuft von morgen bis samstag', () => {
+    expect(ansageZeitraum(MONTAG)).toEqual({ ab: '2026-09-22', bis: '2026-09-26' })
+    expect(ansageZeitraum(new Date(2026, 8, 24, 23, 59))).toEqual({ ab: '2026-09-25', bis: '2026-09-26' })
   })
 
-  it('gibt es ab samstag nicht mehr', () => {
-    expect(ansageZeitraum(new Date(2026, 8, 26, 0, 1))).toBeNull()
+  it('gibt es ab freitag nicht mehr', () => {
+    expect(ansageZeitraum(new Date(2026, 8, 25, 0, 1))).toBeNull()
     expect(ansageZeitraum(new Date(2026, 8, 27, 12))).toBeNull()
   })
 })
@@ -133,7 +139,7 @@ describe('ansageVorschlaege', () => {
       feld: 'boxen',
       ziel: 2,
       ab: '2026-09-22',
-      bis: '2026-09-27',
+      bis: '2026-09-26',
       verlauf: [1, 0, 1, 1],
     })
   })
@@ -148,7 +154,7 @@ describe('ansageVorschlaege', () => {
     const zaehlt = zaehltAusZustand(leererZustand())
     const verbraucht = [ansage({ id: 'a' }), ansage({ id: 'b', feld: 'gym' })]
     expect(ansageVorschlaege(zaehlt, verbraucht, 'erijon', 'koray', DIENSTAG)).toEqual([])
-    expect(ansageVorschlaege(zaehlt, [], 'erijon', 'koray', new Date(2026, 8, 26, 9))).toEqual([])
+    expect(ansageVorschlaege(zaehlt, [], 'erijon', 'koray', new Date(2026, 8, 25, 9))).toEqual([])
     expect(ansageVorschlaege(zaehlt, [], 'erijon', 'erijon', DIENSTAG)).toEqual([])
   })
 })
@@ -168,7 +174,7 @@ describe('neueAnsage', () => {
     expect(neueAnsage(zaehlt, zwei, 'erijon', 'koray', 'boxen', MONTAG, 'x')).toEqual({
       fehler: 'keineAnsagenMehr',
     })
-    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'boxen', new Date(2026, 8, 26), 'x')).toEqual({
+    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'boxen', new Date(2026, 8, 25), 'x')).toEqual({
       fehler: 'zuSpaet',
     })
     expect(neueAnsage(zaehlt, [ansage()], 'erijon', 'koray', 'boxen', DIENSTAG, 'x')).toEqual({
@@ -193,7 +199,7 @@ describe('ansageStand', () => {
       status: 'laeuft',
       erreicht: 0,
       ziel: 2,
-      offeneTage: 5,
+      offeneTage: 4,
     })
   })
 
@@ -206,8 +212,8 @@ describe('ansageStand', () => {
   it('ist verfehlt, sobald die übrigen tage nicht mehr reichen', () => {
     const z = sitzung(leererZustand(), 'koray', 'boxen', '2026-09-22')
     const zaehlt = zaehltAusZustand(z)
-    expect(ansageStand(zaehlt, ansage(), new Date(2026, 8, 27, 23)).status).toBe('laeuft')
-    expect(ansageStand(zaehlt, ansage(), new Date(2026, 8, 28, 0, 1)).status).toBe('verfehlt')
+    expect(ansageStand(zaehlt, ansage(), new Date(2026, 8, 26, 23)).status).toBe('laeuft')
+    expect(ansageStand(zaehlt, ansage(), new Date(2026, 8, 27, 0, 1)).status).toBe('verfehlt')
   })
 
   it('bleibt beim festgeschriebenen ergebnis, auch wenn später etwas nachkommt', () => {
@@ -233,28 +239,28 @@ describe('festzuschreiben', () => {
   it('schreibt verfehlt erst nach dem letzten tag fest', () => {
     const z = leererZustand()
     const zaehlt = zaehltAusZustand(z)
-    // rechnerisch steht es am sonntag schon fest, eingefroren wird trotzdem erst danach
-    expect(festzuschreiben(z, zaehlt, ansage(), new Date(2026, 8, 27, 12))).toBeNull()
-    expect(festzuschreiben(z, zaehlt, ansage(), new Date(2026, 8, 28, 0, 1))?.ergebnis).toBe('verfehlt')
+    // rechnerisch steht es am samstag schon fest, eingefroren wird trotzdem erst danach
+    expect(festzuschreiben(z, zaehlt, ansage(), new Date(2026, 8, 26, 12))).toBeNull()
+    expect(festzuschreiben(z, zaehlt, ansage(), new Date(2026, 8, 27, 0, 1))?.ergebnis).toBe('verfehlt')
   })
 
-  it('wartet auf eine sitzung vom sonntagabend, die über mitternacht läuft', () => {
+  it('wartet auf eine sitzung vom samstagabend, die über mitternacht läuft', () => {
     let z = sitzung(leererZustand(), 'koray', 'boxen', '2026-09-22')
-    z = sitzung(z, 'koray', 'boxen', '2026-09-27', { beginn: '23:45', offen: true })
-    const nachMitternacht = new Date(2026, 8, 28, 0, 5)
+    z = sitzung(z, 'koray', 'boxen', '2026-09-26', { beginn: '23:45', offen: true })
+    const nachMitternacht = new Date(2026, 8, 27, 0, 5)
     expect(festzuschreiben(z, zaehltAusZustand(z), ansage(), nachMitternacht)).toBeNull()
 
-    // die sitzung endet um 00:20 und zählt zum sonntag
+    // die sitzung endet um 00:20 und zählt zum samstag
     const beendet = sitzung(leererZustand(), 'koray', 'boxen', '2026-09-22')
-    const mitSonntag = sitzung(beendet, 'koray', 'boxen', '2026-09-27', { beginn: '23:45', minuten: 35 })
-    expect(festzuschreiben(mitSonntag, zaehltAusZustand(mitSonntag), ansage(), new Date(2026, 8, 28, 0, 25))?.ergebnis).toBe(
+    const mitSamstag = sitzung(beendet, 'koray', 'boxen', '2026-09-26', { beginn: '23:45', minuten: 35 })
+    expect(festzuschreiben(mitSamstag, zaehltAusZustand(mitSamstag), ansage(), new Date(2026, 8, 27, 0, 25))?.ergebnis).toBe(
       'geschafft'
     )
   })
 
   it('wartet nicht ewig auf einen vergessenen fokus', () => {
-    const z = sitzung(leererZustand(), 'koray', 'boxen', '2026-09-27', { beginn: '23:45', offen: true })
-    expect(festzuschreiben(z, zaehltAusZustand(z), ansage(), new Date(2026, 8, 28, 3, 1))?.ergebnis).toBe(
+    const z = sitzung(leererZustand(), 'koray', 'boxen', '2026-09-26', { beginn: '23:45', offen: true })
+    expect(festzuschreiben(z, zaehltAusZustand(z), ansage(), new Date(2026, 8, 27, 3, 1))?.ergebnis).toBe(
       'verfehlt'
     )
   })
@@ -291,7 +297,7 @@ describe('wochenAnsagePunkte', () => {
       // läuft noch: erijon -1
       ansage({ id: 'c', feld: 'lesen' }),
       // andere woche
-      ansage({ id: 'd', ab: '2026-09-29', bis: '2026-10-04' }),
+      ansage({ id: 'd', ab: '2026-09-29', bis: '2026-10-03' }),
     ]
     expect(wochenAnsagePunkte(zaehltAusZustand(z), ansagen, '2026-09-21', new Date(2026, 8, 24))).toEqual({
       erijon: 0,
@@ -309,5 +315,55 @@ describe('verbleibendeAnsagen', () => {
     ]
     expect(verbleibendeAnsagen(ansagen, 'erijon', DIENSTAG)).toBe(ANSAGEN_JE_WOCHE - 1)
     expect(verbleibendeAnsagen([], 'erijon', DIENSTAG)).toBe(ANSAGEN_JE_WOCHE)
+  })
+})
+
+describe('offeneAnsageWende', () => {
+  it('zählt nur laufende ansagen doppelt, weil aus −1 noch +1 werden kann', () => {
+    const z = sitzung(sitzung(leererZustand(), 'erijon', 'gym', '2026-09-22'), 'erijon', 'gym', '2026-09-23')
+    const ansagen = [
+      ansage({ id: 'a' }),
+      ansage({ id: 'b', von: 'koray', an: 'erijon', feld: 'gym' }),
+      ansage({ id: 'c', feld: 'lesen', entschieden: { ergebnis: 'geschafft', am: '2026-09-23T10:00:00.000Z' } }),
+    ]
+    expect(offeneAnsageWende(zaehltAusZustand(z), ansagen, '2026-09-21', new Date(2026, 8, 24))).toEqual({
+      erijon: 2,
+      koray: 0,
+    })
+  })
+})
+
+describe('texte', () => {
+  it('nennt ziel und feld', () => {
+    expect(ansageZielText('boxen', 2)).toBe('2× boxen')
+    expect(ansageZielText('gewicht', 3)).toBe('3× wiegen')
+  })
+
+  it('baut den ersatzspruch nur aus den zahlen des vorschlags', () => {
+    expect(vorlageSpruch({ feld: 'boxen', ziel: 2, verlauf: [1, 0, 1, 1] }, 'koray')).toBe(
+      'koray boxt sonst 1× die woche. 2× bis samstag wird eng.'
+    )
+    expect(vorlageSpruch({ feld: 'lesen', ziel: 1, verlauf: [0, 0, 0, 0] }, 'koray')).toBe(
+      'koray liest sonst fast nie. ein lesetag bis samstag, gemessen.'
+    )
+  })
+})
+
+describe('istAnsage und ansageFehlerAus', () => {
+  it('nimmt nur vollständige, stimmige ansagen an', () => {
+    expect(istAnsage(ansage())).toBe(true)
+    expect(istAnsage(ansage({ entschieden: { ergebnis: 'verfehlt', am: '2026-09-27T00:05:00.000Z' } }))).toBe(true)
+    expect(istAnsage(ansage({ an: 'erijon' }))).toBe(false)
+    expect(istAnsage({ ...ansage(), feld: 'lernen' })).toBe(false)
+    expect(istAnsage(ansage({ ab: '2026-09-27' }))).toBe(false)
+    expect(istAnsage(ansage({ ziel: 0 }))).toBe(false)
+    expect(istAnsage({ ...ansage(), entschieden: { ergebnis: 'vielleicht', am: 'x' } })).toBe(false)
+  })
+
+  it('liest den grund aus lokalen und server-fehlern gleich', () => {
+    expect(ansageFehlerAus(new AnsageAbgelehnt('zuSpaet'))).toBe('zuSpaet')
+    expect(ansageFehlerAus({ message: 'ansage:schonAngesagt' })).toBe('schonAngesagt')
+    expect(ansageFehlerAus(new Error('netz weg'))).toBeNull()
+    expect(ansageFehlerAus(null)).toBeNull()
   })
 })

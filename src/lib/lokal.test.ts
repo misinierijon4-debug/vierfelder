@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BackendEreignis } from './backend'
+import { AnsageAbgelehnt } from './ansagen'
 import { lokalesBackend } from './lokal'
 import { tickKey } from './types'
 import type { Einheit } from './types'
@@ -378,6 +379,8 @@ describe('lokale Pruefungsfachwahl', () => {
       expect(namen).toEqual([
         'vierfelder.storage.vierfelder.einheiten.v1',
         'vierfelder.storage.vierfelder.wetten.v1',
+        // das laden schreibt entschiedene ansagen fest
+        'vierfelder.storage.vierfelder.ansagen.v1',
         'vierfelder.storage.vierfelder.faecher.v2',
         'vierfelder.storage.vierfelder.faecher.v2',
         'vierfelder.storage.vierfelder.noten.v2',
@@ -829,5 +832,54 @@ describe('lokaler Zwei-Tab-Kanal', () => {
       ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = vorher
       vi.resetModules()
     }
+  })
+})
+
+describe('lokale ansagen', () => {
+  beforeEach(() => {
+    speicher.clear()
+    speicher.setItem('vierfelder.me.v2', 'erijon')
+    // dienstag 22.09.2026 mittags: ansagen laufen bis samstag 26.09.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 22, 12))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('zeigt im prototyp eine beispielansage von koray', async () => {
+    const anfang = await lokalesBackend().laden()
+    expect(anfang.ansagen).toEqual([
+      expect.objectContaining({ von: 'koray', an: 'erijon', feld: 'lesen', bis: '2026-09-26' }),
+    ])
+  })
+
+  it('rechnet ziel und zeitraum selbst und hält das kontingent', async () => {
+    const backend = lokalesBackend()
+    await backend.laden()
+    const boxen = await backend.sageAn('a1', 'boxen')
+    expect(boxen).toMatchObject({ id: 'a1', von: 'erijon', an: 'koray', feld: 'boxen', ab: '2026-09-23', bis: '2026-09-26' })
+    expect(boxen.ziel).toBeGreaterThanOrEqual(1)
+
+    // dieselbe id ist dieselbe ansage
+    await expect(backend.sageAn('a1', 'boxen')).resolves.toEqual(boxen)
+    await expect(backend.sageAn('a2', 'boxen')).rejects.toMatchObject({ grund: 'schonAngesagt' })
+    await backend.sageAn('a3', 'gym')
+    await expect(backend.sageAn('a4', 'lesen')).rejects.toBeInstanceOf(AnsageAbgelehnt)
+    await expect(backend.sageAn('a4', 'lesen')).rejects.toMatchObject({ grund: 'keineAnsagenMehr' })
+
+    const nachher = await lokalesBackend().laden()
+    expect(nachher.ansagen?.map((a) => a.id)).toEqual(['beispiel-ansage-lesen', 'a1', 'a3'])
+  })
+
+  it('schreibt eine abgelaufene ansage beim laden als verfehlt fest', async () => {
+    speicher.setItem('vierfelder.ansagen.v1', JSON.stringify([{
+      id: 'alt', von: 'erijon', an: 'koray', feld: 'boxen',
+      ab: '2026-09-15', bis: '2026-09-19', ziel: 2, erstelltAm: new Date(2026, 8, 14, 12).toISOString(),
+    }]))
+    const anfang = await lokalesBackend().laden()
+    expect(anfang.ansagen?.[0]?.entschieden?.ergebnis).toBe('verfehlt')
+    expect(JSON.parse(speicher.getItem('vierfelder.ansagen.v1')!)[0].entschieden.ergebnis).toBe('verfehlt')
   })
 })

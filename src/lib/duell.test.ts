@@ -501,3 +501,50 @@ describe('duell.ts logik & berechnungen', () => {
     )).toEqual([])
   })
 })
+
+describe('ansagen in der wertung', () => {
+  const woche = weekDays(new Date(2026, 8, 22))
+  const ansage = { punkte: { erijon: 1, koray: -1 }, wende: { erijon: 0, koray: 2 } }
+
+  it('zählt ansage-punkte zum wochenstand und weist sie getrennt aus', () => {
+    const z = leererZustand()
+    z.einheiten[tickKey('erijon', 'gym', woche[0]!)] = [
+      { id: 'e1', user: 'erijon', area: 'gym', tag: woche[0]!, wert: null, erfasst: null },
+    ]
+    const match = berechneDuell(z, woche, woche[1]!, 'erijon', ansage)
+    expect([match.wocheIch, match.wocheEr, match.wocheDiff]).toEqual([2, -1, 3])
+    expect([match.ansageIch, match.ansageEr]).toEqual([1, -1])
+    // aus korays sicht dieselben zahlen, gespiegelt
+    const gegen = berechneDuell(z, woche, woche[1]!, 'koray', ansage)
+    expect([gegen.wocheIch, gegen.ansageIch]).toEqual([-1, -1])
+  })
+
+  it('rechnet offene ansagen ins restprogramm, damit kein vorsprung zu früh sicher ist', () => {
+    const ohne = berechneRestprogramm(woche, woche[6]!, 10, 6, 5, 5)
+    expect(ohne.uneinholbarIch).toBe(true)
+    const mit = berechneRestprogramm(woche, woche[6]!, 10, 6, 5, 5, 0, 2)
+    expect(mit.restMaxEr).toBe(2)
+    expect(mit.uneinholbarIch).toBe(true)
+    const knapp = berechneRestprogramm(woche, woche[6]!, 7, 6, 5, 5, 0, 2)
+    expect(knapp.uneinholbarIch).toBe(false)
+  })
+
+  it('archiviert im prototyp die ansage-punkte mit', () => {
+    const a = abrechnungFuerWoche(leererZustand(), woche, null, { erijon: -1, koray: 1 })
+    expect(a).toMatchObject({ sieger: 'koray', grund: 'punkte', differenz: -2, punkteErijon: -1, punkteKoray: 1, berechnungVersion: 2 })
+  })
+
+  it('rechnet ansagen in nicht archivierte wochen der bilanz ein', () => {
+    const letzte = weekDays(new Date(2026, 8, 15))
+    const z = leererZustand()
+    z.einheiten[tickKey('koray', 'gym', letzte[0]!)] = [
+      { id: 'k1', user: 'koray', area: 'gym', tag: letzte[0]!, wert: null, erfasst: null },
+    ]
+    const ohne = saisonHistorie(z, new Date(2026, 8, 22), 1, 'erijon', [])
+    expect(ohne.letzteWochen[0]?.sieger).toBe('er')
+    const mit = saisonHistorie(z, new Date(2026, 8, 22), 1, 'erijon', [], (montag) =>
+      montag === letzte[0] ? { erijon: 1, koray: -1 } : { erijon: 0, koray: 0 }
+    )
+    expect(mit.letzteWochen[0]).toMatchObject({ punkteIch: 1, punkteEr: 0, sieger: 'ich' })
+  })
+})

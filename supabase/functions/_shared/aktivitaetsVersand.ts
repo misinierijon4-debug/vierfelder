@@ -7,7 +7,7 @@ import { lokaleMinute } from './erinnerung.ts'
  * Ein Abbruch kann eine Nachricht kosten, aber niemals eine zweite erzeugen.
  * Auch nach einer verlorenen Providerantwort bleibt die Reservierung bestehen.
  */
-export type AktivitaetsArt = 'lernen' | 'lesen' | 'wochenblick' | 'partner' | 'wochenrueckblick' | 'wochenbericht'
+export type AktivitaetsArt = 'lernen' | 'lesen' | 'wochenblick' | 'partner' | 'wochenrueckblick' | 'wochenbericht' | 'ansage'
 export type Kandidat = {
   user_id: string
   art: AktivitaetsArt
@@ -37,6 +37,8 @@ function istNochImFenster(kandidat: Kandidat, jetzt: Date): boolean {
   const { minute, tag } = lokaleMinute(jetzt)
   if (kandidat.sendetag !== tag) return false
   if (kandidat.art === 'partner') return minute >= '09:00' && minute < '21:00'
+  // Eine Ansage meldet sich am Tag, an dem sie kam, aber niemanden nachts.
+  if (kandidat.art === 'ansage') return minute >= '08:00' && minute < '22:00'
   if (kandidat.art === 'wochenrueckblick') {
     return istSonntag(jetzt) && minute >= '20:00' && minute < '22:00'
   }

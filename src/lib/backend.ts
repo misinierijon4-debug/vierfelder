@@ -1,3 +1,4 @@
+import type { Ansage, AnsageFeld } from './ansagen'
 import type {
   Abrechnung,
   Aufenthalt,
@@ -42,6 +43,8 @@ export type WetteEreignis =
   | { typ: 'wette'; art: 'wert'; stand: WetteStand }
   | { typ: 'wette'; art: 'invalidierung'; woche?: string }
 export type AbrechnungEreignis = { typ: 'abrechnung'; abrechnung: Abrechnung }
+/** eine neue ansage oder ihr festgeschriebenes ergebnis. sie ersetzt die ansage mit derselben id */
+export type AnsageEreignis = { typ: 'ansage'; ansage: Ansage }
 export type FachEreignis =
   | { typ: 'fach'; art: 'neu' | 'wert'; fach: Fach }
   | { typ: 'fach'; art: 'weg'; id: string }
@@ -76,6 +79,7 @@ export type BackendDatenEreignis =
   | EinheitEreignis
   | WetteEreignis
   | AbrechnungEreignis
+  | AnsageEreignis
   | SchlafEreignis
   | GewichtEreignis
   | AufenthaltEreignis
@@ -143,6 +147,12 @@ export type Anfangszustand = {
   wettenMeta: WettenMeta
   /** archivierte sonntagsabrechnungen, älteste zuerst */
   abrechnungen: Abrechnung[]
+  /**
+   * die ansagen beider personen, älteste zuerst. fehlt, solange die tabelle
+   * noch nicht eingespielt ist — dann bietet die app keine ansage an — und in
+   * einem gemerkten offline-stand von vor den ansagen
+   */
+  ansagen?: Ansage[]
   noten: Notenstand
   /** die optionale durchfuehrungszeit kann schon gespeichert werden */
   einheitVonVerfuegbar: boolean
@@ -188,6 +198,12 @@ export interface Backend {
   schreibeWette(woche: string, text: string, erwarteteVersion: string): Promise<WetteStand>
   /** archiviert die sonntagsabrechnung und gibt die kanonisch gespeicherte Zeile zurück */
   schreibeAbrechnung(a: Abrechnung): Promise<Abrechnung>
+  /**
+   * sagt der anderen person im feld an. ziel und zeitraum rechnet das backend,
+   * nie der aufrufer; eine abgelehnte ansage wirft `AnsageAbgelehnt`. dieselbe
+   * id zweimal bestätigt dieselbe ansage.
+   */
+  sageAn(id: string, feld: AnsageFeld): Promise<Ansage>
   /** wechselt das vierte Prüfungsfach atomar und bestätigt die Ziel-ID */
   setzePruefungsfach(fachId: string, erwartetesFachId: string): Promise<string>
   /** idempotente Notenmutation; Erfolg bestätigt dieselbe UUID */
