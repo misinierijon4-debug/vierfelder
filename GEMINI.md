@@ -97,6 +97,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Animationsdauern (alle an einer Stelle) | `src/lib/motion.ts` |
 | Tabs, oberste Verdrahtung | `src/App.tsx`, `src/components/TabLeiste.tsx` |
 | Typen (`AreaId`, `UserId`, `AppTab`, …) | `src/lib/types.ts` — **klein, immer zuerst lesen** |
+| **Tempo:** Sitzungsindex, Tabs im Baum (`<Activity>`), `memo` | `src/lib/training.ts` (`sitzungsindex`), `src/App.tsx`, `scripts/benchmark-core-flow.mjs` |
 
 Suchbefehl statt Stöbern: `git grep -n "begriff" -- src supabase`.
 
@@ -127,6 +128,13 @@ Oberfläche zeigt nur das Ergebnis aus `einheiten`/`aufenthalte`.
    `Europe/Berlin`.
 7. **Nur zwei Nutzer.** RLS trennt `erijon` und `koray`. Bei neuen Tabellen
    RLS-Regeln mitschreiben; Prüfskripte dafür liegen in `scripts/check-*-rls.mjs`.
+8. **Tempo wächst nicht mit der Historie.** Was je Render oft gefragt wird
+   (`istGesetzt`, `streak`, Raster, Kalender, Bericht), läuft nie je Aufruf
+   durch alle `aufenthalte` oder `einheiten`: Tagesfragen zu Messungen
+   beantwortet der Index in `training.ts`. Alle Tabs bleiben als eigene
+   `<Activity>` im Baum — Tests und Skripte prüfen deshalb auf Sichtbarkeit,
+   nicht nur auf Vorhandensein. Kinder mit `memo` brauchen stabile Handler
+   (`useCallback`/`useMemo`), sonst rendern sie trotzdem bei jedem Tap.
 
 ## Commits und Branch
 
