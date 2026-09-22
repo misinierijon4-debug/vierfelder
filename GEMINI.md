@@ -78,7 +78,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts` |
 | Noten, MSS-Regeln Abi 2027 | `src/lib/noten.ts`, `src/components/noten/` |
 | Duell, Wetten, Druckstatus | `src/lib/duell.ts`, `src/components/duell/` |
-| Ansagen (Herausforderungen mit Kontingent, noch nicht veröffentlicht) | `src/lib/ansagen.ts`, `docs/ansagen.md` |
+| Ansagen (Herausforderungen mit Einsatz, Ziel aus der Vorgeschichte, noch nicht veröffentlicht) | `src/lib/ansagen.ts`, `docs/ansagen.md` |
 | Rivalitäts-Badge, Freitext-Zuordnung, Tonfall (classifier.dev) | `src/lib/duellBadge.ts` (Startpfad), `src/lib/duellKlassifizierung.ts` (nachgeladen), `src/components/duell/RivalitaetsTicker.tsx` |
 | ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1136 Z.) |
 | ENI Modell, Stream, Websuche | `supabase/functions/_shared/eni*.ts`, `supabase/functions/eni/index.ts` |
