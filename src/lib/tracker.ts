@@ -19,7 +19,7 @@ import {
   messungen,
   offeneMessungen,
   sitzungen,
-  tagVon,
+  tageMitSitzung,
   zaehlt,
 } from './training'
 import type { OffeneMessungWarnung } from './training'
@@ -275,9 +275,7 @@ export function tageMitDaten(z: Zustand, u: UserId): string[] {
   for (const key of Object.keys(z.gewichte)) {
     if (key.startsWith(`${u}|`)) tage.add(key.slice(key.indexOf('|') + 1))
   }
-  for (const a of z.aufenthalte) {
-    if (a.user === u && dauerMinuten(a) !== null) tage.add(tagVon(a))
-  }
+  for (const tag of tageMitSitzung(z.aufenthalte, u)) tage.add(tag)
 
   return [...tage].sort()
 }

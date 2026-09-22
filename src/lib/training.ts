@@ -55,11 +55,23 @@ export function dauerMinuten(a: Aufenthalt): number | null {
 }
 
 /**
+ * der tag je sitzung, einmal gerechnet. index, historie und bericht fragen ihn
+ * bei jedem tap für jede sitzung, und eine datumsumrechnung je frage war mit
+ * wachsender historie ein spürbarer teil davon. gemerkt wird mit `ankunft`,
+ * damit eine veränderte sitzung nie einen alten tag behält.
+ */
+const gemerkteTage = new WeakMap<Aufenthalt, { ankunft: string; tag: string }>()
+
+/**
  * die sitzung gehört zu dem tag, an dem sie begonnen hat. wer um 23:40 in die
  * halle geht, hat am mittwoch trainiert, auch wenn er um 00:30 rauskommt.
  */
 export function tagVon(a: Aufenthalt): string {
-  return toKey(new Date(a.ankunft))
+  const gemerkt = gemerkteTage.get(a)
+  if (gemerkt && gemerkt.ankunft === a.ankunft) return gemerkt.tag
+  const tag = toKey(new Date(a.ankunft))
+  gemerkteTage.set(a, { ankunft: a.ankunft, tag })
+  return tag
 }
 
 export function zaehlt(a: Aufenthalt): boolean {
@@ -146,6 +158,93 @@ function ohneUeberschneidung(sortiert: Aufenthalt[]): Aufenthalt[] {
   return behalten
 }
 
+function nachBeginn(x: Aufenthalt, y: Aufenthalt): number {
+  return x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0
+}
+
+/** was an einem tag gemessen wurde, für eine person und einen bereich */
+type Tagessitzungen = {
+  /** abgeschlossen, ohne überschneidung, nach beginn sortiert */
+  sitzungen: Aufenthalt[]
+  /** davon die, die die schwelle erreichen */
+  messungen: Aufenthalt[]
+  /** die längste zählende; bei gleicher dauer die frühere */
+  messung: Aufenthalt | null
+}
+
+type Sitzungsindex = { laenge: number; tage: Map<string, Tagessitzungen> }
+
+/**
+ * die sitzungen, einmal nach person, bereich und tag sortiert und ausgewertet.
+ * ohne diesen index lief jede frage „war an diesem tag eine messung?" einmal
+ * durch alle aufenthalte, mit mehreren datumsumrechnungen je zeile — und die
+ * frage kommt je bild tausendfach: wochenstand, streak, raster, kalender,
+ * bericht. mit jeder woche historie wurde so jede berührung spürbar langsamer.
+ *
+ * der index hängt an der liste selbst. der zustand ersetzt sie bei jeder
+ * änderung durch eine neue (`mitAufenthalt`, `ohneAufenthalt`), statt sie zu
+ * verändern; die länge sichert nur listen ab, die doch an ort und stelle
+ * wachsen, wie beim aufbau in den tests.
+ */
+const sitzungsindizes = new WeakMap<Aufenthalt[], Sitzungsindex>()
+
+function sitzungsindex(aufenthalte: Aufenthalt[]): Map<string, Tagessitzungen> {
+  const vorhanden = sitzungsindizes.get(aufenthalte)
+  if (vorhanden && vorhanden.laenge === aufenthalte.length) return vorhanden.tage
+
+  const roh = new Map<string, Aufenthalt[]>()
+  for (const a of aufenthalte) {
+    if (dauerMinuten(a) === null) continue
+    const key = `${a.user}|${a.bereich}|${tagVon(a)}`
+    const liste = roh.get(key)
+    if (liste) liste.push(a)
+    else roh.set(key, [a])
+  }
+
+  const tage = new Map<string, Tagessitzungen>()
+  for (const [key, liste] of roh) {
+    // sort ist stabil: gleiche beginne behalten die reihenfolge der liste,
+    // genau wie beim filtern und sortieren je tag
+    const sitzungen = ohneUeberschneidung(liste.sort(nachBeginn))
+    const messungen = sitzungen.filter(zaehlt)
+    let messung: Aufenthalt | null = null
+    let besteDauer = -1
+    for (const a of messungen) {
+      const dauer = dauerMinuten(a)!
+      if (dauer > besteDauer) {
+        messung = a
+        besteDauer = dauer
+      }
+    }
+    tage.set(key, { sitzungen, messungen, messung })
+  }
+
+  sitzungsindizes.set(aufenthalte, { laenge: aufenthalte.length, tage })
+  return tage
+}
+
+function tagessitzungen(
+  aufenthalte: Aufenthalt[],
+  u: UserId,
+  f: MessbarerBereich,
+  tag: string
+): Tagessitzungen | undefined {
+  return sitzungsindex(aufenthalte).get(`${u}|${f}|${tag}`)
+}
+
+/**
+ * die tage, an denen diese person mindestens eine abgeschlossene sitzung hat,
+ * in keiner festen reihenfolge und je bereich einmal
+ */
+export function tageMitSitzung(aufenthalte: Aufenthalt[], u: UserId): string[] {
+  const praefix = `${u}|`
+  const tage: string[] = []
+  for (const key of sitzungsindex(aufenthalte).keys()) {
+    if (key.startsWith(praefix)) tage.push(key.slice(key.lastIndexOf('|') + 1))
+  }
+  return tage
+}
+
 /**
  * alle abgeschlossenen sitzungen dieses tages, auch wenn sie die schwelle fuer
  * einen punkt noch nicht erreichen. eine kurze automation ist echte messung
@@ -158,17 +257,8 @@ export function sitzungen(
   tag: string
 ): Aufenthalt[] {
   if (!istMessbar(f)) return []
-  return ohneUeberschneidung(
-    aufenthalte
-      .filter(
-        (a) =>
-          a.user === u &&
-          a.bereich === f &&
-          dauerMinuten(a) !== null &&
-          tagVon(a) === tag
-      )
-      .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
-  )
+  // kopien: der index gehört allen aufrufern
+  return [...(tagessitzungen(aufenthalte, u, f, tag)?.sitzungen ?? [])]
 }
 
 /**
@@ -182,7 +272,8 @@ export function messungen(
   f: FeldId,
   tag: string
 ): Aufenthalt[] {
-  return sitzungen(aufenthalte, u, f, tag).filter(zaehlt)
+  if (!istMessbar(f)) return []
+  return [...(tagessitzungen(aufenthalte, u, f, tag)?.messungen ?? [])]
 }
 
 /**
@@ -195,16 +286,8 @@ export function messung(
   f: FeldId,
   tag: string
 ): Aufenthalt | null {
-  let beste: Aufenthalt | null = null
-  let besteDauer = -1
-  for (const a of messungen(aufenthalte, u, f, tag)) {
-    const dauer = dauerMinuten(a)!
-    if (dauer > besteDauer) {
-      beste = a
-      besteDauer = dauer
-    }
-  }
-  return beste
+  if (!istMessbar(f)) return null
+  return tagessitzungen(aufenthalte, u, f, tag)?.messung ?? null
 }
 
 export function gemessen(

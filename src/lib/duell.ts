@@ -509,6 +509,16 @@ function gueltigerTag(tag: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(tag) && toKey(fromKey(tag)) === tag
 }
 
+/**
+ * der fruehere der beiden tage, wenn der neue gueltig ist und nicht nach der
+ * grenze liegt. als text sortieren gueltige tage wie der kalender; geprueft
+ * wird deshalb nur, wer den bisher fruehesten ueberhaupt unterbieten koennte.
+ */
+function frueherGueltigerTag(bisher: string | null, tag: string, grenze: string): string | null {
+  if (tag > grenze || (bisher !== null && tag >= bisher)) return bisher
+  return gueltigerTag(tag) ? tag : bisher
+}
+
 function istDatumsschluessel(key: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(key) && toKey(fromKey(key)) === key
 }
@@ -553,24 +563,27 @@ export function historieWochen(
   aktuelleWocheStart: Date,
   abrechnungen: Abrechnung[] = []
 ): number {
-  const tage: string[] = []
-  for (const listen of Object.values(z.einheiten)) for (const e of listen) tage.push(e.tag)
-  for (const key of Object.keys(z.gewichte)) tage.push(key.split('|')[1] ?? '')
-  for (const a of z.aufenthalte) {
-    const tag = tagVon(a)
-    if (tag) tage.push(tag)
-  }
-  for (const abrechnung of abrechnungen) tage.push(abrechnung.woche)
-
   const aktuellerMontag = startOfWeek(aktuelleWocheStart)
   const aktuellerMontagKey = toKey(aktuellerMontag)
-  const gueltig = tage
-    .filter((tag) => gueltigerTag(tag) && tag <= aktuellerMontagKey)
-    .map((tag) => toKey(startOfWeek(fromKey(tag))))
-    .sort()
-  if (gueltig.length === 0) return 0
 
-  const aeltester = fromKey(gueltig[0]!)
+  // gebraucht wird nur der aelteste gueltige tag: sein montag ist der aelteste
+  // montag. so muss nicht jeder eintrag erst in seine woche umgerechnet und
+  // sortiert werden
+  let aeltesterTag: string | null = null
+  const grenze = aktuellerMontagKey
+  for (const listen of Object.values(z.einheiten)) {
+    for (const e of listen) aeltesterTag = frueherGueltigerTag(aeltesterTag, e.tag, grenze)
+  }
+  for (const key of Object.keys(z.gewichte)) {
+    aeltesterTag = frueherGueltigerTag(aeltesterTag, key.split('|')[1] ?? '', grenze)
+  }
+  for (const a of z.aufenthalte) aeltesterTag = frueherGueltigerTag(aeltesterTag, tagVon(a), grenze)
+  for (const abrechnung of abrechnungen) {
+    aeltesterTag = frueherGueltigerTag(aeltesterTag, abrechnung.woche, grenze)
+  }
+  if (aeltesterTag === null) return 0
+
+  const aeltester = startOfWeek(fromKey(aeltesterTag))
   const utcAktuell = Date.UTC(
     aktuellerMontag.getFullYear(),
     aktuellerMontag.getMonth(),
