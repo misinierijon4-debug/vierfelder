@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AREAS, other, user as userDef } from './lib/types'
-import type { AppTab, AreaId, UserId } from './lib/types'
+import type { AppTab, AreaId, FeldId, UserId } from './lib/types'
 import type { Backend } from './lib/backend'
 import { bauKurz, fromKey, istBilanzzeit, standZeit, toKey, weekDays } from './lib/dates'
 import { istSelbeWoche, wochenZeitraum } from './lib/kalender'
@@ -291,18 +291,51 @@ function Tracker({
     return () => window.clearTimeout(timer)
   }, [ereignis])
 
-  const zurueck = (area: AreaId) => {
-    rueckgaengig(area, heuteKey)
-    setUndoFuer(null)
-  }
+  /**
+   * je bereich feste handler. die zeilen und tabs darunter rendern nur neu,
+   * wenn sich ihre eigenen werte aendern (`memo`) — ein frischer handler bei
+   * jedem render risse sie trotzdem alle mit, auch bei einem tap nebenan.
+   */
+  const zeilenHandler = useMemo(() => {
+    const handler = {} as Record<AreaId, {
+      onTap: () => void
+      onUndo: () => void
+      onNeueEinheit: () => void
+      onWert: (delta: number) => void
+    }>
+    for (const area of AREAS) {
+      handler[area.id] = {
+        onTap: () => toggle(area.id, heuteKey),
+        onUndo: () => {
+          rueckgaengig(area.id, heuteKey)
+          setUndoFuer(null)
+        },
+        onNeueEinheit: () => einheitHinzu(area.id, heuteKey),
+        onWert: (delta) => wertAendern(area.id, heuteKey, delta),
+      }
+    }
+    return handler
+  }, [einheitHinzu, heuteKey, rueckgaengig, toggle, wertAendern])
+
+  const oeffneTagesdetail = useCallback((user: UserId, area: FeldId, tag: string) => {
+    setDetail({ user, area, tag })
+  }, [])
+  const setzeGewichtHeute = useCallback((kg: number) => setzeGewicht(heuteKey, kg), [heuteKey, setzeGewicht])
+  const letztesGewichtIch = useMemo(() => letztesGewicht(zustand.gewichte, me), [zustand.gewichte, me])
+  const setzeWetteDieserWoche = useCallback(
+    (text: string) => setzeWette(woche[0] ?? heuteKey, text),
+    [heuteKey, setzeWette, woche]
+  )
+  const zumTracker = useCallback(() => wechsleTabMitFokus('tracker'), [wechsleTabMitFokus])
+  const schliesseKalender = useCallback(() => setKalenderOffen(false), [])
 
   /** die sonntagsabrechnung dieser woche aus den tracker-daten bauen und archivieren */
-  const schliesseWocheAb = () => {
+  const schliesseWocheAb = useCallback(() => {
     if (!bereit || !istBilanzzeit(heute) || abrechnungDerWoche) return
     const wocheKey = woche[0] ?? heuteKey
     const abr = abrechnungFuerWoche(zustand, woche, wetten[wocheKey] ?? null)
     abrechnungHinzu(abr)
-  }
+  }, [abrechnungDerWoche, abrechnungHinzu, bereit, heute, heuteKey, wetten, woche, zustand])
 
   const loescheEinheitById = (id: string) => {
     const e = Object.values(zustand.einheiten)
@@ -319,13 +352,13 @@ function Tracker({
     : `woche ${wochenZeitraum(sichtbareWoche)}`
 
   /** ein tag aus dem kalender führt zu seiner woche und scrollt sie ins bild */
-  const waehleTag = (tag: string) => {
+  const waehleTag = useCallback((tag: string) => {
     setBlick(tag === heuteKey ? null : tag)
     setKalenderOffen(false)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => rasterRef.current?.scrollIntoView({ block: 'start' }))
     })
-  }
+  }, [heuteKey])
 
   if (!bereit) {
     return (
@@ -463,15 +496,14 @@ function Tracker({
           inert={!bereit}
           aria-busy={!bereit}
         >
-          <AnimatePresence mode="wait">
-          {aktiverTab === 'tracker' ? (
-            <motion.div
-              key="tab-tracker"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18 }}
-            >
+          {/* alle vier tabs bleiben im baum. ein verborgener tab ist schon
+              fertig gerendert, wenn man zu ihm wechselt, und behaelt seinen
+              zustand; react rechnet ihn mit niedrigster prioritaet nach, er
+              haelt also keinen tap im sichtbaren tab auf. vorher wartete jeder
+              wechsel erst das ausblenden des alten tabs ab und baute den neuen
+              danach von null auf. */}
+          <Activity mode={aktiverTab === 'tracker' ? 'visible' : 'hidden'}>
+            <div className="tab-eingang">
               <RivalitaetsTicker zustand={zustand} woche={woche} me={me} kompakt={true} druck={match.druck} />
 
               <section
@@ -482,6 +514,7 @@ function Tracker({
                   // die schritte gelten der neuesten einheit, die zahl zwischen
                   // ihnen dem ganzen tag
                   const letzte = letzteEinheit(zustand, me, area.id, heuteKey)
+                  const handler = zeilenHandler[area.id]
                   return (
                     <Bereichszeile
                       key={area.id}
@@ -506,10 +539,10 @@ function Tracker({
                       farbeEr={er.farbe}
                       zeigeUndo={undoFuer === area.id}
                       disabled={!bereit}
-                      onTap={() => toggle(area.id, heuteKey)}
-                      onUndo={() => zurueck(area.id)}
-                      onNeueEinheit={() => einheitHinzu(area.id, heuteKey)}
-                      onWert={(delta) => wertAendern(area.id, heuteKey, delta)}
+                      onTap={handler.onTap}
+                      onUndo={handler.onUndo}
+                      onNeueEinheit={handler.onNeueEinheit}
+                      onWert={handler.onWert}
                     />
                   )
                 })}
@@ -546,7 +579,7 @@ function Tracker({
                   ereignis={ereignis}
                   titel={rasterTitel}
                   gewaehlterTag={gewaehlterTag}
-                  onZelle={(user, area, tag) => setDetail({ user, area, tag })}
+                  onZelle={oeffneTagesdetail}
                 />
               </div>
 
@@ -554,26 +587,22 @@ function Tracker({
                   zusammen mit seinem verlauf unter dem wochenraster */}
               <Gewichtszeile
                 kg={gewichtAn(zustand.gewichte, me, heuteKey)}
-                letzte={letztesGewicht(zustand.gewichte, me)}
+                letzte={letztesGewichtIch}
                 kgEr={gewichtAn(zustand.gewichte, er.id, heuteKey)}
                 nameEr={er.name}
                 farbe={ich.farbe}
                 farbeEr={er.farbe}
                 streak={streak(zustand, me, 'gewicht', heute)}
                 quelle={quelle(zustand, me, 'gewicht', heuteKey)}
-                onSetze={(kg) => setzeGewicht(heuteKey, kg)}
+                onSetze={setzeGewichtHeute}
               />
 
               <Gewichtsdiagramm gewichte={zustand.gewichte} heute={heuteKey} />
-            </motion.div>
-          ) : aktiverTab === 'duell' ? (
-            <motion.div
-              key="tab-duell"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18 }}
-            >
+            </div>
+          </Activity>
+
+          <Activity mode={aktiverTab === 'duell' ? 'visible' : 'hidden'}>
+            <div className="tab-eingang">
               <DuellTab
                 zustand={zustand}
                 woche={woche}
@@ -581,22 +610,18 @@ function Tracker({
                 heute={heute}
                 match={match}
                 wette={wetten[woche[0] ?? heuteKey] ?? ''}
-                onWette={(text) => setzeWette(woche[0] ?? heuteKey, text)}
-                onZumTracker={() => wechsleTabMitFokus('tracker')}
+                onWette={setzeWetteDieserWoche}
+                onZumTracker={zumTracker}
                 abrechnung={abrechnungDerWoche}
                 abrechnungen={abrechnungen}
                 abschlussStatus={abrechnungDerWocheStatus}
                 onAbschluss={bereit ? schliesseWocheAb : undefined}
               />
-            </motion.div>
-          ) : aktiverTab === 'schlaf' ? (
-            <motion.div
-              key="tab-schlaf"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18 }}
-            >
+            </div>
+          </Activity>
+
+          <Activity mode={aktiverTab === 'schlaf' ? 'visible' : 'hidden'}>
+            <div className="tab-eingang">
               <SchlafTab
                 naechte={schlaf}
                 woche={woche}
@@ -609,15 +634,11 @@ function Tracker({
                 onVerlaufErneut={phasenNeuLaden}
                 onBerichtOeffnen={oeffneBericht}
               />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="tab-noten"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18 }}
-            >
+            </div>
+          </Activity>
+
+          <Activity mode={aktiverTab === 'noten' ? 'visible' : 'hidden'}>
+            <div className="tab-eingang">
               <NotenTab
                 stand={notenstand}
                 me={me}
@@ -627,9 +648,8 @@ function Tracker({
                 onNoteLoeschen={noteLoeschen}
                 onNoteWiederherstellen={noteWiederherstellen}
               />
-            </motion.div>
-          )}
-          </AnimatePresence>
+            </div>
+          </Activity>
 
           {bereit && <Benachrichtigungen />}
         </div>
@@ -646,7 +666,7 @@ function Tracker({
         wochenMarken={marken}
         onTagWaehlen={waehleTag}
         onBerichtOeffnen={oeffneBericht}
-        onSchliessen={() => setKalenderOffen(false)}
+        onSchliessen={schliesseKalender}
       />
 
       {/* der bericht legt sich ueber den kalender, statt ihn zu ersetzen:

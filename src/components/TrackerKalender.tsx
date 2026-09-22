@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { X } from '@phosphor-icons/react'
 import { FELDER, user as userDef } from '../lib/types'
 import type { UserId, Zustand } from '../lib/types'
@@ -38,7 +38,7 @@ type Props = {
  * wie viele der fünf felder an dem tag standen — die woche bleibt die schnelle
  * navigation, der kalender ist nur der weg zurück.
  */
-export function TrackerKalender({
+export const TrackerKalender = memo(function TrackerKalender({
   offen,
   zustand,
   me,
@@ -237,4 +237,4 @@ export function TrackerKalender({
       )}
     </dialog>
   )
-}
+})

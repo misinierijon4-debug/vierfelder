@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { CaretRight, PencilSimple, ShieldCheck, Trophy } from '@phosphor-icons/react'
 import { user as userDef, other } from '../../lib/types'
 import type { Abrechnung, UserId, Zustand } from '../../lib/types'
@@ -27,7 +27,7 @@ type Props = {
   onAbschluss?: () => void
 }
 
-export function DuellTab({
+export const DuellTab = memo(function DuellTab({
   zustand,
   woche,
   me,
@@ -400,7 +400,7 @@ export function DuellTab({
       </section>
     </div>
   )
-}
+})
 
 function BilanzZahl({ label, wert, farbe }: { label: string; wert: number; farbe: string }) {
   return (

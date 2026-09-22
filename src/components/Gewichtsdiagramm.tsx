@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { DIAGRAMM, EASE } from '../lib/motion'
 import { daysBetween, fromKey, langesDatum } from '../lib/dates'
@@ -35,7 +35,7 @@ type Props = {
   heute: string
 }
 
-export function Gewichtsdiagramm({ gewichte, heute }: Props) {
+export const Gewichtsdiagramm = memo(function Gewichtsdiagramm({ gewichte, heute }: Props) {
   const reduced = useReducedMotion()
   const [gewaehlt, setGewaehlt] = useState<Gewichtsfenster>(30)
   /**
@@ -259,7 +259,7 @@ export function Gewichtsdiagramm({ gewichte, heute }: Props) {
       </div>
     </motion.section>
   )
-}
+})
 
 function farbe(r: Gewichtsreihe): string {
   return USERS.find((u) => u.id === r.user)!.farbe

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus } from '@phosphor-icons/react'
@@ -88,7 +89,7 @@ type Props = {
  * feste zeilenhöhe. die zweite zeile ist immer da und wechselt nur ihren inhalt,
  * damit beim eintragen nichts unter dem daumen wegrutscht.
  */
-export function Bereichszeile({
+export const Bereichszeile = memo(function Bereichszeile({
   area,
   index,
   gesetzt,
@@ -440,7 +441,7 @@ export function Bereichszeile({
       </div>
     </motion.div>
   )
-}
+})
 
 /** wechselt den inhalt eines slots fester höhe, ohne das layout anzufassen */
 function Wechsel({ schluessel, children }: { schluessel: string; children: ReactNode }) {

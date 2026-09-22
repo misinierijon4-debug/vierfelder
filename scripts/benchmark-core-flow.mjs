@@ -316,15 +316,20 @@ async function run() {
         await record(name, () => element.click());
       };
 
+      // Die Tabs bleiben verborgen im Baum (Activity in App.tsx). Ein Ziel
+      // gilt deshalb erst als da, wenn es auch sichtbar ist.
       const waitForTarget = async (name, find, timeout = 3000) => {
         const start = performance.now();
         while (performance.now() - start < timeout) {
           const element = find();
-          if (element instanceof HTMLElement) return element;
+          if (element instanceof HTMLElement && element.checkVisibility()) return element;
           await sleep(20);
         }
         throw new Error('Benchmark-Ziel fehlt: ' + name);
       };
+
+      const sichtbar = (selector) => Array.from(document.querySelectorAll(selector))
+        .find((element) => element.checkVisibility());
 
       const clickAndWait = async (name, element, find) => {
         if (!(element instanceof HTMLElement)) {
@@ -350,21 +355,23 @@ async function run() {
       await click('cal_open', document.querySelector('button[aria-label="kalender öffnen"]'));
       await sleep(50);
       const calDay = Array.from(document.querySelectorAll('dialog button[aria-label*=","]'))
-        .find((element) => !element.disabled && element.getAttribute('aria-label') !== 'Kalender schließen');
+        .find((element) => element.checkVisibility()
+          && !element.disabled
+          && element.getAttribute('aria-label') !== 'Kalender schließen');
       await click('cal_select_day', calDay);
 
       // Action 3: Switch to Duell tab
       await clickAndWait(
         'tab_duell',
         findTab('duell'),
-        () => document.querySelector('section[aria-labelledby="fronten-titel"]')
+        () => sichtbar('section[aria-labelledby="fronten-titel"]')
       );
 
       // Action 4: Switch to Schlaf tab and click night bar
       const nacht = await clickAndWait(
         'tab_schlaf',
         findTab('schlaf'),
-        () => document.querySelector('button[aria-label*="Schlafdaten anzeigen"]')
+        () => sichtbar('button[aria-label*="Schlafdaten anzeigen"]')
       );
       await click('schlaf_select_night', nacht);
 
@@ -372,13 +379,13 @@ async function run() {
       const fach = await clickAndWait(
         'tab_noten',
         findTab('noten'),
-        () => document.querySelector('section[aria-labelledby="faecher-titel"] button')
+        () => sichtbar('section[aria-labelledby="faecher-titel"] button')
       );
       await click('noten_open_subject', fach);
       await sleep(60);
       const schliessen = await waitForTarget(
         'noten_close_subject',
-        () => document.querySelector('button[aria-label="fach schließen"]')
+        () => sichtbar('button[aria-label="fach schließen"]')
       );
       await click('noten_close_subject', schliessen);
 
@@ -386,7 +393,7 @@ async function run() {
       await clickAndWait(
         'tab_tracker_return',
         findTab('tracker'),
-        () => document.querySelector('button[aria-label^="lernen, heute"]')
+        () => sichtbar('button[aria-label^="lernen, heute"]')
       );
 
       window.__bench.rafActive = false;

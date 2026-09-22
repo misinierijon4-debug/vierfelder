@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Trophy } from '@phosphor-icons/react'
 import { other, user as userDef } from '../lib/types'
@@ -22,7 +23,7 @@ type Props = {
   onEni: () => void
 }
 
-export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Props) {
+export const Kopf = memo(function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Props) {
   const reduced = useReducedMotion()
   const kw = isoWeek(heute)
   const ich = userDef(me)
@@ -168,7 +169,7 @@ export function Kopf({ heute, woche, zustand, me, match, bilanzzeit, onEni }: Pr
       </AnimatePresence>
     </header>
   )
-}
+})
 
 function Bilanz({
   woche,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import type { Schlafnacht, UserId } from '../../lib/types'
 import { abendDatum, registrierteSchlafNutzer } from '../../lib/schlafPhasen'
@@ -27,7 +27,7 @@ type Props = {
   onBerichtOeffnen: (woche: string) => void
 }
 
-export function SchlafTab({
+export const SchlafTab = memo(function SchlafTab({
   naechte,
   woche,
   heuteKey,
@@ -180,4 +180,4 @@ export function SchlafTab({
       />
     </motion.div>
   )
-}
+})
