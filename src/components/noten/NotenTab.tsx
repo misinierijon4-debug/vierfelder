@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { AnimatePresence } from 'motion/react'
 import type { Note, Notenart, Notenstand, UserId } from '../../lib/types'
 import { NotenKopf } from './NotenKopf'
@@ -16,7 +16,7 @@ type Props = {
   onNoteWiederherstellen: (note: Note) => boolean
 }
 
-export function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoeschen, onNoteWiederherstellen }: Props) {
+export const NotenTab = memo(function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoeschen, onNoteWiederherstellen }: Props) {
   const [offen, setOffen] = useState<string | null>(null)
   const faecher = stand.faecher.filter((fach) => fach.user === me).sort((a, b) => a.sortierung - b.sortierung || a.name.localeCompare(b.name, 'de'))
   const detail = offen ? stand.faecher.find((fach) => fach.id === offen) ?? null : null
@@ -31,4 +31,4 @@ export function NotenTab({ stand, me, heute, onPruefungsfach, onNote, onNoteLoes
       <AnimatePresence>{detail && <Fachdetail key={detail.id} fach={detail} noten={stand.noten} heute={heute} onSchliessen={() => setOffen(null)} onPruefungsfach={onPruefungsfach} onNote={(punkte, art, titel, datum) => onNote(detail.id, punkte, art, datum, titel)} onNoteLoeschen={onNoteLoeschen} onNoteWiederherstellen={onNoteWiederherstellen} />}</AnimatePresence>
     </div>
   )
-}
+})

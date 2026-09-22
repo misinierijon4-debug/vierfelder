@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FELDER, USERS, area as areaDef, gewichtKey } from '../lib/types'
 import type { Ereignis, FeldId, TagesQuelle, UserId, Zustand } from '../lib/types'
@@ -32,7 +33,7 @@ type Props = {
   onZelle: (user: UserId, area: FeldId, tag: string) => void
 }
 
-export function Raster({
+export const Raster = memo(function Raster({
   zustand,
   woche,
   heute,
@@ -110,7 +111,7 @@ export function Raster({
       </div>
     </motion.section>
   )
-}
+})
 
 function Bereichsblock({
   area,

@@ -1,4 +1,5 @@
 import { motion } from 'motion/react'
+import { memo } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { AppTab } from '../lib/types'
 import { STEMPEL } from '../lib/motion'
@@ -21,7 +22,12 @@ export function hauptbereichTabId(tab: AppTab) {
   return `hauptbereich-tab-${tab}`
 }
 
-export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
+/**
+ * `memo`, weil der indikator per `layoutId` gleitet: motion misst ihn bei jedem
+ * render neu aus, und das erzwingt ein layout der ganzen seite. die leiste
+ * aendert sich aber nur beim tabwechsel, nicht bei jedem tap darunter.
+ */
+export const TabLeiste = memo(function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
   const wechslePerTastatur = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let ziel: number | null = null
     if (event.key === 'ArrowRight') ziel = (index + 1) % TABS.length
@@ -75,4 +81,4 @@ export function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
       })}
     </nav>
   )
-}
+})

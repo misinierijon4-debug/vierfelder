@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { ShieldCheck } from '@phosphor-icons/react'
 import { user as userDef } from '../../lib/types'
 import type { UserId, Zustand } from '../../lib/types'
@@ -31,7 +31,7 @@ const BADGE_STIL =
 /** im kompaktmodus fällt nur auf, was die lage wirklich dreht */
 const KOMPAKT_AKZENT: readonly RivalitaetsBadge[] = ['konter', 'aufholjagd']
 
-export function RivalitaetsTicker({
+export const RivalitaetsTicker = memo(function RivalitaetsTicker({
   zustand,
   woche,
   me,
@@ -44,7 +44,10 @@ export function RivalitaetsTicker({
     const timer = window.setInterval(() => setJetzt(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
-  const eintraege = duellTickerEintraege(zustand, woche, jetzt, limit)
+  const eintraege = useMemo(
+    () => duellTickerEintraege(zustand, woche, jetzt, limit),
+    [zustand, woche, jetzt, limit]
+  )
 
   const [badges, setBadges] = useState<Record<string, RivalitaetsBadge>>({})
   const ids = eintraege.map((e) => e.id).join('|')
@@ -188,4 +191,4 @@ export function RivalitaetsTicker({
       })}
     </div>
   )
-}
+})

@@ -72,14 +72,19 @@ export function istSelbeWoche(a: string[], b: string[]): boolean {
   return a.length === 7 && b.length === 7 && a[0] === b[0]
 }
 
+/**
+ * einmal angelegt: ein formatierer ist teuer, und der kalender fragt je
+ * sichtbarer woche einmal
+ */
+const MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long' })
+
 export function wochenZeitraum(woche: string[]): string {
   const von = fromKey(woche[0]!)
   const bis = fromKey(woche[6]!)
   const gleicherMonat = von.getMonth() === bis.getMonth() && von.getFullYear() === bis.getFullYear()
-  const monat = new Intl.DateTimeFormat('de-DE', { month: 'long' })
 
-  if (gleicherMonat) return `${von.getDate()}.–${bis.getDate()}. ${monat.format(von).toLowerCase()}`
-  return `${von.getDate()}. ${monat.format(von).toLowerCase()} – ${bis.getDate()}. ${monat.format(bis).toLowerCase()}`
+  if (gleicherMonat) return `${von.getDate()}.–${bis.getDate()}. ${MONAT.format(von).toLowerCase()}`
+  return `${von.getDate()}. ${MONAT.format(von).toLowerCase()} – ${bis.getDate()}. ${MONAT.format(bis).toLowerCase()}`
 }
 
 /**

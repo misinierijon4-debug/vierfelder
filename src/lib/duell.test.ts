@@ -381,6 +381,28 @@ describe('duell.ts logik & berechnungen', () => {
     expect(hist.aktuelleSerie).toEqual({ halter: 'ich', anzahl: 1 })
   })
 
+  it('misst die Historienreichweite am aeltesten gueltigen Tag', () => {
+    const z = leererZustand()
+    // ungueltige Schluessel sortieren als Text vor jedem echten Tag
+    z.gewichte['erijon|2026-02-30'] = 80
+    z.gewichte['kaputt'] = 80
+    z.einheiten[tickKey('erijon', 'gym', '2026-08-13')] = [
+      { id: 'e1', user: 'erijon', area: 'gym', tag: '2026-08-13', erfasst: null, wert: 30 },
+    ]
+    // nach dem laufenden Montag: zaehlt nicht
+    z.einheiten[tickKey('erijon', 'gym', '2026-09-07')] = [
+      { id: 'e2', user: 'erijon', area: 'gym', tag: '2026-09-07', erfasst: null, wert: 30 },
+    ]
+    z.aufenthalte.push({
+      user: 'koray', bereich: 'lesen', ort: 'fokus',
+      ankunft: '2026-08-12T08:00:00Z', abgang: '2026-08-12T09:00:00Z',
+    })
+
+    // aeltester Tag 2026-08-12, sein Montag 2026-08-10: zwei Wochen vor dem 24.
+    expect(historieWochen(z, montag)).toBe(2)
+    expect(historieWochen(z, montag, [archiv('2026-08-03')])).toBe(3)
+  })
+
   it('berechnet die Historienreichweite auch ueber die Zeitumstellung korrekt', () => {
     const z = leererZustand()
     z.gewichte['erijon|2026-10-19'] = 82

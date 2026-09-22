@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { memo, useId, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Minus, Plus } from '@phosphor-icons/react'
@@ -33,7 +33,7 @@ type Props = {
  * folgt der zahl. ob die zahl aus der waage kam oder aus dem daumen, zeigt die
  * marke — voll oder blass, wie in den vier bereichen.
  */
-export function Gewichtszeile({
+export const Gewichtszeile = memo(function Gewichtszeile({
   kg,
   letzte,
   kgEr,
@@ -218,7 +218,7 @@ export function Gewichtszeile({
       </div>
     </section>
   )
-}
+})
 
 /** wechselt den inhalt eines slots fester höhe, ohne das layout anzufassen */
 function Wechsel({ schluessel, children }: { schluessel: string; children: ReactNode }) {

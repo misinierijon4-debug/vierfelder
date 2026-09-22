@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { BellRinging, BellSlash } from '@phosphor-icons/react'
 import {
@@ -33,7 +33,7 @@ const AktivitaetsErinnerungen = lazy(() =>
  * sechs Erinnerungen (Gewicht, Lernen, Lesen, Wochenendspurt, Partnerfortschritt
  * und Wochenrückblick) im selben Rhythmus.
  */
-export function Benachrichtigungen() {
+export const Benachrichtigungen = memo(function Benachrichtigungen() {
   const [zustand, setZustand] = useState<PushZustand | null>(null)
   const [laeuft, setLaeuft] = useState(false)
   const [meldung, setMeldung] = useState<string | null>(null)
@@ -190,7 +190,7 @@ export function Benachrichtigungen() {
       </AnimatePresence>
     </section>
   )
-}
+})
 
 type InhaltProps = {
   zustand: PushZustand

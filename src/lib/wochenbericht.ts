@@ -1,7 +1,8 @@
-import { addDays, fromKey, toKey, weekDays } from './dates'
+import { addDays, fromKey, startOfWeek, toKey, weekDays } from './dates'
 import { AREAS, FELDER, USERS, area, gewichtKey } from './types'
 import type { FeldId, Gewichte, Schlafnacht, UserId, Zustand } from './types'
 import { istGesetzt, tageseinheiten } from './tracker'
+import { tagVon } from './training'
 import { abendDatum } from './schlafPhasen'
 
 /**
@@ -241,7 +242,7 @@ export function istWochenmontag(woche: string): boolean {
 
 /** der montag der woche, in der dieser tag liegt */
 export function wochenMontag(tag: string): string {
-  return weekDays(fromKey(tag))[0]!
+  return toKey(startOfWeek(fromKey(tag)))
 }
 
 /**
@@ -325,16 +326,21 @@ export function berichtsWochen(
   heuteKey: string
 ): Set<string> {
   const wochen = new Set<string>()
+  // viele eintraege teilen sich einen tag. der montag wird je tag einmal
+  // gerechnet, nicht je einheit, messung, gewicht und nacht aufs neue
+  const gesehen = new Set<string>()
 
   const merke = (tag: string) => {
-    if (tag <= heuteKey) wochen.add(wochenMontag(tag))
+    if (tag > heuteKey || gesehen.has(tag)) return
+    gesehen.add(tag)
+    wochen.add(wochenMontag(tag))
   }
 
   for (const [key, liste] of Object.entries(z.einheiten)) {
     if (liste.length > 0) merke(key.slice(key.lastIndexOf('|') + 1))
   }
   for (const key of Object.keys(z.gewichte)) merke(key.slice(key.indexOf('|') + 1))
-  for (const a of z.aufenthalte) merke(toKey(new Date(a.ankunft)))
+  for (const a of z.aufenthalte) merke(tagVon(a))
   for (const n of naechte) if (n.schlafMinuten > 0) merke(abendDatum(n.einschlafzeit))
 
   return wochen

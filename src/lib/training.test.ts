@@ -6,8 +6,10 @@ import {
   gemesseneMinuten,
   messung,
   messungen,
+  gemessen,
   offeneMessungen,
   sitzungen,
+  tageMitSitzung,
   tagVon,
   zaehlt,
 } from './training'
@@ -22,12 +24,14 @@ import {
   quelle,
   setzeTick,
   messungsMinuten,
+  mitAufenthalt,
   tagesWert,
   tageseinheiten,
+  tageMitDaten,
   wocheBereich,
 } from './tracker'
 import { weekDays } from './dates'
-import type { AreaId, Aufenthalt, Zustand } from './types'
+import type { AreaId, Aufenthalt, UserId, Zustand } from './types'
 
 const MITTWOCH = new Date(2026, 7, 26, 12)
 const leer: Zustand = { einheiten: {}, gewichte: {}, aufenthalte: [] }
@@ -457,5 +461,132 @@ describe('lesen: gemessen in minuten, gezählt in seiten', () => {
     )
     expect(tagesWert(z, 'erijon', 'gym', '2026-08-26')).toBe(104)
     expect(messungsMinuten(z, 'erijon', 'gym', '2026-08-26')).toBe(74)
+  })
+})
+
+/**
+ * die rechnung ohne index, wie sie bis september stand: je frage einmal durch
+ * alle aufenthalte. sie ist hier das mass, an dem sich der index messen muss.
+ */
+function sitzungenOhneIndex(alle: Aufenthalt[], u: UserId, f: AreaId, tag: string): Aufenthalt[] {
+  const sortiert = alle
+    .filter((a) => a.user === u && a.bereich === f && dauerMinuten(a) !== null && tagVon(a) === tag)
+    .sort((x, y) => (x.ankunft < y.ankunft ? -1 : x.ankunft > y.ankunft ? 1 : 0))
+  const behalten: Aufenthalt[] = []
+  for (const a of sortiert) {
+    const letzte = behalten[behalten.length - 1]
+    if (letzte && new Date(a.ankunft).getTime() < new Date(letzte.abgang!).getTime()) {
+      if (dauerMinuten(a)! > dauerMinuten(letzte)!) behalten[behalten.length - 1] = a
+      continue
+    }
+    behalten.push(a)
+  }
+  return behalten
+}
+
+describe('sitzungsindex', () => {
+  const TAGE = ['2026-08-25', '2026-08-26', '2026-08-27']
+  const USERS: UserId[] = ['erijon', 'koray']
+  const BEREICHE: AreaId[] = ['lernen', 'gym', 'boxen', 'lesen']
+
+  /** viele sitzungen mit allem, was schiefgehen kann: offen, verdreht, doppelt, über mitternacht */
+  function bestand(): Aufenthalt[] {
+    let saat = 7
+    const zufall = () => {
+      saat = (saat * 1103515245 + 12345) % 2147483648
+      return saat / 2147483648
+    }
+    const alle: Aufenthalt[] = []
+    for (let i = 0; i < 400; i++) {
+      const tag = TAGE[Math.floor(zufall() * TAGE.length)]!
+      const stunde = Math.floor(zufall() * 24)
+      const minute = Math.floor(zufall() * 4) * 15
+      const art = zufall()
+      const dauer = art < 0.1 ? null : art < 0.15 ? -20 : Math.floor(zufall() * 120)
+      alle.push({
+        id: `s${i}`,
+        user: USERS[Math.floor(zufall() * USERS.length)]!,
+        bereich: BEREICHE[Math.floor(zufall() * BEREICHE.length)]!,
+        ort: `ort ${i}`,
+        ankunft: zeit(tag, stunde, minute),
+        abgang: dauer === null ? null : zeit(tag, stunde, minute + dauer),
+      })
+    }
+    return alle
+  }
+
+  it('findet dieselben sitzungen, messungen und dieselbe messung wie die suche durch alle', () => {
+    const alle = bestand()
+    for (const u of USERS) {
+      for (const f of BEREICHE) {
+        for (const tag of ['2026-08-24', ...TAGE, '2026-08-28']) {
+          const erwartet = sitzungenOhneIndex(alle, u, f, tag)
+          const gefunden = sitzungen(alle, u, f, tag)
+          expect(gefunden).toHaveLength(erwartet.length)
+          gefunden.forEach((a, i) => expect(a).toBe(erwartet[i]))
+
+          const zaehlende = erwartet.filter(zaehlt)
+          const gezaehlt = messungen(alle, u, f, tag)
+          expect(gezaehlt).toHaveLength(zaehlende.length)
+          gezaehlt.forEach((a, i) => expect(a).toBe(zaehlende[i]))
+
+          const laengste = zaehlende.reduce<Aufenthalt | null>(
+            (beste, a) => (beste === null || dauerMinuten(a)! > dauerMinuten(beste)! ? a : beste),
+            null
+          )
+          expect(messung(alle, u, f, tag)).toBe(laengste)
+        }
+      }
+    }
+  })
+
+  it('liest eine liste neu, die an ort und stelle gewachsen ist', () => {
+    const liste = [besuch('2026-08-26', [7, 0], 60)]
+    expect(messungen(liste, 'erijon', 'gym', '2026-08-26')).toHaveLength(1)
+
+    liste.push(besuch('2026-08-26', [18, 0], 45))
+    expect(messungen(liste, 'erijon', 'gym', '2026-08-26')).toHaveLength(2)
+  })
+
+  it('rechnet eine neue liste neu und laesst der alten ihren stand', () => {
+    const alt = [besuch('2026-08-26', [7, 0], 60, { id: 'a' })]
+    // die automation kürzt die sitzung nachträglich unter die schwelle
+    const neu = mitAufenthalt(alt, { ...alt[0]!, abgang: zeit('2026-08-26', 7, 10) })
+
+    expect(gemessen(alt, 'erijon', 'gym', '2026-08-26')).toBe(true)
+    expect(gemessen(neu, 'erijon', 'gym', '2026-08-26')).toBe(false)
+    expect(gemessen(alt, 'erijon', 'gym', '2026-08-26')).toBe(true)
+  })
+
+  it('merkt sich den tag einer sitzung nur, solange ihre ankunft gleich bleibt', () => {
+    const a = besuch('2026-08-26', [23, 40], 50)
+    expect(tagVon(a)).toBe('2026-08-26')
+    a.ankunft = zeit('2026-08-27', 0, 10)
+    expect(tagVon(a)).toBe('2026-08-27')
+  })
+
+  it('gibt kopien heraus, damit kein aufrufer den index veraendert', () => {
+    const liste = [besuch('2026-08-26', [7, 0], 60)]
+    sitzungen(liste, 'erijon', 'gym', '2026-08-26').pop()
+    messungen(liste, 'erijon', 'gym', '2026-08-26').pop()
+
+    expect(sitzungen(liste, 'erijon', 'gym', '2026-08-26')).toHaveLength(1)
+    expect(messungen(liste, 'erijon', 'gym', '2026-08-26')).toHaveLength(1)
+  })
+
+  it('kennt je person die tage mit abgeschlossener sitzung, auch unter der schwelle', () => {
+    const liste = [
+      besuch('2026-08-25', [7, 0], 60),
+      besuch('2026-08-25', [18, 0], 60, { bereich: 'boxen' }),
+      // zu kurz für einen punkt, aber eine abgeschlossene sitzung
+      fokus('2026-08-26', 'lernen', [9, 0], 5),
+      // läuft noch: kein tag mit daten
+      besuch('2026-08-27', [7, 0], null),
+      besuch('2026-08-27', [8, 0], 60, { user: 'koray' }),
+    ]
+
+    expect(tageMitSitzung(liste, 'erijon').sort()).toEqual(['2026-08-25', '2026-08-25', '2026-08-26'])
+    expect(tageMitDaten(mit(...liste), 'erijon')).toEqual(['2026-08-25', '2026-08-26'])
+    expect(tageMitDaten(mit(...liste), 'koray')).toEqual(['2026-08-27'])
   })
 })

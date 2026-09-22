@@ -3,8 +3,15 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AppStartzustand, Fusszeile } from './App'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { App, AppStartzustand, Fusszeile } from './App'
+
+// der prototyp traegt die tabs; eine lokale .env mit supabase-schluesseln darf
+// daran nichts aendern
+vi.mock('./lib/supabase', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./lib/supabase')>()),
+  hatSupabase: false,
+}))
 
 afterEach(() => {
   cleanup()
@@ -85,5 +92,76 @@ describe('Fusszeile', () => {
 
     expect(screen.getByText(/prototyp · angemeldet als erijon/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /zu koray wechseln/i })).toBeInTheDocument()
+  })
+})
+
+describe('Tabs', () => {
+  beforeAll(() => {
+    // jsdom kennt weder Web Locks noch modale dialoge oder scrollIntoView
+    let kette = Promise.resolve<unknown>(undefined)
+    Object.defineProperty(window.navigator, 'locks', {
+      configurable: true,
+      value: {
+        request<T>(_name: string, _optionen: LockOptions, aktion: () => T | Promise<T>) {
+          const ergebnis = kette.then(aktion)
+          kette = ergebnis.then(() => undefined, () => undefined)
+          return ergebnis
+        },
+      },
+    })
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+      configurable: true,
+      value(this: HTMLDialogElement) {
+        this.open = true
+      },
+    })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+      configurable: true,
+      value(this: HTMLDialogElement) {
+        this.open = false
+      },
+    })
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
+  })
+
+  /**
+   * verborgen heisst hier: ein vorfahr steht auf `display: none`, so wie
+   * `<Activity>` einen tab versteckt. `toBeVisible` sieht auch auf die
+   * deckkraft, und die gehoert den eingangsbewegungen, die jsdom nie
+   * zu ende spielt.
+   */
+  function ausgeblendet(element: HTMLElement): boolean {
+    for (let e: HTMLElement | null = element; e; e = e.parentElement) {
+      if (getComputedStyle(e).display === 'none') return true
+    }
+    return false
+  }
+
+  it('wechselt ohne neu aufzubauen und behaelt den stand eines verborgenen tabs', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const lernen = await screen.findByRole('button', { name: /^lernen, heute/ })
+    await user.click(screen.getByRole('tab', { name: 'duell' }))
+
+    expect(screen.getByRole('tab', { name: 'duell' })).toHaveAttribute('aria-selected', 'true')
+    expect(ausgeblendet(screen.getByRole('heading', { name: 'die 5 fronten' }))).toBe(false)
+    // der tracker ist nur verborgen, nicht abgebaut
+    expect(lernen).toBeInTheDocument()
+    expect(ausgeblendet(lernen)).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: /ändern/ }))
+    const einsatz = screen.getByRole('textbox', { name: 'Gemeinsamer Wetteinsatz dieser Woche' })
+    await user.clear(einsatz)
+    await user.type(einsatz, 'wer verliert, kocht')
+
+    await user.click(screen.getByRole('tab', { name: 'tracker' }))
+    expect(ausgeblendet(lernen)).toBe(false)
+    expect(ausgeblendet(einsatz)).toBe(true)
+
+    // zurueck im duell steht der angefangene einsatz noch da
+    await user.click(screen.getByRole('tab', { name: 'duell' }))
+    expect(ausgeblendet(einsatz)).toBe(false)
+    expect(einsatz).toHaveValue('wer verliert, kocht')
   })
 })
