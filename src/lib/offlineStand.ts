@@ -42,6 +42,8 @@ function istAnfangszustand(wert: unknown): wert is Anfangszustand {
   for (const feld of ['einheitVonVerfuegbar', 'altbestand']) {
     if (typeof wert[feld] !== 'boolean') return false
   }
+  // die ansagen kamen später dazu: ein älterer stand hat sie nicht
+  if (wert.ansagen !== undefined && !Array.isArray(wert.ansagen)) return false
   const noten = wert.noten
   return istEbenesObjekt(noten) && Array.isArray(noten.faecher) && Array.isArray(noten.noten)
 }

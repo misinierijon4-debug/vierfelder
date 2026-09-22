@@ -7,6 +7,10 @@ import type { DuellMatch } from '../../lib/duell'
 import { fromKey, isoWeek, istBilanzzeit } from '../../lib/dates'
 import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { RivalitaetsTicker } from './RivalitaetsTicker'
+import { AnsagenBereich } from './AnsagenBereich'
+import type { AnsageAntwort } from './AnsagenBereich'
+import { wochenAnsagePunkte, zaehltAusZustand } from '../../lib/ansagen'
+import type { Ansage, AnsageFeld } from '../../lib/ansagen'
 
 type Props = {
   zustand: Zustand
@@ -25,7 +29,13 @@ type Props = {
   abschlussStatus: 'idle' | 'speichern' | 'fehler' | 'gespeichert'
   /** schließt die woche ab. fehlt der callback, tut der knopf nichts */
   onAbschluss?: () => void
+  /** die ansagen beider personen. fehlen sie, kennt das backend noch keine — dann kein bereich */
+  ansagen?: Ansage[]
+  /** sagt an. fehlt er, bleiben die ansagen nur zum ansehen */
+  onSageAn?: (feld: AnsageFeld) => Promise<AnsageAntwort>
 }
+
+const KEINE_ANSAGEN: Ansage[] = []
 
 export const DuellTab = memo(function DuellTab({
   zustand,
@@ -40,6 +50,8 @@ export const DuellTab = memo(function DuellTab({
   abrechnungen,
   abschlussStatus,
   onAbschluss,
+  ansagen,
+  onSageAn,
 }: Props) {
   const ich = userDef(me)
   const er = other(me)
@@ -54,14 +66,18 @@ export const DuellTab = memo(function DuellTab({
       ? 'nachgeholt'
       : null
   const historie = useMemo(
-    () => saisonHistorie(
-      zustand,
-      heute,
-      historieWochen(zustand, heute, abrechnungen),
-      me,
-      abrechnungen
-    ),
-    [zustand, heute, me, abrechnungen]
+    () => {
+      const zaehlt = zaehltAusZustand(zustand)
+      return saisonHistorie(
+        zustand,
+        heute,
+        historieWochen(zustand, heute, abrechnungen),
+        me,
+        abrechnungen,
+        (montag) => wochenAnsagePunkte(zaehlt, ansagen ?? KEINE_ANSAGEN, montag, heute)
+      )
+    },
+    [zustand, heute, me, abrechnungen, ansagen]
   )
   const [wetteEdit, setWetteEdit] = useState(false)
   const [wetteTemp, setWetteTemp] = useState(wette)
@@ -163,6 +179,11 @@ export const DuellTab = memo(function DuellTab({
             offen: du {match.restprogramm.restMaxIch} · {er.name} {match.restprogramm.restMaxEr}
           </span>
         </div>
+        {(match.ansageIch !== 0 || match.ansageEr !== 0) && (
+          <p className="tnum mt-1 text-[11px] text-kreide-52">
+            davon ansagen: du {vorzeichen(match.ansageIch)} · {er.name} {vorzeichen(match.ansageEr)}
+          </p>
+        )}
         <p className="mt-2 text-[13px] leading-5 text-kreide-60">
           {match.restprogramm.uneinholbarIch ? (
             <strong style={{ color: ich.farbe }}>dein wochensieg ist rechnerisch sicher.</strong>
@@ -184,6 +205,10 @@ export const DuellTab = memo(function DuellTab({
           nächsten punkt holen
         </button>
       </section>
+
+      {ansagen && (
+        <AnsagenBereich zustand={zustand} me={me} heute={heute} ansagen={ansagen} onSageAn={onSageAn} />
+      )}
 
       <section aria-labelledby="beleg-titel" className="mt-5 border-t border-linie pt-3">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -401,6 +426,10 @@ export const DuellTab = memo(function DuellTab({
     </div>
   )
 })
+
+function vorzeichen(n: number): string {
+  return n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '±0'
+}
 
 function BilanzZahl({ label, wert, farbe }: { label: string; wert: number; farbe: string }) {
   return (

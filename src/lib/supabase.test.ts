@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Abrechnung, Einheit, Note, Phase } from './types'
+import { ansageFehlerAus } from './ansagen'
 import {
   REALTIME_KANAL_OPTIONEN,
   UnbestaetigteMutation,
+  ansageAusZeile,
   aktualisiereUndBestaetigeEinheit,
   entferneRealtimeKanal,
   finalisiereUndBestaetigeAbrechnung,
@@ -1180,5 +1182,52 @@ describe('kanonische Wochenabrechnung', () => {
   it('reicht einen Supabase-Abruffehler unveraendert weiter', () => {
     const fehler = { code: '42501' }
     expect(() => phasenAusAnsicht({ phasen: [] }, fehler)).toThrow(fehler)
+  })
+})
+
+describe('ansagen aus der datenbank', () => {
+  const personen: Record<string, 'erijon' | 'koray'> = { 'u-e': 'erijon', 'u-k': 'koray' }
+  const person = (id: string) => personen[id]
+  const zeile = {
+    id: 'a1', von: 'u-e', an: 'u-k', feld: 'boxen', ab: '2026-09-22', bis: '2026-09-26', ziel: 2,
+    erstellt_am: '2026-09-21T10:00:00+00:00', ergebnis: null, entschieden_am: null,
+  }
+
+  it('übersetzt uuids in personen und das ergebnis in `entschieden`', () => {
+    expect(ansageAusZeile(zeile, person)).toEqual({
+      id: 'a1', von: 'erijon', an: 'koray', feld: 'boxen', ab: '2026-09-22', bis: '2026-09-26', ziel: 2,
+      erstelltAm: '2026-09-21T10:00:00+00:00',
+    })
+    expect(ansageAusZeile({ ...zeile, ergebnis: 'verfehlt', entschieden_am: '2026-09-27T00:05:00+00:00' }, person)?.entschieden)
+      .toEqual({ ergebnis: 'verfehlt', am: '2026-09-27T00:05:00+00:00' })
+  })
+
+  it('verwirft zeilen mit fremden personen oder kaputten werten', () => {
+    expect(ansageAusZeile({ ...zeile, von: 'fremd' }, person)).toBeNull()
+    expect(ansageAusZeile({ ...zeile, feld: 'lernen' }, person)).toBeNull()
+    expect(ansageAusZeile({ ...zeile, ziel: 0 }, person)).toBeNull()
+    expect(ansageAusZeile({ ...zeile, an: 'u-e' }, person)).toBeNull()
+    expect(ansageAusZeile(null, person)).toBeNull()
+  })
+
+  it('bestätigt eine wochenabrechnung der version 2 mit ansage-punkten', async () => {
+    const v2 = {
+      woche: KANDIDAT.woche, sieger: 'koray', grund: 'punkte', differenz: -3, beleg_erijon: 0, beleg_koray: 1,
+      wette: null, abgeschlossen: '2026-09-06T16:05:00.000Z', berechnung_version: 2,
+      archiv_quelle: 'server_planmaessig', punkte_erijon: -1, punkte_koray: 2,
+    }
+    const db = abrechnungDb(v2).db as unknown as Parameters<typeof finalisiereUndBestaetigeAbrechnung>[0]
+    await expect(finalisiereUndBestaetigeAbrechnung(db, KANDIDAT.woche)).resolves.toMatchObject({
+      berechnungVersion: 2, punkteErijon: -1, punkteKoray: 2, differenz: -3,
+    })
+    // version 1 kennt keine negativen punkte
+    const v1 = abrechnungDb({ ...v2, berechnung_version: 1 }).db as unknown as typeof db
+    await expect(finalisiereUndBestaetigeAbrechnung(v1, KANDIDAT.woche)).rejects.toThrow('auditwerten')
+  })
+
+  it('meldet eine abgelehnte ansage mit dem grund der datenbank', () => {
+    expect(ansageFehlerAus({ code: 'P0001', message: 'ansage:keinZiel' })).toBe('keinZiel')
+    expect(ansageFehlerAus({ message: 'ansage:erfunden' })).toBeNull()
+    expect(ansageFehlerAus({ message: 'permission denied' })).toBeNull()
   })
 })

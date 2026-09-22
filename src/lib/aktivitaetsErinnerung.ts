@@ -7,10 +7,13 @@ export const AKTIVITAETS_ERINNERUNGEN = [
   { art: 'partner', label: 'partnerfortschritt', beschreibung: 'täglich · 09:00–21:00 · wenn dein Partner Punkte sammelt oder vorzieht' },
   { art: 'wochenrueckblick', label: 'wochenrückblick', beschreibung: 'sonntag · 20:00 · ENI fasst deine Woche zusammen' },
   { art: 'wochenbericht', label: 'wochenbericht', beschreibung: 'montag · sobald die letzte nacht drin ist · dein bericht ist fertig' },
+  { art: 'ansage', label: 'ansagen', beschreibung: 'sofort · 08:00–22:00 · wenn dir jemand eine ansage macht' },
 ] as const
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>
-const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv'
+const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv'
+/** stand vor den ansagen: ohne `ansage_aktiv` */
+const SPALTEN_OHNE_ANSAGE = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv'
 const ALTE_SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv'
 const STANDARD: AktivitaetsEinstellungen = {
   lernen_aktiv: true,
@@ -19,6 +22,7 @@ const STANDARD: AktivitaetsEinstellungen = {
   partner_aktiv: true,
   wochenrueckblick_aktiv: true,
   wochenbericht_aktiv: true,
+  ansage_aktiv: true,
 }
 
 const FEHLENDE_SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'])
@@ -38,6 +42,7 @@ function vervollstaendigeEinstellungen(roh: unknown): AktivitaetsEinstellungen {
     partner_aktiv: typeof daten.partner_aktiv === 'boolean' ? daten.partner_aktiv : STANDARD.partner_aktiv,
     wochenrueckblick_aktiv: typeof daten.wochenrueckblick_aktiv === 'boolean' ? daten.wochenrueckblick_aktiv : STANDARD.wochenrueckblick_aktiv,
     wochenbericht_aktiv: typeof daten.wochenbericht_aktiv === 'boolean' ? daten.wochenbericht_aktiv : STANDARD.wochenbericht_aktiv,
+    ansage_aktiv: typeof daten.ansage_aktiv === 'boolean' ? daten.ansage_aktiv : STANDARD.ansage_aktiv,
   }
 }
 
@@ -53,6 +58,11 @@ export async function ladeAktivitaetsErinnerungen(): Promise<AktivitaetsEinstell
   if (!istFehlendesSchema(aktuelle.error)) {
     throw new Error('erinnerungen konnten nicht geladen werden.')
   }
+  // Frontend vor der Ansagen-Migration: die uebrigen Schalter behalten ihren
+  // gespeicherten Stand, nur der neue steht auf seinem Standard.
+  const ohneAnsage = await supabase.from('erinnerungs_einstellungen').select(SPALTEN_OHNE_ANSAGE).maybeSingle()
+  if (!ohneAnsage.error) return vervollstaendigeEinstellungen(ohneAnsage.data)
+  if (!istFehlendesSchema(ohneAnsage.error)) throw new Error('erinnerungen konnten nicht geladen werden.')
   const alte = await supabase.from('erinnerungs_einstellungen').select(ALTE_SPALTEN).maybeSingle()
   if (alte.error && istFehlendesSchema(alte.error)) return null
   if (alte.error) throw new Error('erinnerungen konnten nicht geladen werden.')

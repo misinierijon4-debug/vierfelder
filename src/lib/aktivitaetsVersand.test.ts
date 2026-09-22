@@ -87,6 +87,30 @@ describe('aktivitaeten ohne doppelte oder veraltete Pushs', () => {
     await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-09-22T07:00:00Z') })
     expect(senden).not.toHaveBeenCalled()
   })
+  it('meldet eine ansage am selben tag zwischen 08 und 22 uhr', async () => {
+    const ansage = {
+      ...kandidat,
+      art: 'ansage' as const,
+      tag: '2026-09-22',
+      sendetag: '2026-09-22',
+      nachricht: 'koray sagt an: 2× boxen bis samstag. zeig, dass es geht.',
+    }
+    rpc.mockImplementation(async (name: string) =>
+      ({ data: name === 'reserviere_aktivitaetsversand' ? true : [ansage], error: null }))
+
+    // Dienstag 07:30 Berlin: noch zu früh
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-09-22T05:30:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+
+    // Dienstag 12:00 Berlin
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-09-22T10:00:00Z') })
+    expect(senden).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('2× boxen'), key, 0)
+
+    // Dienstag 22:00 Berlin: vorbei
+    senden.mockClear()
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-09-22T20:00:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+  })
   it('bewahrt eine unklare Providerantwort ohne Freigabe zum Wiederholen', async () => {
     senden.mockRejectedValue(new Error('timeout'))
     await versendeAktivitaeten(db, key, { senden, jetzt })

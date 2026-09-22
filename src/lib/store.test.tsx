@@ -98,6 +98,9 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     setzePruefungsfach: vi.fn(async (fachId: string) => fachId),
     schreibeNote: vi.fn(async (note) => note.id),
     loescheNote: vi.fn(async (id: string) => id),
+    sageAn: vi.fn(async () => {
+      throw new Error('ansage:keinZiel')
+    }),
     ladePhasen: vi.fn(async () => []),
     abonniere: vi.fn(() => () => {}),
     ...overrides,
@@ -2090,5 +2093,63 @@ describe('useTracker Schlafverlaeufe', () => {
     await waitFor(() => {
       expect(result.current.phasenLadezustaende[key]).toEqual({ status: 'loaded' })
     })
+  })
+})
+
+describe('useTracker ansagen', () => {
+  const ANSAGE = {
+    id: 'a1', von: 'erijon' as const, an: 'koray' as const, feld: 'boxen' as const,
+    ab: '2026-09-23', bis: '2026-09-26', ziel: 2, erstelltAm: '2026-09-22T10:00:00.000Z',
+  }
+
+  it('übernimmt die ansage erst mit der antwort des backends', async () => {
+    const antwort = offen<typeof ANSAGE>()
+    const backend = backendMit(async () => ANFANG, { sageAn: vi.fn(() => antwort.promise) })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+
+    let ergebnis: Promise<unknown> = Promise.resolve()
+    act(() => {
+      ergebnis = result.current.sageAn('boxen')
+    })
+    expect(result.current.ansagen).toEqual([])
+    expect(backend.sageAn).toHaveBeenCalledWith(expect.any(String), 'boxen')
+
+    await act(async () => {
+      antwort.resolve(ANSAGE)
+      await ergebnis
+    })
+    await expect(ergebnis).resolves.toEqual({ ansage: ANSAGE })
+    expect(result.current.ansagen).toEqual([ANSAGE])
+  })
+
+  it('reicht den grund einer ablehnung durch, ohne abzugleichen', async () => {
+    const backend = backendMit(async () => ANFANG)
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    let ergebnis: unknown
+    await act(async () => {
+      ergebnis = await result.current.sageAn('gewicht')
+    })
+    expect(ergebnis).toEqual({ fehler: 'keinZiel' })
+    expect(result.current.ansagen).toEqual([])
+  })
+
+  it('nimmt ein festgeschriebenes ergebnis per live-ereignis an, aber nie zurück', async () => {
+    let melde: (e: BackendEreignis) => void = () => {}
+    const backend = backendMit(async () => ({ ...ANFANG, ansagen: [ANSAGE] }), {
+      abonniere: vi.fn((cb: (e: BackendEreignis) => void) => {
+        melde = cb
+        return () => {}
+      }),
+    })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ansagen).toEqual([ANSAGE]))
+
+    const entschieden = { ...ANSAGE, entschieden: { ergebnis: 'geschafft' as const, am: '2026-09-24T18:00:00.000Z' } }
+    act(() => melde({ typ: 'ansage', ansage: entschieden }))
+    expect(result.current.ansagen).toEqual([entschieden])
+    act(() => melde({ typ: 'ansage', ansage: ANSAGE }))
+    expect(result.current.ansagen).toEqual([entschieden])
   })
 })

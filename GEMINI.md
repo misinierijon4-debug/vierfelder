@@ -55,7 +55,7 @@ docs/                  Architektur, Datenschutz, Release-Runbook
 ```
 
 Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
-`schlafnaechte`, `gewicht`, `duell_wetten`, `faecher`, `noten`,
+`schlafnaechte`, `gewicht`, `duell_wetten`, `duell_ansagen`, `faecher`, `noten`,
 `schlaf_import_tokens`, `wochenberichte`, `wochenbericht_texte`
 (+ `eni_*` aus späteren Migrationen).
 
@@ -78,6 +78,9 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts` |
 | Noten, MSS-Regeln Abi 2027 | `src/lib/noten.ts`, `src/components/noten/` |
 | Duell, Wetten, Druckstatus | `src/lib/duell.ts`, `src/components/duell/` |
+| **Ansagen** (Herausforderung mit Einsatz): Regeln und Client-Rechnung | `src/lib/ansagen.ts`, `docs/ansagen.md` |
+| Ansagen: Server (Ziel, Kontingent, Einfrieren, Abrechnung v2, Push) | Migration `*_duell_ansagen.sql`, Prüfskript `scripts/check-duell-ansagen.mjs` |
+| Ansagen: Oberfläche und ENI-Sprüche | `src/components/duell/AnsagenBereich.tsx`, `AnsageHinweis.tsx`, `src/lib/ansageSprueche.ts`, `supabase/functions/_shared/ansageSprueche.ts` |
 | Rivalitäts-Badge, Freitext-Zuordnung, Tonfall (classifier.dev) | `src/lib/duellBadge.ts` (Startpfad), `src/lib/duellKlassifizierung.ts` (nachgeladen), `src/components/duell/RivalitaetsTicker.tsx` |
 | ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1136 Z.) |
 | ENI Modell, Stream, Websuche | `supabase/functions/_shared/eni*.ts`, `supabase/functions/eni/index.ts` |

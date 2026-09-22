@@ -59,6 +59,18 @@ describe('offlineStand', () => {
     expect(leseStand('supabase:a')).toBeNull()
   })
 
+  it('liest einen stand von vor den ansagen, aber keinen mit kaputten ansagen', () => {
+    // ANFANG hat keine ansagen, wie ein gemerkter stand aus der zeit davor
+    merkeStand('supabase:a', ANFANG)
+    expect(leseStand('supabase:a')?.anfang.ansagen).toBeUndefined()
+
+    localStorage.setItem(
+      'zweikampf:offline-stand:supabase:a',
+      JSON.stringify({ gespeichertAm: '2026-09-07T16:23:00.000Z', anfang: { ...ANFANG, ansagen: 'kaputt' } })
+    )
+    expect(leseStand('supabase:a')).toBeNull()
+  })
+
   it('haelt still, wenn das Kontingent voll ist, und laesst nichts Halbes stehen', () => {
     merkeStand('supabase:a', ANFANG)
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {

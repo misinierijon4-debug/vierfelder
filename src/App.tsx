@@ -63,11 +63,14 @@ const WochenberichtBlatt = lazy(() =>
   }))
 )
 import { RivalitaetsTicker } from './components/duell/RivalitaetsTicker'
+import { AnsageHinweis } from './components/duell/AnsageHinweis'
 import { Benachrichtigungen } from './components/Benachrichtigungen'
 import { Gewichtszeile } from './components/Gewichtszeile'
 import { Gewichtsdiagramm } from './components/Gewichtsdiagramm'
 import { gewichtAn, letztesGewicht } from './lib/gewicht'
 import { abrechnungFuerWoche, berechneDuell, fehlendeAbschlussWochen } from './lib/duell'
+import type { AnsageWertung } from './lib/duell'
+import { offeneAnsageWende, wochenAnsagePunkte, zaehltAusZustand } from './lib/ansagen'
 import { wochenMarken } from './lib/wochenbericht'
 
 const UNDO_MS = 5000
@@ -159,6 +162,9 @@ function Tracker({
     setzeGewicht,
     setzeWette,
     abrechnungHinzu,
+    ansagen,
+    ansagenVerfuegbar,
+    sageAn,
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,
@@ -199,9 +205,18 @@ function Tracker({
   const gewaehlterTag = blick ?? heuteKey
   const sichtbareWoche = useMemo(() => weekDays(fromKey(gewaehlterTag)), [gewaehlterTag])
   const dieseWoche = istSelbeWoche(sichtbareWoche, woche)
+  // was ansagen zählen, fragt jede wertung dieselbe regel wie der rest des duells
+  const zaehlt = useMemo(() => zaehltAusZustand(zustand), [zustand])
+  const ansageWertung = useMemo<AnsageWertung>(() => {
+    const montag = woche[0] ?? heuteKey
+    return {
+      punkte: wochenAnsagePunkte(zaehlt, ansagen, montag, heute),
+      wende: offeneAnsageWende(zaehlt, ansagen, montag, heute),
+    }
+  }, [zaehlt, ansagen, woche, heuteKey, heute])
   const match = useMemo(
-    () => berechneDuell(zustand, woche, heuteKey, me),
-    [zustand, woche, heuteKey, me]
+    () => berechneDuell(zustand, woche, heuteKey, me, ansageWertung),
+    [zustand, woche, heuteKey, me, ansageWertung]
   )
 
   // je woche mit daten eine marke fuer den kalenderrand. einmal gerechnet,
@@ -254,8 +269,9 @@ function Tracker({
 
   const holeWocheNach = useCallback((wocheKey: string) => {
     const tage = weekDays(fromKey(wocheKey))
-    abrechnungHinzu(abrechnungFuerWoche(zustand, tage, wetten[wocheKey] ?? null))
-  }, [abrechnungHinzu, zustand, wetten])
+    const ansagePunkte = wochenAnsagePunkte(zaehlt, ansagen, wocheKey, new Date())
+    abrechnungHinzu(abrechnungFuerWoche(zustand, tage, wetten[wocheKey] ?? null, ansagePunkte))
+  }, [abrechnungHinzu, ansagen, zaehlt, zustand, wetten])
 
   // Immer nur die aelteste belegte Luecke: Nach kanonischer Bestaetigung wird
   // sie Teil des Archivs und der naechste Render nimmt erst dann die naechste.
@@ -327,15 +343,16 @@ function Tracker({
     [heuteKey, setzeWette, woche]
   )
   const zumTracker = useCallback(() => wechsleTabMitFokus('tracker'), [wechsleTabMitFokus])
+  const zumDuell = useCallback(() => wechsleTabMitFokus('duell'), [wechsleTabMitFokus])
   const schliesseKalender = useCallback(() => setKalenderOffen(false), [])
 
   /** die sonntagsabrechnung dieser woche aus den tracker-daten bauen und archivieren */
   const schliesseWocheAb = useCallback(() => {
     if (!bereit || !istBilanzzeit(heute) || abrechnungDerWoche) return
     const wocheKey = woche[0] ?? heuteKey
-    const abr = abrechnungFuerWoche(zustand, woche, wetten[wocheKey] ?? null)
+    const abr = abrechnungFuerWoche(zustand, woche, wetten[wocheKey] ?? null, ansageWertung.punkte)
     abrechnungHinzu(abr)
-  }, [abrechnungDerWoche, abrechnungHinzu, bereit, heute, heuteKey, wetten, woche, zustand])
+  }, [abrechnungDerWoche, abrechnungHinzu, ansageWertung, bereit, heute, heuteKey, wetten, woche, zustand])
 
   const loescheEinheitById = (id: string) => {
     const e = Object.values(zustand.einheiten)
@@ -504,6 +521,7 @@ function Tracker({
               danach von null auf. */}
           <Activity mode={aktiverTab === 'tracker' ? 'visible' : 'hidden'}>
             <div className="tab-eingang">
+              <AnsageHinweis zustand={zustand} me={me} heute={heute} ansagen={ansagen} onZumDuell={zumDuell} />
               <RivalitaetsTicker zustand={zustand} woche={woche} me={me} kompakt={true} druck={match.druck} />
 
               <section
@@ -616,6 +634,8 @@ function Tracker({
                 abrechnungen={abrechnungen}
                 abschlussStatus={abrechnungDerWocheStatus}
                 onAbschluss={bereit ? schliesseWocheAb : undefined}
+                ansagen={ansagenVerfuegbar ? ansagen : undefined}
+                onSageAn={bereit && ansagenVerfuegbar ? sageAn : undefined}
               />
             </div>
           </Activity>

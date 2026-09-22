@@ -643,6 +643,29 @@ describe('ENIs modellverbindung', () => {
     expect(gesehen[0]!.system).toMatch(/boxen\s+0\s+3/)
   })
 
+  it('rechnet ansagen in den wochenstand ein und nennt sie einzeln', async () => {
+    const tabellen = grunddaten()
+    tabellen.einheiten = []
+    tabellen.gewicht = []
+    tabellen.aufenthalte = []
+    tabellen.duell_ansagen = [
+      // koray hat erijon angesagt und erijon hat verfehlt: koray +1
+      { von: ER, an: ICH, feld: 'lesen', ziel: 2, bis: '2026-09-12', ergebnis: 'verfehlt' },
+      // erijon sagt koray an, läuft noch: erijon -1
+      { von: ICH, an: ER, feld: 'gewicht', ziel: 3, bis: '2026-09-12', ergebnis: null },
+      // letzte woche zählt nicht
+      { von: ICH, an: ER, feld: 'gym', ziel: 1, bis: '2026-09-05', ergebnis: 'verfehlt' },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+    await behandleEni(anfrage({ chatId: 'c1', text: 'stand' }), abhaengigkeiten)
+    const system = gesehen[0]!.system
+    expect(system).toContain('Wochenstand (Erijon : Koray): -1:1.')
+    expect(system).toContain('Davon Ansagen: Erijon -1, Koray +1.')
+    expect(system).toContain('Ansage Koray an Erijon: 2x lesen bis Samstag, verfehlt.')
+    expect(system).toContain('Ansage Erijon an Koray: 3x wiegen bis Samstag, laeuft noch.')
+    expect(system).not.toContain('1x gym')
+  })
+
   it('ordnet Messungen am UTC-Sonntag dem Berliner Montag zu', async () => {
     const tabellen = grunddaten()
     tabellen.einheiten = []

@@ -16,6 +16,8 @@ import {
   vergleicheWetteVersion,
 } from './backend'
 import { addDays, toKey } from './dates'
+import { AnsageAbgelehnt, ansageFehlerAus, istAnsage } from './ansagen'
+import type { Ansage } from './ansagen'
 import { gewichtKey, tickKey } from './types'
 import type {
   Abrechnung,
@@ -611,11 +613,13 @@ function bestaetigteAbrechnung(data: unknown, angefragteWoche: string): Abrechnu
   if (wette !== null && (typeof wette !== 'string' || wette.length > 160)) {
     throw new Error('wochenabrechnung hat einen ungueltigen wetteinsatz')
   }
+  // Version 2 zaehlt die Ansagen mit: je Person hoechstens zwei, also
+  // hoechstens zwei Punkte mehr oder weniger — der Abstand bis 39.
   if (
-    !istGanzeZahl(a.differenz, -35, 35)
+    !istGanzeZahl(a.differenz, -39, 39)
     || !istGanzeZahl(a.beleg_erijon, 0, 35)
     || !istGanzeZahl(a.beleg_koray, 0, 35)
-    || !istGanzeZahl(a.berechnung_version, 0, 1)
+    || !istGanzeZahl(a.berechnung_version, 0, 2)
   ) {
     throw new Error('wochenabrechnung hat ungueltige zaehlwerte')
   }
@@ -632,10 +636,11 @@ function bestaetigteAbrechnung(data: unknown, angefragteWoche: string): Abrechnu
       throw new Error('legacy-wochenabrechnung widerspricht ihrer herkunft')
     }
   } else {
+    const [minimum, maximum] = version === 2 ? [-2, 37] : [0, 35]
     if (
       (quelle !== 'server_planmaessig' && quelle !== 'server_nachgeholt')
-      || !istGanzeZahl(a.punkte_erijon, 0, 35)
-      || !istGanzeZahl(a.punkte_koray, 0, 35)
+      || !istGanzeZahl(a.punkte_erijon, minimum, maximum)
+      || !istGanzeZahl(a.punkte_koray, minimum, maximum)
       || differenz !== punkteErijon! - punkteKoray!
     ) {
       throw new Error('server-wochenabrechnung widerspricht ihren auditwerten')
@@ -671,6 +676,53 @@ export async function finalisiereUndBestaetigeAbrechnung(
   if (error) throw error
   return bestaetigteAbrechnung(data, woche)
 }
+/** eine zeile aus `duell_ansagen`, so wie select und rpc sie liefern */
+export type AnsageZeile = {
+  id: string
+  von: string
+  an: string
+  feld: string
+  ab: string
+  bis: string
+  ziel: number
+  erstellt_am: string
+  ergebnis: string | null
+  entschieden_am: string | null
+}
+
+const ANSAGE_SPALTEN = 'id, von, an, feld, ab, bis, ziel, erstellt_am, ergebnis, entschieden_am'
+
+/**
+ * macht aus einer zeile eine ansage. kennt `person` eine uuid nicht, oder ist
+ * die zeile in sich widersprüchlich, gibt es keine — lieber eine ansage
+ * weniger als eine mit erfundener person.
+ */
+export function ansageAusZeile(z: unknown, person: (id: string) => UserId | undefined): Ansage | null {
+  if (!z || typeof z !== 'object' || Array.isArray(z)) return null
+  const zeile = z as Partial<AnsageZeile>
+  const von = typeof zeile.von === 'string' ? person(zeile.von) : undefined
+  const an = typeof zeile.an === 'string' ? person(zeile.an) : undefined
+  const ansage: Ansage = {
+    id: String(zeile.id ?? ''),
+    von: von!,
+    an: an!,
+    feld: zeile.feld as Ansage['feld'],
+    ab: String(zeile.ab ?? ''),
+    bis: String(zeile.bis ?? ''),
+    ziel: Number(zeile.ziel),
+    erstelltAm: String(zeile.erstellt_am ?? ''),
+    ...(zeile.ergebnis
+      ? {
+          entschieden: {
+            ergebnis: zeile.ergebnis as 'geschafft' | 'verfehlt',
+            am: String(zeile.entschieden_am ?? ''),
+          },
+        }
+      : {}),
+  }
+  return istAnsage(ansage) ? ansage : null
+}
+
 type FachZeile = {
   id: string
   user_id: string
@@ -1213,6 +1265,7 @@ export function supabaseBackend(
   let wettenVerfuegbar = false
   let abrechnungVerfuegbar = false
   let notenVerfuegbar = false
+  let ansagenVerfuegbar = false
   let modusBekannt: () => void = () => {}
   const modus = new Promise<void>((r) => {
     modusBekannt = r
@@ -1358,6 +1411,7 @@ export function supabaseBackend(
         abrechnungZeilen,
         fachZeilen,
         notenZeilen,
+        ansageZeilen,
       ] = await Promise.all([
         versucheAlleSeiten<EinheitZeile>(
           () => db
@@ -1447,6 +1501,15 @@ export function supabaseBackend(
             .order('id', { ascending: true }),
           { name: 'noten', schluessel: (note) => note.id }
         ),
+        // höchstens vier zeilen je woche; die historie braucht der rückblick
+        versucheAlleSeiten<AnsageZeile>(
+          () => db
+            .from('duell_ansagen')
+            .select(ANSAGE_SPALTEN, { count: 'exact' })
+            .order('erstellt_am', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'duell_ansagen', schluessel: (ansage) => ansage.id }
+        ),
       ])
 
       // Während Schema und Frontend getrennt veröffentlicht werden, darf eine
@@ -1533,6 +1596,8 @@ export function supabaseBackend(
       }
       if (fachZeilen.error && !fehltNoch(fehlercode(fachZeilen.error))) throw fachZeilen.error
       if (notenZeilen.error && !fehltNoch(fehlercode(notenZeilen.error))) throw notenZeilen.error
+      if (ansageZeilen.error && !fehltNoch(fehlercode(ansageZeilen.error))) throw ansageZeilen.error
+      ansagenVerfuegbar = !ansageZeilen.error
       wettenVerfuegbar = !lesbareWetten.error
       abrechnungVerfuegbar = !abrechnungMitQuelle.error
       notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
@@ -1663,6 +1728,11 @@ export function supabaseBackend(
         const note = zeileZuNote(n)
         if (note) noten.push(note)
       }
+      const ansagen: Ansage[] = []
+      for (const zeile of ansageZeilen.data ?? []) {
+        const ansage = ansageAusZeile(zeile, (id) => personen.get(id))
+        if (ansage) ansagen.push(ansage)
+      }
 
       // Erst der vollstaendig validierte Zustand darf den passenden
       // Realtime-Kanal freigeben. Ein fehlendes Profil baut keinen nutzlosen
@@ -1678,6 +1748,7 @@ export function supabaseBackend(
         wetten,
         wettenMeta,
         abrechnungen,
+        ...(ansagenVerfuegbar ? { ansagen } : {}),
         noten: { faecher, noten },
         einheitVonVerfuegbar,
         altbestand,
@@ -1822,6 +1893,21 @@ export function supabaseBackend(
     async setzePruefungsfach(fachId, erwartetesFachId) {
       if (!notenVerfuegbar) throw new Error('faecher fehlt noch')
       return wechsleUndBestaetigePruefungsfach(db, fachId, erwartetesFachId)
+    },
+
+    async sageAn(id, feld) {
+      if (!ansagenVerfuegbar) throw new Error('duell_ansagen fehlt noch')
+      const { data, error } = await db.rpc('sage_an', { p_id: id, p_feld: feld })
+      if (error) {
+        const grund = ansageFehlerAus(error)
+        throw grund ? new AnsageAbgelehnt(grund) : error
+      }
+      const ansage = ansageAusZeile(data, (uuid) => personen.get(uuid))
+      // bestätigt ist nur genau die angefragte ansage von diesem konto
+      if (!ansage || ansage.id !== id || ansage.feld !== feld || ansage.von !== personen.get(eigeneId)) {
+        throw mutationNichtBestaetigt('ansage wurde nicht bestaetigt')
+      }
+      return ansage
     },
 
     async schreibeNote(note) {
@@ -1976,6 +2062,19 @@ export function supabaseBackend(
           )
       }
 
+      const mitAnsagen = (b: ReturnType<typeof db.channel>) => {
+        if (!ansagenVerfuegbar) return b
+        return b.on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'duell_ansagen' },
+          (p) => {
+            if (p.eventType === 'DELETE') return
+            const ansage = ansageAusZeile(p.new, (id) => personen.get(id))
+            if (ansage) cb({ typ: 'ansage', ansage })
+          }
+        )
+      }
+
       void modus.then(() => {
         if (abgemeldet) return
 
@@ -2022,7 +2121,7 @@ export function supabaseBackend(
               }
             )
           }
-          starteKanal(mitNoten(mitGesundheit(builder)))
+          starteKanal(mitAnsagen(mitNoten(mitGesundheit(builder))))
           return
         }
 
@@ -2074,7 +2173,7 @@ export function supabaseBackend(
             }
           )
         }
-        starteKanal(mitNoten(mitGesundheit(builder)))
+        starteKanal(mitAnsagen(mitNoten(mitGesundheit(builder))))
       })
 
       return () => {

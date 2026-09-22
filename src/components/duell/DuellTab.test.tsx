@@ -150,3 +150,37 @@ describe('DuellTab Archive und Abschlussstatus', () => {
     expect(screen.getByText('verlierer kocht')).toBeVisible()
   })
 })
+
+describe('DuellTab ansagen', () => {
+  it('zeigt den bereich nur, wenn das backend ansagen kennt', () => {
+    const heute = new Date(2026, 8, 22, 12)
+    const woche = weekDays(heute)
+    const basis = {
+      zustand: leer(), woche, me: 'erijon' as const, heute,
+      match: berechneDuell(leer(), woche, woche[1]!, 'erijon'),
+      wette: '', onWette: vi.fn(), onZumTracker: vi.fn(),
+      abrechnung: null, abrechnungen: [], abschlussStatus: 'idle' as const,
+    }
+    const { rerender } = render(<DuellTab {...basis} />)
+    expect(screen.queryByRole('heading', { name: /ansagen/i })).toBeNull()
+    rerender(<DuellTab {...basis} ansagen={[]} onSageAn={vi.fn()} />)
+    expect(screen.getByRole('heading', { name: /ansagen/i })).toBeInTheDocument()
+  })
+
+  it('weist ansage-punkte im rechner getrennt aus', () => {
+    const heute = new Date(2026, 8, 22, 12)
+    const woche = weekDays(heute)
+    const match = berechneDuell(leer(), woche, woche[1]!, 'erijon', {
+      punkte: { erijon: -1, koray: 1 },
+      wende: { erijon: 2, koray: 0 },
+    })
+    render(
+      <DuellTab
+        zustand={leer()} woche={woche} me="erijon" heute={heute} match={match}
+        wette="" onWette={vi.fn()} onZumTracker={vi.fn()}
+        abrechnung={null} abrechnungen={[]} abschlussStatus="idle"
+      />
+    )
+    expect(screen.getByText('davon ansagen: du −1 · koray +1')).toBeInTheDocument()
+  })
+})
