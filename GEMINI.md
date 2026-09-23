@@ -144,7 +144,11 @@ Oberfläche zeigt nur das Ergebnis aus `einheiten`/`aufenthalte`.
 
 Commit-Stil: `typ(bereich): kleingeschriebene aussage` — z. B.
 `fix(eni): zeige webquellen nur einmal`, `feat(noten): …`, `docs(release): …`.
-Arbeit läuft auf einem Branch, nie direkt auf `main`; danach ein Pull Request.
+Arbeit läuft auf einem Branch mit Pull Request. **Wunsch von erijon:** Wenn
+die Änderung klar ist und `npm run check` (plus nötige Prüfskripte) grün ist,
+kommt sie **direkt auf `main`** — PR mergen bzw. ohne Rückfrage einspielen.
+Nur bei Zweifeln, offenen Fragen oder riskanten Eingriffen (Produktivdaten,
+Migrationen mit Datenänderung) erst nachfragen.
 
 ## Weiterführend (nur bei Bedarf öffnen — die Dateien sind groß)
 
