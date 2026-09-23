@@ -1,4 +1,4 @@
-import type { Ansage, AnsageFeld } from './ansagen'
+import type { Ansage, AnsageFeld, AnsageReaktion, AnsageStufe } from './ansagen'
 import type {
   Abrechnung,
   Aufenthalt,
@@ -199,11 +199,17 @@ export interface Backend {
   /** archiviert die sonntagsabrechnung und gibt die kanonisch gespeicherte Zeile zurück */
   schreibeAbrechnung(a: Abrechnung): Promise<Abrechnung>
   /**
-   * sagt der anderen person im feld an. ziel und zeitraum rechnet das backend,
-   * nie der aufrufer; eine abgelehnte ansage wirft `AnsageAbgelehnt`. dieselbe
-   * id zweimal bestätigt dieselbe ansage.
+   * sagt der anderen person im feld mit einer stufe an. ziel und zeitraum
+   * rechnet das backend, nie der aufrufer; eine abgelehnte ansage wirft
+   * `AnsageAbgelehnt`. dieselbe id zweimal bestätigt dieselbe ansage.
    */
-  sageAn(id: string, feld: AnsageFeld): Promise<Ansage>
+  sageAn(id: string, feld: AnsageFeld, stufe: AnsageStufe): Promise<Ansage>
+  /**
+   * reagiert auf eine ansage an dich: kontern oder „du auch“. `id` ist die
+   * id der gegenrichtung bei „du auch“. dieselbe reaktion zweimal bestätigt
+   * dieselbe antwort; eine abgelehnte wirft `AnsageAbgelehnt`.
+   */
+  reagiere(ansageId: string, id: string, art: AnsageReaktion): Promise<{ ansage: Ansage; gegen?: Ansage }>
   /** wechselt das vierte Prüfungsfach atomar und bestätigt die Ziel-ID */
   setzePruefungsfach(fachId: string, erwartetesFachId: string): Promise<string>
   /** idempotente Notenmutation; Erfolg bestätigt dieselbe UUID */

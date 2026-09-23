@@ -36,7 +36,21 @@ describe('ansage-sprueche', () => {
   it('lehnt vorschläge ab, die die app so nie schickt', () => {
     expect(pruefeVorschlaege(vorschlaege)).toEqual(vorschlaege)
     expect(pruefeVorschlaege([])).toBeNull()
-    expect(pruefeVorschlaege([{ feld: 'lernen', ziel: 1, verlauf: [0, 0, 0, 0] }])).toBeNull()
+    expect(pruefeVorschlaege([{ feld: 'schlaf', ziel: 1, verlauf: [0, 0, 0, 0] }])).toBeNull()
+    expect(pruefeVorschlaege([{ feld: 'lernen', ziel: 1, verlauf: [0, 0, 0, 0], stufe: 'heldenhaft' }])).toBeNull()
+    expect(pruefeVorschlaege([{ feld: 'lernen', ziel: 1, verlauf: [0, 0, 0, 0], meinVerlauf: [1] }])).toBeNull()
+    const neu = [{ feld: 'lernen', ziel: 2, stufe: 'mutig', verlauf: [0, 1, 0, 1], meinVerlauf: [1, 1, 2, 0] }]
+    expect(pruefeVorschlaege(neu)).toEqual(neu)
+    expect(spruchEingabe('koray', pruefeVorschlaege(neu)!)).toEqual({
+      herausgefordert: 'Koray',
+      kandidaten: [{
+        feld: 'lernen',
+        ziel_bis_sonntag: 2,
+        stufe: 'mutig',
+        letzte_vier_wochen: [0, 1, 0, 1],
+        deine_letzten_vier_wochen: [1, 1, 2, 0],
+      }],
+    })
     expect(pruefeVorschlaege([{ feld: 'gym', ziel: 9, verlauf: [0, 0, 0, 0] }])).toBeNull()
     expect(pruefeVorschlaege([{ feld: 'gym', ziel: 1, verlauf: [0, 0, 0] }])).toBeNull()
     expect(pruefeVorschlaege([vorschlaege[0], vorschlaege[0]])).toBeNull()

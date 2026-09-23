@@ -839,7 +839,7 @@ describe('lokale ansagen', () => {
   beforeEach(() => {
     speicher.clear()
     speicher.setItem('vierfelder.me.v2', 'erijon')
-    // dienstag 22.09.2026 mittags: ansagen laufen bis samstag 26.09.
+    // dienstag 22.09.2026 mittags: ansagen laufen bis sonntag 27.09. 18 uhr
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 8, 22, 12))
   })
@@ -848,34 +848,52 @@ describe('lokale ansagen', () => {
     vi.useRealTimers()
   })
 
-  it('zeigt im prototyp eine beispielansage von koray', async () => {
+  it('zeigt im prototyp eine beispielansage von koray, auf die man noch reagieren kann', async () => {
     const anfang = await lokalesBackend().laden()
     expect(anfang.ansagen).toEqual([
-      expect.objectContaining({ von: 'koray', an: 'erijon', feld: 'lesen', bis: '2026-09-26' }),
+      expect.objectContaining({ von: 'koray', an: 'erijon', feld: 'lesen', version: 2, bis: '2026-09-27' }),
     ])
   })
 
-  it('rechnet ziel und zeitraum selbst und hält das kontingent', async () => {
+  it('rechnet ziel und fenster selbst, sperrt inaktive felder und hält das kontingent', async () => {
     const backend = lokalesBackend()
     await backend.laden()
-    const boxen = await backend.sageAn('a1', 'boxen')
-    expect(boxen).toMatchObject({ id: 'a1', von: 'erijon', an: 'koray', feld: 'boxen', ab: '2026-09-23', bis: '2026-09-26' })
-    expect(boxen.ziel).toBeGreaterThanOrEqual(1)
+    // koray boxt in den vorwochen 1, 3, 2, 2 mal: schnitt 2, mutig also 4
+    const boxen = await backend.sageAn('a1', 'boxen', 'mutig')
+    expect(boxen).toMatchObject({
+      id: 'a1', von: 'erijon', an: 'koray', feld: 'boxen', stufe: 'mutig', einsatz: 2,
+      ab: '2026-09-22', bis: '2026-09-27', ziel: 4,
+    })
 
     // dieselbe id ist dieselbe ansage
-    await expect(backend.sageAn('a1', 'boxen')).resolves.toEqual(boxen)
-    await expect(backend.sageAn('a2', 'boxen')).rejects.toMatchObject({ grund: 'schonAngesagt' })
-    await backend.sageAn('a3', 'gym')
-    await expect(backend.sageAn('a4', 'lesen')).rejects.toBeInstanceOf(AnsageAbgelehnt)
-    await expect(backend.sageAn('a4', 'lesen')).rejects.toMatchObject({ grund: 'keineAnsagenMehr' })
+    await expect(backend.sageAn('a1', 'boxen', 'mutig')).resolves.toEqual(boxen)
+    await expect(backend.sageAn('a2', 'boxen', 'sicher')).rejects.toMatchObject({ grund: 'schonAngesagt' })
+    await expect(backend.sageAn('a2', 'gym', 'sicher')).rejects.toMatchObject({ grund: 'feldInaktiv' })
+    await backend.sageAn('a3', 'lesen', 'allin')
+    await expect(backend.sageAn('a4', 'lernen', 'sicher')).rejects.toBeInstanceOf(AnsageAbgelehnt)
+    await expect(backend.sageAn('a4', 'lernen', 'sicher')).rejects.toMatchObject({ grund: 'keineAnsagenMehr' })
 
     const nachher = await lokalesBackend().laden()
     expect(nachher.ansagen?.map((a) => a.id)).toEqual(['beispiel-ansage-lesen', 'a1', 'a3'])
   })
 
+  it('nimmt eine reaktion auf die beispielansage an, aber nur eine', async () => {
+    const backend = lokalesBackend()
+    await backend.laden()
+    const { ansage, gegen } = await backend.reagiere('beispiel-ansage-lesen', 'g1', 'duAuch')
+    expect(ansage.reaktion?.art).toBe('duAuch')
+    expect(gegen).toMatchObject({ id: 'g1', von: 'erijon', an: 'koray', feld: 'lesen', ziel: 3, bezug: 'beispiel-ansage-lesen' })
+    // derselbe knopf nach einem timeout: dieselbe antwort
+    await expect(backend.reagiere('beispiel-ansage-lesen', 'g2', 'duAuch')).resolves.toEqual({ ansage, gegen })
+    await expect(backend.reagiere('beispiel-ansage-lesen', 'g3', 'kontern')).rejects.toMatchObject({ grund: 'schonReagiert' })
+    const nachher = await lokalesBackend().laden()
+    expect(nachher.ansagen?.map((a) => a.id)).toEqual(['beispiel-ansage-lesen', 'g1'])
+  })
+
   it('schreibt eine abgelaufene ansage beim laden als verfehlt fest', async () => {
     speicher.setItem('vierfelder.ansagen.v1', JSON.stringify([{
-      id: 'alt', von: 'erijon', an: 'koray', feld: 'boxen',
+      // gym: dort war koray auch in den beispieldaten nie
+      id: 'alt', von: 'erijon', an: 'koray', feld: 'gym',
       ab: '2026-09-15', bis: '2026-09-19', ziel: 2, erstelltAm: new Date(2026, 8, 14, 12).toISOString(),
     }]))
     const anfang = await lokalesBackend().laden()

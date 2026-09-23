@@ -120,10 +120,10 @@ export async function baueLage(
     .select('user_id,fach_id,art,punkte,datum')
     .order('datum', { ascending: false })
     .limit(20),
-    // ansagen enden samstag; alles ab montag ist die laufende woche
+    // ansagen enden spaetestens sonntag; alles ab montag ist die laufende woche
     db
     .from('duell_ansagen')
-    .select('von,an,feld,ziel,bis,ergebnis')
+    .select('von,an,feld,ziel,bis,ergebnis,version,stufe,einsatz,reaktion,bezug')
     .gte('bis', montag),
   ])
   // Dieselben Quellen wie im Tracker: manuelle Einheiten, Messungen und Gewicht.
@@ -143,26 +143,44 @@ export async function baueLage(
     const anzahl = (person: Person, bereich?: string, datum?: string) =>
       tafel.anzahl(person, bereich, datum)
     zeilen.push('Trackerregeln: Ein Punkt je Person, Bereich und Tag; mehrere Einheiten oder Messungen am selben Tag geben keinen Zusatzpunkt. Gewicht zaehlt als fuenftes Feld. Messungen zaehlen erst abgeschlossen ab 20 Minuten, Lesen ab 10 Minuten. Punkte sind keine Anzahl von Trainingseinheiten.')
-    // Ansagen zaehlen zur Wertung wie in der App (src/lib/ansagen.ts): wer
-    // ansagt, steht bei -1, bis die andere Person verfehlt hat, dann +1.
+    // Ansagen zaehlen zur Wertung wie in der App (src/lib/ansagen.ts).
+    // Version 2: geschafft → der Einsatz (gekontert doppelt) an die
+    // herausgeforderte Person, verfehlt → an die ansagende, offen → nichts.
+    // Version 1 (erste Fassung): -1 fuer den Ansager, +1 wenn verfehlt.
     const ansageZeilen = ansagen.error ? [] : (ansagen.data ?? [])
     const ansagePunkte = { erijon: 0, koray: 0 }
+    const einsatzVon = (a: Record<string, unknown>) =>
+      Number(a.einsatz ?? 1) * (a.reaktion === 'kontern' ? 2 : 1)
     for (const a of ansageZeilen) {
       const von = wer(a.von)
-      if (von) ansagePunkte[von] += a.ergebnis === 'verfehlt' ? 1 : -1
+      const an = wer(a.an)
+      if (!von || !an) continue
+      if (a.version === 2) {
+        if (a.ergebnis === 'geschafft') ansagePunkte[an] += einsatzVon(a)
+        else if (a.ergebnis === 'verfehlt') ansagePunkte[von] += einsatzVon(a)
+      } else {
+        ansagePunkte[von] += a.ergebnis === 'verfehlt' ? 1 : -1
+      }
     }
     zeilen.push(`Wochenstand (Erijon : Koray): ${anzahl('erijon') + ansagePunkte.erijon}:${anzahl('koray') + ansagePunkte.koray}.`)
     if (ansageZeilen.length > 0) {
       const mitVorzeichen = (n: number) => (n > 0 ? `+${n}` : String(n))
       zeilen.push(`Davon Ansagen: Erijon ${mitVorzeichen(ansagePunkte.erijon)}, Koray ${mitVorzeichen(ansagePunkte.koray)}. Die Bereichstabelle unten zaehlt nur die Felder.`)
-      zeilen.push('Ansageregel: Wer ansagt, setzt einen Punkt darauf, dass die andere Person ihr Ziel bis Samstag verfehlt. Verfehlt sie, bekommt der Ansager +1, sonst -1. Gezaehlt wird nur gemessen, Gewicht nur am selben Tag eingetragen.')
+      zeilen.push('Ansageregel: Wer ansagt, fordert die andere Person in einem Feld heraus; das Ziel liegt ueber ihrem Schnitt der letzten vier Wochen. Stufen: sicher 1, mutig 2, all-in 3 Punkte. Schafft sie es bis Sonntag 18 Uhr, bekommt SIE den Einsatz, sonst der Ansager. Sie kann einmal reagieren: kontern verdoppelt den Einsatz, „du auch" verlangt dasselbe vom Ansager. Es zaehlt nur, was nach der Ansage passiert und am selben Tag eingetragen wird.')
       for (const a of ansageZeilen) {
         const von = wer(a.von)
         const an = wer(a.an)
         if (!von || !an) continue
         const stand = a.ergebnis === 'geschafft' ? 'geschafft' : a.ergebnis === 'verfehlt' ? 'verfehlt' : 'laeuft noch'
         const feld = a.feld === 'gewicht' ? 'wiegen' : String(a.feld)
-        zeilen.push(`Ansage ${gross(von)} an ${gross(an)}: ${Number(a.ziel)}x ${feld} bis Samstag, ${stand}.`)
+        if (a.version === 2) {
+          const art = a.bezug ? `„du auch" von ${gross(von)} an ${gross(an)}` : `Ansage ${gross(von)} an ${gross(an)}`
+          const stufe = a.stufe === 'allin' ? 'all-in' : String(a.stufe ?? 'sicher')
+          const kontra = a.reaktion === 'kontern' ? ', gekontert' : ''
+          zeilen.push(`${art}: ${Number(a.ziel)}x ${feld} bis Sonntag 18 Uhr, ${stufe}${kontra}, Einsatz ${einsatzVon(a)}, ${stand}.`)
+        } else {
+          zeilen.push(`Ansage ${gross(von)} an ${gross(an)}: ${Number(a.ziel)}x ${feld} bis Samstag, ${stand}.`)
+        }
       }
     }
     zeilen.push(`Tagesstand heute (Erijon : Koray): ${anzahl('erijon', undefined, tag)}:${anzahl('koray', undefined, tag)}.`)
