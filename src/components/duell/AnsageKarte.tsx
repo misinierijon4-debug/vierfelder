@@ -210,6 +210,7 @@ function ReaktionsKnoepfe({
 }) {
   const von = userDef(ansage.von)
   const e = wirksamerEinsatz(ansage)
+  const [bestaetigung, setBestaetigung] = useState<AnsageReaktion | null>(null)
   return (
     <div className="mt-3">
       <div className="border-l-[3px] border-kreide-52 bg-grund px-3 py-2.5">
@@ -222,32 +223,67 @@ function ReaktionsKnoepfe({
         <summary className="flex min-h-11 cursor-pointer items-center text-[12px] font-semibold text-kreide-60 hover:text-kreide">
           Stattdessen reagieren (optional) · noch {restzeitText(jetzt, lage.bis)}
         </summary>
-        <div className="grid grid-cols-2 gap-2 pb-1">
-          <button
-            type="button"
-            onClick={() => onReagiere(ansage.id, 'kontern')}
-            disabled={!lage.kontern || sendet !== null}
-            aria-describedby={`kontern-${ansage.id}`}
-            className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
-          >
-            <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
-            <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-              {lage.kontern ? `${e * 2} Punkte statt ${e}` : 'nur vor deinem ersten Tag'}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onReagiere(ansage.id, 'duAuch')}
-            disabled={sendet !== null}
-            aria-describedby={`duauch-${ansage.id}`}
-            className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
-          >
-            <span className="text-[14px] font-bold text-kreide">{sendet === 'duAuch' ? 'wird gesendet …' : 'du auch'}</span>
-            <span id={`duauch-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-              {von.name} muss auch {ansageZielText(ansage.feld, ansage.ziel)}
-            </span>
-          </button>
-        </div>
+        {bestaetigung ? (
+          <div className="border border-linie-hell bg-grund px-3 py-3" aria-live="polite">
+            <p className="text-[14px] font-bold text-kreide">
+              {bestaetigung === 'duAuch' ? '„du auch“ wirklich aktivieren?' : 'Wirklich kontern?'}
+            </p>
+            <p className="mt-1 text-[12px] leading-5 text-kreide-60">
+              {bestaetigung === 'duAuch'
+                ? `${von.name} muss dann ebenfalls ${ansageZielText(ansage.feld, ansage.ziel)} schaffen. Das zählt als zweite Aufgabe.`
+                : `Der Punkteinsatz steigt von ${e} auf ${e * 2}.`}{' '}
+              Das lässt sich in der App nicht selbst rückgängig machen.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBestaetigung(null)}
+                disabled={sendet !== null}
+                className="min-h-11 border border-linie-hell text-[13px] font-semibold text-kreide disabled:opacity-40"
+              >
+                abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onReagiere(ansage.id, bestaetigung)
+                  setBestaetigung(null)
+                }}
+                disabled={sendet !== null}
+                className="min-h-11 bg-kreide px-2 text-[13px] font-bold text-grund disabled:opacity-40"
+              >
+                {bestaetigung === 'duAuch' ? 'ja, „du auch“ aktivieren' : 'ja, einsatz verdoppeln'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 pb-1">
+            <button
+              type="button"
+              onClick={() => setBestaetigung('kontern')}
+              disabled={!lage.kontern || sendet !== null}
+              aria-describedby={`kontern-${ansage.id}`}
+              className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
+            >
+              <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
+              <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
+                {lage.kontern ? `${e * 2} Punkte statt ${e}` : 'nur vor deinem ersten Tag'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBestaetigung('duAuch')}
+              disabled={sendet !== null}
+              aria-describedby={`duauch-${ansage.id}`}
+              className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
+            >
+              <span className="text-[14px] font-bold text-kreide">{sendet === 'duAuch' ? 'wird gesendet …' : 'du auch'}</span>
+              <span id={`duauch-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
+                {von.name} muss auch {ansageZielText(ansage.feld, ansage.ziel)}
+              </span>
+            </button>
+          </div>
+        )}
       </details>
     </div>
   )
