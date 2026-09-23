@@ -154,7 +154,7 @@ describe('ansageZiele', () => {
   it('nimmt die mindestwerte, wenn die form niedrig ist', () => {
     expect(ansageZiele('lesen', [0, 1, 0, 1], 7)).toEqual({ sicher: 2, mutig: 3, allin: 4 })
     expect(ansageZiele('gewicht', [1, 1, 1, 1], 7)).toEqual({ sicher: 4, mutig: 5, allin: 6 })
-    expect(ansageZiele('lernen', [0, 0, 1, 1], 7)).toEqual({ sicher: 1, mutig: 2, allin: 3 })
+    expect(ansageZiele('lernen', [0, 0, 1, 1], 7)).toEqual({ sicher: 2, mutig: 3, allin: 4 })
   })
 
   it('liegt über der eigenen form: schnitt mal 1,3, 1,6 und 2, aufgerundet', () => {
@@ -225,11 +225,11 @@ describe('ansageVorschlaege', () => {
     expect(v.map((x) => [x.feld, x.stufe, x.ziel])).toEqual([['boxen', 'sicher', 3]])
   })
 
-  it('schlägt nie ein ziel von einem tag vor, sondern die nächste stufe', () => {
+  it('schlägt lernen erst ab zwei tagen vor, auch wenn es selten ist', () => {
     let z = leererZustand()
     for (const tag of ['2026-09-01', '2026-09-15']) z = sitzung(z, 'koray', 'lernen', tag)
     const v = ansageVorschlaege(zaehltAusZustand(z), [], 'erijon', 'koray', MONTAG)
-    expect(v.map((x) => [x.feld, x.stufe, x.ziel])).toEqual([['lernen', 'mutig', 2]])
+    expect(v.map((x) => [x.feld, x.stufe, x.ziel])).toEqual([['lernen', 'sicher', 2]])
   })
 })
 

@@ -24,7 +24,7 @@ den Herausforderer praktisch ein geschenkter Punkt, für den anderen nichts.
 | Ein Feld geht nur, wenn die herausgeforderte Person es in den letzten 4 Wochen an **mindestens 2 Tagen** hatte | kein Punkt für ein Feld, das der andere gar nicht macht |
 | Stufen: **sicher ±1, mutig ±2, all-in ±3** | man setzt etwas, und je mehr, desto höher das Ziel |
 | Ziel = max(Mindestwert, ⌈Schnitt × 1,3 / 1,6 / 2⌉), jede Stufe mindestens 1 über der vorigen | über der eigenen Form der herausgeforderten Person, nie darunter |
-| Mindestwerte sicher/mutig/all-in: gym, boxen, lesen **2/3/4**, lernen **1/2/3**, wiegen **4/5/6** | 4× wiegen ist so viel wie 2× lesen; lernen machen beide selten |
+| Mindestwerte sicher/mutig/all-in: gym, boxen, lesen, lernen **2/3/4**, wiegen **4/5/6** | 4× wiegen ist so viel wie 2× lesen; ein einzelner tag wäre wieder ein geschenkter punkt |
 | Das Ziel muss in die Woche passen: sicher und mutig mit **einem Tag Spielraum**, all-in ohne | ohne Spielraum ist eine Ansage nach dem ersten Fehltag tot |
 | Frist **Sonntag 18 Uhr** — zusammen mit dem Finale | das Wochenende zählt mit, und um 18 Uhr ist alles entschieden |
 | Ansagen bis **Freitag 18 Uhr** (48 Stunden Mindestlaufzeit) | kein „Freitagabend ansagen, was schon erledigt ist“ |

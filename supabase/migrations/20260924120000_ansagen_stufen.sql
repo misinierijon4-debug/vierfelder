@@ -269,7 +269,6 @@ begin
     v_ziel := greatest(
       case p_feld
         when 'gewicht' then case v_stufe when 'sicher' then 4 when 'mutig' then 5 else 6 end
-        when 'lernen' then case v_stufe when 'sicher' then 1 when 'mutig' then 2 else 3 end
         else case v_stufe when 'sicher' then 2 when 'mutig' then 3 else 4 end
       end,
       pg_catalog.ceil(pg_catalog.round(

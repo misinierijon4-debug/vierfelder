@@ -45,13 +45,14 @@ export const STUFEN_FAKTOR: Record<AnsageStufe, number> = { sicher: 1.3, mutig: 
 /**
  * darunter gibt es kein ziel, egal wie schwach die form ist. wiegen ist
  * leicht, deshalb liegt es höher: 4× wiegen ist so viel wie 2× lesen. lernen
- * machen beide selten, dort reicht weniger.
+ * machen beide selten, beginnt aber trotzdem bei 2 — ein einzelner lerntag
+ * wäre wieder der geschenkte punkt.
  */
 export const MINDESTZIEL: Record<AnsageFeld, Record<AnsageStufe, number>> = {
   gym: { sicher: 2, mutig: 3, allin: 4 },
   boxen: { sicher: 2, mutig: 3, allin: 4 },
   lesen: { sicher: 2, mutig: 3, allin: 4 },
-  lernen: { sicher: 1, mutig: 2, allin: 3 },
+  lernen: { sicher: 2, mutig: 3, allin: 4 },
   gewicht: { sicher: 4, mutig: 5, allin: 6 },
 }
 
