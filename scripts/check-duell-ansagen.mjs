@@ -3,8 +3,9 @@
 //
 // Spielt die Migration `*_duell_ansagen.sql` durch: Rechte, Ziel aus der
 // Vorgeschichte, Kontingent, Einfrieren mit Nachlauf, die Gewichtsregel,
-// die Wochenabrechnung Version 2 und die neue Push-Art. Alle Zeitpunkte sind
-// fest vorgegeben; nur der Aufruf ueber `public.sage_an` nimmt die echte Uhr.
+// die Wochenabrechnung Version 2, den Wochenschluss um Mitternacht und die
+// neue Push-Art. Alle Zeitpunkte sind fest vorgegeben; nur der Aufruf ueber
+// `public.sage_an` nimmt die echte Uhr.
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
@@ -23,6 +24,7 @@ const vorher = [
   await lies('20260905120728_duell_wochenabschluss_serverautoritaer.sql'),
 ]
 const migration = await lies('20260922120000_duell_ansagen.sql')
+const wochenschluss = await lies('20260923090000_wochenschluss_mitternacht.sql')
 
 const query = (sql, params = []) => db.query(sql, params)
 const alsSuperuser = () => db.exec('reset role;')
@@ -345,7 +347,27 @@ try {
   // die versandtabelle nimmt die neue art an
   await query("insert into public.aktivitaets_versand(user_id, art, tag) values ($1, 'ansage', '2020-07-06')", [koray])
 
-  console.log('duell_ansagen: rechte, ziel, kontingent, einfrieren, gewicht, abrechnung v2 und push geprueft')
+  // ------------------------------------------ Wochenschluss um Mitternacht
+  await db.exec(wochenschluss)
+  await db.exec(wochenschluss)
+  // woche 25.05.2020: beide boxen sonntag. erijon ist 23:50 fertig, koray erst
+  // montag 00:20 — beim wochenschluss noch offen, also kein punkt, kein beleg.
+  await sitzung(erijon, 'boxen', '2020-05-31', '23:00', 50)
+  await sitzung(koray, 'boxen', '2020-05-31', '23:45', 35)
+  // 23:59 fertig zaehlt noch, genau 0 uhr nicht mehr
+  await sitzung(koray, 'gym', '2020-05-31', '23:29', 30)
+  await sitzung(koray, 'lernen', '2020-05-31', '23:30', 30)
+  // unter der woche gehoert 23:40 bis 00:30 weiter zum vortag
+  await sitzung(erijon, 'lernen', '2020-05-27', '23:40', 50)
+  await alsRolle(erijon)
+  const schluss = (await query("select public.finalisiere_wochenabrechnung('2020-05-25') as a")).rows[0].a
+  await alsSuperuser()
+  assert.equal(schluss.punkte_erijon, 2)
+  assert.equal(schluss.punkte_koray, 1)
+  assert.equal(schluss.beleg_erijon, 2)
+  assert.equal(schluss.beleg_koray, 1)
+
+  console.log('duell_ansagen: rechte, ziel, kontingent, einfrieren, gewicht, abrechnung v2, wochenschluss und push geprueft')
 } finally {
   await db.close()
 }

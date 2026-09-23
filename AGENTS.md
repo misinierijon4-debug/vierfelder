@@ -69,6 +69,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Backend-Interface (beide Modi erfüllen es) | `src/lib/backend.ts` |
 | Ticks, Einheiten, Wochenwertung | `src/lib/tracker.ts` |
 | **Punktezählung des Duells, eine Stelle für alle** | `supabase/functions/_shared/duellPunkte.ts` |
+| Wochenschluss: Messung über Sonntag 24 Uhr zählt nicht | `vorWochenschluss` in `src/lib/training.ts`, `endetInDerWoche` in `duellPunkte.ts`, Migration `*_wochenschluss_mitternacht.sql` |
 | **Fokus an/aus, Einheitenzählung** | `supabase/functions/_shared/fokus.ts`, `supabase/functions/fokus/index.ts`, `src/lib/fokusFunction.test.ts`, `FOKUS-KURZBEFEHL.md` |
 | Anzeige von Einheiten und Quelle | `src/components/Raster.tsx`, `src/components/Tagesdetail.tsx` |
 | Tastaturfokus in Dialogen (**nicht** das Fokus-Feature) | `src/lib/dialogFokus.ts` |

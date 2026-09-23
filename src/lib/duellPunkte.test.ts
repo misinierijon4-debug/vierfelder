@@ -106,6 +106,30 @@ describe('die punktetafel', () => {
     expect(t.anzahl('koray', 'boxen', MONTAG)).toBe(1)
   })
 
+  it('zaehlt am sonntag nur, was vor montag 0 uhr zu ende war', () => {
+    const sonntag = (ankunft: string, abgang: string) => ({
+      user_id: 'k-koray', bereich: 'boxen', ankunft, abgang,
+    })
+    const woche = (aufenthalt: ReturnType<typeof sonntag>) =>
+      tafelAusZeilen({ aufenthalte: [aufenthalt] }, wer, toKey, MONTAG, '2026-09-20')
+        .anzahl('koray', 'boxen', '2026-09-20')
+    // die echte sitzung aus kw 38: 23:45 bis 00:20 berliner zeit
+    expect(woche(sonntag('2026-09-20T21:45:58Z', '2026-09-20T22:20:49Z'))).toBe(0)
+    // genau 0 uhr ist schon montag, 23:59 noch sonntag
+    expect(woche(sonntag('2026-09-20T21:30:00Z', '2026-09-20T22:00:00Z'))).toBe(0)
+    expect(woche(sonntag('2026-09-20T21:29:00Z', '2026-09-20T21:59:00Z'))).toBe(1)
+    // unter der woche gehoert 23:40 bis 00:30 weiter zum vortag
+    const mittwoch = tafel({
+      aufenthalte: [{
+        user_id: 'k-koray',
+        bereich: 'boxen',
+        ankunft: '2026-09-16T21:40:00Z',
+        abgang: '2026-09-16T22:30:00Z',
+      }],
+    })
+    expect(mittwoch.anzahl('koray', 'boxen', '2026-09-16')).toBe(1)
+  })
+
   it('ueberspringt zeilen, die zu keiner person gehoeren', () => {
     const t = tafel({ einheiten: [{ user_id: 'k-fremd', bereich: 'gym', tag: '2026-09-15' }] })
     expect(t.anzahl('erijon')).toBe(0)

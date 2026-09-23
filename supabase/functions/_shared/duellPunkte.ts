@@ -35,6 +35,24 @@ export function messungZaehlt(bereich: unknown, minuten: number): boolean {
   return istBereich(bereich) && Number.isFinite(minuten) && minuten >= mindestminuten(bereich)
 }
 
+/** der montag der woche zu einem lokalen tag `JJJJ-MM-TT`, ohne zeitzone gerechnet */
+function wochenmontag(tag: string): string {
+  const [j, m, t] = tag.split('-').map(Number)
+  const datum = new Date(Date.UTC(j!, m! - 1, t!))
+  datum.setUTCDate(datum.getUTCDate() - ((datum.getUTCDay() + 6) % 7))
+  return datum.toISOString().slice(0, 10)
+}
+
+/**
+ * Sonntag 24 Uhr ist die Woche vorbei. Eine Messung, die erst in der
+ * naechsten Woche endet (auch genau um 0 Uhr), war beim Wochenschluss noch
+ * offen und zaehlt nicht. Unter der Woche bleibt 23:40 bis 00:30 beim Vortag.
+ * Gleich im Client (`vorWochenschluss`) und in `finalisiere_wochenabrechnung`.
+ */
+export function endetInDerWoche(beginnTag: string, endeTag: string): boolean {
+  return wochenmontag(beginnTag) === wochenmontag(endeTag)
+}
+
 /**
  * Die Tafel haelt je Person, Feld und Tag hoechstens einen Punkt. Sie nimmt
  * nur an, was im Zeitraum liegt — doppelt gemeldete Tage und Nachzuegler aus
@@ -104,8 +122,10 @@ export function tafelAusZeilen(
     const bereich = String(aufenthalt.bereich)
     if (!istBereich(bereich) || !aufenthalt.abgang) continue
     const start = new Date(String(aufenthalt.ankunft))
-    const dauer = (new Date(String(aufenthalt.abgang)).getTime() - start.getTime()) / 60_000
+    const ende = new Date(String(aufenthalt.abgang))
+    const dauer = (ende.getTime() - start.getTime()) / 60_000
     if (!messungZaehlt(bereich, dauer)) continue
+    if (!endetInDerWoche(tagVon(start), tagVon(ende))) continue
     tafel.setze(person(aufenthalt.user_id), bereich, tagVon(start))
   }
 
