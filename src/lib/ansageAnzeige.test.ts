@@ -31,10 +31,10 @@ describe('restzeitText', () => {
 
 describe('wertungText', () => {
   it('sagt aus sicht der schauenden person, wer was bekommt', () => {
-    expect(wertungText(ansage(), 'erijon')).toBe('schafft koray es: +2 für koray. sonst +2 für dich.')
-    expect(wertungText(ansage(), 'koray')).toBe('schaffst du es: +2 für dich. sonst +2 für erijon.')
+    expect(wertungText(ansage(), 'erijon')).toBe('Wenn koray das Ziel schafft: +2 Punkte für koray. Sonst: +2 Punkte für dich.')
+    expect(wertungText(ansage(), 'koray')).toBe('Wenn du das Ziel schaffst: +2 Punkte für dich. Sonst: +2 Punkte für erijon.')
     const gekontert = ansage({ reaktion: { art: 'kontern', am: new Date(2026, 8, 21, 12).toISOString() } })
-    expect(wertungText(gekontert, 'erijon')).toBe('schafft koray es: +4 für koray. sonst +4 für dich.')
+    expect(wertungText(gekontert, 'erijon')).toBe('Wenn koray das Ziel schafft: +4 Punkte für koray. Sonst: +4 Punkte für dich.')
   })
 })
 

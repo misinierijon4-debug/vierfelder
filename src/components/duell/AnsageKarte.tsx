@@ -12,7 +12,6 @@ import {
 import type { Ansage, AnsageReaktion, AnsageStand, ReaktionsLage } from '../../lib/ansagen'
 import { ergebnisFuer, fristText, restzeitText, wer, wertungText } from '../../lib/ansageAnzeige'
 import { ANSAGE, EASE } from '../../lib/motion'
-import { Zahl } from '../Zahl'
 
 type Props = {
   ansage: Ansage
@@ -66,36 +65,25 @@ export const AnsageKarte = memo(function AnsageKarte({
       <div className="h-[3px]" style={{ background: von.farbe }} aria-hidden="true" />
       <div className="px-4 pb-4 pt-3">
         <div className="flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
-          <span className="flex items-center gap-1.5 font-semibold">
-            <span style={{ color: von.farbe }}>{wer(ansage.von, me)}</span>
-            <span className="text-kreide-52" aria-hidden="true">→</span>
-            <span className="sr-only">an</span>
-            <span style={{ color: an.farbe }}>{wer(ansage.an, me)}</span>
+          <span className="font-semibold text-kreide">
+            {ansage.von === me ? `du forderst ${an.name} heraus` : `${von.name} fordert dich heraus`}
           </span>
           {v2 && (
-            <span className="tnum flex items-center gap-1.5 uppercase tracking-[0.1em] text-kreide-60">
-              {gekontert ? 'gekontert' : STUFEN_TEXT[ansage.stufe ?? 'sicher']}
-              <span className="text-kreide">±{einsatz}</span>
+            <span className="tnum text-kreide-60">
+              {gekontert ? 'gekontert' : STUFEN_TEXT[ansage.stufe ?? 'sicher']} · {einsatz} {einsatz === 1 ? 'Punkt' : 'Punkte'}
             </span>
           )}
         </div>
 
-        <div className="mt-1 flex items-end justify-between gap-3">
+        <p className="mt-3 text-[12px] font-semibold text-kreide-60">{ansage.an === me ? 'Dein Ziel' : `${an.name}s Ziel`}</p>
+        <div className="mt-1">
           <h3 id={titelId} className="display min-w-0 text-[40px] font-bold leading-[0.95] text-kreide [overflow-wrap:anywhere]">
             {ansageZielText(ansage.feld, ansage.ziel)}
           </h3>
-          <span
-            className="tnum shrink-0 pb-0.5 text-[28px] font-bold leading-none"
-            style={{ color: an.farbe }}
-            aria-label={`${stand.erreicht} von ${stand.ziel}`}
-          >
-            <Zahl value={stand.erreicht} />
-            <span className="text-kreide-52">/{stand.ziel}</span>
-          </span>
         </div>
 
-        <p className="mt-1.5 text-[12px] text-kreide-60">
-          {fristText(ansage)}
+        <p className="mt-2 text-[13px] text-kreide-60">
+          {v2 ? 'bis Sonntag, 18 Uhr' : fristText(ansage)}
           {!fertig && (
             <>
               <span className="px-1.5 text-kreide-52" aria-hidden="true">·</span>
@@ -104,20 +92,16 @@ export const AnsageKarte = memo(function AnsageKarte({
           )}
         </p>
 
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-3">
           <Bahn person={ansage.an} me={me} stand={stand} />
           {gegen && <Bahn person={gegen.ansage.an} me={me} stand={gegen.stand} />}
         </div>
 
         {!fertig && v2 && (
-          <p className="mt-3 border-t border-linie pt-2.5 text-[12px] leading-5 text-kreide-60">
-            {wertungText(ansage, me)}
-            {gegen && (
-              <>
-                {' '}und {wer(gegen.ansage.an, me)} {gegen.ansage.an === me ? 'musst' : 'muss'} auch.
-              </>
-            )}
-          </p>
+          <div className="mt-4 border-t border-linie pt-3 text-[13px] leading-5 text-kreide-60">
+            <p>{wertungText(ansage, me)}</p>
+            {gegen && <p className="mt-1.5">Zusätzlich {gegen.ansage.an === me ? 'musst du' : `muss ${wer(gegen.ansage.an, me)}`} auch {ansageZielText(gegen.ansage.feld, gegen.ansage.ziel)} schaffen. Das zählt als zweite Aufgabe.</p>}
+          </div>
         )}
 
         <ReaktionsZeile ansage={ansage} me={me} jetzt={jetzt} lage={lage} />
@@ -137,10 +121,13 @@ function Bahn({ person, me, stand }: { person: UserId; me: UserId; stand: Ansage
   const p = userDef(person)
   const reduced = useReducedMotion()
   return (
-    <div className="flex items-center gap-3">
-      <span className="w-12 shrink-0 text-[11px] text-kreide-60">{wer(person, me)}</span>
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
+        <span className="font-semibold text-kreide">{person === me ? 'Du' : p.name}</span>
+        <span className="tnum text-kreide-60">{stand.erreicht} von {stand.ziel} geschafft</span>
+      </div>
       <div
-        className="flex min-w-0 flex-1 gap-1"
+        className="flex min-w-0 gap-1"
         role="meter"
         aria-label={`${wer(person, me)}: ${stand.erreicht} von ${stand.ziel}`}
         aria-valuemin={0}
@@ -225,7 +212,7 @@ function ReaktionsKnoepfe({
   const e = wirksamerEinsatz(ansage)
   return (
     <div className="mt-3">
-      <p className="tnum text-[11px] text-kreide-52">noch {restzeitText(jetzt, lage.bis)} zum reagieren</p>
+      <p className="tnum text-[12px] text-kreide-60">Du kannst noch {restzeitText(jetzt, lage.bis)} einmal reagieren:</p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -236,7 +223,7 @@ function ReaktionsKnoepfe({
         >
           <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
           <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-            {lage.kontern ? `einsatz ×2 · ±${e * 2}` : 'nur vor deinem ersten tag'}
+            {lage.kontern ? `${e * 2} Punkte statt ${e}` : 'nur vor deinem ersten Tag'}
           </span>
         </button>
         <button
