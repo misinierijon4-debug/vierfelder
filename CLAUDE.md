@@ -69,6 +69,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Backend-Interface (beide Modi erfüllen es) | `src/lib/backend.ts` |
 | Ticks, Einheiten, Wochenwertung | `src/lib/tracker.ts` |
 | **Punktezählung des Duells, eine Stelle für alle** | `supabase/functions/_shared/duellPunkte.ts` |
+| Wochenschluss: Messung über Sonntag 24 Uhr zählt nicht | `vorWochenschluss` in `src/lib/training.ts`, `endetInDerWoche` in `duellPunkte.ts`, Migration `*_wochenschluss_mitternacht.sql` |
 | **Fokus an/aus, Einheitenzählung** | `supabase/functions/_shared/fokus.ts`, `supabase/functions/fokus/index.ts`, `src/lib/fokusFunction.test.ts`, `FOKUS-KURZBEFEHL.md` |
 | Anzeige von Einheiten und Quelle | `src/components/Raster.tsx`, `src/components/Tagesdetail.tsx` |
 | Tastaturfokus in Dialogen (**nicht** das Fokus-Feature) | `src/lib/dialogFokus.ts` |
@@ -143,7 +144,11 @@ Oberfläche zeigt nur das Ergebnis aus `einheiten`/`aufenthalte`.
 
 Commit-Stil: `typ(bereich): kleingeschriebene aussage` — z. B.
 `fix(eni): zeige webquellen nur einmal`, `feat(noten): …`, `docs(release): …`.
-Arbeit läuft auf einem Branch, nie direkt auf `main`; danach ein Pull Request.
+Arbeit läuft auf einem Branch mit Pull Request. **Wunsch von erijon:** Wenn
+die Änderung klar ist und `npm run check` (plus nötige Prüfskripte) grün ist,
+kommt sie **direkt auf `main`** — PR mergen bzw. ohne Rückfrage einspielen.
+Nur bei Zweifeln, offenen Fragen oder riskanten Eingriffen (Produktivdaten,
+Migrationen mit Datenänderung) erst nachfragen.
 
 ## Weiterführend (nur bei Bedarf öffnen — die Dateien sind groß)
 

@@ -175,6 +175,20 @@ describe('aufenthalt', () => {
   it('gehört zu dem tag, an dem er begonnen hat', () => {
     // rein um 23:40, raus um 00:40 — das war das training am mittwoch
     expect(tagVon(besuch('2026-08-26', [23, 40], 60))).toBe('2026-08-26')
+    expect(zaehlt(besuch('2026-08-26', [23, 40], 60))).toBe(true)
+  })
+
+  it('zählt am sonntag nur, was vor montag 0 uhr zu ende war', () => {
+    // koray: sonntag 23:45 bis montag 00:20 — beim wochenschluss noch offen
+    const ueberMitternacht = fokus('2026-09-20', 'boxen', [23, 45], 35, { user: 'koray' })
+    expect(tagVon(ueberMitternacht)).toBe('2026-09-20')
+    expect(zaehlt(ueberMitternacht)).toBe(false)
+    expect(messung([ueberMitternacht], 'koray', 'boxen', '2026-09-20')).toBeNull()
+    // sichtbar bleibt sie trotzdem, wie eine zu kurze
+    expect(sitzungen([ueberMitternacht], 'koray', 'boxen', '2026-09-20')).toHaveLength(1)
+    // 23:59 fertig zählt noch, genau 0 uhr schon nicht mehr
+    expect(zaehlt(fokus('2026-09-20', 'boxen', [23, 29], 30))).toBe(true)
+    expect(zaehlt(fokus('2026-09-20', 'boxen', [23, 30], 30))).toBe(false)
   })
 
   it('nimmt bei zwei besuchen am tag den längeren', () => {

@@ -1,4 +1,4 @@
-import { toKey } from './dates'
+import { addDays, startOfWeek, toKey } from './dates'
 import type { Aufenthalt, FeldId, MessbarerBereich, UserId } from './types'
 import { istMessbar } from './types'
 
@@ -74,9 +74,21 @@ export function tagVon(a: Aufenthalt): string {
   return tag
 }
 
+/**
+ * sonntag 24 uhr ist die woche vorbei. eine sitzung, die erst am montag endet
+ * (auch genau um 0 uhr), war beim schluss noch offen — der eingefrorene
+ * bericht hat sie nicht gesehen, also zählt sie auch sonst nirgends. unter der woche bleibt es bei `tagVon`:
+ * 23:40 bis 00:30 ist das training vom vortag.
+ */
+export function vorWochenschluss(a: Aufenthalt): boolean {
+  if (!a.abgang) return false
+  const schluss = addDays(startOfWeek(new Date(a.ankunft)), 7).getTime()
+  return new Date(a.abgang).getTime() < schluss
+}
+
 export function zaehlt(a: Aufenthalt): boolean {
   const dauer = dauerMinuten(a)
-  return dauer !== null && dauer >= mindestMinuten(a.bereich)
+  return dauer !== null && dauer >= mindestMinuten(a.bereich) && vorWochenschluss(a)
 }
 
 /**
