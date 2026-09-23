@@ -123,7 +123,7 @@ describe('AnsagenBereich', () => {
     expect(await blatt.findByText('für dieses feld passt diese woche kein faires ziel mehr.')).toBeInTheDocument()
   })
 
-  it('zeigt eine ansage an dich groß, mit einsatz und den knöpfen zum reagieren', async () => {
+  it('lässt eine ansage ohne aktion laufen und zeigt reaktionen erst auf wunsch', async () => {
     const user = userEvent.setup()
     const onReagiere = vi.fn(async () => ({ ansage: ansage({ reaktion: { art: 'duAuch' as const, am: DIENSTAG.toISOString() } }) }))
     render(
@@ -142,7 +142,13 @@ describe('AnsagenBereich', () => {
     expect(karte.getByText('mutig · 2 Punkte')).toBeInTheDocument()
     expect(karte.getByText('Wenn du das Ziel schaffst: +2 Punkte für dich. Sonst: +2 Punkte für koray.')).toBeInTheDocument()
     expect(karte.getByText(/noch 5 t 6 std/)).toBeInTheDocument()
-    expect(karte.getByText('Du kannst noch 21 std einmal reagieren:')).toBeInTheDocument()
+    expect(karte.getByText('Einfach annehmen')).toBeInTheDocument()
+    expect(karte.getByText('Du musst nichts drücken. Die Ansage läuft automatisch weiter.')).toBeInTheDocument()
+    const optionen = karte.getByText('Stattdessen reagieren (optional) · noch 21 std').closest('details')
+    expect(optionen).not.toHaveAttribute('open')
+    expect(onReagiere).not.toHaveBeenCalled()
+    await user.click(karte.getByText('Stattdessen reagieren (optional) · noch 21 std'))
+    expect(optionen).toHaveAttribute('open')
     expect(karte.getByRole('button', { name: /^kontern/ })).toHaveAccessibleDescription('4 Punkte statt 2')
 
     await user.click(karte.getByRole('button', { name: /^du auch/ }))

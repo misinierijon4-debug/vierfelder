@@ -212,33 +212,43 @@ function ReaktionsKnoepfe({
   const e = wirksamerEinsatz(ansage)
   return (
     <div className="mt-3">
-      <p className="tnum text-[12px] text-kreide-60">Du kannst noch {restzeitText(jetzt, lage.bis)} einmal reagieren:</p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onReagiere(ansage.id, 'kontern')}
-          disabled={!lage.kontern || sendet !== null}
-          aria-describedby={`kontern-${ansage.id}`}
-          className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
-        >
-          <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
-          <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-            {lage.kontern ? `${e * 2} Punkte statt ${e}` : 'nur vor deinem ersten Tag'}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onReagiere(ansage.id, 'duAuch')}
-          disabled={sendet !== null}
-          aria-describedby={`duauch-${ansage.id}`}
-          className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
-        >
-          <span className="text-[14px] font-bold text-kreide">{sendet === 'duAuch' ? 'wird gesendet …' : 'du auch'}</span>
-          <span id={`duauch-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-            {von.name} muss auch {ansageZielText(ansage.feld, ansage.ziel)}
-          </span>
-        </button>
+      <div className="border-l-[3px] border-kreide-52 bg-grund px-3 py-2.5">
+        <p className="text-[14px] font-semibold text-kreide">Einfach annehmen</p>
+        <p className="mt-0.5 text-[12px] leading-5 text-kreide-60">
+          Du musst nichts drücken. Die Ansage läuft automatisch weiter.
+        </p>
       </div>
+      <details className="mt-2 group">
+        <summary className="flex min-h-11 cursor-pointer items-center text-[12px] font-semibold text-kreide-60 hover:text-kreide">
+          Stattdessen reagieren (optional) · noch {restzeitText(jetzt, lage.bis)}
+        </summary>
+        <div className="grid grid-cols-2 gap-2 pb-1">
+          <button
+            type="button"
+            onClick={() => onReagiere(ansage.id, 'kontern')}
+            disabled={!lage.kontern || sendet !== null}
+            aria-describedby={`kontern-${ansage.id}`}
+            className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
+          >
+            <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
+            <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
+              {lage.kontern ? `${e * 2} Punkte statt ${e}` : 'nur vor deinem ersten Tag'}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onReagiere(ansage.id, 'duAuch')}
+            disabled={sendet !== null}
+            aria-describedby={`duauch-${ansage.id}`}
+            className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
+          >
+            <span className="text-[14px] font-bold text-kreide">{sendet === 'duAuch' ? 'wird gesendet …' : 'du auch'}</span>
+            <span id={`duauch-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
+              {von.name} muss auch {ansageZielText(ansage.feld, ansage.ziel)}
+            </span>
+          </button>
+        </div>
+      </details>
     </div>
   )
 }

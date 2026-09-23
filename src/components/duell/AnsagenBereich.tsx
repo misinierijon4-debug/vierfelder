@@ -287,7 +287,7 @@ export const AnsagenBereich = memo(function AnsagenBereich({
             sonst bekommst <b style={{ color: ich.farbe }}>du</b> ihn. sicher: 1 Punkt, mutig: 2 Punkte, all-in: 3 Punkte.
           </li>
           <li>
-            {er.name} kann einmal reagieren, 24 stunden lang: <b className="text-kreide">kontern</b> verdoppelt den
+            {er.name} muss nichts bestätigen. Die Ansage läuft auch ohne Reaktion. Innerhalb von 24 Stunden kann {er.name} stattdessen einmal reagieren: <b className="text-kreide">kontern</b> verdoppelt den
             einsatz, <b className="text-kreide">du auch</b> heißt: du musst dasselbe schaffen.
           </li>
           <li>
