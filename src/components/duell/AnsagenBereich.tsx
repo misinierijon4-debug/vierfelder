@@ -159,8 +159,8 @@ export const AnsagenBereich = memo(function AnsagenBereich({ zustand, me, heute,
                       <span className="text-[14px] font-bold text-kreide">
                         {ansageZielText(v.feld, v.ziel)} <span className="font-semibold text-kreide-60">bis sa</span>
                       </span>
-                      <span className="tnum text-[10px] text-kreide-52" aria-label={`letzte vier wochen: ${v.verlauf.join(', ')}`}>
-                        zuletzt {v.verlauf.join(' · ')}
+                      <span className="tnum text-[10px] text-kreide-52" aria-label={`letzte ${v.verlauf.length} wochen: ${v.verlauf.join(', ')}`}>
+                        letzte {v.verlauf.length} wochen: {v.verlauf.join(' · ')}
                       </span>
                     </div>
                     <p className="mt-1 text-[12px] leading-5 text-kreide-60 [overflow-wrap:anywhere]">{v.spruch}</p>
@@ -207,11 +207,16 @@ export const AnsagenBereich = memo(function AnsagenBereich({ zustand, me, heute,
       <p aria-live="polite" className="mt-2 min-h-5 text-[11px] text-kreide-60">
         {meldung}
       </p>
-      <p className="text-[11px] leading-4 text-kreide-52">
-        einsatz {EINSATZ} punkt. scheitert {er.name}, bekommst du ihn zurück und{' '}
-        <b style={{ color: ich.farbe }}>+1</b>. schafft {er.name} es, bleibt es bei{' '}
-        <b style={{ color: er.farbe }}>−1</b>. gezählt wird nur gemessen, beim gewicht nur am selben tag eingetragen.
-      </p>
+      <details className="text-[11px] leading-4 text-kreide-52">
+        <summary className="min-h-11 cursor-pointer py-3 text-kreide-60 transition-colors hover:text-kreide">
+          so funktionieren ansagen
+        </summary>
+        <p className="pb-1">
+          einsatz {EINSATZ} punkt. scheitert {er.name}, bekommst du ihn zurück und{' '}
+          <b style={{ color: ich.farbe }}>+1</b>. schafft {er.name} es, bleibt es bei{' '}
+          <b style={{ color: er.farbe }}>−1</b>. gezählt wird nur gemessen, beim gewicht nur am selben tag eingetragen.
+        </p>
+      </details>
     </section>
   )
 })

@@ -43,7 +43,7 @@ export function ladeAnsageSprueche(vorschlaege: AnsageVorschlag[]): Promise<Spru
     })
     .then(({ data, error }) => {
       if (error) return null
-      const auswahl = pruefeAuswahl(data, vorschlaege.map((v) => v.feld))
+      const auswahl = pruefeAuswahl(data, vorschlaege.map((v) => v.feld), vorschlaege[0]?.an)
       return auswahl.length > 0 ? auswahl : null
     })
     .catch(() => null)
