@@ -47,7 +47,7 @@ Es gibt **keinen Linter** und **kein Formatierwerkzeug** — Stil der Nachbardat
 ```
 src/lib/          104 Dateien: gesamte Logik + Tests (*.test.ts neben der Datei)
 src/components/    75 Dateien: Oberfläche, Unterordner eni/ noten/ schlaf/ duell/
-supabase/migrations/   46 SQL-Dateien, Name: YYYYMMDDHHMMSS_thema.sql
+supabase/migrations/   54 SQL-Dateien, Name: YYYYMMDDHHMMSS_thema.sql
 supabase/functions/    Edge Functions (Deno), gemeinsamer Code in _shared/
 supabase/schema.sql    Gesamtstand der Tabellen — schneller als Migrationen lesen
 scripts/               Bau- und Prüfskripte (.mjs), von package.json aufgerufen
@@ -79,9 +79,9 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts` |
 | Noten, MSS-Regeln Abi 2027 | `src/lib/noten.ts`, `src/components/noten/` |
 | Duell, Wetten, Druckstatus | `src/lib/duell.ts`, `src/components/duell/` |
-| **Ansagen** (Herausforderung mit Einsatz): Regeln und Client-Rechnung | `src/lib/ansagen.ts`, `docs/ansagen.md` |
-| Ansagen: Server (Ziel, Kontingent, Einfrieren, Abrechnung v2, Push) | Migration `*_duell_ansagen.sql`, Prüfskript `scripts/check-duell-ansagen.mjs` |
-| Ansagen: Oberfläche und ENI-Sprüche | `src/components/duell/AnsagenBereich.tsx`, `AnsageHinweis.tsx`, `src/lib/ansageSprueche.ts`, `supabase/functions/_shared/ansageSprueche.ts` |
+| **Ansagen** (Herausforderung mit Stufe, Kontern, „du auch“): Regeln und Client-Rechnung | `src/lib/ansagen.ts`, `docs/ansagen.md` |
+| Ansagen: Server (Ziel je Stufe, Reaktion, Einfrieren So 18 Uhr, Abrechnung v3, Push) | Migration `*_ansagen_stufen.sql` (erste Fassung: `*_duell_ansagen.sql`), Prüfskript `scripts/check-ansagen-stufen.mjs` |
+| Ansagen: Oberfläche und ENI-Sprüche | `src/components/duell/AnsagenBereich.tsx`, `AnsageKarte.tsx`, `AnsageSheet.tsx`, `AnsageHinweis.tsx`, Texte `src/lib/ansageAnzeige.ts`, `src/lib/ansageSprueche.ts`, `supabase/functions/_shared/ansageSprueche.ts` |
 | Rivalitäts-Badge, Freitext-Zuordnung, Tonfall (classifier.dev) | `src/lib/duellBadge.ts` (Startpfad), `src/lib/duellKlassifizierung.ts` (nachgeladen), `src/components/duell/RivalitaetsTicker.tsx` |
 | ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1136 Z.) |
 | ENI Modell, Stream, Websuche | `supabase/functions/_shared/eni*.ts`, `supabase/functions/eni/index.ts` |

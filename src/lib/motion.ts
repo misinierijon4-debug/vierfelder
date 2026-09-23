@@ -91,3 +91,24 @@ export const BERICHT = {
   balkenDauer: 0.42,
   balkenVersatz: 0.04,
 }
+
+/**
+ * ansagen. alles kurz und mit feder, nichts über 400 ms — die ansage ist ein
+ * ereignis, aber keine vorführung.
+ *
+ * - `stempel`: das siegel beim ansagen fällt aus der luft aufs blatt, leicht
+ *   gedreht, und federt einmal nach
+ * - `zelle`: eine fortschrittszelle setzt auf wie im raster, gestaffelt
+ * - `aufloesung`: das ergebnis kommt über die karte; gewonnen satt in der
+ *   eigenen farbe, verloren nur als ruhiges einblenden
+ * - `sheet`: schritt im blatt, der nächste abschnitt schiebt sich nach
+ */
+export const ANSAGE = {
+  stempel: { type: 'spring', stiffness: 520, damping: 22, mass: 0.7 } as const,
+  zelle: { type: 'spring', stiffness: 420, damping: 30, mass: 0.8 } as const,
+  zellenVersatz: 0.045,
+  aufloesung: { type: 'spring', stiffness: 380, damping: 26 } as const,
+  /** wie lange das siegel steht, bevor das blatt zugeht, in ms */
+  stempelHalten: 650,
+  schritt: 0.22,
+}

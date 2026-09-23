@@ -164,6 +164,7 @@ function Tracker({
     ansagen,
     ansagenVerfuegbar,
     sageAn,
+    reagiere,
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,
@@ -626,6 +627,7 @@ function Tracker({
                 onAbschluss={bereit ? schliesseWocheAb : undefined}
                 ansagen={ansagenVerfuegbar ? ansagen : undefined}
                 onSageAn={bereit && ansagenVerfuegbar ? sageAn : undefined}
+                onReagiere={bereit && ansagenVerfuegbar ? reagiere : undefined}
               />
             </div>
           </Activity>

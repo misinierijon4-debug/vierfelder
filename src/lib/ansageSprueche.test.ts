@@ -5,10 +5,10 @@ import type { AnsageVorschlag } from './ansagen'
 const vorschlag = (feld: AnsageVorschlag['feld'], ziel = 2): AnsageVorschlag => ({
   an: 'koray',
   feld,
+  stufe: 'sicher',
   ziel,
-  ab: '2026-09-22',
-  bis: '2026-09-26',
   verlauf: [1, 0, 1, 1],
+  meinVerlauf: [2, 2, 1, 3],
 })
 
 describe('gezeigteVorschlaege', () => {

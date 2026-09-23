@@ -688,9 +688,16 @@ export type AnsageZeile = {
   erstellt_am: string
   ergebnis: string | null
   entschieden_am: string | null
+  version?: number | null
+  stufe?: string | null
+  einsatz?: number | null
+  reaktion?: string | null
+  reaktion_am?: string | null
+  bezug?: string | null
 }
 
-const ANSAGE_SPALTEN = 'id, von, an, feld, ab, bis, ziel, erstellt_am, ergebnis, entschieden_am'
+const ANSAGE_SPALTEN =
+  'id, von, an, feld, ab, bis, ziel, erstellt_am, ergebnis, entschieden_am, version, stufe, einsatz, reaktion, reaktion_am, bezug'
 
 /**
  * macht aus einer zeile eine ansage. kennt `person` eine uuid nicht, oder ist
@@ -702,15 +709,27 @@ export function ansageAusZeile(z: unknown, person: (id: string) => UserId | unde
   const zeile = z as Partial<AnsageZeile>
   const von = typeof zeile.von === 'string' ? person(zeile.von) : undefined
   const an = typeof zeile.an === 'string' ? person(zeile.an) : undefined
+  const zwei = zeile.version === 2
   const ansage: Ansage = {
     id: String(zeile.id ?? ''),
+    ...(zwei ? { version: 2 as const } : {}),
     von: von!,
     an: an!,
     feld: zeile.feld as Ansage['feld'],
+    ...(zwei ? { stufe: zeile.stufe as Ansage['stufe'], einsatz: Number(zeile.einsatz) } : {}),
     ab: String(zeile.ab ?? ''),
     bis: String(zeile.bis ?? ''),
     ziel: Number(zeile.ziel),
     erstelltAm: String(zeile.erstellt_am ?? ''),
+    ...(zwei && zeile.reaktion
+      ? {
+          reaktion: {
+            art: zeile.reaktion as 'kontern' | 'duAuch',
+            am: String(zeile.reaktion_am ?? ''),
+          },
+        }
+      : {}),
+    ...(zwei && zeile.bezug ? { bezug: String(zeile.bezug) } : {}),
     ...(zeile.ergebnis
       ? {
           entschieden: {
@@ -1596,7 +1615,13 @@ export function supabaseBackend(
       }
       if (fachZeilen.error && !fehltNoch(fehlercode(fachZeilen.error))) throw fachZeilen.error
       if (notenZeilen.error && !fehltNoch(fehlercode(notenZeilen.error))) throw notenZeilen.error
-      if (ansageZeilen.error && !fehltNoch(fehlercode(ansageZeilen.error))) throw ansageZeilen.error
+      // die spalten der zweiten fassung fehlen, solange ihre migration nicht
+      // eingespielt ist: dann bleibt es beim frontend ohne ansagen
+      if (
+        ansageZeilen.error
+        && !fehltNoch(fehlercode(ansageZeilen.error))
+        && !istFehlendeVonSpalte(fehlercode(ansageZeilen.error))
+      ) throw ansageZeilen.error
       ansagenVerfuegbar = !ansageZeilen.error
       wettenVerfuegbar = !lesbareWetten.error
       abrechnungVerfuegbar = !abrechnungMitQuelle.error
@@ -1895,19 +1920,46 @@ export function supabaseBackend(
       return wechsleUndBestaetigePruefungsfach(db, fachId, erwartetesFachId)
     },
 
-    async sageAn(id, feld) {
+    async sageAn(id, feld, stufe) {
       if (!ansagenVerfuegbar) throw new Error('duell_ansagen fehlt noch')
-      const { data, error } = await db.rpc('sage_an', { p_id: id, p_feld: feld })
+      const { data, error } = await db.rpc('sage_an_stufe', { p_id: id, p_feld: feld, p_stufe: stufe })
       if (error) {
         const grund = ansageFehlerAus(error)
         throw grund ? new AnsageAbgelehnt(grund) : error
       }
       const ansage = ansageAusZeile(data, (uuid) => personen.get(uuid))
       // bestätigt ist nur genau die angefragte ansage von diesem konto
-      if (!ansage || ansage.id !== id || ansage.feld !== feld || ansage.von !== personen.get(eigeneId)) {
+      if (
+        !ansage
+        || ansage.id !== id
+        || ansage.feld !== feld
+        || ansage.stufe !== stufe
+        || ansage.von !== personen.get(eigeneId)
+      ) {
         throw mutationNichtBestaetigt('ansage wurde nicht bestaetigt')
       }
       return ansage
+    },
+
+    async reagiere(ansageId, id, art) {
+      if (!ansagenVerfuegbar) throw new Error('duell_ansagen fehlt noch')
+      const { data, error } = await db.rpc('reagiere_auf_ansage', { p_ansage: ansageId, p_id: id, p_art: art })
+      if (error) {
+        const grund = ansageFehlerAus(error)
+        throw grund ? new AnsageAbgelehnt(grund) : error
+      }
+      const roh = data && typeof data === 'object' ? (data as { ansage?: unknown; gegen?: unknown }) : {}
+      const person = (uuid: string) => personen.get(uuid)
+      const ansage = ansageAusZeile(roh.ansage, person)
+      const gegen = roh.gegen ? ansageAusZeile(roh.gegen, person) : null
+      const ich = personen.get(eigeneId)
+      if (!ansage || ansage.id !== ansageId || ansage.an !== ich || ansage.reaktion?.art !== art) {
+        throw mutationNichtBestaetigt('reaktion wurde nicht bestaetigt')
+      }
+      if (art === 'duAuch' && (!gegen || gegen.id !== id || gegen.bezug !== ansageId || gegen.von !== ich)) {
+        throw mutationNichtBestaetigt('du auch wurde nicht bestaetigt')
+      }
+      return gegen ? { ansage, gegen } : { ansage }
     },
 
     async schreibeNote(note) {

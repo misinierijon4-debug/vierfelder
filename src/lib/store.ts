@@ -13,7 +13,7 @@ import {
 } from './backend'
 import { leseStand, merkeStand } from './offlineStand'
 import { ansageFehlerAus } from './ansagen'
-import type { Ansage, AnsageFehler, AnsageFeld } from './ansagen'
+import type { Ansage, AnsageFehler, AnsageFeld, AnsageReaktion, AnsageStufe } from './ansagen'
 import {
   gewichtKey,
   neueEinheitId,
@@ -1712,25 +1712,57 @@ export function useTracker(backend: Backend) {
   }, [ladenNeu, offlineStand])
 
   /**
-   * sagt der anderen person an. anders als ticks nicht optimistisch: ziel und
+   * sagt der anderen person mit einer stufe an. anders als ticks nicht optimistisch: ziel und
    * zeitraum kommen vom backend, und eine erfundene zahl, die danach springt,
    * wäre schlimmer als eine sekunde warten. der aufrufer bekommt die ansage
    * oder den grund der ablehnung zurück.
    */
   const sageAn = useCallback(
-    async (feld: AnsageFeld): Promise<{ ansage: Ansage } | { fehler: AnsageFehler | 'gesperrt' | 'netz' }> => {
+    async (
+      feld: AnsageFeld,
+      stufe: AnsageStufe
+    ): Promise<{ ansage: Ansage } | { fehler: AnsageFehler | 'gesperrt' | 'netz' }> => {
       if (!darfMutationStarten()) return { fehler: 'gesperrt' }
       setFehler(null)
       // dieselbe id bei einem wiederholten versuch legt keine zweite an
       const id = neueEinheitId()
       try {
-        const ansage = await verfolgeMutation(() => backend.sageAn(id, feld))
+        const ansage = await verfolgeMutation(() => backend.sageAn(id, feld, stufe))
         if (darfSchreiben()) uebernimmAnsage(ansage)
         return { ansage }
       } catch (error) {
         const grund = ansageFehlerAus(error)
         if (grund) return { fehler: grund }
         // unbekannt, ob sie angekommen ist: der abgleich zeigt den echten stand
+        if (darfSchreiben()) abgleichAnfordernRef.current(true)
+        return { fehler: 'netz' }
+      }
+    },
+    [backend, darfMutationStarten, darfSchreiben, uebernimmAnsage, verfolgeMutation]
+  )
+
+  /**
+   * reagiert auf eine ansage an dich. wie das ansagen nicht optimistisch: bei
+   * „du auch“ rechnet das backend die gegenrichtung.
+   */
+  const reagiere = useCallback(
+    async (
+      ansageId: string,
+      art: AnsageReaktion
+    ): Promise<{ ansage: Ansage; gegen?: Ansage } | { fehler: AnsageFehler | 'gesperrt' | 'netz' }> => {
+      if (!darfMutationStarten()) return { fehler: 'gesperrt' }
+      setFehler(null)
+      const id = neueEinheitId()
+      try {
+        const antwort = await verfolgeMutation(() => backend.reagiere(ansageId, id, art))
+        if (darfSchreiben()) {
+          uebernimmAnsage(antwort.ansage)
+          if (antwort.gegen) uebernimmAnsage(antwort.gegen)
+        }
+        return antwort
+      } catch (error) {
+        const grund = ansageFehlerAus(error)
+        if (grund) return { fehler: grund }
         if (darfSchreiben()) abgleichAnfordernRef.current(true)
         return { fehler: 'netz' }
       }
@@ -1784,6 +1816,7 @@ export function useTracker(backend: Backend) {
     setzeWette,
     abrechnungHinzu,
     sageAn,
+    reagiere,
     setzePruefungsfach,
     noteHinzu,
     noteLoeschen,

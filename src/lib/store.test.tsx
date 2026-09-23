@@ -101,6 +101,9 @@ function backendMit(laden: Backend['laden'], overrides: Partial<Backend> = {}): 
     sageAn: vi.fn(async () => {
       throw new Error('ansage:keinZiel')
     }),
+    reagiere: vi.fn(async () => {
+      throw new Error('ansage:reaktionZuSpaet')
+    }),
     ladePhasen: vi.fn(async () => []),
     abonniere: vi.fn(() => () => {}),
     ...overrides,
@@ -2110,10 +2113,10 @@ describe('useTracker ansagen', () => {
 
     let ergebnis: Promise<unknown> = Promise.resolve()
     act(() => {
-      ergebnis = result.current.sageAn('boxen')
+      ergebnis = result.current.sageAn('boxen', 'mutig')
     })
     expect(result.current.ansagen).toEqual([])
-    expect(backend.sageAn).toHaveBeenCalledWith(expect.any(String), 'boxen')
+    expect(backend.sageAn).toHaveBeenCalledWith(expect.any(String), 'boxen', 'mutig')
 
     await act(async () => {
       antwort.resolve(ANSAGE)
@@ -2129,10 +2132,33 @@ describe('useTracker ansagen', () => {
     await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
     let ergebnis: unknown
     await act(async () => {
-      ergebnis = await result.current.sageAn('gewicht')
+      ergebnis = await result.current.sageAn('gewicht', 'sicher')
     })
     expect(ergebnis).toEqual({ fehler: 'keinZiel' })
     expect(result.current.ansagen).toEqual([])
+  })
+
+  it('übernimmt ansage und gegenrichtung einer reaktion und reicht ablehnungen durch', async () => {
+    const V2 = { ...ANSAGE, version: 2 as const, stufe: 'mutig' as const, einsatz: 2, von: 'koray' as const, an: 'erijon' as const }
+    const beantwortet = { ...V2, reaktion: { art: 'duAuch' as const, am: '2026-09-22T11:00:00.000Z' } }
+    const gegen = { ...V2, id: 'g1', von: 'erijon' as const, an: 'koray' as const, bezug: 'a1' }
+    const reagiere = vi.fn(async () => ({ ansage: beantwortet, gegen }))
+    const backend = backendMit(async () => ({ ...ANFANG, ansagen: [V2] }), { reagiere })
+    const { result } = renderHook(() => useTracker(backend))
+    await waitFor(() => expect(result.current.ladezustand).toBe('bereit'))
+    let ergebnis: unknown
+    await act(async () => {
+      ergebnis = await result.current.reagiere('a1', 'duAuch')
+    })
+    expect(reagiere).toHaveBeenCalledWith('a1', expect.any(String), 'duAuch')
+    expect(ergebnis).toEqual({ ansage: beantwortet, gegen })
+    expect(result.current.ansagen).toEqual([beantwortet, gegen])
+
+    reagiere.mockRejectedValueOnce(new Error('ansage:schonReagiert'))
+    await act(async () => {
+      ergebnis = await result.current.reagiere('a1', 'kontern')
+    })
+    expect(ergebnis).toEqual({ fehler: 'schonReagiert' })
   })
 
   it('nimmt ein festgeschriebenes ergebnis per live-ereignis an, aber nie zurück', async () => {

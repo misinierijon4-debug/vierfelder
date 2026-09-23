@@ -213,6 +213,32 @@ dialog[open]::backdrop {
   }
 }
 
+/*
+ * Das Ansagen-Blatt kommt ganz von unten statt zehn Pixel: es ist eine
+ * Handlung am Daumen, kein Vollbild. Dieselbe Dauer wie oben, damit
+ * `dialogNachlauf` weiter passt.
+ */
+dialog.blatt-unten {
+  transform: translateY(100%);
+  opacity: 1;
+}
+
+dialog.blatt-unten:modal {
+  top: auto;
+  bottom: 0;
+  max-height: 92dvh;
+}
+
+dialog.blatt-unten[open] {
+  transform: translateY(0);
+}
+
+@starting-style {
+  dialog.blatt-unten[open] {
+    transform: translateY(100%);
+  }
+}
+
 @media (pointer: coarse) {
   /* Kleine Formularschrift löst auf iPhones beim Fokussieren Auto-Zoom aus. */
   input, textarea, select {

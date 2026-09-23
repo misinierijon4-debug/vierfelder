@@ -5,9 +5,9 @@ import type { Abrechnung, UserId, Zustand } from '../../lib/types'
 import { historieWochen, saisonHistorie } from '../../lib/duell'
 import type { DuellMatch } from '../../lib/duell'
 import { fromKey, isoWeek, istBilanzzeit } from '../../lib/dates'
-import type { AnsageAntwort } from './AnsagenBereich'
+import type { AnsageAntwort, ReaktionsAntwort } from './AnsagenBereich'
 import { wochenAnsagePunkte, zaehltAusZustand } from '../../lib/ansagen'
-import type { Ansage, AnsageFeld } from '../../lib/ansagen'
+import type { Ansage, AnsageFeld, AnsageReaktion, AnsageStufe } from '../../lib/ansagen'
 
 type Props = {
   zustand: Zustand
@@ -25,7 +25,9 @@ type Props = {
   /** die ansagen beider personen. fehlen sie, kennt das backend noch keine — dann kein bereich */
   ansagen?: Ansage[]
   /** sagt an. fehlt er, bleiben die ansagen nur zum ansehen */
-  onSageAn?: (feld: AnsageFeld) => Promise<AnsageAntwort>
+  onSageAn?: (feld: AnsageFeld, stufe: AnsageStufe) => Promise<AnsageAntwort>
+  /** reagiert auf eine ansage an dich */
+  onReagiere?: (ansageId: string, art: AnsageReaktion) => Promise<ReaktionsAntwort>
 }
 
 const KEINE_ANSAGEN: Ansage[] = []
@@ -50,6 +52,7 @@ export const DuellTab = memo(function DuellTab({
   onAbschluss,
   ansagen,
   onSageAn,
+  onReagiere,
 }: Props) {
   const ich = userDef(me)
   const er = other(me)
@@ -85,11 +88,18 @@ export const DuellTab = memo(function DuellTab({
     <div className="pb-7">
       {ansagen && (
         <Suspense fallback={null}>
-          <AnsagenBereich zustand={zustand} me={me} heute={heute} ansagen={ansagen} onSageAn={onSageAn} />
+          <AnsagenBereich
+            zustand={zustand}
+            me={me}
+            heute={heute}
+            ansagen={ansagen}
+            onSageAn={onSageAn}
+            onReagiere={onReagiere}
+          />
         </Suspense>
       )}
 
-      <section aria-labelledby="beleg-titel" className="mt-5 first:mt-0 border-t border-linie pt-3">
+      <section aria-labelledby="beleg-titel" className="mt-6 first:mt-0 border-t border-linie pt-3">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id="beleg-titel" className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
             <ShieldCheck size={15} weight="fill" aria-hidden="true" /> belegquote

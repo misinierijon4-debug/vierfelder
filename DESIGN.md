@@ -1913,3 +1913,38 @@ Quadrat mit einem Strich darin. Genau daneben steht die Marke, die auch ein
 Rechteck mit Radius 2 ist; zwei Kästchen in einer Zeile, von denen nur eines
 etwas bedeutet, sind eines zu viel. Der Balken mit den zwei Schalen ist bei
 16px noch als Waage zu erkennen und mit nichts im Raster zu verwechseln.
+
+## 47. Nachtrag: die ansage wird das herzstück (23.09.2026)
+
+Die ansagen standen als kleine liste unter einer 12-pixel-überschrift, gleich
+laut wie belegquote und bilanz. Sie sind aber das einzige im duell-tab, das man
+*tut* — alles andere liest man nur ab. Jetzt stehen sie oben und groß.
+
+**Keine karte, ein block.** Eine laufende ansage ist ein streifen zwischen zwei
+haarlinien auf `flaeche`, oben eine 3-pixel-kante in der farbe dessen, der
+angesagt hat. Darin das ziel in archivo 40px, rechts der stand `2/4` in der
+farbe dessen, der liefern muss. Kein schatten, keine runden ecken außer den
+üblichen 2px.
+
+**Fortschritt sind zellen, kein ring.** Je nötigem tag eine zelle, gefüllt in
+der farbe der liefernden person — dieselbe sprache wie das raster. Ein ring
+wäre eine zweite bildsprache für dieselbe aussage „so viele tage von so
+vielen“. Bei „du auch“ steht eine zweite bahn darunter, wie die zwei zeilen
+eines bereichs im raster.
+
+**Ansagen ist ein blatt von unten.** Feld, stufe, bestätigen auf einer fläche:
+die felder als zeilen mit haarlinien (gesperrte grau mit grund), die stufen als
+drei knöpfe mit ziel und einsatz, darunter das ziel groß — es rollt mit, wenn
+man die stufe wechselt. Nach dem bestätigen fällt ein siegel „angesagt“ in der
+eigenen farbe aufs blatt, leicht gedreht, mit einer feder (`ANSAGE.stempel`),
+dann geht das blatt zu.
+
+**Auflösung.** Kommt ein ergebnis herein, während man zusieht, läuft es einmal
+ein: gewonnen zieht ein streifen in der eigenen farbe über die zeile und das
+siegel federt, verloren blendet nur ruhig ein. Der wochenstand oben rollt über
+`Zahl` von allein mit. Alles unter 400 ms; `prefers-reduced-motion` schaltet
+bewegung ab.
+
+**Der leere zustand lädt ein.** Statt „diese woche noch keine ansage.“ in 12px
+steht der satz groß, darunter in einem satz, worum es geht, und eine leere
+bahn in der farbe des anderen — sie wartet darauf, gefüllt zu werden.

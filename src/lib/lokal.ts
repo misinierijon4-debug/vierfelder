@@ -15,9 +15,9 @@ import {
   istWetteVersion,
   vergleicheWetteVersion,
 } from './backend'
-import { addDays, toKey, weekDays } from './dates'
-import { AnsageAbgelehnt, festzuschreiben, istAnsage, neueAnsage, zaehltAusZustand } from './ansagen'
-import type { Ansage, AnsageFeld } from './ansagen'
+import { addDays, fromKey, toKey, weekDays } from './dates'
+import { AnsageAbgelehnt, festzuschreiben, istAnsage, neueAnsage, reagiere, zaehltAusZustand } from './ansagen'
+import type { Ansage, AnsageFeld, AnsageReaktion, AnsageStufe } from './ansagen'
 import { gewichtKey, neueEinheitId, other, tickKey, wertKey } from './types'
 import { notenGewicht } from './noten'
 import type {
@@ -786,6 +786,34 @@ function erzeugeBeispielAufenthalte(): Aufenthalt[] {
       abgang: zeit(woche[i]!, stunde, minute + dauer),
     }))
 
+  // vier vorwochen, damit ansagen eine form haben, aus der ein ziel kommt.
+  // koray war darin nie im gym — so zeigt der prototyp auch ein gesperrtes feld.
+  // [wochentag, person, bereich, quelle, beginn, dauer in minuten, in welchen vorwochen]
+  const vorwochen: Array<[number, UserId, AreaId, string, [number, number], number, number[]]> = [
+    [1, 'koray', 'boxen', 'boxhalle', [19, 0], 80, [1, 2, 3, 4]],
+    [3, 'koray', 'boxen', 'boxhalle', [19, 0], 75, [1, 2, 3]],
+    [5, 'koray', 'boxen', 'boxhalle', [11, 0], 60, [2]],
+    [2, 'koray', 'lesen', 'fokus lesen', [21, 30], 30, [1, 3]],
+    [0, 'koray', 'lernen', 'fokus lernen', [17, 0], 60, [2, 4]],
+    [0, 'erijon', 'gym', 'gym nord', [18, 0], 70, [1, 2, 3, 4]],
+    [3, 'erijon', 'gym', 'gym nord', [18, 0], 65, [1, 2, 4]],
+    [2, 'erijon', 'boxen', 'boxhalle', [19, 0], 60, [1, 3]],
+    [6, 'erijon', 'lesen', 'fokus lesen', [21, 0], 25, [1, 2, 3]],
+    [1, 'erijon', 'lernen', 'fokus lernen', [16, 0], 90, [2]],
+  ]
+  for (const [i, user, bereich, ort, [stunde, minute], dauer, wochen] of vorwochen) {
+    for (const w of wochen) {
+      const tag = toKey(addDays(fromKey(woche[i]!), -7 * w))
+      aufenthalte.push({
+        user,
+        bereich,
+        ort,
+        ankunft: zeit(tag, stunde, minute),
+        abgang: zeit(tag, stunde, minute + dauer),
+      })
+    }
+  }
+
   // einer für heute, relativ zu jetzt: nur so sieht man im prototyp auch die
   // gemessene bereichszeile, die nicht antippbar ist.
   const jetzt = Date.now()
@@ -843,21 +871,26 @@ function alleAbrechnungen(): Abrechnung[] {
 
 /**
  * eine ansage von koray an erijon, damit der prototyp zeigt, wie eine
- * laufende aussieht. gemacht am montag dieser woche, bis samstag.
+ * laufende aussieht: vor zwei stunden gemacht, also noch mit reaktion.
  */
 function beispielAnsagen(): Ansage[] {
   const woche = weekDays(new Date())
   const [j, m, t] = woche[0]!.split('-').map(Number)
+  const montag = new Date(j!, m! - 1, t!, 0, 5)
+  const erstellt = new Date(Math.max(montag.getTime(), Date.now() - 2 * 3_600_000))
   return [
     {
       id: 'beispiel-ansage-lesen',
+      version: 2,
       von: 'koray',
       an: 'erijon',
       feld: 'lesen',
-      ab: woche[1]!,
-      bis: woche[5]!,
-      ziel: 2,
-      erstelltAm: new Date(j!, m! - 1, t!, 8, 0).toISOString(),
+      stufe: 'mutig',
+      einsatz: 2,
+      ab: toKey(erstellt),
+      bis: woche[6]!,
+      ziel: 3,
+      erstelltAm: erstellt.toISOString(),
     },
   ]
 }
@@ -1236,12 +1269,14 @@ export function lokalesBackend(): Backend {
       })
     },
 
-    async sageAn(id: string, feld: AnsageFeld) {
+    async sageAn(id: string, feld: AnsageFeld, stufe: AnsageStufe) {
       return mitSichererMutation(ANSAGEN_KEY, () => {
         const alle = alleAnsagen()
         const vorhanden = alle.find((a) => a.id === id)
         if (vorhanden) {
-          if (vorhanden.von !== me || vorhanden.feld !== feld) throw new Error('ansage-id ist schon vergeben')
+          if (vorhanden.von !== me || vorhanden.feld !== feld || vorhanden.stufe !== stufe) {
+            throw new Error('ansage-id ist schon vergeben')
+          }
           return vorhanden
         }
         const ergebnis = neueAnsage(
@@ -1250,6 +1285,7 @@ export function lokalesBackend(): Backend {
           me,
           other(me).id,
           feld,
+          stufe,
           new Date(),
           id
         )
@@ -1261,6 +1297,28 @@ export function lokalesBackend(): Backend {
           ansage: ergebnis.ansage,
         } satisfies Nachricht)
         return ergebnis.ansage
+      })
+    },
+
+    async reagiere(ansageId: string, id: string, art: AnsageReaktion) {
+      return mitSichererMutation(ANSAGEN_KEY, () => {
+        const alle = alleAnsagen()
+        const ansage = alle.find((a) => a.id === ansageId)
+        if (!ansage) throw new AnsageAbgelehnt('nichtDeine')
+        // dieselbe reaktion nach einem timeout: dieselbe antwort
+        if (ansage.reaktion?.art === art && ansage.an === me) {
+          const gegen = alle.find((a) => a.bezug === ansageId)
+          return gegen ? { ansage, gegen } : { ansage }
+        }
+        const ergebnis = reagiere(zaehltAusZustand(lokalerZustand()), ansage, me, art, new Date(), id)
+        if ('fehler' in ergebnis) throw new AnsageAbgelehnt(ergebnis.fehler)
+        const neu = alle.map((a) => (a.id === ansageId ? ergebnis.ansage : a))
+        if (ergebnis.gegen) neu.push(ergebnis.gegen)
+        localStorage.setItem(ANSAGEN_KEY, JSON.stringify(neu))
+        for (const a of [ergebnis.ansage, ...(ergebnis.gegen ? [ergebnis.gegen] : [])]) {
+          holeKanal()?.postMessage({ von: absender, typ: 'ansage', ansage: a } satisfies Nachricht)
+        }
+        return ergebnis.gegen ? { ansage: ergebnis.ansage, gegen: ergebnis.gegen } : { ansage: ergebnis.ansage }
       })
     },
 

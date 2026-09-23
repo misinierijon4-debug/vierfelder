@@ -1,106 +1,137 @@
 # Ansagen — Herausforderungen im Duell
 
-Status: **ausgerollt am 23.09.2026.** Migration eingespielt, `ansage-sprueche`
-(neu) und `aktivitaets-erinnerung` (Version 10) deployt. Die Function `eni`
-ist noch die alte Fassung: ENI im Chat kennt die Ansagen erst nach ihrem
-naechsten Deploy (`_shared/eniLage.ts`).
+Status: **zweite Fassung (Stufen, Kontern, „du auch“) ausgerollt am
+23.09.2026.** Migration `20260924120000_ansagen_stufen.sql` eingespielt,
+`ansage-sprueche` (Version 3) und `eni` (Version 37) deployt. Die erste
+Fassung steht unten unter „Erste Fassung“.
 
 ## Idee
 
-Jede Person bekommt pro Woche **2 Ansagen**. Mit einer Ansage wettet man,
-dass die andere Person ein Ziel bis Samstag *nicht* schafft, und setzt dafür
-einen Punkt. Die herausgeforderte Person kann nicht ablehnen, sie kann nur
-liefern. Die Ansage legt Druck genau auf ihr schwächstes Feld — dort bringt
-mehr Training am meisten.
+Eine Ansage ist eine Herausforderung an die andere Person: „4× boxen bis
+Sonntag“. Schafft sie es, bekommt **sie** den Einsatz. Schafft sie es nicht,
+bekommt ihn, **wer angesagt hat**. Damit ist jede Ansage ein echtes Risiko für
+den, der ansagt — und ein echter Grund zu liefern für den, der angesagt wird.
+Genau das ist der Punkt: sich gegenseitig zu mehr Training pushen.
 
-**ENI macht die Vorschläge.** Frei wählen kann man nur das Feld, das Ziel
-rechnet die App. ENI sucht aus den Kandidaten die bis zu drei spannendsten aus
-und schreibt den Spruch dazu, rechnet aber nie selbst: ein Spruch mit Ziffer
-wird verworfen, Ziel und Verlauf stehen daneben (wie beim Wochenbericht).
-Antwortet ENI nicht — im Prototyp immer —, stehen Vorlagesprüche da.
-
-Den Spruch liest die Person, die ansagt. ENI redet sie mit „du“ an und spricht
-über die andere Person in der dritten Person. Ein Spruch, der die andere Person
-direkt anredet („koray, zeig mal …“, „…, koray?“) oder ae/oe/ue statt Umlauten
-schreibt, wird verworfen (`redetAn`, `istUmschrieben` in
-`_shared/ansageSprueche.ts`), Server und Browser prüfen gleich. Bleibt kein
-Spruch übrig, stehen die Vorlagen da.
+Warum die erste Fassung nicht trug: das Ziel war Median + 1 der **gemessenen**
+Tage. Wer ein Feld nie macht (Koray hat kein Gym-Abo), bekam „1× gym“ — für
+den Herausforderer praktisch ein geschenkter Punkt, für den anderen nichts.
 
 ## Regeln
 
 | Regel | Warum |
 | --- | --- |
-| Felder: **Gym, Boxen, Lesen, Gewicht** — kein Lernen | Lernen ist zu selten für ein faires Ziel |
-| 2 Ansagen je Person und Woche, Rest verfällt | knapp genug, dass man überlegt |
-| Ansagen von **Montag bis Donnerstag**, Zeitraum immer **morgen bis Samstag** | der Sonntag gehört der Abrechnung (ab 18 Uhr): bis dahin muss jede Ansage entschieden sein. Ab Freitag bliebe nur ein Tag |
-| Ziel = üblicher Wochenstand (Median der letzten 4 Wochen) **+ 1**, auf den Zeitraum heruntergerechnet und aufgerundet | jede Ansage ist ungefähr 50:50, egal ob seltenes oder häufiges Feld |
-| Immer **ein Tag Spielraum**; passt das Ziel nicht, gibt es für das Feld keine Ansage | ohne Spielraum ist die Ansage nach dem ersten Fehltag tot und bringt kein Training mehr. Wer sich jeden Tag wiegt, kann darin nicht herausgefordert werden |
-| Nicht zweimal dasselbe Feld pro Woche | nicht beide Ansagen auf dieselbe Schwäche |
-| Bereiche zählen **nur gemessen** (Standort/Fokus, ab 20 Minuten, Lesen ab 10) | ein getippter Haken ist eine Behauptung, und er lässt sich nachtragen |
-| Gewicht zählt jeder Eintrag, **aber nur am selben Tag eingetragen** | nicht jeder hat eine Waage, die misst. `gewicht.erstellt` setzt ab jetzt nur die Datenbank |
+| Felder: **gym, boxen, lesen, lernen, wiegen** | lernen ist dazugekommen, wiegen bleibt — mit höherem Mindestwert |
+| Ein Feld geht nur, wenn die herausgeforderte Person es in den letzten 4 Wochen an **mindestens 2 Tagen** hatte | kein Punkt für ein Feld, das der andere gar nicht macht |
+| Stufen: **sicher ±1, mutig ±2, all-in ±3** | man setzt etwas, und je mehr, desto höher das Ziel |
+| Ziel = max(Mindestwert, ⌈Schnitt × 1,3 / 1,6 / 2⌉), jede Stufe mindestens 1 über der vorigen | über der eigenen Form der herausgeforderten Person, nie darunter |
+| Mindestwerte sicher/mutig/all-in: gym, boxen, lesen, lernen **2/3/4**, wiegen **4/5/6** | 4× wiegen ist so viel wie 2× lesen; ein einzelner tag wäre wieder ein geschenkter punkt |
+| Das Ziel muss in die Woche passen: sicher und mutig mit **einem Tag Spielraum**, all-in ohne | ohne Spielraum ist eine Ansage nach dem ersten Fehltag tot |
+| Frist **Sonntag 18 Uhr** — zusammen mit dem Finale | das Wochenende zählt mit, und um 18 Uhr ist alles entschieden |
+| Ansagen bis **Freitag 18 Uhr** (48 Stunden Mindestlaufzeit) | kein „Freitagabend ansagen, was schon erledigt ist“ |
+| Es zählt nur, was **nach der Ansage** beginnt und **am selben Tag eingetragen** wird — getippt oder gemessen, ein Tag je Feld | Punkte wie im Duell, aber ohne Nachtragen |
+| **2 Ansagen** je Person und Woche, davon **höchstens eine all-in**; dasselbe Feld nicht zweimal | mit Kontern kann eine all-in-Ansage ±6 wert sein — zwei davon würden die Woche entscheiden statt würzen |
+
+Gezählt wird wie im Duell: ein Tag je Feld, egal ob getippt (Box angeklickt)
+oder gemessen (Standort, Fokus). Minuten und Seiten spielen keine Rolle.
+Eine getippte Einheit zählt nur, wenn sie am Tag selbst eingetragen wurde
+(`einheiten.erfasst`, und sie muss binnen eines Tages beim Server angekommen
+sein — ein Offline-Eintrag vom Vorabend zählt noch). Eine Messung zählt, wenn
+sie nach der Ansage begonnen hat und vor der Frist fertig war. Beim Gewicht
+prüft die Datenbank `gewicht.erstellt`.
+
+## Reagieren
+
+Die herausgeforderte Person darf **einmal** reagieren, **innerhalb von 24
+Stunden**:
+
+| Reaktion | Wirkung |
+| --- | --- |
+| **kontern** | der Einsatz verdoppelt sich (all-in: ±6). Nur solange bei ihr noch nichts gezählt hat — sonst verdoppelt man, wenn man schon sieht, dass es klappt |
+| **du auch** | die ansagende Person muss dasselbe Ziel bis zur selben Frist schaffen, gezählt ab derselben Ansage. Schafft sie es nicht, bekommt die andere den Einsatz. Das bremst absurde all-in-Ansagen |
+| nichts | die Ansage läuft normal |
+
+„du auch“ ist in der Datenbank eine eigene Zeile mit `bezug` auf die Ansage,
+mit derselben Wertung in die Gegenrichtung. Sie kostet kein Kontingent.
 
 ## Wertung
 
-Nur die Person, die ansagt, bekommt oder verliert etwas:
-
-| Moment | Herausforderer |
+| Ausgang | Punkte |
 | --- | --- |
-| Ansage gemacht | **−1** (Einsatz) |
-| andere Person scheitert | Einsatz zurück + 1 → **+1** |
-| andere Person schafft es | Einsatz weg → **−1** |
+| geschafft | +Einsatz für die herausgeforderte Person |
+| verfehlt | +Einsatz für die ansagende Person |
+| läuft | nichts — die Restrechnung (`offeneAnsageWende`) weiß aber, dass beide den Einsatz noch bekommen können |
 
-Die herausgeforderte Person bekommt nichts extra — wer liefert, holt dafür die
-normalen Duellpunkte. Die Ansage-Punkte zählen im Wochenstand, in der Restrechnung
-(`restprogramm` in `duell.ts`: eine offene Ansage kann noch zwei Punkte
-drehen), in der ewigen Bilanz und in der Sonntagsabrechnung (Version 2, `punkte_*` enthalten die Ansagen, `ansage_*`
-stehen fürs Audit daneben).
+Einsatz = Stufe, gekontert doppelt. Die Ansage-Punkte zählen im Wochenstand
+oben (der Score rollt mit), in der Restrechnung, in der ewigen Bilanz und in
+der Sonntagsabrechnung (**Version 3**; `ansage_*` stehen fürs Audit daneben).
+
+## ENI schlägt vor
+
+Die App rechnet je ansagbarem Feld die Ziele aller Stufen und eine
+**empfohlene Stufe**: die höchste, deren Ziel die ansagende Person selbst
+üblicherweise schafft — dann tut ein „du auch“ nicht weh. Ein Ziel von einem
+Tag schlägt ENI nie vor. ENI wählt die bis zu drei spannendsten aus und
+schreibt einen frechen Spruch dazu, rechnet aber nie: ein Spruch mit Ziffer,
+in Umschrift oder mit direkter Anrede an die andere Person wird verworfen,
+dann stehen Vorlagesprüche da (`vorlageSpruch`).
 
 ## Einfrieren
 
 Entschiedene Ansagen werden festgeschrieben (`ergebnis`, `entschieden_am`) und
-nie wieder gerechnet — ein nachgetragener Haken kippt nichts mehr.
+nie wieder gerechnet.
 
 - **geschafft**: sobald das Ziel erreicht ist (Cron alle fünf Minuten).
-- **verfehlt**: erst ab Mitternacht nach dem Samstag, auch wenn es rechnerisch
-  früher feststeht. Eine Sitzung, die am Samstag begonnen hat und noch läuft
-  (Fokus um 23:45), bekommt bis 3 Uhr Zeit.
-- Vor jeder Wochenabrechnung wird noch einmal entschieden.
+- **verfehlt**: erst mit der Frist Sonntag 18 Uhr. Was dann noch läuft, ist
+  nicht fertig und zählt nicht.
+- Die Wochenabrechnung entscheidet vorher noch einmal.
 
-Bis zum Einfrieren zeigt die App den Stand, den sie selbst rechnet. Beim
-Gewicht kann das einen Tag abweichen: der Browser kennt `gewicht.erstellt`
-nicht und zählt einen nachgetragenen Wert mit, die Datenbank nicht. Es gilt,
-was eingefroren wird. Im Prototyp friert das Laden ein.
+Bis zum Einfrieren zeigt die App ihren eigenen Stand. Beim Gewicht kann das
+abweichen (der Browser kennt `gewicht.erstellt` nicht). Es gilt, was
+eingefroren wird. Im Prototyp friert das Laden ein.
+
+## Oberfläche
+
+- `AnsagenBereich`: Kopf mit Kontingent, je Ansage eine große Karte
+  (`AnsageKarte`: Ziel, Zellen wie im Raster, Countdown, Einsatz, Reaktion,
+  Ergebnis mit Reveal), leerer Zustand, „koray herausfordern“, ENIs Vorschläge.
+- `AnsageSheet`: Blatt von unten — Feld → Stufe (Ziel und Einsatz wechseln
+  mit) → bestätigen, danach fällt ein Siegel „angesagt“.
+- `AnsageHinweis`: im Tracker, eine laufende Ansage an dich, „reagieren“,
+  solange das Fenster offen ist.
+- Bewegung: `ANSAGE` in `src/lib/motion.ts`, alles unter 400 ms, Federn;
+  `prefers-reduced-motion` schaltet ab.
 
 ## Wo was liegt
 
 | Teil | Datei |
 | --- | --- |
-| Regeln, Ziel, Stand, Punkte (Client) | `src/lib/ansagen.ts` |
-| Tabelle, `sage_an`, Einfrieren, Abrechnung v2, Push-Art | `supabase/migrations/20260922120000_duell_ansagen.sql` |
-| Prüfung der Migration in eingebettetem Postgres | `node scripts/check-duell-ansagen.mjs <pglite/dist/index.js>` |
-| Backend in beiden Modi | `src/lib/backend.ts` (`sageAn`), `supabase.ts`, `lokal.ts` |
-| Zustand | `src/lib/store.ts` (`ansagen`, `sageAn`) |
+| Regeln, Ziele, Stand, Punkte, Reaktionen (Client) | `src/lib/ansagen.ts` |
+| Texte, Countdown, Gruppierung mit „du auch“ | `src/lib/ansageAnzeige.ts` |
+| Spalten, `sage_an_stufe`, `reagiere_auf_ansage`, Einfrieren, Abrechnung v3, Push-Texte | `supabase/migrations/20260924120000_ansagen_stufen.sql` |
+| Prüfung der Migration in eingebettetem Postgres | `node scripts/check-ansagen-stufen.mjs <pglite/dist/index.js>` |
+| Backend in beiden Modi | `src/lib/backend.ts` (`sageAn`, `reagiere`), `supabase.ts`, `lokal.ts` |
+| Zustand | `src/lib/store.ts` (`ansagen`, `sageAn`, `reagiere`) |
 | Wertung | `src/lib/duell.ts` (`AnsageWertung`), `src/App.tsx` |
-| Oberfläche | `src/components/duell/AnsagenBereich.tsx` (Duell-Tab), `AnsageHinweis.tsx` (Tracker) |
+| Oberfläche | `src/components/duell/AnsagenBereich.tsx`, `AnsageKarte.tsx`, `AnsageSheet.tsx`, `AnsageHinweis.tsx` |
 | ENI-Sprüche | `supabase/functions/ansage-sprueche/`, `_shared/ansageSprueche.ts`, `src/lib/ansageSprueche.ts` |
 | ENI kennt die Ansagen | `supabase/functions/_shared/eniLage.ts` |
-| Push „Ansage erhalten“ (08–22 Uhr, einmal am Tag) | `aktivitaets_kandidaten` (Migration), `_shared/aktivitaetsVersand.ts`, Schalter in `src/lib/aktivitaetsErinnerung.ts` |
+| Push (08–22 Uhr, einmal am Tag: neue Ansage, kontert, du auch) | `aktivitaets_kandidaten` in der Migration, Art `ansage` |
 
 ## Ausrollen
 
-1. Migration einspielen. Sie ist idempotent; das Prüfskript spielt sie zweimal.
-   Danach prüfen: Cron-Job `duell-ansagen-entscheiden` existiert,
-   `duell_ansagen` steht in der Publikation `supabase_realtime`.
-2. `ansage-sprueche` deployen (Autorisierung über das Nutzer-Token wie
-   `wochenbericht`) und `aktivitaets-erinnerung` **neu deployen** — ohne die
-   neue Fassung wird jede Ansage-Meldung still übersprungen
-   (siehe `docs/wochenbericht.md`, „Der Worker musste mit“).
-3. Frontend ausliefern. Ein Frontend vor der Migration zeigt keine Ansagen und
-   bietet keine an (`duell_ansagen` fehlt → `ansagenVerfuegbar = false`).
+1. Migration `20260924120000_ansagen_stufen.sql` einspielen. Sie ist
+   idempotent; das Prüfskript spielt sie zweimal. Bestehende Ansagen bleiben
+   `version = 1` und werden nach ihren alten Regeln entschieden.
+2. `ansage-sprueche` und `eni` neu deployen (neue Felder, neue Regeln).
+   `aktivitaets-erinnerung` muss nicht mit: die Art `ansage` kennt der Worker.
+3. Frontend ausliefern. Ein Frontend **vor** der Migration findet die neuen
+   Spalten nicht und zeigt keine Ansagen (`ansagenVerfuegbar = false`). Eine
+   **alte** App nach der Migration bekommt beim Ansagen `ansage:veraltet`.
 
-## Später
+## Erste Fassung (bis 23.09.2026)
 
-- Push „letzte Chance“ um 19 Uhr, wenn jeder übrige Tag nötig ist
-- Kontra: die herausgeforderte Person verdoppelt einmal pro Woche
-- Versprechen: eine Ansage an sich selbst
-- Rückblick im Wochenbericht (Lieferquote)
+Wer ansagte, wettete einen Punkt darauf, dass die andere Person ein Ziel bis
+Samstag *nicht* schafft: −1 sofort, +1 wenn sie verfehlte. Ziel = Median der
+gemessenen Tage + 1, heruntergerechnet auf den Zeitraum. Felder gym, boxen,
+lesen, gewicht; nur gemessen. Solche Zeilen tragen `version = 1`.

@@ -6,7 +6,7 @@ import { supabase } from './supabase'
 
 /**
  * holt ENIs auswahl und sprüche für die ansage-vorschläge. ENI sieht nur feld,
- * ziel und verlauf und darf keine ziffer schreiben — die zahlen stehen daneben
+ * ziel, stufe und die verläufe beider und darf keine ziffer schreiben — die zahlen stehen daneben
  * und kommen aus `ansagen.ts`.
  */
 
@@ -27,7 +27,7 @@ export const GEZEIGTE_VORSCHLAEGE = 3
 const gemerkt = new Map<string, Promise<SpruchAuswahl[] | null>>()
 
 function schluessel(vorschlaege: AnsageVorschlag[]): string {
-  return JSON.stringify(vorschlaege.map((v) => [v.feld, v.ziel, v.ab, v.bis, v.verlauf]))
+  return JSON.stringify(vorschlaege.map((v) => [v.feld, v.stufe, v.ziel, v.verlauf, v.meinVerlauf]))
 }
 
 /** null heißt: ohne ENI weiter — im prototyp, offline oder bei einer leeren antwort */
@@ -39,7 +39,15 @@ export function ladeAnsageSprueche(vorschlaege: AnsageVorschlag[]): Promise<Spru
   if (vorhanden) return vorhanden
   const anfrage = db.functions
     .invoke('ansage-sprueche', {
-      body: { vorschlaege: vorschlaege.map(({ feld, ziel, verlauf }) => ({ feld, ziel, verlauf })) },
+      body: {
+        vorschlaege: vorschlaege.map(({ feld, ziel, stufe, verlauf, meinVerlauf }) => ({
+          feld,
+          ziel,
+          stufe,
+          verlauf,
+          meinVerlauf,
+        })),
+      },
     })
     .then(({ data, error }) => {
       if (error) return null

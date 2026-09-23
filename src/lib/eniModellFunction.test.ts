@@ -666,6 +666,29 @@ describe('ENIs modellverbindung', () => {
     expect(system).not.toContain('1x gym')
   })
 
+  it('wertet ansagen der zweiten fassung mit stufe, kontern und du auch', async () => {
+    const tabellen = grunddaten()
+    tabellen.einheiten = []
+    tabellen.gewicht = []
+    tabellen.aufenthalte = []
+    tabellen.duell_ansagen = [
+      // erijon fordert koray, koray kontert und schafft es: koray +4
+      { von: ICH, an: ER, feld: 'boxen', ziel: 4, bis: '2026-09-13', ergebnis: 'geschafft', version: 2, stufe: 'mutig', einsatz: 2, reaktion: 'kontern', bezug: null },
+      // die gegenrichtung eines „du auch“, erijon verfehlt: koray +1
+      { von: ER, an: ICH, feld: 'lernen', ziel: 2, bis: '2026-09-13', ergebnis: 'verfehlt', version: 2, stufe: 'sicher', einsatz: 1, reaktion: null, bezug: 'x' },
+      // offen zählt nichts
+      { von: ER, an: ICH, feld: 'lesen', ziel: 3, bis: '2026-09-13', ergebnis: null, version: 2, stufe: 'allin', einsatz: 3, reaktion: null, bezug: null },
+    ]
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+    await behandleEni(anfrage({ chatId: 'c1', text: 'stand' }), abhaengigkeiten)
+    const system = gesehen[0]!.system
+    expect(system).toContain('Wochenstand (Erijon : Koray): 0:5.')
+    expect(system).toContain('Davon Ansagen: Erijon 0, Koray +5.')
+    expect(system).toContain('Ansage Erijon an Koray: 4x boxen bis Sonntag 18 Uhr, mutig, gekontert, Einsatz 4, geschafft.')
+    expect(system).toContain('„du auch" von Koray an Erijon: 2x lernen bis Sonntag 18 Uhr, sicher, Einsatz 1, verfehlt.')
+    expect(system).toContain('Ansage Koray an Erijon: 3x lesen bis Sonntag 18 Uhr, all-in, Einsatz 3, laeuft noch.')
+  })
+
   it('ordnet Messungen am UTC-Sonntag dem Berliner Montag zu', async () => {
     const tabellen = grunddaten()
     tabellen.einheiten = []
