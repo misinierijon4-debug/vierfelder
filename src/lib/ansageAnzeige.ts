@@ -59,8 +59,9 @@ export function restzeitText(jetzt: Date, bis: Date): string {
 /** wie eine ansage wem punkte bringt, aus sicht von `me`: „schafft koray es: +2 für koray. sonst +2 für dich.“ */
 export function wertungText(a: Ansage, me: UserId): string {
   const e = wirksamerEinsatz(a)
-  const liefert = a.an === me ? 'schaffst du es' : `schafft ${userDef(a.an).name} es`
-  return `${liefert}: +${e} für ${fuerWen(a.an, me)}. sonst +${e} für ${fuerWen(a.von, me)}.`
+  const liefert = a.an === me ? 'du' : userDef(a.an).name
+  const punkt = e === 1 ? 'Punkt' : 'Punkte'
+  return `Wenn ${liefert} das Ziel schaff${a.an === me ? 'st' : 't'}: +${e} ${punkt} für ${fuerWen(a.an, me)}. Sonst: +${e} ${punkt} für ${fuerWen(a.von, me)}.`
 }
 
 /** wer aus einer entschiedenen ansage wie viel bekommt, oder null solange sie läuft */

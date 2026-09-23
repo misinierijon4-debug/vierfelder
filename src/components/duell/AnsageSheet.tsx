@@ -16,7 +16,6 @@ import { fokusRingLoesen } from '../../lib/dialogFokus'
 import { useDialogNachlauf } from '../../lib/dialogNachlauf'
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { ANSAGE, EASE } from '../../lib/motion'
-import { Zahl } from '../Zahl'
 
 export type SheetAntwort = { ok: true } | { fehler: AnsageFehler | 'gesperrt' | 'netz' }
 
@@ -24,8 +23,6 @@ type Props = {
   offen: boolean
   me: UserId
   kandidaten: AnsageKandidat[]
-  /** eni-sprüche je feld, soweit da */
-  sprueche: Partial<Record<AnsageFeld, string>>
   /** womit das blatt aufgeht, etwa aus einem eni-vorschlag */
   start: { feld: AnsageFeld; stufe: AnsageStufe } | null
   onSageAn: (feld: AnsageFeld, stufe: AnsageStufe) => Promise<SheetAntwort>
@@ -45,7 +42,7 @@ const FEHLER_SONST: Record<'gesperrt' | 'netz', string> = {
 
 function schnittText(schnitt: number): string {
   const gerundet = Math.round(schnitt * 10) / 10
-  return `⌀ ${String(gerundet).replace('.', ',')} / woche`
+  return `bisher etwa ${String(gerundet).replace('.', ',')}× pro woche`
 }
 
 /**
@@ -53,7 +50,7 @@ function schnittText(schnitt: number): string {
  * einsatz stehen dabei groß da und wechseln mit —, bestätigen. danach fällt
  * ein siegel aufs blatt, und es geht zu.
  */
-export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, onSchliessen }: Props) {
+export function AnsageSheet({ offen, me, kandidaten, start, onSageAn, onSchliessen }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const ich = userDef(me)
   const er = userDef(kandidaten[0]?.an ?? (me === 'erijon' ? 'koray' : 'erijon'))
@@ -148,7 +145,7 @@ export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, 
 
           <div className="min-h-0 overflow-y-auto pb-1">
             <fieldset>
-              <legend className="text-[11px] font-bold uppercase tracking-[0.12em] text-kreide-60">feld</legend>
+              <legend className="text-[14px] font-semibold text-kreide">1. Was soll {er.name} schaffen?</legend>
               <div className="mt-2 divide-y divide-linie border-y border-linie">
                 {kandidaten.map((k) => {
                   const gewaehlt = k.feld === feld
@@ -176,18 +173,11 @@ export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, 
                       <span className={`text-[17px] font-bold ${k.gesperrt ? 'text-kreide-52' : 'text-kreide'}`}>
                         {ANSAGE_WORT[k.feld]}
                       </span>
-                      <span className="tnum flex items-center gap-2 text-[11px] text-kreide-52">
+                      <span className="tnum text-right text-[12px] text-kreide-60">
                         {k.gesperrt ? (
                           SPERRGRUND[k.gesperrt]
                         ) : (
-                          <>
-                            {er.name} {schnittText(k.schnitt)}
-                            {sprueche[k.feld] && (
-                              <span className="rounded-[2px] border border-linie-hell px-1 text-[10px] uppercase tracking-[0.1em] text-kreide-60">
-                                eni
-                              </span>
-                            )}
-                          </>
+                          schnittText(k.schnitt)
                         )}
                       </span>
                     </button>
@@ -206,7 +196,7 @@ export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, 
                   transition={{ duration: ANSAGE.schritt, ease: EASE }}
                 >
                   <fieldset className="mt-4">
-                    <legend className="text-[11px] font-bold uppercase tracking-[0.12em] text-kreide-60">stufe</legend>
+                    <legend className="text-[14px] font-semibold text-kreide">2. Wie schwer?</legend>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {ANSAGE_STUFEN.map((s) => {
                         const z = kandidat.ziele[s]
@@ -228,7 +218,7 @@ export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, 
                               {STUFEN_TEXT[s]}
                             </span>
                             <span className="tnum text-[11px] text-kreide-60">
-                              {z === null ? 'passt nicht' : `${z}× · ±${STUFEN_EINSATZ[s]}`}
+                              {z === null ? 'nicht möglich' : `${z}× · ${STUFEN_EINSATZ[s]} ${STUFEN_EINSATZ[s] === 1 ? 'Punkt' : 'Punkte'}`}
                             </span>
                           </button>
                         )
@@ -238,24 +228,14 @@ export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, 
 
                   {ziel !== null && stufe && (
                     <div className="mt-4 border-y border-linie py-3" aria-live="polite">
-                      <div className="flex items-end justify-between gap-3">
-                        <span className="display flex items-baseline gap-2 text-[36px] font-bold leading-none">
-                          <Zahl value={`${ziel}×`} />
-                          <span>{ANSAGE_WORT[kandidat.feld]}</span>
-                        </span>
-                        <span className="tnum pb-0.5 text-[20px] font-bold leading-none" style={{ color: ich.farbe }}>
-                          ±<Zahl value={STUFEN_EINSATZ[stufe]} />
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-[12px] leading-5 text-kreide-60">
-                        bis so 18 uhr. schafft {er.name} es, bekommt {er.name} {STUFEN_EINSATZ[stufe]}. sonst bekommst du{' '}
-                        {STUFEN_EINSATZ[stufe]}.
+                      <p className="text-[12px] font-semibold text-kreide-60">Deine Ansage</p>
+                      <p className="display mt-1 text-[25px] font-bold leading-tight text-kreide">
+                        {er.name} soll bis Sonntag, 18 Uhr {ansageZielText(kandidat.feld, ziel)} schaffen.
                       </p>
-                      {sprueche[kandidat.feld] && (
-                        <p className="mt-1.5 text-[12px] italic leading-5 text-kreide [overflow-wrap:anywhere]">
-                          „{sprueche[kandidat.feld]}“
-                        </p>
-                      )}
+                      <div className="mt-3 space-y-1 text-[13px] leading-5 text-kreide-60">
+                        <p>Schafft {er.name} es: <b style={{ color: er.farbe }}>+{STUFEN_EINSATZ[stufe]} {STUFEN_EINSATZ[stufe] === 1 ? 'Punkt' : 'Punkte'} für {er.name}.</b></p>
+                        <p>Schafft {er.name} es nicht: <b style={{ color: ich.farbe }}>+{STUFEN_EINSATZ[stufe]} {STUFEN_EINSATZ[stufe] === 1 ? 'Punkt' : 'Punkte'} für dich.</b></p>
+                      </div>
                     </div>
                   )}
                 </motion.div>
@@ -275,7 +255,7 @@ export function AnsageSheet({ offen, me, kandidaten, sprueche, start, onSageAn, 
             {sendet && !siegel
               ? 'wird angesagt …'
               : stufe && ziel !== null
-                ? `ansagen · ${STUFEN_EINSATZ[stufe]} ${STUFEN_EINSATZ[stufe] === 1 ? 'punkt' : 'punkte'} setzen`
+                ? 'ansage bestätigen'
                 : 'feld und stufe wählen'}
           </button>
 

@@ -47,21 +47,21 @@ export const AnsageHinweis = memo(function AnsageHinweis({ zustand, me, heute, a
             type="button"
             onClick={onZumDuell}
             className="flex min-h-11 w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-[2px] border border-linie-hell bg-flaeche px-2.5 py-1 text-left text-[11px] text-kreide-60 hover:bg-linie"
-            aria-label={`${von.name} ${ansage.bezug ? 'sagt: du auch' : 'fordert'}: ${ansageZielText(ansage.feld, ansage.ziel)}, ${stand.erreicht} von ${stand.ziel}, es geht um ${e}.${reagieren ? ' du kannst noch reagieren.' : ''} zum duell`}
+            aria-label={`${von.name} ${ansage.bezug ? 'muss auch' : 'fordert dich heraus'}: ${ansageZielText(ansage.feld, ansage.ziel)}, ${stand.erreicht} von ${stand.ziel} geschafft, ${e} ${e === 1 ? 'Punkt' : 'Punkte'}.${reagieren ? ' du kannst noch reagieren.' : ''} zum duell`}
           >
             <span className="flex min-w-0 items-center gap-1.5">
               <Megaphone size={13} weight="fill" style={{ color: von.farbe }} aria-hidden="true" />
               <span className="font-semibold" style={{ color: von.farbe }}>{von.name}</span>
-              <span>{ansage.bezug ? 'sagt du auch:' : 'fordert:'}</span>
+              <span>{ansage.bezug ? 'muss auch:' : 'fordert dich heraus:'}</span>
               <span className="font-bold text-kreide">{ansageZielText(ansage.feld, ansage.ziel)}</span>
-              <span className="tnum">±{e}</span>
+              <span className="tnum">{e} {e === 1 ? 'Punkt' : 'Punkte'}</span>
             </span>
             <span className="tnum shrink-0 text-kreide">
               {reagieren ? (
                 <span className="font-bold" style={{ color: userDef(me).farbe }}>reagieren</span>
               ) : (
                 <>
-                  {stand.erreicht}/{stand.ziel} · {fristText(ansage)}
+                  {stand.erreicht} von {stand.ziel} · {fristText(ansage)}
                 </>
               )}
             </span>

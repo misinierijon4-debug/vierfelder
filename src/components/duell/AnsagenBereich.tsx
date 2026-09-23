@@ -129,9 +129,6 @@ export const AnsagenBereich = memo(function AnsagenBereich({
     auswahl?.key === vorschlagKey ? auswahl.liste : null,
     er.name
   )
-  const sprueche: Partial<Record<AnsageFeld, string>> = {}
-  for (const v of gezeigt) sprueche[v.feld] = v.spruch
-
   const [sheet, setSheet] = useState<{ offen: boolean; start: { feld: AnsageFeld; stufe: AnsageStufe } | null }>({
     offen: false,
     start: null,
@@ -195,7 +192,7 @@ export const AnsagenBereich = memo(function AnsagenBereich({
           </span>
           <span className="tnum">{verbleibend} von {ANSAGEN_JE_WOCHE} übrig</span>
           <span aria-hidden="true">·</span>
-          <span>{allin ? 'all-in frei' : 'all-in weg'}</span>
+          <span>{allin ? 'all-in möglich' : 'all-in verbraucht'}</span>
         </span>
       </div>
 
@@ -236,13 +233,13 @@ export const AnsagenBereich = memo(function AnsagenBereich({
               className="flex min-h-14 w-full items-center justify-between rounded-[2px] bg-kreide px-4 text-grund transition-opacity active:opacity-80"
             >
               <span className="text-[15px] font-bold">{er.name} herausfordern</span>
-              <span className="tnum text-[12px] font-semibold opacity-70">sicher · mutig · all-in</span>
+              <span className="tnum text-[12px] font-semibold opacity-70">Ansage erstellen</span>
             </button>
 
             {gezeigt.length > 0 && (
               <div className="mt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-kreide-60">eni schlägt vor</h3>
+                  <h3 className="text-[14px] font-semibold text-kreide">Vorschläge für dich</h3>
                   <span aria-live="polite" className="text-[10px] text-kreide-52">
                     {eniLaeuft ? 'eni überlegt …' : ''}
                   </span>
@@ -254,15 +251,15 @@ export const AnsagenBereich = memo(function AnsagenBereich({
                         type="button"
                         onClick={() => oeffne({ feld: v.feld, stufe: v.stufe })}
                         className="flex min-h-14 w-full flex-col items-start gap-0.5 py-2.5 text-left"
-                        aria-label={`vorschlag: ${ansageZielText(v.feld, v.ziel)}, ${STUFEN_TEXT[v.stufe]}. ${v.spruch}`}
+                        aria-label={`vorschlag: ${ansageZielText(v.feld, v.ziel)}, ${STUFEN_TEXT[v.stufe]}, ${STUFEN_EINSATZ[v.stufe]} ${STUFEN_EINSATZ[v.stufe] === 1 ? 'Punkt' : 'Punkte'}`}
                       >
                         <span className="flex w-full items-baseline justify-between gap-3">
                           <span className="text-[15px] font-bold text-kreide">{ansageZielText(v.feld, v.ziel)}</span>
-                          <span className="tnum text-[11px] text-kreide-52">
-                            {STUFEN_TEXT[v.stufe]} · ±{STUFEN_EINSATZ[v.stufe]}
+                          <span className="tnum text-[12px] text-kreide-60">
+                            {STUFEN_EINSATZ[v.stufe]} {STUFEN_EINSATZ[v.stufe] === 1 ? 'Punkt' : 'Punkte'}
                           </span>
                         </span>
-                        <span className="text-[12px] leading-5 text-kreide-60 [overflow-wrap:anywhere]">{v.spruch}</span>
+                        <span className="text-[12px] text-kreide-60">{STUFEN_TEXT[v.stufe]} · Ziel für {er.name}</span>
                       </button>
                     </li>
                   ))}
@@ -287,7 +284,7 @@ export const AnsagenBereich = memo(function AnsagenBereich({
           </li>
           <li>
             schafft {er.name} es bis sonntag 18 uhr, bekommt <b style={{ color: er.farbe }}>{er.name}</b> den einsatz.
-            sonst bekommst <b style={{ color: ich.farbe }}>du</b> ihn. sicher ±1, mutig ±2, all-in ±3.
+            sonst bekommst <b style={{ color: ich.farbe }}>du</b> ihn. sicher: 1 Punkt, mutig: 2 Punkte, all-in: 3 Punkte.
           </li>
           <li>
             {er.name} kann einmal reagieren, 24 stunden lang: <b className="text-kreide">kontern</b> verdoppelt den
@@ -306,7 +303,6 @@ export const AnsagenBereich = memo(function AnsagenBereich({
           offen={sheet.offen}
           me={me}
           kandidaten={kandidaten}
-          sprueche={sprueche}
           start={sheet.start}
           onSageAn={sageAn}
           onSchliessen={schliesse}
