@@ -41,7 +41,10 @@ import type {
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
-export const hatSupabase = Boolean(url && key)
+// `!!` statt `Boolean(…)`: nur so faltet der bundler den wert zur konstante,
+// und der produktionsbau wirft den ganzen prototyp (`lokal.ts`, rund 6 KB gzip)
+// aus dem startpaket. `Boolean` gilt ihm als aufruf und bleibt stehen.
+export const hatSupabase = !!(url && key)
 
 /**
  * wie weit zurueck die verlaeufe gleich mitkommen.
