@@ -30,7 +30,7 @@ describe('AnsagenBereich', () => {
     const karten = screen.getAllByRole('button', { name: 'ansagen' })
     expect(karten).toHaveLength(3)
     expect(screen.getByText('1× gym')).toBeInTheDocument()
-    expect(screen.getAllByText('zuletzt 0 · 0 · 0 · 0')).toHaveLength(3)
+    expect(screen.getAllByText('letzte 4 wochen: 0 · 0 · 0 · 0')).toHaveLength(3)
     expect(screen.getByText(/koray war sonst fast nie im gym/)).toBeInTheDocument()
     expect(screen.getByText('2 von 2 übrig')).toBeInTheDocument()
   })

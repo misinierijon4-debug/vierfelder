@@ -19,6 +19,13 @@ und schreibt den Spruch dazu, rechnet aber nie selbst: ein Spruch mit Ziffer
 wird verworfen, Ziel und Verlauf stehen daneben (wie beim Wochenbericht).
 Antwortet ENI nicht — im Prototyp immer —, stehen Vorlagesprüche da.
 
+Den Spruch liest die Person, die ansagt. ENI redet sie mit „du“ an und spricht
+über die andere Person in der dritten Person. Ein Spruch, der die andere Person
+direkt anredet („koray, zeig mal …“, „…, koray?“) oder ae/oe/ue statt Umlauten
+schreibt, wird verworfen (`redetAn`, `istUmschrieben` in
+`_shared/ansageSprueche.ts`), Server und Browser prüfen gleich. Bleibt kein
+Spruch übrig, stehen die Vorlagen da.
+
 ## Regeln
 
 | Regel | Warum |
@@ -43,9 +50,9 @@ Nur die Person, die ansagt, bekommt oder verliert etwas:
 | andere Person schafft es | Einsatz weg → **−1** |
 
 Die herausgeforderte Person bekommt nichts extra — wer liefert, holt dafür die
-normalen Duellpunkte. Die Ansage-Punkte zählen im Wochenstand, im Rechner (eine
-offene Ansage kann noch zwei Punkte drehen), in der ewigen Bilanz und in der
-Sonntagsabrechnung (Version 2, `punkte_*` enthalten die Ansagen, `ansage_*`
+normalen Duellpunkte. Die Ansage-Punkte zählen im Wochenstand, in der Restrechnung
+(`restprogramm` in `duell.ts`: eine offene Ansage kann noch zwei Punkte
+drehen), in der ewigen Bilanz und in der Sonntagsabrechnung (Version 2, `punkte_*` enthalten die Ansagen, `ansage_*`
 stehen fürs Audit daneben).
 
 ## Einfrieren

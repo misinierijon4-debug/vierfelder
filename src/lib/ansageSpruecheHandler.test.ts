@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  SPRUCH_ANWEISUNG,
   behandleSprueche,
+  istUmschrieben,
   pruefeAuswahl,
+  redetAn,
   pruefeVorschlaege,
   spruchEingabe,
 } from '../../supabase/functions/_shared/ansageSprueche'
@@ -64,6 +67,53 @@ describe('ansage-sprueche', () => {
       ['boxen', 'lesen']
     )
     expect(auswahl).toEqual([{ feld: 'boxen', spruch: 'koray und boxen.' }])
+  })
+
+  it('verwirft sprüche, die die herausgeforderte person direkt anreden', () => {
+    expect(redetAn('koray, beim gym bist du bisher ein phantom', 'koray')).toBe(true)
+    expect(redetAn('Koray! zeig mal was', 'koray')).toBe(true)
+    expect(redetAn('wettest du, dass du das halten kannst, koray?', 'koray')).toBe(true)
+    expect(redetAn('koray war seit wochen nicht im gym. traust du dich?', 'koray')).toBe(false)
+    expect(redetAn('das hält koray nie durch.', 'koray')).toBe(false)
+
+    const auswahl = pruefeAuswahl(
+      {
+        auswahl: [
+          { feld: 'boxen', spruch: 'koray, zeig mir, dass du existierst!' },
+          { feld: 'lesen', spruch: 'koray liest kaum. traust du dich?' },
+        ],
+      },
+      ['boxen', 'lesen'],
+      'koray'
+    )
+    expect(auswahl).toEqual([{ feld: 'lesen', spruch: 'koray liest kaum. traust du dich?' }])
+  })
+
+  it('verwirft sprüche in umschrift, lässt echte ue-wörter aber stehen', () => {
+    expect(istUmschrieben('zeig, dass du ueberhaupt existierst')).toBe(true)
+    expect(istUmschrieben('boxen laeuft bei koray ploetzlich rund')).toBe(true)
+    expect(istUmschrieben('für koray wird das eng')).toBe(false)
+    expect(istUmschrieben('fuer koray wird das eng')).toBe(true)
+    expect(istUmschrieben('im duell zählt das neue ziel, aktuell offen')).toBe(false)
+
+    const auswahl = pruefeAuswahl(
+      { auswahl: [{ feld: 'boxen', spruch: 'boxen laeuft bei koray ploetzlich rund' }] },
+      ['boxen']
+    )
+    expect(auswahl).toEqual([])
+  })
+
+  it('verwirft beim server, was die andere person anredet', async () => {
+    const antwort = await behandleSprueche(
+      anfrage({ vorschlaege }),
+      dienste({ auswahl: [{ feld: 'boxen', spruch: 'koray, das wird eng.' }] })
+    )
+    expect(antwort.status).toBe(502)
+  })
+
+  it('verlangt in der anweisung echte umlaute und die sicht der ansagenden person', () => {
+    expect(SPRUCH_ANWEISUNG).toContain('echte Umlaute')
+    expect(SPRUCH_ANWEISUNG).toContain('liest die ansagende Person')
   })
 
   it('meldet eine leere auswahl als fehler statt als leere liste', async () => {
