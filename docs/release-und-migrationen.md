@@ -172,6 +172,22 @@ Der Sicherheitsbericht meldet für diese Änderung keine neuen Befunde. Die Edge
 Function `wochenbericht` wurde mit aktiver JWT-Prüfung (`verify_jwt: true`, Version 1)
 bereitgestellt; Aufrufe ohne Autorisierung werden mit HTTP 401 abgewiesen.
 
+## Neue Migration `wochenschluss_mitternacht` (23.09.2026)
+
+Eine Messung zaehlt nur noch fuer die Woche, wenn sie vor Montag 0 Uhr
+Europe/Berlin endet. Anlass war KW 38: Korays Boxen (So 23:45 bis Mo 00:20)
+fehlte im eingefrorenen Bericht (11:11), zaehlte aber in der Duell-Abrechnung
+(11:12). Auf Wunsch von erijon sofort einzeln ueber `apply_migration`
+angewandt, nicht ueber `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260923090000_wochenschluss_mitternacht.sql` | `wochenschluss_mitternacht` (Zeitstempel der Anwendung) |
+
+Die Migration ersetzt `private.finalisiere_wochenabrechnung` und berichtigt
+die Archivzeile `2026-09-14`. Danach bestaetigt: 11:11, Belege 8:7, Sieger
+erijon per Beleg. Die Sperre gegen `db push` gilt unveraendert weiter.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
