@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, memo, useEffect, useMemo, useState } from 'react'
 import { CaretRight, PencilSimple, ShieldCheck, Trophy } from '@phosphor-icons/react'
 import { user as userDef, other } from '../../lib/types'
 import type { Abrechnung, UserId, Zustand } from '../../lib/types'
@@ -7,7 +7,6 @@ import type { DuellMatch } from '../../lib/duell'
 import { fromKey, isoWeek, istBilanzzeit } from '../../lib/dates'
 import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { RivalitaetsTicker } from './RivalitaetsTicker'
-import { AnsagenBereich } from './AnsagenBereich'
 import type { AnsageAntwort } from './AnsagenBereich'
 import { wochenAnsagePunkte, zaehltAusZustand } from '../../lib/ansagen'
 import type { Ansage, AnsageFeld } from '../../lib/ansagen'
@@ -36,6 +35,15 @@ type Props = {
 }
 
 const KEINE_ANSAGEN: Ansage[] = []
+
+/**
+ * der ansagen-bereich haengt nicht am startpfad: vorschlaege, eni-sprueche und
+ * ihre pruefung braucht erst, wer den duell-tab oeffnet. das budget in
+ * scripts/check-web-build.mjs misst genau diesen unterschied.
+ */
+const AnsagenBereich = lazy(() =>
+  import('./AnsagenBereich').then((modul) => ({ default: modul.AnsagenBereich }))
+)
 
 export const DuellTab = memo(function DuellTab({
   zustand,
@@ -207,7 +215,9 @@ export const DuellTab = memo(function DuellTab({
       </section>
 
       {ansagen && (
-        <AnsagenBereich zustand={zustand} me={me} heute={heute} ansagen={ansagen} onSageAn={onSageAn} />
+        <Suspense fallback={null}>
+          <AnsagenBereich zustand={zustand} me={me} heute={heute} ansagen={ansagen} onSageAn={onSageAn} />
+        </Suspense>
       )}
 
       <section aria-labelledby="beleg-titel" className="mt-5 border-t border-linie pt-3">

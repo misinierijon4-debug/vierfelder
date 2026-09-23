@@ -1,9 +1,9 @@
 # Ansagen — Herausforderungen im Duell
 
-Status: **fertig gebaut, noch nicht ausgerollt.** Zum Release gehören die
-Migration `20260922120000_duell_ansagen.sql`, das Deployment der Edge Functions
-`ansage-sprueche` (neu) und `aktivitaets-erinnerung` (neue Push-Art), danach
-das Frontend. Die Reihenfolge steht unten unter „Ausrollen“.
+Status: **ausgerollt am 23.09.2026.** Migration eingespielt, `ansage-sprueche`
+(neu) und `aktivitaets-erinnerung` (Version 10) deployt. Die Function `eni`
+ist noch die alte Fassung: ENI im Chat kennt die Ansagen erst nach ihrem
+naechsten Deploy (`_shared/eniLage.ts`).
 
 ## Idee
 

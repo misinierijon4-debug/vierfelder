@@ -152,7 +152,7 @@ describe('DuellTab Archive und Abschlussstatus', () => {
 })
 
 describe('DuellTab ansagen', () => {
-  it('zeigt den bereich nur, wenn das backend ansagen kennt', () => {
+  it('zeigt den bereich nur, wenn das backend ansagen kennt', async () => {
     const heute = new Date(2026, 8, 22, 12)
     const woche = weekDays(heute)
     const basis = {
@@ -164,7 +164,7 @@ describe('DuellTab ansagen', () => {
     const { rerender } = render(<DuellTab {...basis} />)
     expect(screen.queryByRole('heading', { name: /ansagen/i })).toBeNull()
     rerender(<DuellTab {...basis} ansagen={[]} onSageAn={vi.fn()} />)
-    expect(screen.getByRole('heading', { name: /ansagen/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /ansagen/i })).toBeInTheDocument()
   })
 
   it('weist ansage-punkte im rechner getrennt aus', () => {
