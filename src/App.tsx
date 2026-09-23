@@ -160,7 +160,6 @@ function Tracker({
     wertSetzen,
     zeitSetzen,
     setzeGewicht,
-    setzeWette,
     abrechnungHinzu,
     ansagen,
     ansagenVerfuegbar,
@@ -338,11 +337,6 @@ function Tracker({
   }, [])
   const setzeGewichtHeute = useCallback((kg: number) => setzeGewicht(heuteKey, kg), [heuteKey, setzeGewicht])
   const letztesGewichtIch = useMemo(() => letztesGewicht(zustand.gewichte, me), [zustand.gewichte, me])
-  const setzeWetteDieserWoche = useCallback(
-    (text: string) => setzeWette(woche[0] ?? heuteKey, text),
-    [heuteKey, setzeWette, woche]
-  )
-  const zumTracker = useCallback(() => wechsleTabMitFokus('tracker'), [wechsleTabMitFokus])
   const zumDuell = useCallback(() => wechsleTabMitFokus('duell'), [wechsleTabMitFokus])
   const schliesseKalender = useCallback(() => setKalenderOffen(false), [])
 
@@ -623,13 +617,9 @@ function Tracker({
             <div className="tab-eingang">
               <DuellTab
                 zustand={zustand}
-                woche={woche}
                 me={me}
                 heute={heute}
                 match={match}
-                wette={wetten[woche[0] ?? heuteKey] ?? ''}
-                onWette={setzeWetteDieserWoche}
-                onZumTracker={zumTracker}
                 abrechnung={abrechnungDerWoche}
                 abrechnungen={abrechnungen}
                 abschlussStatus={abrechnungDerWocheStatus}

@@ -112,7 +112,7 @@ export const AnsagenBereich = memo(function AnsagenBereich({ zustand, me, heute,
   }
 
   return (
-    <section aria-labelledby="ansagen-titel" className="mt-5 border-t border-linie pt-3">
+    <section aria-labelledby="ansagen-titel" className="mt-5 first:mt-0 border-t border-linie pt-3">
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <h2 id="ansagen-titel" className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-kreide">
           <Megaphone size={15} weight="fill" aria-hidden="true" /> ansagen

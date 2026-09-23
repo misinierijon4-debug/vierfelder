@@ -364,7 +364,7 @@ async function run() {
       await clickAndWait(
         'tab_duell',
         findTab('duell'),
-        () => sichtbar('section[aria-labelledby="fronten-titel"]')
+        () => sichtbar('section[aria-labelledby="beleg-titel"]')
       );
 
       // Action 4: Switch to Schlaf tab and click night bar
