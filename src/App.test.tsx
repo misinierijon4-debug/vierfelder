@@ -145,23 +145,24 @@ describe('Tabs', () => {
     await user.click(screen.getByRole('tab', { name: 'duell' }))
 
     expect(screen.getByRole('tab', { name: 'duell' })).toHaveAttribute('aria-selected', 'true')
-    expect(ausgeblendet(screen.getByRole('heading', { name: 'die 5 fronten' }))).toBe(false)
+    expect(ausgeblendet(screen.getByRole('heading', { name: 'belegquote' }))).toBe(false)
     // der tracker ist nur verborgen, nicht abgebaut
     expect(lernen).toBeInTheDocument()
     expect(ausgeblendet(lernen)).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: /ändern/ }))
-    const einsatz = screen.getByRole('textbox', { name: 'Gemeinsamer Wetteinsatz dieser Woche' })
-    await user.clear(einsatz)
-    await user.type(einsatz, 'wer verliert, kocht')
+    // die gewaehlte nacht im schlaf-tab ist lokaler zustand
+    await user.click(screen.getByRole('tab', { name: 'schlaf' }))
+    const naechte = screen.getAllByRole('button', { name: /Schlafdaten anzeigen$/ })
+    const nacht = naechte[0]!
+    await user.click(nacht)
+    expect(nacht).toHaveAttribute('aria-pressed', 'true')
 
-    await user.click(screen.getByRole('tab', { name: 'tracker' }))
-    expect(ausgeblendet(lernen)).toBe(false)
-    expect(ausgeblendet(einsatz)).toBe(true)
-
-    // zurueck im duell steht der angefangene einsatz noch da
     await user.click(screen.getByRole('tab', { name: 'duell' }))
-    expect(ausgeblendet(einsatz)).toBe(false)
-    expect(einsatz).toHaveValue('wer verliert, kocht')
+    expect(ausgeblendet(nacht)).toBe(true)
+
+    // zurueck im schlaf-tab ist dieselbe nacht noch gewaehlt
+    await user.click(screen.getByRole('tab', { name: 'schlaf' }))
+    expect(ausgeblendet(nacht)).toBe(false)
+    expect(nacht).toHaveAttribute('aria-pressed', 'true')
   })
 })
