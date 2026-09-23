@@ -74,7 +74,7 @@ export function ergebnisFuer(a: Ansage, status: AnsageStatus): { an: UserId; pun
 
 /** die frist in worten */
 export function fristText(a: Ansage): string {
-  if (!istV2(a)) return 'bis sa'
+  if (!istV2(a)) return 'bis Samstag'
   const frist = ansageFrist(a)
-  return `bis so ${frist.getHours()} uhr`
+  return `bis Sonntag, ${frist.getHours()} Uhr`
 }

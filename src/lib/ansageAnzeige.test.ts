@@ -61,7 +61,7 @@ describe('ansagePaare', () => {
 
 describe('fristText', () => {
   it('nennt sonntag 18 uhr, bei der ersten fassung samstag', () => {
-    expect(fristText(ansage())).toBe('bis so 18 uhr')
-    expect(fristText({ ...ansage(), version: undefined, bis: '2026-09-26' })).toBe('bis sa')
+    expect(fristText(ansage())).toBe('bis Sonntag, 18 Uhr')
+    expect(fristText({ ...ansage(), version: undefined, bis: '2026-09-26' })).toBe('bis Samstag')
   })
 })

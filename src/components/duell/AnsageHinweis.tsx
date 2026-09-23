@@ -10,8 +10,6 @@ import {
   zaehltAusZustand,
 } from '../../lib/ansagen'
 import type { Ansage } from '../../lib/ansagen'
-// `heute` wechselt nur mit dem tag: hier steht die frist, der countdown steht im duell
-import { fristText } from '../../lib/ansageAnzeige'
 
 type Props = {
   zustand: Zustand
@@ -61,7 +59,7 @@ export const AnsageHinweis = memo(function AnsageHinweis({ zustand, me, heute, a
                 <span className="font-bold" style={{ color: userDef(me).farbe }}>ansehen</span>
               ) : (
                 <>
-                  {stand.erreicht} von {stand.ziel} · {fristText(ansage)}
+                  {stand.erreicht} von {stand.ziel} geschafft
                 </>
               )}
             </span>
