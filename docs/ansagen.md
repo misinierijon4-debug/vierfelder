@@ -1,8 +1,9 @@
 # Ansagen — Herausforderungen im Duell
 
-Status: **zweite Fassung (Stufen, Kontern, „du auch“) im Code, Migration
-`20260924120000_ansagen_stufen.sql` noch einzuspielen.** Die erste Fassung
-(ausgerollt am 23.09.2026) steht unten unter „Erste Fassung“.
+Status: **zweite Fassung (Stufen, Kontern, „du auch“) ausgerollt am
+23.09.2026.** Migration `20260924120000_ansagen_stufen.sql` eingespielt,
+`ansage-sprueche` (Version 3) und `eni` (Version 37) deployt. Die erste
+Fassung steht unten unter „Erste Fassung“.
 
 ## Idee
 

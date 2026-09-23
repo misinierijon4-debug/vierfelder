@@ -188,6 +188,28 @@ Die Migration ersetzt `private.finalisiere_wochenabrechnung` und berichtigt
 die Archivzeile `2026-09-14`. Danach bestaetigt: 11:11, Belege 8:7, Sieger
 erijon per Beleg. Die Sperre gegen `db push` gilt unveraendert weiter.
 
+## Neue Migration `ansagen_stufen` (23.09.2026)
+
+Ansagen mit Stufen, Kontern und „du auch“ (`docs/ansagen.md`). Auf Wunsch von
+erijon einzeln ueber `apply_migration` angewandt, nicht ueber `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260924120000_ansagen_stufen.sql` | `ansagen_stufen` (Zeitstempel der Anwendung) |
+
+Vorher geprueft: 0 Zeilen in `duell_ansagen`, zwei Archive der Version 1.
+Danach bestaetigt: neue Spalten und Funktionen vorhanden, Trigger
+`einheiten_erstellt_fest` aktiv, `ansage_ziel_stufe` rechnet wie der Client,
+beide Archive unveraendert, `aktivitaets_kandidaten` laeuft. Vorab in
+eingebettetem Postgres mit `scripts/check-ansagen-stufen.mjs` durchgespielt.
+
+Edge Functions: `ansage-sprueche` Version 3 (drei Dateien, `verify_jwt: true`),
+`eni` Version 37 als ein mit rolldown gebautes Bundle (`verify_jwt: true`). Das
+Bundle enthaelt ausser `eniLage` auch den Wochenschluss-Fix aus #56, der mit
+Version 36 noch nicht deployt war. Der deployte Inhalt ist per SHA-256 gegen
+das lokal gebaute Bundle geprueft; lokal in Deno gestartet, antwortet es auf
+`{pruefen: true}` mit 200. Die Sperre gegen `db push` gilt unveraendert weiter.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
