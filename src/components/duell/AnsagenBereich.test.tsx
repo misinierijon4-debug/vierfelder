@@ -81,7 +81,7 @@ describe('AnsagenBereich', () => {
     // schnitt 2 → sicher 3; nur boxen ist aktiv
     const vorschlaege = screen.getAllByRole('button', { name: /^vorschlag:/ })
     expect(vorschlaege).toHaveLength(1)
-    expect(vorschlaege[0]).toHaveAccessibleName('vorschlag: 3× boxen, sicher, 1 Punkt')
+    expect(vorschlaege[0]).toHaveAccessibleName('vorschlag: 3× boxen, sicher, 1 punkt')
   })
 
   it('sagt über das blatt an: feld, stufe mit live-ziel, bestätigen', async () => {
@@ -138,20 +138,21 @@ describe('AnsagenBereich', () => {
     )
     const karte = within(screen.getByRole('article', { name: '3× lesen' }))
     expect(karte.getByRole('meter', { name: 'du: 0 von 3' })).toBeInTheDocument()
-    expect(karte.getByText('0 von 3 geschafft')).toBeInTheDocument()
-    expect(karte.getByText('mutig · 2 Punkte')).toBeInTheDocument()
-    expect(karte.getByText('Wenn du das Ziel schaffst: +2 Punkte für dich. Sonst: +2 Punkte für koray.')).toBeInTheDocument()
-    expect(karte.getByText(/noch 5 t 6 std/)).toBeInTheDocument()
-    expect(karte.getByText('Einfach annehmen')).toBeInTheDocument()
-    expect(karte.getByText('Du musst nichts drücken. Die Ansage läuft automatisch weiter.')).toBeInTheDocument()
-    const optionen = karte.getByText('Stattdessen reagieren (optional) · noch 21 std').closest('details')
+    expect(karte.getByText('0/3')).toBeInTheDocument()
+    expect(karte.getByText('mutig · 2 punkte')).toBeInTheDocument()
+    expect(karte.getByText('schaffst du es: +2 für dich. sonst +2 für koray.')).toBeInTheDocument()
+    // die frist steht einmal über allen ansagen, nicht in der karte
+    expect(screen.getByText('bis sonntag 18 uhr · noch 5 tage 6 std')).toBeInTheDocument()
+    expect(karte.queryByText(/bis sonntag/)).toBeNull()
+    expect(karte.getByText('freiwillig · noch 21 std')).toBeInTheDocument()
+    const optionen = karte.getByText('kontern oder „du auch“').closest('details')
     expect(optionen).not.toHaveAttribute('open')
     expect(onReagiere).not.toHaveBeenCalled()
-    await user.click(karte.getByText('Stattdessen reagieren (optional) · noch 21 std'))
+    await user.click(karte.getByText('kontern oder „du auch“'))
     expect(optionen).toHaveAttribute('open')
-    expect(karte.getByRole('button', { name: /^kontern/ })).toHaveAccessibleDescription('4 Punkte statt 2')
+    expect(karte.getByRole('button', { name: /^kontern/ })).toHaveAccessibleDescription('4 punkte statt 2')
     await user.click(karte.getByRole('button', { name: /^kontern/ }))
-    expect(karte.getByText('Wirklich kontern?')).toBeInTheDocument()
+    expect(karte.getByText('wirklich kontern?')).toBeInTheDocument()
     expect(onReagiere).not.toHaveBeenCalled()
     await user.click(karte.getByRole('button', { name: 'abbrechen' }))
 
@@ -182,6 +183,16 @@ describe('AnsagenBereich', () => {
     expect(karte.getByText(/^\+2/)).toHaveTextContent('+2 koray')
     // die gegenrichtung ist keine eigene karte
     expect(screen.getAllByRole('article')).toHaveLength(1)
+  })
+
+  it('stellt die ansage nach oben, bei der man selbst liefern muss', () => {
+    const meine = ansage({ id: 'an-mich', erstelltAm: new Date(2026, 8, 22, 8).toISOString() })
+    const seine = ansage({ id: 'an-ihn', von: 'erijon', an: 'koray', feld: 'boxen', erstelltAm: new Date(2026, 8, 22, 10).toISOString() })
+    render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[seine, meine]} />)
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-labelledby'))).toEqual([
+      'ansage-an-mich',
+      'ansage-an-ihn',
+    ])
   })
 
   it('bietet ab freitag 18 uhr nichts mehr an und zählt verbrauchte ansagen', () => {

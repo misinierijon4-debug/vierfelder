@@ -1948,3 +1948,46 @@ bewegung ab.
 **Der leere zustand lädt ein.** Statt „diese woche noch keine ansage.“ in 12px
 steht der satz groß, darunter in einem satz, worum es geht, und eine leere
 bahn in der farbe des anderen — sie wartet darauf, gefüllt zu werden.
+
+## 48. Nachtrag: die ansage war groß, aber nicht laut (24.09.2026)
+
+Nach §47 und drei runden „verständlicher“ brauchte eine ansage einen ganzen
+bildschirm. Wer liefern muss, stand fünfmal da (kopfzeile, „dein ziel“,
+„du“ über den zellen, der wertungssatz, die farben). Die regel stand in jeder
+karte, ein kasten erklärte, dass man nichts drücken muss, und drei uhren
+zählten in drei formaten. Am lautesten war das ziel, das sich die ganze woche
+nicht ändert; der stand, der sich bewegt, stand klein und grau.
+
+**Der stand ist die große zahl.** Ziel links in archivo 30px, rechts `0/2`
+in derselben größe in der farbe dessen, der liefern muss — das hatte §47 schon
+so gewollt. Bei „du auch“ bekommt jede bahn ihren namen und ihren stand klein
+daneben, die große zahl fällt weg.
+
+**Zellen wie im raster.** 22px-quadrate statt flacher balken, sie füllen sich
+von unten wie die marke. Links ausgerichtet; ein ziel von 2 sind zwei zellen,
+kein halbbildschirm-balken.
+
+**Die frist steht einmal.** Alle ansagen einer woche enden sonntag 18 uhr,
+also steht „bis sonntag 18 uhr · noch 3 tage 9 std“ unter der überschrift,
+nicht in jedem block. In den blöcken bleibt nur die reaktionsfrist. „3 t“
+heißt jetzt „3 tage“.
+
+**Die wertung ist eine zeile.** „schaffst du es: +1 für dich. sonst +1 für
+koray.“ statt eines zweizeiligen satzes mit „Wenn … Sonst:“. Die einheit
+„punkt“ steht schon rechts oben.
+
+**Nichts tun braucht keinen kasten.** Reagieren ist eine aufklappbare zeile
+„+ kontern oder „du auch““ mit „freiwillig · noch 6 std“ rechts. Das wort
+*freiwillig* sagt, was der kasten „Einfach annehmen“ in zwei zeilen sagte.
+
+**Wo du liefern musst, steht oben.** Laufende ansagen an dich (auch über „du
+auch“) zuerst, dann die, bei denen du zusiehst, zuletzt entschiedene
+(`ansageRang` in `ansageAnzeige.ts`).
+
+**Kein heller knopf.** „koray herausfordern“ war die einzige helle fläche der
+app. Jetzt ist es eine zeile zwischen haarlinien mit einer marke `+` in der
+eigenen farbe — dieselbe form, die man zum abhaken antippt. Die vorschläge
+sind einzeilig, „ziel für koray“ steht einmal in der überschrift.
+
+**Kleinschreibung.** „Dein Ziel“, „Punkte“, „Einfach annehmen“, „Stattdessen
+reagieren (optional)“ passten nicht zum rest der tafel und sind raus.

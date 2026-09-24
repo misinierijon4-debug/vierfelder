@@ -9,6 +9,7 @@ import {
   STUFEN_TEXT,
   allinFrei,
   ansageFenster,
+  ansageFrist,
   ansageKandidaten,
   ansageStand,
   ansageVorschlaege,
@@ -18,7 +19,7 @@ import {
   zaehltAusZustand,
 } from '../../lib/ansagen'
 import type { Ansage, AnsageFehler, AnsageFeld, AnsageReaktion, AnsageStufe } from '../../lib/ansagen'
-import { ansagePaare } from '../../lib/ansageAnzeige'
+import { ansagePaare, ansageRang, fristText, restzeitText } from '../../lib/ansageAnzeige'
 import { gezeigteVorschlaege, ladeAnsageSprueche } from '../../lib/ansageSprueche'
 import type { SpruchAuswahl } from '../../../supabase/functions/_shared/ansageSprueche'
 import { toKey } from '../../lib/dates'
@@ -85,16 +86,25 @@ export const AnsagenBereich = memo(function AnsagenBereich({
   const jetzt = useUhr(heute)
   const zaehlt = useMemo(() => zaehltAusZustand(zustand), [zustand])
 
+  // wo `me` liefern muss, steht oben; sort ist stabil, sonst bleibt neueste zuerst
   const paare = useMemo(
     () =>
-      ansagePaare(ansagen, heute).map(({ ansage, gegen }) => ({
-        ansage,
-        stand: ansageStand(zaehlt, ansage, jetzt),
-        gegen: gegen ? { ansage: gegen, stand: ansageStand(zaehlt, gegen, jetzt) } : null,
-        lage: reaktionsLage(zaehlt, ansage, me, jetzt),
-      })),
+      ansagePaare(ansagen, heute)
+        .map((paar) => {
+          const stand = ansageStand(zaehlt, paar.ansage, jetzt)
+          return {
+            ansage: paar.ansage,
+            stand,
+            gegen: paar.gegen ? { ansage: paar.gegen, stand: ansageStand(zaehlt, paar.gegen, jetzt) } : null,
+            lage: reaktionsLage(zaehlt, paar.ansage, me, jetzt),
+            rang: ansageRang(paar, me, stand.status === 'laeuft'),
+          }
+        })
+        .sort((a, b) => a.rang - b.rang),
     [ansagen, heute, zaehlt, jetzt, me]
   )
+  // alle ansagen einer woche enden gleich: die frist steht einmal oben
+  const laufend = paare.find((p) => p.stand.status === 'laeuft')?.ansage
 
   const verbleibend = verbleibendeAnsagen(ansagen, me, jetzt)
   const allin = allinFrei(ansagen, me, jetzt)
@@ -195,9 +205,14 @@ export const AnsagenBereich = memo(function AnsagenBereich({
           <span>{allin ? 'all-in möglich' : 'all-in verbraucht'}</span>
         </span>
       </div>
+      {laufend && (
+        <p className="tnum mt-1 text-[12px] text-kreide-60">
+          {fristText(laufend)} · noch {restzeitText(jetzt, ansageFrist(laufend))}
+        </p>
+      )}
 
       {paare.length > 0 ? (
-        <div className="mt-3 space-y-3" aria-label="ansagen dieser woche">
+        <div className="mt-3 space-y-2" aria-label="ansagen dieser woche">
           <AnimatePresence initial={false}>
             {paare.map(({ ansage, stand, gegen, lage }) => (
               <AnsageKarte
@@ -227,39 +242,43 @@ export const AnsagenBereich = memo(function AnsagenBereich({
           <p className="mt-3 text-[12px] text-kreide-60">für {er.name} gibt es gerade kein faires ziel.</p>
         ) : (
           <div className="mt-3">
+            {/* eine zeile mit der marke in der eigenen farbe, keine helle fläche */}
             <button
               type="button"
               onClick={() => oeffne(null)}
-              className="flex min-h-14 w-full items-center justify-between rounded-[2px] bg-kreide px-4 text-grund transition-opacity active:opacity-80"
+              className="flex min-h-12 w-full items-center justify-between gap-3 border-y border-linie text-left transition-opacity active:opacity-70"
             >
-              <span className="text-[15px] font-bold">{er.name} herausfordern</span>
-              <span className="tnum text-[12px] font-semibold opacity-70">Ansage erstellen</span>
+              <span className="text-[15px] font-semibold text-kreide">{er.name} herausfordern</span>
+              <span
+                aria-hidden="true"
+                className="flex size-[22px] items-center justify-center rounded-[2px] border text-[15px] leading-none"
+                style={{ borderColor: ich.farbe, color: ich.farbe }}
+              >
+                +
+              </span>
             </button>
 
             {gezeigt.length > 0 && (
-              <div className="mt-4">
+              <div className="mt-3">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-[14px] font-semibold text-kreide">Vorschläge für dich</h3>
+                  <h3 className="text-[12px] text-kreide-60">vorschläge für {er.name}</h3>
                   <span aria-live="polite" className="text-[10px] text-kreide-52">
                     {eniLaeuft ? 'eni überlegt …' : ''}
                   </span>
                 </div>
-                <ul className="mt-1 divide-y divide-linie border-y border-linie">
+                <ul className="mt-1 divide-y divide-linie border-b border-linie">
                   {gezeigt.map((v) => (
                     <li key={v.feld}>
                       <button
                         type="button"
                         onClick={() => oeffne({ feld: v.feld, stufe: v.stufe })}
-                        className="flex min-h-14 w-full flex-col items-start gap-0.5 py-2.5 text-left"
-                        aria-label={`vorschlag: ${ansageZielText(v.feld, v.ziel)}, ${STUFEN_TEXT[v.stufe]}, ${STUFEN_EINSATZ[v.stufe]} ${STUFEN_EINSATZ[v.stufe] === 1 ? 'Punkt' : 'Punkte'}`}
+                        className="flex min-h-11 w-full items-baseline justify-between gap-3 py-2 text-left"
+                        aria-label={`vorschlag: ${ansageZielText(v.feld, v.ziel)}, ${STUFEN_TEXT[v.stufe]}, ${STUFEN_EINSATZ[v.stufe]} ${STUFEN_EINSATZ[v.stufe] === 1 ? 'punkt' : 'punkte'}`}
                       >
-                        <span className="flex w-full items-baseline justify-between gap-3">
-                          <span className="text-[15px] font-bold text-kreide">{ansageZielText(v.feld, v.ziel)}</span>
-                          <span className="tnum text-[12px] text-kreide-60">
-                            {STUFEN_EINSATZ[v.stufe]} {STUFEN_EINSATZ[v.stufe] === 1 ? 'Punkt' : 'Punkte'}
-                          </span>
+                        <span className="text-[15px] font-bold text-kreide">{ansageZielText(v.feld, v.ziel)}</span>
+                        <span className="tnum text-[12px] text-kreide-60">
+                          {STUFEN_TEXT[v.stufe]} · {STUFEN_EINSATZ[v.stufe]} {STUFEN_EINSATZ[v.stufe] === 1 ? 'punkt' : 'punkte'}
                         </span>
-                        <span className="text-[12px] text-kreide-60">{STUFEN_TEXT[v.stufe]} · Ziel für {er.name}</span>
                       </button>
                     </li>
                   ))}
@@ -284,10 +303,10 @@ export const AnsagenBereich = memo(function AnsagenBereich({
           </li>
           <li>
             schafft {er.name} es bis sonntag 18 uhr, bekommt <b style={{ color: er.farbe }}>{er.name}</b> den einsatz.
-            sonst bekommst <b style={{ color: ich.farbe }}>du</b> ihn. sicher: 1 Punkt, mutig: 2 Punkte, all-in: 3 Punkte.
+            sonst bekommst <b style={{ color: ich.farbe }}>du</b> ihn. sicher: 1 punkt, mutig: 2 punkte, all-in: 3 punkte.
           </li>
           <li>
-            {er.name} muss nichts bestätigen. Die Ansage läuft auch ohne Reaktion. Innerhalb von 24 Stunden kann {er.name} stattdessen einmal reagieren: <b className="text-kreide">kontern</b> verdoppelt den
+            {er.name} muss nichts bestätigen, die ansage läuft auch ohne reaktion. innerhalb von 24 stunden kann {er.name} stattdessen einmal reagieren: <b className="text-kreide">kontern</b> verdoppelt den
             einsatz, <b className="text-kreide">du auch</b> heißt: du musst dasselbe schaffen.
           </li>
           <li>
@@ -332,7 +351,7 @@ function Leer({ me, kannAnsagen }: { me: UserId; kannAnsagen: boolean }) {
       </p>
       <div className="mt-4 flex gap-1" aria-hidden="true">
         {Array.from({ length: 4 }, (_, i) => (
-          <span key={i} className="h-3 flex-1 rounded-[2px] border" style={{ borderColor: er.leer }} />
+          <span key={i} className="size-[22px] rounded-[2px] border" style={{ borderColor: er.leer }} />
         ))}
       </div>
     </div>
