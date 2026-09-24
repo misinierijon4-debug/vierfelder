@@ -859,16 +859,16 @@ describe('lokale ansagen', () => {
     const backend = lokalesBackend()
     await backend.laden()
     // koray boxt in den vorwochen 1, 3, 2, 2 mal: schnitt 2, mutig also 4
-    const boxen = await backend.sageAn('a1', 'boxen', 'mutig')
-    expect(boxen).toMatchObject({
-      id: 'a1', von: 'erijon', an: 'koray', feld: 'boxen', stufe: 'mutig', einsatz: 2,
+    const training = await backend.sageAn('a1', 'training', 'mutig')
+    expect(training).toMatchObject({
+      id: 'a1', von: 'erijon', an: 'koray', feld: 'training', stufe: 'mutig', einsatz: 2,
       ab: '2026-09-22', bis: '2026-09-27', ziel: 4,
     })
 
     // dieselbe id ist dieselbe ansage
-    await expect(backend.sageAn('a1', 'boxen', 'mutig')).resolves.toEqual(boxen)
-    await expect(backend.sageAn('a2', 'boxen', 'sicher')).rejects.toMatchObject({ grund: 'schonAngesagt' })
-    await expect(backend.sageAn('a2', 'gym', 'sicher')).rejects.toMatchObject({ grund: 'feldInaktiv' })
+    await expect(backend.sageAn('a1', 'training', 'mutig')).resolves.toEqual(training)
+    await expect(backend.sageAn('a2', 'training', 'sicher')).rejects.toMatchObject({ grund: 'schonAngesagt' })
+    await expect(backend.sageAn('a2', 'gym', 'sicher')).rejects.toMatchObject({ grund: 'keinZiel' })
     await backend.sageAn('a3', 'lesen', 'allin')
     await expect(backend.sageAn('a4', 'lernen', 'sicher')).rejects.toBeInstanceOf(AnsageAbgelehnt)
     await expect(backend.sageAn('a4', 'lernen', 'sicher')).rejects.toMatchObject({ grund: 'keineAnsagenMehr' })
