@@ -30,8 +30,10 @@ import type { UserId, Zustand } from './types'
  * alten regeln gewertet, neu angelegt wird nur noch version 2.
  */
 
-export const ANSAGE_FELDER = ['gym', 'boxen', 'lesen', 'lernen', 'gewicht'] as const
+// gym und boxen bleiben fuer bereits laufende und abgeschlossene ansagen lesbar.
+export const ANSAGE_FELDER = ['training', 'gym', 'boxen', 'lesen', 'lernen', 'gewicht'] as const
 export type AnsageFeld = (typeof ANSAGE_FELDER)[number]
+export const NEUE_ANSAGE_FELDER = ['training', 'lesen', 'lernen', 'gewicht'] as const
 
 export const ANSAGE_STUFEN = ['sicher', 'mutig', 'allin'] as const
 export type AnsageStufe = (typeof ANSAGE_STUFEN)[number]
@@ -49,6 +51,7 @@ export const STUFEN_FAKTOR: Record<AnsageStufe, number> = { sicher: 1.3, mutig: 
  * wäre wieder der geschenkte punkt.
  */
 export const MINDESTZIEL: Record<AnsageFeld, Record<AnsageStufe, number>> = {
+  training: { sicher: 2, mutig: 3, allin: 4 },
   gym: { sicher: 2, mutig: 3, allin: 4 },
   boxen: { sicher: 2, mutig: 3, allin: 4 },
   lesen: { sicher: 2, mutig: 3, allin: 4 },
@@ -142,8 +145,9 @@ export type Zaehlt = {
 }
 
 export function zaehltAusZustand(z: Zustand): Zaehlt {
+  const bereiche = (feld: AnsageFeld) => feld === 'training' ? ['gym', 'boxen'] as const : [feld] as const
   return {
-    gesetzt: (u, feld, tag) => istGesetzt(z, u, feld, tag),
+    gesetzt: (u, feld, tag) => bereiche(feld).some((bereich) => istGesetzt(z, u, bereich, tag)),
     ehrlich: (u, feld, tag, ab, frist) => {
       if (tag < toKey(ab)) return false
       // beim gewicht kennt der browser den zeitpunkt der eintragung nicht.
@@ -152,22 +156,26 @@ export function zaehltAusZustand(z: Zustand): Zaehlt {
       if (feld === 'gewicht') return istGesetzt(z, u, 'gewicht', tag)
       const abMs = ab.getTime()
       const fristMs = frist.getTime()
-      for (const m of messungen(z.aufenthalte, u, feld, tag)) {
-        const beginn = new Date(m.ankunft).getTime()
-        const ende = m.abgang ? new Date(m.abgang).getTime() : Infinity
-        if (beginn >= abMs && ende <= fristMs) return true
-      }
-      for (const e of einheitenAn(z, u, feld, tag)) {
-        if (!e.erfasst) continue
-        const am = new Date(e.erfasst)
-        if (am.getTime() >= abMs && am.getTime() <= fristMs && toKey(am) === tag) return true
+      for (const bereich of bereiche(feld)) {
+        for (const m of messungen(z.aufenthalte, u, bereich, tag)) {
+          const beginn = new Date(m.ankunft).getTime()
+          const ende = m.abgang ? new Date(m.abgang).getTime() : Infinity
+          if (beginn >= abMs && ende <= fristMs) return true
+        }
+        for (const e of einheitenAn(z, u, bereich, tag)) {
+          if (!e.erfasst) continue
+          const am = new Date(e.erfasst)
+          if (am.getTime() >= abMs && am.getTime() <= fristMs && toKey(am) === tag) return true
+        }
       }
       return false
     },
     gemessen: (u, feld, tag) => {
       if (feld === 'gewicht') return istGesetzt(z, u, 'gewicht', tag)
-      const q = quelle(z, u, feld, tag)
-      return q === 'gemessen' || q === 'gemischt'
+      return bereiche(feld).some((bereich) => {
+        const q = quelle(z, u, bereich, tag)
+        return q === 'gemessen' || q === 'gemischt'
+      })
     },
   }
 }
@@ -377,7 +385,7 @@ export function ansageKandidaten(
   const eigene = eigeneDerWoche(ansagen, von, montag)
   const allin = !eigene.some((a) => a.stufe === 'allin')
 
-  return ANSAGE_FELDER.map((feld) => {
+  return NEUE_ANSAGE_FELDER.map((feld) => {
     const verlauf = wochenVerlauf(zaehlt, an, feld, montag)
     const meinVerlauf = wochenVerlauf(zaehlt, von, feld, montag)
     const ziele = ansageZiele(feld, verlauf, fenster.verfuegbar)
@@ -437,7 +445,7 @@ export function ansageVorschlaege(
     })
   }
   return liste
-    .sort((a, b) => b.druck - a.druck || ANSAGE_FELDER.indexOf(a.feld) - ANSAGE_FELDER.indexOf(b.feld))
+    .sort((a, b) => b.druck - a.druck || NEUE_ANSAGE_FELDER.indexOf(a.feld as typeof NEUE_ANSAGE_FELDER[number]) - NEUE_ANSAGE_FELDER.indexOf(b.feld as typeof NEUE_ANSAGE_FELDER[number]))
     .map(({ druck: _druck, ...v }) => v)
 }
 
@@ -690,6 +698,7 @@ export function reagiere(
 
 /** so heißt ein feld in einer ansage: „2× boxen“, „4× wiegen“ */
 export const ANSAGE_WORT: Record<AnsageFeld, string> = {
+  training: 'training',
   gym: 'gym',
   boxen: 'boxen',
   lesen: 'lesen',
@@ -712,6 +721,8 @@ export function vorlageSpruch(
   const schnitt = Math.round(formSchnitt(v.verlauf) * 10) / 10
   const bisher = schnitt < 1 ? 'nicht mal einmal die woche' : `${String(schnitt).replace('.', ',')}× die woche`
   switch (v.feld) {
+    case 'training':
+      return `${name} trainiert ${bisher}. ${v.ziel} trainingstage bis sonntag — gym oder boxen zählt.`
     case 'gym':
       return `${name} ist ${bisher} im gym. ${v.ziel}× bis sonntag — mal sehen, ob das abo lebt.`
     case 'boxen':
