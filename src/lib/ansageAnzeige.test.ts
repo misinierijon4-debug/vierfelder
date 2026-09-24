@@ -61,14 +61,25 @@ describe('ansagePaare', () => {
 })
 
 describe('ansageRang', () => {
+  const alle = () => true
   it('stellt vor, wo man selbst liefern muss, und entschiedenes ans ende', () => {
     const an = ansage({ von: 'koray', an: 'erijon' })
     const von = ansage({ von: 'erijon', an: 'koray' })
     const duAuch = { ansage: von, gegen: ansage({ id: 'g', von: 'koray', an: 'erijon', bezug: 'a1' }) }
-    expect(ansageRang({ ansage: an, gegen: null }, 'erijon', true)).toBe(0)
-    expect(ansageRang(duAuch, 'erijon', true)).toBe(0)
-    expect(ansageRang({ ansage: von, gegen: null }, 'erijon', true)).toBe(1)
-    expect(ansageRang({ ansage: an, gegen: null }, 'erijon', false)).toBe(2)
+    expect(ansageRang({ ansage: an, gegen: null }, 'erijon', alle)).toBe(0)
+    expect(ansageRang(duAuch, 'erijon', alle)).toBe(0)
+    expect(ansageRang({ ansage: von, gegen: null }, 'erijon', alle)).toBe(1)
+    expect(ansageRang({ ansage: an, gegen: null }, 'erijon', () => false)).toBe(2)
+  })
+
+  it('wertet bei „du auch“ jede richtung für sich', () => {
+    const von = ansage({ von: 'erijon', an: 'koray' })
+    const gegen = ansage({ id: 'g', von: 'koray', an: 'erijon', bezug: 'a1' })
+    const paar = { ansage: von, gegen }
+    // koray ist fertig, erijons gegenrichtung läuft noch: erijon muss liefern
+    expect(ansageRang(paar, 'erijon', (a) => a.id === 'g')).toBe(0)
+    // erijon ist fertig, nur koray läuft noch: erijon sieht zu
+    expect(ansageRang(paar, 'erijon', (a) => a.id === 'a1')).toBe(1)
   })
 })
 

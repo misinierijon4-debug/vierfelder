@@ -70,10 +70,12 @@ export function wertungText(a: Ansage, me: UserId): string {
 /**
  * wo eine ansage in der liste steht: erst was läuft und bei dem `me` liefern
  * muss, dann was läuft und nur zuzusehen ist, zuletzt was entschieden ist.
+ * bei „du auch“ zählt jede richtung für sich — sie enden nicht zusammen.
  */
-export function ansageRang(paar: AnsagePaar, me: UserId, laeuft: boolean): number {
-  if (!laeuft) return 2
-  return paar.ansage.an === me || paar.gegen?.an === me ? 0 : 1
+export function ansageRang(paar: AnsagePaar, me: UserId, laeuft: (a: Ansage) => boolean): number {
+  const offen = [paar.ansage, paar.gegen].filter((a): a is Ansage => a !== null && laeuft(a))
+  if (offen.length === 0) return 2
+  return offen.some((a) => a.an === me) ? 0 : 1
 }
 
 /** wer aus einer entschiedenen ansage wie viel bekommt, oder null solange sie läuft */

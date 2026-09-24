@@ -10,6 +10,7 @@ import {
   allinFrei,
   ansageFenster,
   ansageFrist,
+  istV2,
   ansageKandidaten,
   ansageStand,
   ansageVorschlaege,
@@ -92,19 +93,24 @@ export const AnsagenBereich = memo(function AnsagenBereich({
       ansagePaare(ansagen, heute)
         .map((paar) => {
           const stand = ansageStand(zaehlt, paar.ansage, jetzt)
+          const gegen = paar.gegen ? { ansage: paar.gegen, stand: ansageStand(zaehlt, paar.gegen, jetzt) } : null
+          const laeuft = (a: Ansage) => (a === paar.ansage ? stand : gegen!.stand).status === 'laeuft'
           return {
             ansage: paar.ansage,
             stand,
-            gegen: paar.gegen ? { ansage: paar.gegen, stand: ansageStand(zaehlt, paar.gegen, jetzt) } : null,
+            gegen,
             lage: reaktionsLage(zaehlt, paar.ansage, me, jetzt),
-            rang: ansageRang(paar, me, stand.status === 'laeuft'),
+            rang: ansageRang(paar, me, laeuft),
           }
         })
         .sort((a, b) => a.rang - b.rang),
     [ansagen, heute, zaehlt, jetzt, me]
   )
-  // alle ansagen einer woche enden gleich: die frist steht einmal oben
-  const laufend = paare.find((p) => p.stand.status === 'laeuft')?.ansage
+  // alle v2-ansagen einer woche enden sonntag 18 uhr: diese frist steht einmal
+  // oben. eine alte v1-ansage (bis samstag) nennt ihre frist selbst im block.
+  const laufend = paare.find(
+    (p) => istV2(p.ansage) && (p.stand.status === 'laeuft' || p.gegen?.stand.status === 'laeuft')
+  )?.ansage
 
   const verbleibend = verbleibendeAnsagen(ansagen, me, jetzt)
   const allin = allinFrei(ansagen, me, jetzt)

@@ -195,6 +195,15 @@ describe('AnsagenBereich', () => {
     ])
   })
 
+  it('nennt die sonntagsfrist nur für v2, eine alte v1-ansage trägt ihre eigene', () => {
+    const alt = ansage({ id: 'v1', version: undefined, stufe: undefined, einsatz: undefined, bis: '2026-09-26', erstelltAm: new Date(2026, 8, 22, 11).toISOString() })
+    const neu = ansage({ id: 'v2', von: 'erijon', an: 'koray', feld: 'boxen', erstelltAm: new Date(2026, 8, 22, 8).toISOString() })
+    render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[alt, neu]} />)
+    expect(screen.getByText('bis sonntag 18 uhr · noch 5 tage 6 std')).toBeInTheDocument()
+    const altKarte = within(screen.getByRole('article', { name: '3× lesen' }))
+    expect(altKarte.getByText('bis samstag')).toBeInTheDocument()
+  })
+
   it('bietet ab freitag 18 uhr nichts mehr an und zählt verbrauchte ansagen', () => {
     vi.setSystemTime(new Date(2026, 8, 25, 19))
     const { rerender } = render(
