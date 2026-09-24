@@ -81,45 +81,45 @@ describe('AnsagenBereich', () => {
     // schnitt 2 → sicher 3; nur boxen ist aktiv
     const vorschlaege = screen.getAllByRole('button', { name: /^vorschlag:/ })
     expect(vorschlaege).toHaveLength(1)
-    expect(vorschlaege[0]).toHaveAccessibleName('vorschlag: 3× boxen, sicher, 1 punkt')
+    expect(vorschlaege[0]).toHaveAccessibleName('vorschlag: 3× training, sicher, 1 punkt')
   })
 
   it('sagt über das blatt an: feld, stufe mit live-ziel, bestätigen', async () => {
     const user = userEvent.setup()
     const onSageAn = vi.fn(async () => ({
-      ansage: ansage({ id: 'neu', von: 'erijon', an: 'koray', feld: 'boxen', ziel: 4, erstelltAm: DIENSTAG.toISOString() }),
+      ansage: ansage({ id: 'neu', von: 'erijon', an: 'koray', feld: 'training', ziel: 4, erstelltAm: DIENSTAG.toISOString() }),
     }))
     render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[]} onSageAn={onSageAn} />)
     await user.click(screen.getByRole('button', { name: /koray herausfordern/ }))
     const blatt = within(await screen.findByRole('dialog', { name: /ansage an koray/ }))
 
-    expect(blatt.getByRole('button', { name: /^gym/ })).toBeDisabled()
-    expect(blatt.getAllByText('macht er gerade nicht').length).toBeGreaterThan(0)
+    expect(blatt.queryByRole('button', { name: /^gym/ })).toBeNull()
+    expect(blatt.queryByRole('button', { name: /^boxen/ })).toBeNull()
     expect(blatt.getByRole('button', { name: 'feld und stufe wählen' })).toBeDisabled()
 
-    await user.click(blatt.getByRole('button', { name: /^boxen/ }))
+    await user.click(blatt.getByRole('button', { name: /^training/ }))
     // empfohlen ist sicher; mutig zeigt sein ziel schon auf dem knopf
     expect(blatt.getByRole('button', { name: 'ansage bestätigen' })).toBeEnabled()
     await user.click(blatt.getByRole('button', { name: /^mutig/ }))
     expect(blatt.getByRole('button', { name: /^mutig/ })).toHaveTextContent('4× · 2 Punkte')
-    expect(blatt.getByText('koray soll bis Sonntag, 18 Uhr 4× boxen schaffen.')).toBeInTheDocument()
+    expect(blatt.getByText('koray soll bis Sonntag, 18 Uhr 4× training schaffen.')).toBeInTheDocument()
     expect(blatt.getByText('+2 Punkte für koray.')).toBeInTheDocument()
     expect(blatt.getByText('+2 Punkte für dich.')).toBeInTheDocument()
 
     await user.click(blatt.getByRole('button', { name: 'ansage bestätigen' }))
-    expect(onSageAn).toHaveBeenCalledWith('boxen', 'mutig')
+    expect(onSageAn).toHaveBeenCalledWith('training', 'mutig')
     expect(await blatt.findByRole('status')).toHaveTextContent('angesagt')
-    expect(screen.getByText('angesagt: 4× boxen bis sonntag.')).toBeInTheDocument()
+    expect(screen.getByText('angesagt: 4× training bis sonntag.')).toBeInTheDocument()
   })
 
   it('öffnet das blatt aus enis vorschlag schon ausgefüllt und erklärt eine ablehnung', async () => {
     const user = userEvent.setup()
     const onSageAn = vi.fn(async () => ({ fehler: 'keinZiel' as const }))
     render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[]} onSageAn={onSageAn} />)
-    await user.click(screen.getByRole('button', { name: /^vorschlag: 3× boxen/ }))
+    await user.click(screen.getByRole('button', { name: /^vorschlag: 3× training/ }))
     const blatt = within(await screen.findByRole('dialog'))
     await user.click(blatt.getByRole('button', { name: 'ansage bestätigen' }))
-    expect(onSageAn).toHaveBeenCalledWith('boxen', 'sicher')
+    expect(onSageAn).toHaveBeenCalledWith('training', 'sicher')
     expect(await blatt.findByText('für dieses feld passt diese woche kein faires ziel mehr.')).toBeInTheDocument()
   })
 
