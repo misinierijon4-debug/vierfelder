@@ -319,6 +319,7 @@ export const AnsagenBereich = memo(function AnsagenBereich({
             es zählt nur, was nach der ansage passiert und am selben tag eingetragen wird — getippt oder gemessen.
             felder, die {er.name} gar nicht macht, gehen nicht.
           </li>
+          <li>training heißt gym oder boxen. beides am selben tag zählt nur einmal.</li>
           <li>2 ansagen pro woche, davon eine all-in. ansagen bis freitag 18 uhr.</li>
         </ul>
       </details>
