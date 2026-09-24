@@ -138,6 +138,20 @@ describe('zaehltAusZustand', () => {
   })
 })
 
+describe('training aus gym und boxen', () => {
+  it('zählt beide bereiche pro tag einmal, für beide personen', () => {
+    let z = korayBoxt()
+    z = sitzung(z, 'koray', 'gym', '2026-09-01')
+    z = sitzung(z, 'erijon', 'gym', '2026-09-22')
+    z = getippt(z, 'erijon', 'boxen', '2026-09-22', '2026-09-22T20:00:00')
+    const zaehlt = zaehltAusZustand(z)
+    expect(wochenVerlauf(zaehlt, 'koray', 'training', '2026-09-21')).toEqual([1, 2, 3, 2])
+    expect(zaehlt.ehrlich('erijon', 'training', '2026-09-22', MONTAG, FRIST)).toBe(true)
+    expect(ansageStand(zaehlt, ansage({ an: 'erijon', von: 'koray', feld: 'training', ziel: 2 }), DIENSTAG).erreicht).toBe(1)
+    expect(zaehlt.ehrlich('koray', 'boxen', '2026-09-22', MONTAG, FRIST)).toBe(false)
+  })
+})
+
 describe('ansageFenster', () => {
   it('läuft ab heute bis sonntag 18 uhr', () => {
     expect(ansageFenster(MONTAG)).toEqual({ ab: '2026-09-21', bis: '2026-09-27', frist: FRIST, verfuegbar: 7 })
@@ -183,8 +197,8 @@ describe('wochenVerlauf', () => {
 describe('ansageKandidaten', () => {
   it('sperrt felder, die die andere person gar nicht macht', () => {
     const k = ansageKandidaten(zaehltAusZustand(korayBoxt()), [], 'erijon', 'koray', MONTAG)
-    expect(k.find((x) => x.feld === 'gym')?.gesperrt).toBe('inaktiv')
-    const boxen = k.find((x) => x.feld === 'boxen')!
+    expect(k.map((x) => x.feld)).toEqual(['training', 'lesen', 'lernen', 'gewicht'])
+    const boxen = k.find((x) => x.feld === 'training')!
     expect(boxen.gesperrt).toBeNull()
     expect(boxen.schnitt).toBe(2)
     expect(boxen.ziele).toEqual({ sicher: 3, mutig: 4, allin: 5 })
@@ -194,7 +208,7 @@ describe('ansageKandidaten', () => {
     const vorher = [ansage({ id: 'x', feld: 'lesen', stufe: 'allin', einsatz: 3 })]
     const k = ansageKandidaten(zaehltAusZustand(korayBoxt()), vorher, 'erijon', 'koray', DIENSTAG)
     expect(k.find((x) => x.feld === 'lesen')?.gesperrt).toBe('schonAngesagt')
-    expect(k.find((x) => x.feld === 'boxen')?.ziele.allin).toBeNull()
+    expect(k.find((x) => x.feld === 'training')?.ziele.allin).toBeNull()
   })
 
   it('ist leer ohne kontingent oder nach freitag 18 uhr', () => {
@@ -213,16 +227,16 @@ describe('ansageKandidaten', () => {
     }
     const k = ansageKandidaten(zaehltAusZustand(z), [], 'erijon', 'koray', MONTAG)
     // erijon schafft ⌈4 × 1,3⌉ = 6 → all-in (5) tut nicht weh
-    expect(k.find((x) => x.feld === 'boxen')?.empfohlen).toBe('allin')
+    expect(k.find((x) => x.feld === 'training')?.empfohlen).toBe('allin')
     expect(ansageKandidaten(zaehltAusZustand(korayBoxt()), [], 'erijon', 'koray', MONTAG)
-      .find((x) => x.feld === 'boxen')?.empfohlen).toBe('sicher')
+      .find((x) => x.feld === 'training')?.empfohlen).toBe('sicher')
   })
 })
 
 describe('ansageVorschlaege', () => {
   it('nennt nur ansagbare felder mit empfohlener stufe', () => {
     const v = ansageVorschlaege(zaehltAusZustand(korayBoxt()), [], 'erijon', 'koray', MONTAG)
-    expect(v.map((x) => [x.feld, x.stufe, x.ziel])).toEqual([['boxen', 'sicher', 3]])
+    expect(v.map((x) => [x.feld, x.stufe, x.ziel])).toEqual([['training', 'sicher', 3]])
   })
 
   it('schlägt lernen erst ab zwei tagen vor, auch wenn es selten ist', () => {
@@ -237,14 +251,14 @@ describe('neueAnsage', () => {
   const zaehlt = zaehltAusZustand(korayBoxt())
 
   it('übernimmt ziel, einsatz und fenster aus der stufe', () => {
-    const r = neueAnsage(zaehlt, [], 'erijon', 'koray', 'boxen', 'allin', MONTAG, 'neu')
+    const r = neueAnsage(zaehlt, [], 'erijon', 'koray', 'training', 'allin', MONTAG, 'neu')
     expect(r).toEqual({
       ansage: {
         id: 'neu',
         version: 2,
         von: 'erijon',
         an: 'koray',
-        feld: 'boxen',
+        feld: 'training',
         stufe: 'allin',
         einsatz: 3,
         ab: '2026-09-21',
@@ -256,24 +270,24 @@ describe('neueAnsage', () => {
   })
 
   it('sagt, warum es nicht geht', () => {
-    expect(neueAnsage(zaehlt, [], 'erijon', 'erijon', 'boxen', 'sicher', MONTAG, 'n')).toEqual({ fehler: 'selbst' })
-    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'gym', 'sicher', MONTAG, 'n')).toEqual({ fehler: 'feldInaktiv' })
-    expect(neueAnsage(zaehlt, [ansage()], 'erijon', 'koray', 'boxen', 'sicher', DIENSTAG, 'n')).toEqual({
+    expect(neueAnsage(zaehlt, [], 'erijon', 'erijon', 'training', 'sicher', MONTAG, 'n')).toEqual({ fehler: 'selbst' })
+    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'gym', 'sicher', MONTAG, 'n')).toEqual({ fehler: 'keinZiel' })
+    expect(neueAnsage(zaehlt, [ansage({ feld: 'training' })], 'erijon', 'koray', 'training', 'sicher', DIENSTAG, 'n')).toEqual({
       fehler: 'schonAngesagt',
     })
     const allin = [ansage({ feld: 'lesen', stufe: 'allin', einsatz: 3 })]
-    expect(neueAnsage(zaehlt, allin, 'erijon', 'koray', 'boxen', 'allin', DIENSTAG, 'n')).toEqual({
+    expect(neueAnsage(zaehlt, allin, 'erijon', 'koray', 'training', 'allin', DIENSTAG, 'n')).toEqual({
       fehler: 'allinVerbraucht',
     })
     const zwei = [ansage({ id: 'x' }), ansage({ id: 'y', feld: 'lesen' })]
     expect(neueAnsage(zaehlt, zwei, 'erijon', 'koray', 'gewicht', 'sicher', DIENSTAG, 'n')).toEqual({
       fehler: 'keineAnsagenMehr',
     })
-    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'boxen', 'sicher', new Date(2026, 8, 25, 19), 'n')).toEqual({
+    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'training', 'sicher', new Date(2026, 8, 25, 19), 'n')).toEqual({
       fehler: 'zuSpaet',
     })
     // freitag 17 uhr: noch 3 tage, mutig (4) passt nicht mehr
-    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'boxen', 'mutig', new Date(2026, 8, 25, 17), 'n')).toEqual({
+    expect(neueAnsage(zaehlt, [], 'erijon', 'koray', 'training', 'mutig', new Date(2026, 8, 25, 17), 'n')).toEqual({
       fehler: 'keinZiel',
     })
   })
