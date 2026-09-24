@@ -12,7 +12,7 @@
 export type SpruchPerson = 'erijon' | 'koray'
 export const SPRUCH_PERSONEN: SpruchPerson[] = ['erijon', 'koray']
 
-export const SPRUCH_FELDER = ['gym', 'boxen', 'lesen', 'lernen', 'gewicht'] as const
+export const SPRUCH_FELDER = ['training', 'gym', 'boxen', 'lesen', 'lernen', 'gewicht'] as const
 export type SpruchFeld = (typeof SPRUCH_FELDER)[number]
 
 export const SPRUCH_STUFEN = ['sicher', 'mutig', 'allin'] as const
@@ -181,7 +181,8 @@ Wähle die bis zu drei spannendsten Kandidaten, der spannendste zuerst. Spannend
 Schreib zu jedem einen Spruch. WICHTIG: Den Spruch liest die ansagende Person, nicht die herausgeforderte.
 - Sprich die ansagende Person mit „du" an. Über die herausgeforderte Person sprichst du in der dritten Person und nennst sie beim Namen, ohne Pronomen.
 - Rede die herausgeforderte Person nie direkt an: kein „Koray, …", kein „…, Koray?", kein „zeig mir, dass du …" an sie gerichtet.
-- Gut: „koray war seit wochen nicht im gym. traust du dich?" — Schlecht: „koray, zeig mir, dass du überhaupt existierst!"
+- Beim Feld training zählt ein Tag mit Gym oder Boxen genau einmal.
+- Gut: „koray hat beim training nachgelassen. traust du dich?" — Schlecht: „koray, zeig mir, dass du überhaupt existierst!"
 - Frech, kurz, deutsch, kleingeschrieben, höchstens ${SPRUCH_LAENGE} Zeichen. Kein Emoji.
 - Schreib echte Umlaute und ß (ä, ö, ü, ß), nie ae, oe oder ue als Ersatz.
 - Keine Ziffern und keine Zahlwörter: Die App zeigt Ziel und Verlauf direkt daneben.

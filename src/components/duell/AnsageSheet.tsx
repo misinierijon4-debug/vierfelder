@@ -172,6 +172,7 @@ export function AnsageSheet({ offen, me, kandidaten, start, onSageAn, onSchliess
                       )}
                       <span className={`text-[17px] font-bold ${k.gesperrt ? 'text-kreide-52' : 'text-kreide'}`}>
                         {ANSAGE_WORT[k.feld]}
+                        {k.feld === 'training' && <span className="ml-2 text-[12px] font-normal text-kreide-60">gym oder boxen · ein tag zählt einmal</span>}
                       </span>
                       <span className="tnum text-right text-[12px] text-kreide-60">
                         {k.gesperrt ? (

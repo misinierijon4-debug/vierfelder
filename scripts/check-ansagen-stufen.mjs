@@ -376,7 +376,25 @@ try {
   assert.equal(await meldung(koray, '2020-07-07 12:00'), null)
   assert.equal(await meldung(erijon, '2020-07-06 22:10'), null, 'nach 22 uhr schweigt sie')
 
-  console.log('ansagen_stufen: altbestand, rechte, ziele, sperren, ehrliche zaehlung, reaktionen, frist, abrechnung v3 und push geprueft')
+  // Neue Ansagen: Training vereint Gym und Boxen je Kalendertag einmal.
+  await alsSuperuser()
+  await db.exec(await lies('20260924210000_ansagen_training.sql'))
+  const training = await sageAn(erijon, 'training', 'sicher', '2020-07-13 10:00')
+  assert.equal(training.feld, 'training')
+  assert.equal(training.ziel >= 2, true)
+  await sitzung(koray, 'gym', '2020-07-14')
+  await sitzung(koray, 'boxen', '2020-07-14', '19:00')
+  assert.deepEqual((await query(
+    "select array_agg(t::text order by t) as tage from private.ansage_ehrliche_tage($1, 'training', $2::timestamptz, $3::timestamptz) t",
+    [koray, training.erstellt_am, berlin('2020-07-19 18:00')],
+  )).rows[0].tage, ['2020-07-14'])
+  assert.deepEqual((await query(
+    "select array_agg(t::text order by t) as tage from private.ansage_form_tage($1, 'training', '2020-07-14', '2020-07-14') t",
+    [koray],
+  )).rows[0].tage, ['2020-07-14'])
+  assert.equal((await zeile(boxen.id)).feld, 'boxen', 'alte Ansage bleibt eigenstaendig')
+
+  console.log('ansagen_stufen: altbestand, rechte, ziele, sperren, ehrliche zaehlung, reaktionen, frist, abrechnung v3, push und training geprueft')
 } finally {
   await db.close()
 }
