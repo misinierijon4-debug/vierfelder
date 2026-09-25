@@ -195,6 +195,20 @@ describe('AnsagenBereich', () => {
     ])
   })
 
+  it('trennt in gruppen, wer liefern muss, und färbt jede karte nur in dessen farbe', () => {
+    const meine = ansage({ id: 'an-mich', feld: 'lernen' })
+    const seine = ansage({ id: 'an-ihn', von: 'erijon', an: 'koray', feld: 'lesen' })
+    render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[seine, meine]} />)
+    const ich = within(screen.getByRole('group', { name: /du musst liefern/ }))
+    const er = within(screen.getByRole('group', { name: /koray muss liefern/ }))
+    const meineKarte = ich.getByRole('article', { name: '3× lernen' })
+    const seineKarte = er.getByRole('article', { name: '3× lesen' })
+    // die kante hat die farbe dessen, der liefern muss — nicht die des ansagenden
+    expect((meineKarte.querySelector('[aria-hidden="true"]') as HTMLElement).style.background).toBe('var(--erijon)')
+    expect((seineKarte.querySelector('[aria-hidden="true"]') as HTMLElement).style.background).toBe('var(--koray)')
+    expect(screen.queryByRole('group', { name: /entschieden/ })).toBeNull()
+  })
+
   it('nennt die sonntagsfrist nur für v2, eine alte v1-ansage trägt ihre eigene', () => {
     const alt = ansage({ id: 'v1', version: undefined, stufe: undefined, einsatz: undefined, bis: '2026-09-26', erstelltAm: new Date(2026, 8, 22, 11).toISOString() })
     const neu = ansage({ id: 'v2', von: 'erijon', an: 'koray', feld: 'boxen', erstelltAm: new Date(2026, 8, 22, 8).toISOString() })

@@ -1,14 +1,24 @@
 import { addDays, startOfWeek, toKey } from './dates'
 import { ansageFrist, ansagePunkte, istV2, wirksamerEinsatz } from './ansagen'
-import type { Ansage, AnsageStatus } from './ansagen'
+import type { Ansage, AnsageFeld, AnsageStatus } from './ansagen'
 import { user as userDef } from './types'
-import type { UserId } from './types'
+import type { FeldId, UserId } from './types'
 
 /**
  * was die ansagen-oberfläche sagt, ohne zu rechnen: die zahlen kommen aus
  * `ansagen.ts`, hier wird nur formuliert. alles kleingeschrieben, aus sicht
  * der person, die gerade schaut.
  */
+
+/** welches feldsymbol zu einem ansagefeld gehört — training trägt die hantel */
+export const ANSAGE_SYMBOL: Record<AnsageFeld, FeldId> = {
+  training: 'gym',
+  gym: 'gym',
+  boxen: 'boxen',
+  lesen: 'lesen',
+  lernen: 'lernen',
+  gewicht: 'gewicht',
+}
 
 /** eine ansage mit ihrer „du auch“-gegenrichtung, falls es eine gibt */
 export type AnsagePaar = { ansage: Ansage; gegen: Ansage | null }
@@ -76,6 +86,16 @@ export function ansageRang(paar: AnsagePaar, me: UserId, laeuft: (a: Ansage) => 
   const offen = [paar.ansage, paar.gegen].filter((a): a is Ansage => a !== null && laeuft(a))
   if (offen.length === 0) return 2
   return offen.some((a) => a.an === me) ? 0 : 1
+}
+
+/**
+ * die überschrift über einer gruppe von ansagen, nach `ansageRang`: zuerst,
+ * was man selbst liefern muss, dann, wobei man nur zusieht.
+ */
+export function gruppenTitel(rang: number, me: UserId): string {
+  if (rang === 0) return 'du musst liefern'
+  if (rang === 1) return `${userDef(me === 'erijon' ? 'koray' : 'erijon').name} muss liefern`
+  return 'entschieden'
 }
 
 /** wer aus einer entschiedenen ansage wie viel bekommt, oder null solange sie läuft */

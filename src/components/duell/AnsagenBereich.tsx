@@ -20,7 +20,7 @@ import {
   zaehltAusZustand,
 } from '../../lib/ansagen'
 import type { Ansage, AnsageFehler, AnsageFeld, AnsageReaktion, AnsageStufe } from '../../lib/ansagen'
-import { ansagePaare, ansageRang, fristText, restzeitText } from '../../lib/ansageAnzeige'
+import { ansagePaare, ansageRang, fristText, gruppenTitel, restzeitText } from '../../lib/ansageAnzeige'
 import { gezeigteVorschlaege, ladeAnsageSprueche } from '../../lib/ansageSprueche'
 import type { SpruchAuswahl } from '../../../supabase/functions/_shared/ansageSprueche'
 import { toKey } from '../../lib/dates'
@@ -111,6 +111,15 @@ export const AnsagenBereich = memo(function AnsagenBereich({
   const laufend = paare.find(
     (p) => istV2(p.ansage) && (p.stand.status === 'laeuft' || p.gegen?.stand.status === 'laeuft')
   )?.ansage
+
+  // drei gruppen mit überschrift, damit man sieht, was einem selbst gehört
+  const gruppen = useMemo(
+    () =>
+      [0, 1, 2]
+        .map((rang) => ({ rang, paare: paare.filter((p) => p.rang === rang) }))
+        .filter((g) => g.paare.length > 0),
+    [paare]
+  )
 
   const verbleibend = verbleibendeAnsagen(ansagen, me, jetzt)
   const allin = allinFrei(ansagen, me, jetzt)
@@ -218,22 +227,41 @@ export const AnsagenBereich = memo(function AnsagenBereich({
       )}
 
       {paare.length > 0 ? (
-        <div className="mt-3 space-y-2" aria-label="ansagen dieser woche">
-          <AnimatePresence initial={false}>
-            {paare.map(({ ansage, stand, gegen, lage }) => (
-              <AnsageKarte
-                key={ansage.id}
-                ansage={ansage}
-                stand={stand}
-                gegen={gegen}
-                me={me}
-                jetzt={jetzt}
-                lage={onReagiere ? lage : null}
-                sendet={reagiert?.id === ansage.id ? reagiert.art : null}
-                onReagiere={onReagiere ? reagiere : undefined}
-              />
-            ))}
-          </AnimatePresence>
+        <div className="mt-3 space-y-5" aria-label="ansagen dieser woche">
+          {gruppen.map(({ rang, paare: liste }) => {
+            const farbe = rang === 0 ? ich.farbe : rang === 1 ? er.farbe : null
+            return (
+              <div key={rang} role="group" aria-labelledby={`ansagen-gruppe-${rang}`}>
+                <h3
+                  id={`ansagen-gruppe-${rang}`}
+                  className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em]"
+                  style={{ color: farbe ?? undefined }}
+                >
+                  {farbe && <span aria-hidden="true" className="size-2.5 rounded-[1px]" style={{ background: farbe }} />}
+                  <span className={farbe ? '' : 'text-kreide-60'}>{gruppenTitel(rang, me)}</span>
+                  <span className="tnum font-normal text-kreide-52">· {liste.length}</span>
+                </h3>
+                <div className="mt-2 space-y-2">
+                  <AnimatePresence initial={false}>
+                    {liste.map(({ ansage, stand, gegen, lage }) => (
+                      <AnsageKarte
+                        key={ansage.id}
+                        ansage={ansage}
+                        stand={stand}
+                        gegen={gegen}
+                        me={me}
+                        jetzt={jetzt}
+                        lage={onReagiere ? lage : null}
+                        sendet={reagiert?.id === ansage.id ? reagiert.art : null}
+                        onReagiere={onReagiere ? reagiere : undefined}
+                        leise={rang !== 0}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            )
+          })}
         </div>
       ) : (
         <Leer me={me} kannAnsagen={kannAnsagen} />
