@@ -99,7 +99,7 @@ export const AnsagenBereich = memo(function AnsagenBereich({
             ansage: paar.ansage,
             stand,
             gegen,
-            lage: reaktionsLage(zaehlt, paar.ansage, me, jetzt),
+            lage: reaktionsLage(zaehlt, ansagen, paar.ansage, me, jetzt),
             rang: ansageRang(paar, me, laeuft),
           }
         })

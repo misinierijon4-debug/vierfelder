@@ -220,4 +220,18 @@ describe('AnsagenBereich', () => {
     expect(screen.getByText('all-in verbraucht')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /herausfordern/ })).toBeNull()
   })
+
+  it('bietet keine reaktion an, wenn die zwei ansagen der woche weg sind', () => {
+    const alle = [
+      ansage(),
+      ansage({ id: 'x', von: 'erijon', an: 'koray', feld: 'boxen' }),
+      ansage({ id: 'y', von: 'erijon', an: 'koray', feld: 'lernen' }),
+    ]
+    render(
+      <AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={alle} onSageAn={vi.fn()} onReagiere={vi.fn()} />
+    )
+    expect(screen.getByText('0 von 2 übrig')).toBeInTheDocument()
+    const karte = within(screen.getByRole('article', { name: '3× lesen' }))
+    expect(karte.queryByText('kontern oder „du auch“')).toBeNull()
+  })
 })

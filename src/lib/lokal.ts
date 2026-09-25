@@ -1310,7 +1310,7 @@ export function lokalesBackend(): Backend {
           const gegen = alle.find((a) => a.bezug === ansageId)
           return gegen ? { ansage, gegen } : { ansage }
         }
-        const ergebnis = reagiere(zaehltAusZustand(lokalerZustand()), ansage, me, art, new Date(), id)
+        const ergebnis = reagiere(zaehltAusZustand(lokalerZustand()), alle, ansage, me, art, new Date(), id)
         if ('fehler' in ergebnis) throw new AnsageAbgelehnt(ergebnis.fehler)
         const neu = alle.map((a) => (a.id === ansageId ? ergebnis.ansage : a))
         if (ergebnis.gegen) neu.push(ergebnis.gegen)

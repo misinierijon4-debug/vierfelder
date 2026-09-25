@@ -409,32 +409,32 @@ describe('wochenAnsagePunkte und offeneAnsageWende', () => {
 describe('reaktionen', () => {
   it('erlaubt kontern und du auch 24 stunden lang', () => {
     const zaehlt = zaehltAusZustand(leererZustand())
-    expect(reaktionsLage(zaehlt, ansage(), 'koray', MONTAG_ABEND)).toEqual({
+    expect(reaktionsLage(zaehlt, [], ansage(), 'koray', MONTAG_ABEND)).toEqual({
       kontern: true,
       duAuch: true,
       bis: new Date(2026, 8, 22, 10),
     })
-    expect(reaktionsLage(zaehlt, ansage(), 'koray', new Date(2026, 8, 22, 10))).toBeNull()
-    expect(reaktionsLage(zaehlt, ansage(), 'koray', DIENSTAG)).toBeNull()
-    expect(reaktionsLage(zaehlt, ansage(), 'erijon', MONTAG_ABEND)).toBeNull()
+    expect(reaktionsLage(zaehlt, [], ansage(), 'koray', new Date(2026, 8, 22, 10))).toBeNull()
+    expect(reaktionsLage(zaehlt, [], ansage(), 'koray', DIENSTAG)).toBeNull()
+    expect(reaktionsLage(zaehlt, [], ansage(), 'erijon', MONTAG_ABEND)).toBeNull()
   })
 
   it('erlaubt kontern nur, bevor bei der herausgeforderten person etwas zählt', () => {
     const z = sitzung(leererZustand(), 'koray', 'boxen', '2026-09-21', { beginn: '12:00' })
     const zaehlt = zaehltAusZustand(z)
-    expect(reaktionsLage(zaehlt, ansage(), 'koray', MONTAG_ABEND)?.kontern).toBe(false)
-    expect(reagiere(zaehlt, ansage(), 'koray', 'kontern', MONTAG_ABEND, 'r')).toEqual({ fehler: 'kontraZuSpaet' })
+    expect(reaktionsLage(zaehlt, [], ansage(), 'koray', MONTAG_ABEND)?.kontern).toBe(false)
+    expect(reagiere(zaehlt, [], ansage(), 'koray', 'kontern', MONTAG_ABEND, 'r')).toEqual({ fehler: 'kontraZuSpaet' })
   })
 
   it('kontern verdoppelt die ansage selbst', () => {
-    const r = reagiere(zaehltAusZustand(leererZustand()), ansage(), 'koray', 'kontern', MONTAG_ABEND, 'r')
+    const r = reagiere(zaehltAusZustand(leererZustand()), [], ansage(), 'koray', 'kontern', MONTAG_ABEND, 'r')
     expect('ansage' in r && r.ansage.reaktion).toEqual({ art: 'kontern', am: MONTAG_ABEND.toISOString() })
     expect('ansage' in r && r.gegen).toBeUndefined()
     expect('ansage' in r && wirksamerEinsatz(r.ansage)).toBe(4)
   })
 
   it('du auch legt die gegenrichtung an, gezählt ab derselben ansage', () => {
-    const r = reagiere(zaehltAusZustand(leererZustand()), ansage(), 'koray', 'duAuch', MONTAG_ABEND, 'gegen')
+    const r = reagiere(zaehltAusZustand(leererZustand()), [], ansage(), 'koray', 'duAuch', MONTAG_ABEND, 'gegen')
     if (!('ansage' in r) || !r.gegen) throw new Error('reaktion erwartet')
     expect(r.gegen).toMatchObject({
       id: 'gegen',
@@ -452,12 +452,40 @@ describe('reaktionen', () => {
     // die gegenrichtung kostet kein kontingent
     expect(verbleibendeAnsagen([r.gegen], 'koray', MONTAG_ABEND)).toBe(ANSAGEN_JE_WOCHE)
     // und auf sie gibt es keine reaktion
-    expect(reaktionsLage(zaehltAusZustand(z), r.gegen, 'erijon', MONTAG_ABEND)).toBeNull()
+    expect(reaktionsLage(zaehltAusZustand(z), [], r.gegen, 'erijon', MONTAG_ABEND)).toBeNull()
+  })
+
+  it('kostet eine der zwei ansagen der woche', () => {
+    const zaehlt = zaehltAusZustand(leererZustand())
+    const r = reagiere(zaehlt, [], ansage(), 'koray', 'kontern', MONTAG_ABEND, 'r')
+    if (!('ansage' in r)) throw new Error('reaktion erwartet')
+    expect(verbleibendeAnsagen([r.ansage], 'koray', MONTAG_ABEND)).toBe(ANSAGEN_JE_WOCHE - 1)
+    // erijon zahlt nur für die eigene ansage, die reaktion kostet ihn nichts
+    expect(verbleibendeAnsagen([r.ansage], 'erijon', MONTAG_ABEND)).toBe(ANSAGEN_JE_WOCHE - 1)
+  })
+
+  it('geht nicht mehr, wenn beide ansagen der woche weg sind', () => {
+    const zaehlt = zaehltAusZustand(leererZustand())
+    const eigene = [
+      ansage({ id: 'k1', von: 'koray', an: 'erijon', feld: 'lesen' }),
+      ansage({ id: 'k2', von: 'koray', an: 'erijon', feld: 'lernen' }),
+    ]
+    const alle = [ansage(), ...eigene]
+    expect(verbleibendeAnsagen(alle, 'koray', MONTAG_ABEND)).toBe(0)
+    expect(reaktionsLage(zaehlt, alle, ansage(), 'koray', MONTAG_ABEND)).toBeNull()
+    expect(reagiere(zaehlt, alle, ansage(), 'koray', 'duAuch', MONTAG_ABEND, 'g')).toEqual({
+      fehler: 'keineAnsagenMehr',
+    })
+    // eine eigene ansage und eine reaktion sind auch zwei
+    const gekontert = ansage({ id: 'x', reaktion: { art: 'kontern', am: MONTAG_ABEND.toISOString() } })
+    const gemischt = [ansage(), eigene[0], gekontert]
+    expect(verbleibendeAnsagen(gemischt, 'koray', MONTAG_ABEND)).toBe(0)
+    expect(reaktionsLage(zaehlt, gemischt, ansage(), 'koray', MONTAG_ABEND)).toBeNull()
   })
 
   it('erlaubt nur eine reaktion', () => {
     const a = ansage({ reaktion: { art: 'duAuch', am: MONTAG_ABEND.toISOString() } })
-    expect(reagiere(zaehltAusZustand(leererZustand()), a, 'koray', 'kontern', MONTAG_ABEND, 'r')).toEqual({ fehler: 'schonReagiert' })
+    expect(reagiere(zaehltAusZustand(leererZustand()), [], a, 'koray', 'kontern', MONTAG_ABEND, 'r')).toEqual({ fehler: 'schonReagiert' })
   })
 })
 

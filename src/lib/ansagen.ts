@@ -270,9 +270,17 @@ function eigeneDerWoche(ansagen: Ansage[], u: UserId, montag: string): Ansage[] 
   return ansagen.filter((a) => a.von === u && !a.bezug && ansageWoche(a) === montag)
 }
 
+/** die reaktionen von `u` in einer woche: kontern und „du auch“ kosten je eine ansage */
+function reaktionenDerWoche(ansagen: Ansage[], u: UserId, montag: string): Ansage[] {
+  return ansagen.filter(
+    (a) => a.an === u && !a.bezug && a.reaktion && montagVon(toKey(new Date(a.reaktion.am))) === montag
+  )
+}
+
 export function verbleibendeAnsagen(ansagen: Ansage[], u: UserId, jetzt: Date): number {
   const woche = toKey(startOfWeek(jetzt))
-  return Math.max(0, ANSAGEN_JE_WOCHE - eigeneDerWoche(ansagen, u, woche).length)
+  const verbraucht = eigeneDerWoche(ansagen, u, woche).length + reaktionenDerWoche(ansagen, u, woche).length
+  return Math.max(0, ANSAGEN_JE_WOCHE - verbraucht)
 }
 
 export function allinFrei(ansagen: Ansage[], u: UserId, jetzt: Date): boolean {
@@ -643,10 +651,18 @@ export type ReaktionsLage = {
 /**
  * ob `me` auf diese ansage noch reagieren darf, oder null. einmal, innerhalb
  * von 24 stunden und vor der frist. kontern nur, solange noch nichts gezählt
- * hat — sonst verdoppelt man, wenn man schon sieht, dass es klappt.
+ * hat — sonst verdoppelt man, wenn man schon sieht, dass es klappt. eine
+ * reaktion kostet eine der zwei ansagen der woche; sind beide weg, geht keine.
  */
-export function reaktionsLage(zaehlt: Zaehlt, a: Ansage, me: UserId, jetzt: Date): ReaktionsLage | null {
+export function reaktionsLage(
+  zaehlt: Zaehlt,
+  ansagen: Ansage[],
+  a: Ansage,
+  me: UserId,
+  jetzt: Date
+): ReaktionsLage | null {
   if (!istV2(a) || a.bezug || a.an !== me || a.reaktion || a.entschieden) return null
+  if (verbleibendeAnsagen(ansagen, me, jetzt) === 0) return null
   const bis = new Date(
     Math.min(new Date(a.erstelltAm).getTime() + REAKTION_STUNDEN * 3_600_000, ansageFrist(a).getTime())
   )
@@ -663,6 +679,7 @@ export function reaktionsLage(zaehlt: Zaehlt, a: Ansage, me: UserId, jetzt: Date
  */
 export function reagiere(
   zaehlt: Zaehlt,
+  ansagen: Ansage[],
   a: Ansage,
   me: UserId,
   art: AnsageReaktion,
@@ -672,7 +689,8 @@ export function reagiere(
   if (!istV2(a) || a.bezug) return { fehler: 'veraltet' }
   if (a.an !== me) return { fehler: 'nichtDeine' }
   if (a.reaktion) return { fehler: 'schonReagiert' }
-  const lage = reaktionsLage(zaehlt, a, me, jetzt)
+  if (verbleibendeAnsagen(ansagen, me, jetzt) === 0) return { fehler: 'keineAnsagenMehr' }
+  const lage = reaktionsLage(zaehlt, ansagen, a, me, jetzt)
   if (!lage) return { fehler: 'reaktionZuSpaet' }
   if (art === 'kontern' && !lage.kontern) return { fehler: 'kontraZuSpaet' }
   const ansage: Ansage = { ...a, reaktion: { art, am: jetzt.toISOString() } }
@@ -739,7 +757,7 @@ export function vorlageSpruch(
 /** was ein fehler von `neueAnsage`, `reagiere` oder vom server für die person heißt */
 export const ANSAGE_FEHLERTEXT: Record<AnsageFehler, string> = {
   selbst: 'an dich selbst geht keine ansage.',
-  keineAnsagenMehr: 'deine zwei ansagen dieser woche sind weg.',
+  keineAnsagenMehr: 'deine zwei ansagen dieser woche sind weg — auch kontern und „du auch“ kosten eine.',
   allinVerbraucht: 'dein all-in dieser woche ist schon raus.',
   zuSpaet: 'ab freitag 18 uhr gibt es keine ansagen mehr — montag wieder.',
   schonAngesagt: 'in diesem feld hast du diese woche schon angesagt.',
