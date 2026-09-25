@@ -74,3 +74,18 @@ describe('schlafimport speichert jede nacht im fenster', () => {
     expect(sql).toMatch(/\) from public, authenticated;\s+grant execute[\s\S]*\) to anon, service_role;/i)
   })
 })
+
+const zurueck = import.meta.glob('../../supabase/migrations/*_schlaf_segmentgrenze_300.sql', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+}) as Record<string, string>
+
+describe('segmentgrenze nach dem nachtrag', () => {
+  it('steht wieder auf 300 und bleibt aus den clientrollen heraus', () => {
+    const text = Object.values(zurueck)[0] ?? ''
+    expect(Object.keys(zurueck)).toHaveLength(1)
+    expect(text).toMatch(/create or replace function public\._slfn_max_segmente\(\)[\s\S]*?select 300/i)
+    expect(text).toMatch(/revoke all on function public\._slfn_max_segmente\(\) from public, anon, authenticated/i)
+  })
+})

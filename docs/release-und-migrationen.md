@@ -244,8 +244,11 @@ einzeln über `apply_migration` angewandt, nicht über `db push`:
 |---|---|
 | `20260925100000_schlaf_alle_naechte.sql` | `schlaf_alle_naechte` (Zeitstempel der Anwendung) |
 
-Die Migration ändert keine Daten. Nach dem Nachtrag setzt eine eigene Migration
-die Grenze wieder auf 300. Die Sperre gegen `db push` gilt unverändert weiter.
+Die Migration ändert keine Daten. Der Nachtrag lief am 25.09. um 11:32; danach
+bestätigt: `2026-09-23` ab 23:13 mit 532 Minuten, `2026-09-24` ab 22:08 mit
+511,5 Minuten, wie in der Schlaf-App. Direkt danach setzte
+`20260925113000_schlaf_segmentgrenze_300.sql` (produktiv
+`schlaf_segmentgrenze_300`) die Grenze wieder auf 300. Die Sperre gegen `db push` gilt unverändert weiter.
 
 ## Aktuelle Sperre
 
