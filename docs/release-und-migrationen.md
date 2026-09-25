@@ -230,6 +230,23 @@ Datenbank nicht wiederherstellen (keine Historie); sie kommen mit einem Lauf
 zurück, dessen Fenster vor 21:54 am 23.09. beginnt. Die Sperre gegen `db push`
 gilt unverändert weiter.
 
+## Neue Migration `schlaf_alle_naechte` (25.09.2026)
+
+`record_sleep_night` speichert ohne `p_night_date` jede Nacht im Fenster statt
+nur der letzten; ältere Nächte nur, wenn sie länger werden. Anlass: die zwei
+verkürzten Nächte aus `schlaf_nacht_nicht_kuerzen` ließen sich mit einem
+Drei-Tage-Fenster nicht nachtragen (nur die letzte Nacht zählte, und bei 300
+Segmenten war Schluss). Die Segmentgrenze liegt jetzt in `_slfn_max_segmente()`
+und steht für den Nachtrag vorübergehend auf 1500. Auf Wunsch von erijon
+einzeln über `apply_migration` angewandt, nicht über `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260925100000_schlaf_alle_naechte.sql` | `schlaf_alle_naechte` (Zeitstempel der Anwendung) |
+
+Die Migration ändert keine Daten. Nach dem Nachtrag setzt eine eigene Migration
+die Grenze wieder auf 300. Die Sperre gegen `db push` gilt unverändert weiter.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
