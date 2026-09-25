@@ -29,7 +29,7 @@ export const AnsageHinweis = memo(function AnsageHinweis({ zustand, me, heute, a
     const zaehlt = zaehltAusZustand(zustand)
     return ansagen
       .filter((a) => a.an === me)
-      .map((a) => ({ ansage: a, stand: ansageStand(zaehlt, a, heute), reagieren: reaktionsLage(zaehlt, a, me, heute) }))
+      .map((a) => ({ ansage: a, stand: ansageStand(zaehlt, a, heute), reagieren: reaktionsLage(zaehlt, ansagen, a, me, heute) }))
       .filter(({ stand }) => stand.status === 'laeuft')
   }, [zustand, me, heute, ansagen])
 
