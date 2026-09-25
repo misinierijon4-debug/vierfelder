@@ -210,6 +210,26 @@ Version 36 noch nicht deployt war. Der deployte Inhalt ist per SHA-256 gegen
 das lokal gebaute Bundle geprueft; lokal in Deno gestartet, antwortet es auf
 `{pruefen: true}` mit 200. Die Sperre gegen `db push` gilt unveraendert weiter.
 
+## Neue Migration `schlaf_nacht_nicht_kuerzen` (25.09.2026)
+
+Ein Schlafimport hat eine gespeicherte Nacht durch eine abgeschnittene Fassung
+ersetzt, wenn die Automation vor dem Health-Eintrag der neuen Nacht lief: das
+Fenster beginnt gestern 0 Uhr, die Vornacht kam nur ab Mitternacht an. Betroffen
+waren erijons Nächte `2026-09-23` (22:58 → 00:08) und `2026-09-24` (21:54 →
+00:03). Der Wrapper `record_sleep_night` behält jetzt die gespeicherten
+Segmente vor dem neuen Fensterbeginn (`_slfn_frueheren_teil_behalten`);
+`record_sleep_night_internal` bleibt unverändert. Auf Wunsch von erijon einzeln
+über `apply_migration` angewandt, nicht über `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260925090000_schlaf_nacht_nicht_kuerzen.sql` | `schlaf_nacht_nicht_kuerzen` (Zeitstempel der Anwendung) |
+
+Die Migration ändert keine Daten. Die zwei verkürzten Nächte lassen sich aus der
+Datenbank nicht wiederherstellen (keine Historie); sie kommen mit einem Lauf
+zurück, dessen Fenster vor 21:54 am 23.09. beginnt. Die Sperre gegen `db push`
+gilt unverändert weiter.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

@@ -3,8 +3,9 @@
 Der Health-Export wird nicht importiert. Er diente nur dazu, die vorhandenen
 Schlafkategorien zu prüfen. Im täglichen Betrieb sendet jedes iPhone die
 Health-Segmente der letzten 24 Stunden an die Edge Function. Die Function wählt
-die zuletzt endende Schlafepisode und überschreibt die vorhandene Zeile für
-dieselbe Person und Nacht.
+die zuletzt endende Schlafepisode und aktualisiert die Zeile für dieselbe
+Person und Nacht. Was eine frühere Übertragung dieser Nacht vor dem Beginn des
+neuen Fensters gesehen hat, bleibt erhalten (siehe unten).
 
 ## Einmalig in Supabase einrichten
 
@@ -195,6 +196,16 @@ Schlafepisode, getrennt an einer Lücke von drei Stunden. Läuft der Kurzbefehl
 später als sonst, stehen zwei Nächte im 24-Stunden-Fenster — gezählt wird nur
 die letzte. Überlappende Segmente (Uhr und iPhone melden denselben Zeitraum)
 zählen einmal, Wachzeit innerhalb der Episode wird abgezogen.
+
+Gibt es die Nacht schon, kürzt ein neuer Lauf sie nicht mehr
+(`*_schlaf_nacht_nicht_kuerzen.sql`). Die gespeicherten Segmente, die vor dem
+frühesten neuen Segment liegen, kommen vor die neue Nutzlast; ab dort gilt
+allein, was neu gesendet wurde. Anlass: Läuft die Automation morgens, bevor die
+Schlaf-App die gerade beendete Nacht in Health geschrieben hat, ist die letzte
+Episode im Fenster die Vornacht — ab gestern 0 Uhr, also ohne die Zeit vor
+Mitternacht. Bis 25.09.2026 hat das die richtige Zeile ersetzt (erijon, Nächte
+auf den 23. und 24.09.). Eine Nacht lässt sich deshalb nur noch mit einem
+Fenster ersetzen, das mindestens so früh beginnt wie die gespeicherte.
 
 Die Identität kommt ausschließlich aus dem Token gegen die Tabelle `schlaf_import_tokens`. Ohne gültiges Token schreibt die Funktion nichts. Die Rückgabe ist ein JSON-Objekt mit `ok`, `nacht`, `schlaf_minuten`, `nachtwert` und weiteren Details.
 

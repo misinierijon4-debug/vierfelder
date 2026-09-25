@@ -76,7 +76,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Standort/Aufenthalt → Ticks | `src/lib/training.ts` |
 | Gewicht (Schnitt, Achse, Parsen) | `src/lib/gewicht.ts`, `src/components/Gewichtsdiagramm.tsx` |
 | Schlafphasen, Hypnogramm | `src/lib/schlafPhasen.ts`, `src/lib/nachtkurve.ts` |
-| Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts` |
+| Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts`, Nachtwahl und Upsert in der Datenbank (`record_sleep_night` → `_internal`); gespeicherte Nacht nie kürzen: Migration `*_schlaf_nacht_nicht_kuerzen.sql` |
 | Noten, MSS-Regeln Abi 2027 | `src/lib/noten.ts`, `src/components/noten/` |
 | Duell, Wetten, Druckstatus | `src/lib/duell.ts`, `src/components/duell/` |
 | **Ansagen** (Herausforderung mit Stufe, Kontern, „du auch“): Regeln und Client-Rechnung | `src/lib/ansagen.ts`, `docs/ansagen.md` |
