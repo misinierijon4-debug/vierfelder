@@ -16,7 +16,7 @@ import { fokusRingLoesen } from '../../lib/dialogFokus'
 import { useDialogNachlauf } from '../../lib/dialogNachlauf'
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { ANSAGE, EASE } from '../../lib/motion'
-import type { FeldId } from '../../lib/types'
+import { ANSAGE_SYMBOL } from '../../lib/ansageAnzeige'
 import { Feldsymbol } from '../Feldsymbole'
 
 export type SheetAntwort = { ok: true } | { fehler: AnsageFehler | 'gesperrt' | 'netz' }
@@ -38,15 +38,6 @@ const SPERRGRUND: Record<NonNullable<AnsageKandidat['gesperrt']>, string> = {
 }
 
 // dieselben zeichen wie auf der startseite; training trägt die hantel
-const FELD_SYMBOL: Record<AnsageFeld, FeldId> = {
-  training: 'gym',
-  gym: 'gym',
-  boxen: 'boxen',
-  lesen: 'lesen',
-  lernen: 'lernen',
-  gewicht: 'gewicht',
-}
-
 const FEHLER_SONST: Record<'gesperrt' | 'netz', string> = {
   gesperrt: 'gerade kann nichts gespeichert werden.',
   netz: 'ansage nicht bestätigt. stand wird abgeglichen.',
@@ -184,7 +175,7 @@ export function AnsageSheet({ offen, me, kandidaten, start, onSageAn, onSchliess
                       )}
                       <span className={`flex items-center gap-2 text-[17px] font-bold ${k.gesperrt ? 'text-kreide-52' : 'text-kreide'}`}>
                         {ANSAGE_WORT[k.feld]}
-                        <Feldsymbol feld={FELD_SYMBOL[k.feld]} size={18} className="shrink-0" />
+                        <Feldsymbol feld={ANSAGE_SYMBOL[k.feld]} size={18} className="shrink-0" />
                       </span>
                       <span className="tnum text-right text-[12px] text-kreide-60">
                         {k.gesperrt ? (

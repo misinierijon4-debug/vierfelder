@@ -3,14 +3,16 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
 import {
+  ANSAGE_WORT,
   STUFEN_TEXT,
   ansageZielText,
   istV2,
   wirksamerEinsatz,
 } from '../../lib/ansagen'
 import type { Ansage, AnsageReaktion, AnsageStand, ReaktionsLage } from '../../lib/ansagen'
-import { ergebnisFuer, fristText, restzeitText, wer, wertungText } from '../../lib/ansageAnzeige'
+import { ANSAGE_SYMBOL, ergebnisFuer, fristText, restzeitText, wer, wertungText } from '../../lib/ansageAnzeige'
 import { ANSAGE, EASE } from '../../lib/motion'
+import { Feldsymbol } from '../Feldsymbole'
 
 type Props = {
   ansage: Ansage
@@ -25,13 +27,17 @@ type Props = {
   sendet: AnsageReaktion | null
   /** stabil über alle karten: bekommt die id der ansage mit */
   onReagiere?: (ansageId: string, art: AnsageReaktion) => void
+  /** zusehen statt liefern: kleiner, ohne fläche — die eigenen aufgaben tragen */
+  leise?: boolean
 }
 
 /**
- * eine ansage als block auf der anzeigetafel: oben die farbkante der
- * ansagenden person, darunter das ziel und rechts groß der stand in der
- * farbe dessen, der liefern muss. die zellen gehören dieser person. die
- * frist steht einmal über allen ansagen, nicht in jedem block.
+ * eine ansage als block auf der anzeigetafel. die ganze karte trägt eine
+ * farbe: die der person, die liefern muss — kante, stand und zellen. wer
+ * angesagt hat, steht nur als text darüber; zwei farben in einer karte
+ * lasen sich so, als gehörte jede ansage beiden. das feld steht groß mit
+ * seinem zeichen, die zahl davor klein, damit lesen und lernen nicht wie
+ * dasselbe wort aussehen. die frist steht einmal über allen ansagen.
  */
 export const AnsageKarte = memo(function AnsageKarte({
   ansage,
@@ -42,6 +48,7 @@ export const AnsageKarte = memo(function AnsageKarte({
   lage,
   sendet,
   onReagiere,
+  leise = false,
 }: Props) {
   const von = userDef(ansage.von)
   const an = userDef(ansage.an)
@@ -58,10 +65,10 @@ export const AnsageKarte = memo(function AnsageKarte({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: ANSAGE.schritt, ease: EASE }}
       aria-labelledby={titelId}
-      className="relative overflow-hidden border-b border-linie bg-flaeche/40"
+      className={`relative overflow-hidden border-b border-linie ${leise ? '' : 'bg-flaeche/40'}`}
     >
-      {/* die ansagende person steht oben als farbkante, wie die marke im raster */}
-      <div className="h-[3px]" style={{ background: von.farbe }} aria-hidden="true" />
+      {/* die kante gehört der person, die liefern muss — wie der stand darunter */}
+      <div className={leise ? 'h-[2px]' : 'h-[3px]'} style={{ background: an.farbe }} aria-hidden="true" />
       <div className="px-4 pb-3 pt-2.5">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px] text-kreide-60">
           <span>{ansage.von === me ? `du forderst ${an.name} heraus` : `${von.name} fordert dich heraus`}</span>
@@ -75,11 +82,19 @@ export const AnsageKarte = memo(function AnsageKarte({
         </div>
 
         <div className="mt-1 flex items-end justify-between gap-3">
-          <h3 id={titelId} className="display min-w-0 text-[30px] font-bold leading-none text-kreide [overflow-wrap:anywhere]">
-            {ansageZielText(ansage.feld, ansage.ziel)}
-          </h3>
+          <h4
+            id={titelId}
+            className={`display flex min-w-0 items-baseline gap-1.5 font-bold leading-none text-kreide [overflow-wrap:anywhere] ${leise ? 'text-[22px]' : 'text-[30px]'}`}
+          >
+            <span className="tnum text-[0.6em] text-kreide-60">{ansage.ziel}×</span>{' '}
+            <span>{ANSAGE_WORT[ansage.feld]}</span>
+            <Feldsymbol feld={ANSAGE_SYMBOL[ansage.feld]} size={leise ? 18 : 22} className="shrink-0 self-center text-kreide-60" />
+          </h4>
           {!gegen && (
-            <span className="display tnum shrink-0 text-[30px] font-bold leading-none" style={{ color: an.farbe }}>
+            <span
+              className={`display tnum shrink-0 font-bold leading-none ${leise ? 'text-[22px]' : 'text-[30px]'}`}
+              style={{ color: an.farbe }}
+            >
               {stand.erreicht}/{stand.ziel}
             </span>
           )}

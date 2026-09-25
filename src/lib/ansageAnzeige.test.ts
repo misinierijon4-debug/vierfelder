@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ansagePaare, ansageRang, ergebnisFuer, fristText, restzeitText, wertungText } from './ansageAnzeige'
+import { ansagePaare, ansageRang, ergebnisFuer, fristText, gruppenTitel, restzeitText, wertungText } from './ansageAnzeige'
 import type { Ansage } from './ansagen'
 
 const ansage = (rest: Partial<Ansage> = {}): Ansage => ({
@@ -87,5 +87,14 @@ describe('fristText', () => {
   it('nennt sonntag 18 uhr, bei der ersten fassung samstag', () => {
     expect(fristText(ansage())).toBe('bis sonntag 18 uhr')
     expect(fristText({ ...ansage(), version: undefined, bis: '2026-09-26' })).toBe('bis samstag')
+  })
+})
+
+describe('gruppenTitel', () => {
+  it('nennt, wer liefern muss, aus sicht der schauenden person', () => {
+    expect(gruppenTitel(0, 'erijon')).toBe('du musst liefern')
+    expect(gruppenTitel(1, 'erijon')).toBe('koray muss liefern')
+    expect(gruppenTitel(1, 'koray')).toBe('erijon muss liefern')
+    expect(gruppenTitel(2, 'koray')).toBe('entschieden')
   })
 })
