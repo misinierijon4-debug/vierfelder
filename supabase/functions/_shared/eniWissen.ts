@@ -11,6 +11,16 @@ export type Erinnerung = {
   geaendert: string;
 };
 
+/**
+ * Liest ENI den Eintrag ueberhaupt noch? Erledigte Aufgaben und abgelaufener
+ * Kontext fallen heraus; eine ueberfaellige Aufgabe bleibt, sie ist ja noch
+ * offen. Die Oberflaeche fragt dieselbe Stelle, damit „ruht" dort genau das
+ * heisst, was hier aussortiert wird.
+ */
+export function wirktNoch(e: Erinnerung, heute: string): boolean {
+  return !e.erledigt && (e.art === "aufgabe" || !e.bis || e.bis >= heute);
+}
+
 export function waehleWissen(
   zeilen: Erinnerung[],
   userId: string,
@@ -30,8 +40,7 @@ export function waehleWissen(
     .filter(
       (e) =>
         (e.user_id === userId || (e.gemeinsam && e.art !== "stil")) &&
-        !e.erledigt &&
-        (e.art === "aufgabe" || !e.bis || e.bis >= heute),
+        wirktNoch(e, heute),
     )
     .sort((a, b) => wert(b) - wert(a) || b.geaendert.localeCompare(a.geaendert))
     .slice(0, 12);

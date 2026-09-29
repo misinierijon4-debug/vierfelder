@@ -84,6 +84,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Ansagen: Oberfläche und ENI-Sprüche | `src/components/duell/AnsagenBereich.tsx`, `AnsageKarte.tsx`, `AnsageSheet.tsx`, `AnsageHinweis.tsx`, Texte `src/lib/ansageAnzeige.ts`, `src/lib/ansageSprueche.ts`, `supabase/functions/_shared/ansageSprueche.ts` |
 | Rivalitäts-Badge, Freitext-Zuordnung, Tonfall (classifier.dev) | `src/lib/duellBadge.ts` (Startpfad), `src/lib/duellKlassifizierung.ts` (nachgeladen), `src/components/duell/RivalitaetsTicker.tsx` |
 | ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1136 Z.) |
+| **ENI-Gedächtnis** („das weiß ENI über mich“): Seite, Formular, was „ruht“ | `src/components/eni/EniWissenDialog.tsx`, `EniWissenEditor.tsx`, Ordnen/Fristen `src/lib/eniWissenAnsicht.ts`, Speichern `src/lib/eniWissen.ts`, Regel `wirktNoch` + Auswahl für den Prompt `supabase/functions/_shared/eniWissen.ts`, Browser-Smoke `scripts/check-eni-wissen-browser.mjs` |
 | ENI Modell, Stream, Websuche | `supabase/functions/_shared/eni*.ts`, `supabase/functions/eni/index.ts` |
 | ENI Intent-Routing (was in den Prompt kommt) | `supabase/functions/_shared/eniRouting.ts`, `src/lib/eniRouting.test.ts` |
 | ENI Sprachausgabe/Diktat | `src/lib/eniStimme.ts`, `src/lib/eniDiktat.ts` |
