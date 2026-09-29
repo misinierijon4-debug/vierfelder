@@ -359,7 +359,7 @@ export function EniWissenDialog({ offen, kontoId, me, start, onSchliessen, api =
             </button>
           </header>
 
-          <div className="mx-auto w-full max-w-[560px] min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="ohne-balken mx-auto w-full max-w-[560px] min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {!kontoId ? (
               <p role="status" className="mt-6 text-[13px] text-kreide-60">
                 melde dich an, um dein persönliches gedächtnis zu nutzen.
@@ -565,7 +565,7 @@ export function EniWissenDialog({ offen, kontoId, me, start, onSchliessen, api =
               </AnimatePresence>
 
               {neuOffen ? (
-                <div className="max-h-[72dvh] overflow-y-auto overscroll-contain border-t border-linie-hell pt-3">
+                <div className="ohne-balken max-h-[72dvh] overflow-y-auto overscroll-contain border-t border-linie-hell pt-3">
                   <WissensEditor
                     entwurf={neu}
                     onEntwurf={setNeu}

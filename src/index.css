@@ -265,6 +265,16 @@ dialog.blatt-unten[open] {
   padding-left: max(1.25rem, calc(var(--app-safe-left) + 0.75rem));
 }
 
+/* Ein Blatt, das man mit dem Daumen schiebt, braucht keinen Balken daneben:
+   auf dem iPhone stand er als graue Linie mitten im Inhalt, weil die Spalte
+   schmaler ist als der Bildschirm. Scrollen bleibt, nur die Anzeige fehlt. */
+.ohne-balken {
+  scrollbar-width: none;
+}
+.ohne-balken::-webkit-scrollbar {
+  display: none;
+}
+
 /* zahlen sind der inhalt dieser app */
 .tnum {
   font-family: var(--font-display);

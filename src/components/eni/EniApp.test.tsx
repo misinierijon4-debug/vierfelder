@@ -534,6 +534,27 @@ describe('ENI als eigene oberflaeche', () => {
     oeffneMenue()
     expect(screen.getByRole('menuitem', { name: 'verlauf' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: /eni anpassen/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /das weiß eni über mich/i })).toBeInTheDocument()
+  })
+
+  it('öffnet einstellungen und gedächtnis je direkt aus dem menü', async () => {
+    vi.useFakeTimers()
+    zeigeEni(lokalerEniSpeicher('erijon'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    const blatt = (name: string) => document.querySelector<HTMLDialogElement>(`dialog[aria-label="${name}"]`)!
+
+    oeffneMenue()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /das weiß eni über mich/i }))
+    })
+    expect(blatt('Das weiß ENI über mich').open).toBe(true)
+    expect(blatt('So redet ENI mit dir').open).toBe(false)
+
+    oeffneMenue()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /eni anpassen/i }))
+    })
+    expect(blatt('So redet ENI mit dir').open).toBe(true)
   })
 
   it('legt die modellwahl an die eingabe, nicht in den kopf', async () => {

@@ -183,7 +183,7 @@ export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtn
             </div>
           </header>
 
-          <div className="mx-auto w-full max-w-[560px] min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="ohne-balken mx-auto w-full max-w-[560px] min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {ladefehler ? (
               <div role="alert" className="mt-4 rounded-[2px] border border-linie bg-flaeche p-4">
                 <p className="text-[15px] font-semibold">Einstellungen nicht lesbar</p>

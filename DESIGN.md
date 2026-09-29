@@ -2099,3 +2099,11 @@ antwort, nicht nur, wenn das routing persönliches wissen verlangt, steht vor de
 moduswahl und hält ENIs grenzen ausdrücklich fest: ehrlich bleiben, keine
 erfundenen zahlen, bei krisen zugewandt. Eigene texte stehen als zitat im
 prompt. Ist die tabelle nicht lesbar, antwortet ENI wie immer.
+
+**Nachtrag am selben abend.** Zwei wünsche von erijon nach dem ersten blick
+auf dem iPhone: das gedächtnis gehört wieder als eigener punkt ins ENI-menü
+(„das weiß ENI über mich“ unter „ENI anpassen“) — nur als zeile ganz unten auf
+der einstellungsseite hieß es jedes mal scrollen. Und der scrollbalken am rand
+der blätter stand als graue linie mitten im inhalt, weil die spalte schmaler
+ist als der bildschirm; `ohne-balken` in `index.css` blendet ihn in beiden
+ENI-blättern aus, gescrollt wird wie vorher.
