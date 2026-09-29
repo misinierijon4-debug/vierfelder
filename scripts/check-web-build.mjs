@@ -201,8 +201,16 @@ for (const name of jsDateien) {
 // liegt hinter React.lazy. Gemessener Pages-Stand vorher 242612 Byte initial
 // und 294236 gesamt, nachher 247734 und 302398 Byte (gzip). Dafuer je gut ein
 // KiB Spielraum; beide Grenzen bleiben harte Buildfehler.
+// ENI anpassen (Ton, Laenge, eigene Anweisungen, Rollen mit Vorschau) und das
+// neu geordnete Gedaechtnis liegen restlos im ENI-Lazy-Chunk. Gemessen im
+// Pages-Build (mit Supabase-Schluessel, nicht im Prototyp-Build — der ist um
+// den Supabase-Chunk kleiner und hatte den Ueberlauf verdeckt): vorher 242849
+// Byte initial und 303295 gesamt, nachher initial praktisch gleich (index +3
+// Byte) und 314273 gesamt; der ENI-Chunk waechst von 32775 auf 43810 Byte.
+// Die Gesamtsumme erhaelt dafuer 11 KiB, die initiale Grenze bleibt, wo sie
+// stand. Beide Pruefungen bleiben harte Buildfehler; keine Budgetabschaltung.
 const INITIAL_GZIP_BUDGET = 243 * 1024
-const GESAMT_GZIP_BUDGET = 297 * 1024
+const GESAMT_GZIP_BUDGET = 308 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
