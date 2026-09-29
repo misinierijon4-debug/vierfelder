@@ -529,11 +529,11 @@ describe('ENI als eigene oberflaeche', () => {
     expect(within(kopf).getByRole('button', { name: 'menü' })).toBeInTheDocument()
     expect(within(kopf).getByRole('button', { name: 'neuer chat' })).toBeInTheDocument()
 
-    // verlauf, vorlesen und gedächtnis stehen nicht mehr offen in der leiste,
-    // sondern ausgeschrieben im menü
+    // verlauf, vorlesen und die einstellungen stehen nicht offen in der
+    // leiste, sondern ausgeschrieben im menü
     oeffneMenue()
     expect(screen.getByRole('menuitem', { name: 'verlauf' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /das weiß eni über mich/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /eni anpassen/i })).toBeInTheDocument()
   })
 
   it('legt die modellwahl an die eingabe, nicht in den kopf', async () => {

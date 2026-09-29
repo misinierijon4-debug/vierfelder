@@ -31,6 +31,7 @@ import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
 import { EniEingabe } from './EniEingabe'
 import { EniWissenDialog } from './EniWissenDialog'
+import { EniEinstellungen } from './EniEinstellungen'
 import type { Erinnerung } from '../../lib/eniWissen'
 import { EniMarke } from './EniMarke'
 import { EniKopfmenue } from './EniKopfmenue'
@@ -96,6 +97,7 @@ export function EniApp({
   const [prueft, setPrueft] = useState(false)
   const [verlaufOffen, setVerlaufOffen] = useState(false)
   const [wissenOffen, setWissenOffen] = useState(false)
+  const [anpassenOffen, setAnpassenOffen] = useState(false)
   const [wissensStart, setWissensStart] = useState<{ text: string; art: Erinnerung['art'] } | undefined>()
   const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
@@ -969,9 +971,8 @@ export function EniApp({
                 setVerlaufOffen(true)
                 setMenueOffen(false)
               }}
-              onGedaechtnis={() => {
-                setWissensStart(undefined)
-                setWissenOffen(true)
+              onAnpassen={() => {
+                setAnpassenOffen(true)
                 setMenueOffen(false)
               }}
               onUmschalten={() => setMenueOffen((vorher) => !vorher)}
@@ -1130,6 +1131,18 @@ export function EniApp({
         onErneutLaden={ladeChats}
       />
 
+      <EniEinstellungen
+        key={`anpassen-${speicher.kontoId}`}
+        offen={anpassenOffen}
+        kontoId={speicher.kontoId}
+        me={me}
+        onSchliessen={() => setAnpassenOffen(false)}
+        onGedaechtnis={() => {
+          setAnpassenOffen(false)
+          setWissensStart(undefined)
+          setWissenOffen(true)
+        }}
+      />
       <EniWissenDialog key={speicher.kontoId} offen={wissenOffen} kontoId={speicher.kontoId} me={me} start={wissensStart} onSchliessen={() => setWissenOffen(false)} />
     </motion.div>
   )

@@ -34,6 +34,7 @@ import {
 } from './eniWochenlage.ts'
 import { ermittleRouting } from './eniRouting.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
+import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
 
@@ -1180,6 +1181,21 @@ export async function behandleEni(
   }
 
   /**
+   * Wie die Person angesprochen werden will: Ton, Laenge, eigene Anweisungen,
+   * Rollen. Anders als das Gedaechtnis gilt das in jeder Antwort, deshalb
+   * haengt es nicht am Routing. Fehlt die Tabelle oder ist sie nicht lesbar,
+   * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
+   */
+  let einstellungen = ''
+  try {
+    const gelesen = await db.from('eni_einstellungen').select('*').eq('user_id', userId).maybeSingle()
+    if (gelesen.error) throw gelesen.error
+    einstellungen = einstellungenText(bereinigeEinstellungen(gelesen.data), person)
+  } catch (ursache) {
+    deps.protokoll.error('eni: einstellungen nicht lesbar, es gilt der standard', ursache)
+  }
+
+  /**
    * Die frueheren Suchlaeufe dieses Chats, aeltester zuerst — in derselben
    * Reihenfolge, in der die Antworten stehen, an denen sie haengen.
    */
@@ -1244,6 +1260,7 @@ export async function behandleEni(
             lage,
             web: web.length > 0 || frueherImChat.length > 0,
             zusatz: [
+              einstellungen,
               wissen,
               web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',
               webHinweis,
