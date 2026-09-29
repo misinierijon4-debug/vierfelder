@@ -250,6 +250,43 @@ bestätigt: `2026-09-23` ab 23:13 mit 532 Minuten, `2026-09-24` ab 22:08 mit
 `20260925113000_schlaf_segmentgrenze_300.sql` (produktiv
 `schlaf_segmentgrenze_300`) die Grenze wieder auf 300. Die Sperre gegen `db push` gilt unverändert weiter.
 
+## Neue Migration `eni_einstellungen` (29.09.2026)
+
+„ENI anpassen“ (DESIGN.md Abschnitt 50): Ton, Antwortlänge, eigene Anweisungen
+und Rollen je Person. Neue, leere Tabelle ohne Datenänderung. Auf Wunsch von
+erijon einzeln über `apply_migration` angewandt, nicht über `db push`:
+
+| Datei | produktive Version |
+|---|---|
+| `20260929160000_eni_einstellungen.sql` | `20260929153430_eni_einstellungen` |
+
+Vorher geprüft: `public.eni_einstellungen` und die Triggerfunktion existierten
+nicht, beide Konten haben eine `profile`-Zeile. Vorab in eingebettetem Postgres
+mit `node scripts/check-eni-einstellungen-rls.mjs <pglite/dist/index.js>`
+durchgespielt. Danach bestätigt: RLS aktiv, vier Policies (lesen, anlegen,
+ändern, löschen nur für die eigene Zeile; anlegen nur mit Duellprofil),
+`authenticated` hat select/insert/update/delete, `anon` nichts. Ein
+Vertragstest als `authenticated` (Upsert, fremd schreiben, ungültiger Ton,
+Sichtbarkeit für den anderen) lief in einem absichtlich abgebrochenen Block und
+wurde vollständig zurückgerollt; die Tabelle hat danach 0 Zeilen.
+
+Edge Function `eni` Version ENI_VERSION (`verify_jwt: true`), ein Bundle wie
+Version 38. **So wird es gebaut** — Version 38 war damit reproduzierbar, nicht mit
+rolldown, wie es oben bei Version 37 steht:
+
+```bash
+npx esbuild@0.28.2 supabase/functions/eni/index.ts --bundle --format=esm \
+  --platform=neutral --external:'npm:*' --external:'jsr:*' --external:'https:*' \
+  --minify-whitespace --charset=utf8 --outfile=/tmp/eni/index.ts
+```
+
+Einzige Abhängigkeit bleibt `npm:@supabase/supabase-js@2.112.4`. Lokal in Deno
+gestartet antwortet es auf `{pruefen: true}` mit 200 und ohne Anmeldung mit 401;
+der deployte Inhalt ist gegen das lokale Bundle verglichen (ENI_VERGLEICH).
+Ohne lesbare Tabelle antwortet ENI wie vorher, die Reihenfolge Migration vor
+Function ist damit unkritisch, wurde aber eingehalten. Die Sperre gegen
+`db push` gilt unverändert weiter.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
