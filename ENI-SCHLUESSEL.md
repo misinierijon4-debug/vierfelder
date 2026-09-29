@@ -17,12 +17,11 @@ Drei Anbieter stehen zur Wahl. Du brauchst nicht alle.
 neuen Schlüssel erzeugen. Er beginnt mit `sk-`. Du siehst ihn genau einmal.
 Kostet Geld, aber wenig: siehe *Was das kostet* weiter unten.
 
-**Ling 3.0 Flash über OpenRouter.** Auf openrouter.ai anmelden, im Dashboard
-unter **API keys** einen Schlüssel erzeugen. Er beginnt mit `sk-or-v1-`. Das
-Modell `inclusionai/ling-3.0-flash-vl:free` kostet nichts, hat 262K Kontext und
-liest Bilder (das VL im Namen heißt vision-language). Dafür gelten OpenRouters
-Grenzen für kostenlose Modelle, und was dort passiert, entscheidet OpenRouter,
-nicht du.
+**Qwen 3.8 Flash und Qwen 3.8 unzensiert über Infron.** Beide laufen über
+denselben Infron-Schlüssel (`INFRON_API_KEY`), einen zweiten brauchst du nicht.
+`qwen/qwen3.8-flash:free` kostet nichts. Dafür gelten Infrons Grenzen für
+kostenlose Modelle, und was dort passiert, entscheidet Infron, nicht du.
+`ling 3.0` über OpenRouter gibt es nicht mehr.
 
 Ob es erst nachdenkt, ist kein zweiter Eintrag, sondern ein Umschalter neben
 der Modellwahl — siehe *Vordenken* weiter unten. Der gilt für alle drei.
@@ -34,20 +33,23 @@ der Modellwahl — siehe *Vordenken* weiter unten. Der gilt für alle drei.
 1. [Secrets im Vierfelder-Projekt öffnen](https://supabase.com/dashboard/project/ogxwazageufvalkocywh/functions/secrets).
 2. Als **Name** `INFRON_API_KEY` und als **Value** deinen Infron-Key eintragen.
 3. **Save** drücken und ENI neu öffnen (gegebenenfalls die App neu laden).
-4. Unten an der Eingabe auf den Modellnamen tippen und **qwen 3.8 unzensiert**
-   auswählen.
+4. Unten an der Eingabe auf den Modellnamen tippen und **qwen 3.8 flash** oder
+   **qwen 3.8 unzensiert** auswählen.
 
 Die Function muss die Infron-Erweiterung aus `eniAnbieter.ts` enthalten. Nach
 deren Deployment ist beim Setzen oder Wechseln des Secrets kein weiterer
 Deploy nötig. Die bestehende Oberfläche liest die Auswahl vom Server.
 
-Verwendet wird genau `qwen/qwen3.8-27b:free` über Infrons Endpunkt
+Verwendet werden genau `qwen/qwen3.8-flash:free` und `qwen/qwen3.8-27b:free`
+über Infrons Endpunkt
 `https://llm.onerouter.pro/v1/chat/completions`. Infrons Modellliste führt
 Text, Bilder und Streaming sowie Ein-/Ausgabepreise von 0 auf (14.09.2026).
 Kontolimits und Verfügbarkeit bestimmt Infron; ENI wechselt bei Problemen
 nicht automatisch auf ein kostenpflichtiges Modell. Der Key wird weder im
 Browser noch in einer Datenbank gespeichert, sondern als Server-Secret.
-Ohne gesetzten Key erscheint Qwen nicht in der Auswahl.
+Ohne gesetzten Key erscheint Qwen nicht in der Auswahl. Ob Flash Bilder liest
+und die Denkstufen wirklich annimmt, ist nicht gemessen: die Modellseite nennt
+Streaming, Tool Calling und JSON Mode.
 
 Quellen: [Infron Quickstart](https://infron.ai/docs),
 [Modellliste](https://llm.onerouter.pro/v1/models),
@@ -64,7 +66,7 @@ npx supabase secrets set DEEPSEEK_API_KEY=sk-DEIN-SCHLUESSEL
 ```
 
 ```bash
-npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-DEIN-SCHLUESSEL
+npx supabase secrets set INFRON_API_KEY=DEIN-INFRON-SCHLUESSEL
 ```
 
 Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**.
@@ -72,7 +74,7 @@ Alternativ im Supabase-Dashboard unter **Edge Functions → Secrets**.
 **Im Menü steht nur der Name, keine Beschreibung darunter.** Es beantwortet die
 Frage „wer spricht", und drei Erklärzeilen haben sie lauter beantwortet als
 nötig — was ein Modell kann und was es kostet, steht hier in dieser Datei. Die
-Namen sind entsprechend kurz: `deepseek`, `ling 3.0`, `qwen 3.8 unzensiert`.
+Namen sind entsprechend kurz: `deepseek`, `qwen 3.8 flash`, `qwen 3.8 unzensiert`.
 `flash` und `27b` sagen einem Menschen nichts über das Gespräch, das ihn
 erwartet; „unzensiert" schon, und Infron führt das Modell auch genau so
 (*Qwen3.8 27B Uncensored*).
@@ -222,12 +224,10 @@ Jede Gegenstelle nennt den Schalter anders, und nur eine kennt echte Stufen:
 | Modell | denkt nicht | denkt | Ausgabedeckel beim Denken |
 | --- | --- | --- | --- |
 | `deepseek` | `thinking: {type:'disabled'}` | `thinking: {type:'enabled'}` + `reasoning_effort: 'low'` | 8000 |
-| `ling 3.0` | `reasoning: {enabled:false}` | `reasoning: {enabled:true, exclude:true}` | 8000 |
+| `qwen 3.8 flash` | `reasoning: {effort:'none'}` | `reasoning: {effort:'xhigh'}` | 16000 |
 | `qwen 3.8 unzensiert` | `reasoning: {effort:'none'}` | `reasoning: {effort:'xhigh'}` | 16000 |
 
-**Warum bei DeepSeek `low` und sonst das Höchste.** Ling bietet keine Abstufung
-an — OpenRouters Modellauskunft nennt weder `supported_efforts` noch
-`supports_max_tokens`, an ist dort also schon das Höchste. Infron kennt
+**Warum bei DeepSeek `low` und sonst das Höchste.** Infron kennt
 `xhigh|high|medium|low|minimal|none`, also `xhigh`. DeepSeek kennt
 `low`/`high`/`max` mit Vorgabe `high` — und rechnet als einziges der drei die
 Denk-Token als Ausgabe-Token ab. Dort kostet Nachdenken Geld, also die kleinste
@@ -243,15 +243,14 @@ umrechnet; `xhigh` sind dort rund 95 Prozent.
 
 **Die Gedanken siehst du nie.** Bei allen dreien kommen sie in
 `reasoning_content` beziehungsweise `message.reasoning` zurück, nie in
-`content`, und ENI liest nur `content`. Bei Ling kommt `exclude: true` dazu, das
-spart die Leitung; OpenRouter kennt das, Infron und DeepSeek nicht.
+`content`, und ENI liest nur `content`.
 
 **Was du merkst, ist die Stille.** Beim Streamen kommt während des Denkens
 nichts an — ENI liest nur `delta.content`. Das Serverbudget von 60 Sekunden je
 Versuch läuft dabei mit.
 
-**Wer vorher die Zeile `ling 3.0 flash (denkt)` gewählt hatte**, bekommt jetzt
-`ling 3.0` mit angeschaltetem Umschalter. Es ist nichts zu tun.
+**Wer vorher `ling 3.0` gewählt hatte**, fällt auf dem Gerät auf den ersten
+angebotenen Anbieter zurück und wählt dort einfach neu.
 
 ## Was das kostet
 
@@ -354,8 +353,8 @@ und selten mehr als 500 Ausgabetoken. Das Vordenken ist überall aus, bis du es
 anschaltest: ENI ist eine Haltung, keine Rechenaufgabe, und die Denk-Token
 zählen gegen dasselbe Ausgabelimit.
 
-`inclusionai/ling-3.0-flash-vl:free` kostet nichts, mit und ohne Vordenken.
-Dafür gelten OpenRouters Grenzen für kostenlose Modelle. Die häufigste davon ist
+`qwen/qwen3.8-flash:free` kostet nichts, mit und ohne Vordenken.
+Dafür gelten Infrons Grenzen für kostenlose Modelle. Die häufigste davon ist
 die Grenze pro Minute, und die ist nach Sekunden wieder offen: ENI fragt deshalb
 von selbst noch einmal nach, bis zu dreimal, mit ein paar Sekunden Pause
 dazwischen. Erst wenn auch das nichts bringt, steht im Chat *ENI hat nicht

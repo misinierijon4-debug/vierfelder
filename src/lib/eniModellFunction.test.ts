@@ -294,15 +294,16 @@ describe('ENIs modellverbindung', () => {
   it('ruft den anbieter, den der client waehlt, mit dessen eigenem schluessel', async () => {
     const { abhaengigkeiten, gerufen } = deps({
       schluessel: 'sk-deepseek',
-      openrouter: 'sk-or-ling',
+      infron: 'sk-infron',
     })
 
     await behandleEni(
-      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }),
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-flash' }),
       abhaengigkeiten
     )
-    expect(gerufen[0]!.anbieter.id).toBe('ling')
-    expect(gerufen[0]!.schluessel).toBe('sk-or-ling')
+    expect(gerufen[0]!.anbieter.id).toBe('qwen-flash')
+    expect(gerufen[0]!.anbieter.modell).toBe('qwen/qwen3.8-flash:free')
+    expect(gerufen[0]!.schluessel).toBe('sk-infron')
 
     await behandleEni(
       anfrage({ chatId: 'c1', text: 'hallo', modell: 'deepseek' }),
@@ -314,7 +315,7 @@ describe('ENIs modellverbindung', () => {
 
   it('ruft Qwen nur bei Infron mit dessen eigenem Secret auf', async () => {
     const { abhaengigkeiten, gerufen } = deps({
-      schluessel: 'sk-deepseek', openrouter: 'sk-or-ling', infron: '  infron-test  ',
+      schluessel: 'sk-deepseek', infron: '  infron-test  ',
     })
     const antwort = await behandleEni(
       anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-infron' }), abhaengigkeiten
@@ -339,17 +340,17 @@ describe('ENIs modellverbindung', () => {
     const pruefung = await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)
     const info = await pruefung.json()
     expect(info.bereit).toBe(true)
-    expect(info.anbieter.map((a: { id: string }) => a.id)).toEqual(['qwen-infron'])
+    expect(info.anbieter.map((a: { id: string }) => a.id)).toEqual(['qwen-flash', 'qwen-infron'])
     const antwort = await behandleEni(anfrage({ chatId: 'c1', text: 'hallo' }), abhaengigkeiten)
     expect(antwort.status).toBe(200)
-    expect(gerufen[0]!.anbieter.id).toBe('qwen-infron')
+    expect(gerufen[0]!.anbieter.id).toBe('qwen-flash')
   })
 
   it('versteckt Qwen ohne Infron-Secret und weicht bei direkter Wahl nicht aus', async () => {
-    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling', infron: '  ' })
+    const { abhaengigkeiten, gerufen } = deps({ infron: '  ' })
     const pruefung = await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)
     expect((await pruefung.json()).anbieter.map((a: { id: string }) => a.id))
-      .toEqual(['deepseek', 'ling'])
+      .toEqual(['deepseek'])
     const antwort = await behandleEni(
       anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-infron' }), abhaengigkeiten
     )
@@ -359,11 +360,11 @@ describe('ENIs modellverbindung', () => {
   })
 
   it('macht aus derselben zeile zwei stellungen, je nach `denkt`', async () => {
-    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
+    const { abhaengigkeiten, gerufen } = deps({ infron: 'sk-infron' })
 
-    await behandleEni(anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }), abhaengigkeiten)
+    await behandleEni(anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-flash' }), abhaengigkeiten)
     await behandleEni(
-      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling', denkt: true }),
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-flash', denkt: true }),
       abhaengigkeiten
     )
 
@@ -373,8 +374,8 @@ describe('ENIs modellverbindung', () => {
     expect(mit!.endpunkt).toBe(ohne!.endpunkt)
     expect(gerufen[1]!.schluessel).toBe(gerufen[0]!.schluessel)
     // und genau ein unterschied: das vordenken, mit mehr luft fuer die ausgabe
-    expect(ohne!.denken).toEqual({ reasoning: { enabled: false } })
-    expect(mit!.denken).toEqual({ reasoning: { enabled: true, exclude: true } })
+    expect(ohne!.denken).toEqual({ reasoning: { effort: 'none' } })
+    expect(mit!.denken).toEqual({ reasoning: { effort: 'xhigh' } })
     expect(ohne!.denkt).toBe(false)
     expect(mit!.denkt).toBe(true)
     expect(mit!.maxTokens!).toBeGreaterThan(ohne!.maxTokens ?? 0)
@@ -384,9 +385,9 @@ describe('ENIs modellverbindung', () => {
     // der umschalter steht neben der liste, nicht in ihr: was er umlegt, muss
     // deshalb bei jeder zeile ankommen, die sich als denkbar ausgibt.
     const { abhaengigkeiten, gerufen } = deps({
-      schluessel: 'sk-deepseek', openrouter: 'sk-or-ling', infron: 'infron-test',
+      schluessel: 'sk-deepseek', infron: 'infron-test',
     })
-    for (const id of ['deepseek', 'ling', 'qwen-infron']) {
+    for (const id of ['deepseek', 'qwen-flash', 'qwen-infron']) {
       await behandleEni(
         anfrage({ chatId: 'c1', text: 'hallo', modell: id, denkt: true }),
         abhaengigkeiten
@@ -396,7 +397,7 @@ describe('ENIs modellverbindung', () => {
     expect(gerufen.map((ruf) => ruf.anbieter.denkt)).toEqual([true, true, true])
     expect(gerufen.map((ruf) => ruf.anbieter.denken)).toEqual([
       { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
-      { reasoning: { enabled: true, exclude: true } },
+      { reasoning: { effort: 'xhigh' } },
       { reasoning: { effort: 'xhigh' } },
     ])
     // denk-token sind ausgabe-token: ohne eigenen deckel frisst das denken die
@@ -405,10 +406,10 @@ describe('ENIs modellverbindung', () => {
   })
 
   it('nimmt ein erfundenes `denkt` nicht als wahrheit', async () => {
-    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
+    const { abhaengigkeiten, gerufen } = deps({ infron: 'sk-infron' })
     for (const denkt of ['ja', 1, {}, null]) {
       await behandleEni(
-        anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling', denkt }),
+        anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-flash', denkt }),
         abhaengigkeiten
       )
     }
@@ -417,7 +418,7 @@ describe('ENIs modellverbindung', () => {
   })
 
   it('schaltet das vordenken in beiden stellungen ausdruecklich', () => {
-    // `ling-3.0-flash-vl` und `deepseek-flash` denken beide von sich aus vor.
+    // Qwen und `deepseek-flash` denken von sich aus vor.
     // eine stellung ohne eigene angabe waere also nicht "wie das modell es
     // macht", sondern unabsichtlich langsam beziehungsweise teuer.
     for (const anbieter of ANBIETER) {
@@ -428,7 +429,7 @@ describe('ENIs modellverbindung', () => {
 
   it('sagt der oberflaeche, wer vordenken kann und was es dort kostet', async () => {
     const { abhaengigkeiten } = deps({
-      schluessel: 'sk-deepseek', openrouter: 'sk-or-ling', infron: 'infron-test',
+      schluessel: 'sk-deepseek', infron: 'infron-test',
     })
     const liste = (await (await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)).json())
       .anbieter as Array<{ id: string; denkbar: boolean; denkHinweis: string }>
@@ -438,21 +439,21 @@ describe('ENIs modellverbindung', () => {
     // satz fuer alle drei waere bei einem davon gelogen.
     const deepseek = liste.find((eintrag) => eintrag.id === 'deepseek')!
     expect(deepseek.denkHinweis).toContain('geld')
-    expect(liste.find((eintrag) => eintrag.id === 'ling')!.denkHinweis).not.toContain('geld')
+    expect(liste.find((eintrag) => eintrag.id === 'qwen-flash')!.denkHinweis).not.toContain('geld')
   })
 
   it('nimmt ohne wahl den ersten anbieter, fuer den ein schluessel steht', async () => {
-    // nur openrouter gesetzt: ein client, der von der wahl nichts weiss, darf
+    // nur infron gesetzt: ein client, der von der wahl nichts weiss, darf
     // deswegen nicht auf einen fehlenden deepseek-schluessel laufen.
-    const { abhaengigkeiten, gerufen } = deps({ schluessel: '', openrouter: 'sk-or-ling' })
+    const { abhaengigkeiten, gerufen } = deps({ schluessel: '', infron: 'sk-infron' })
     const antwort = await behandleEni(anfrage({ chatId: 'c1', text: 'hallo' }), abhaengigkeiten)
 
     expect(antwort.status).toBe(200)
-    expect(gerufen[0]!.anbieter.id).toBe('ling')
+    expect(gerufen[0]!.anbieter.id).toBe('qwen-flash')
   })
 
   it('schlaegt eine erfundene modell-id ab, statt sie irgendwohin zu tragen', async () => {
-    const { abhaengigkeiten, gerufen } = deps({ openrouter: 'sk-or-ling' })
+    const { abhaengigkeiten, gerufen } = deps({ infron: 'sk-infron' })
     const antwort = await behandleEni(
       anfrage({ chatId: 'c1', text: 'hallo', modell: 'https://boese.example/v1' }),
       abhaengigkeiten
@@ -465,14 +466,14 @@ describe('ENIs modellverbindung', () => {
   it('sagt beim namen, wenn fuer das gewaehlte modell kein schluessel steht', async () => {
     const { abhaengigkeiten, gerufen } = deps({ schluessel: 'sk-deepseek' })
     const antwort = await behandleEni(
-      anfrage({ chatId: 'c1', text: 'hallo', modell: 'ling' }),
+      anfrage({ chatId: 'c1', text: 'hallo', modell: 'qwen-flash' }),
       abhaengigkeiten
     )
 
     expect(antwort.status).toBe(503)
     const inhalt = await antwort.json()
     expect(inhalt.code).toBe('kein_schluessel')
-    expect(inhalt.error).toContain('ling')
+    expect(inhalt.error).toContain('qwen 3.8 flash')
     expect(gerufen).toHaveLength(0)
   })
 
