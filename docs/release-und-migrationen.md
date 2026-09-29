@@ -270,7 +270,7 @@ Vertragstest als `authenticated` (Upsert, fremd schreiben, ungültiger Ton,
 Sichtbarkeit für den anderen) lief in einem absichtlich abgebrochenen Block und
 wurde vollständig zurückgerollt; die Tabelle hat danach 0 Zeilen.
 
-Edge Function `eni` Version ENI_VERSION (`verify_jwt: true`), ein Bundle wie
+Edge Function `eni` Version 39 (`verify_jwt: true`), ein Bundle wie
 Version 38. **So wird es gebaut** — Version 38 war damit reproduzierbar, nicht mit
 rolldown, wie es oben bei Version 37 steht:
 
@@ -282,7 +282,7 @@ npx esbuild@0.28.2 supabase/functions/eni/index.ts --bundle --format=esm \
 
 Einzige Abhängigkeit bleibt `npm:@supabase/supabase-js@2.112.4`. Lokal in Deno
 gestartet antwortet es auf `{pruefen: true}` mit 200 und ohne Anmeldung mit 401;
-der deployte Inhalt ist gegen das lokale Bundle verglichen (ENI_VERGLEICH).
+der deployte Inhalt ist zurückgelesen und byte-gleich mit dem lokalen Bundle (SHA-256 `003caa9f…0732`, 95 438 Byte).
 Ohne lesbare Tabelle antwortet ENI wie vorher, die Reihenfolge Migration vor
 Function ist damit unkritisch, wurde aber eingehalten. Die Sperre gegen
 `db push` gilt unverändert weiter.
