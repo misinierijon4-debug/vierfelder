@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   IconClock,
+  IconGedaechtnis,
   IconMenue,
   IconRegler,
   IconSpeakerHigh,
@@ -19,6 +20,8 @@ type Props = {
   onVerlauf: () => void
   /** öffnet „ENI anpassen“: ton, länge, rollen */
   onAnpassen: () => void
+  /** öffnet „das weiß ENI über mich“: das gedächtnis */
+  onGedaechtnis: () => void
   onUmschalten: () => void
   onSchliessen: () => void
 }
@@ -42,6 +45,7 @@ export function EniKopfmenue({
   onVorlesen,
   onVerlauf,
   onAnpassen,
+  onGedaechtnis,
   onUmschalten,
   onSchliessen,
 }: Props) {
@@ -146,6 +150,21 @@ export function EniKopfmenue({
               </span>
               <span className="text-[12px] font-semibold leading-tight">
                 ENI anpassen
+              </span>
+            </motion.button>
+
+            <motion.button
+              variants={zeile}
+              type="button"
+              role="menuitem"
+              onClick={onGedaechtnis}
+              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
+            >
+              <span aria-hidden="true" className="flex w-[16px] shrink-0 justify-center">
+                <IconGedaechtnis size={16} />
+              </span>
+              <span className="text-[12px] font-semibold leading-tight">
+                das weiß ENI über mich
               </span>
             </motion.button>
           </motion.div>

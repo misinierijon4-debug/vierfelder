@@ -975,6 +975,11 @@ export function EniApp({
                 setAnpassenOffen(true)
                 setMenueOffen(false)
               }}
+              onGedaechtnis={() => {
+                setWissensStart(undefined)
+                setWissenOffen(true)
+                setMenueOffen(false)
+              }}
               onUmschalten={() => setMenueOffen((vorher) => !vorher)}
               onSchliessen={() => setMenueOffen(false)}
             />
