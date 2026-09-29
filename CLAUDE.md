@@ -37,6 +37,19 @@ npm run check          # alles, was die CI prüft
 
 Vor jedem Push mindestens `npm run typecheck && npm test`.
 Bei Änderungen unter `supabase/functions/` zusätzlich `npm run check:edge`.
+
+**JS-Budget immer mit dem Pages-Build messen**, nicht mit `build:web`: ohne
+Supabase-Variablen fehlt der Supabase-Chunk (~72 KiB gzip), `check:dist` ist
+dann grün, während der Pages-Deploy auf `main` am Gesamtbudget scheitert und die
+App still auf der alten Fassung bleibt. Die CI auf dem Branch fängt das nicht:
+
+```bash
+VITE_BASE=/vierfelder/ VITE_SUPABASE_URL=https://ogxwazageufvalkocywh.supabase.co \
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_x CHECK_NO_SERVER=1 npm run build:pages
+```
+
+Nach dem Push auf `main` den Lauf `pages` in GitHub Actions prüfen (Ergebnis
+des Laufs selbst, keine Zusammenfassung der Webseite).
 Die CI (`.github/workflows/ci.yml`) fährt genau diese Reihenfolge:
 `check:agentendoku → typecheck → test → check:edge → build:web → check:dist`.
 Es gibt **keinen Linter** und **kein Formatierwerkzeug** — Stil der Nachbardatei
