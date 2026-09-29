@@ -1948,3 +1948,62 @@ bewegung ab.
 **Der leere zustand lädt ein.** Statt „diese woche noch keine ansage.“ in 12px
 steht der satz groß, darunter in einem satz, worum es geht, und eine leere
 bahn in der farbe des anderen — sie wartet darauf, gefüllt zu werden.
+
+## 48. Nachtrag: das gedächtnis wird eine tafel (29.09.2026)
+
+„Das weiß ENI über mich“ war eine gleichförmige liste: jeder eintrag dieselbe
+graue kopfzeile, derselbe satz, dieselbe fußzeile und darunter drei textknöpfe
+— bei zehn einträgen dreißig mal „bearbeiten · löschen“. Abgelaufenes und
+erledigtes stand gleichrangig zwischen dem, was gilt, obwohl ENI es längst
+nicht mehr liest. Und „bearbeiten“ sprang in ein formular ans ende der liste,
+weit weg vom eintrag, den man gemeint hatte.
+
+**Oben steht die antwort, als zahl.** Groß in archivo, wie viele einträge ENI
+bei persönlichen fragen gerade mitliest, darunter in einem satz, wie viel davon
+geteilt ist und wie viel ruht. Darunter eine zähltafel mit fünf spalten — ton,
+ich, gerade, klappt, schritte — die zugleich der filter ist: eine spalte
+antippen zeigt nur diesen bereich, samt einem satz, wofür er da ist.
+
+**Nach bereich, nicht nach datum.** Die einträge stehen in fünf abschnitten
+zwischen haarlinien; der ton zuerst, weil er immer vorn steht, die schritte
+zuletzt, weil man sie abarbeitet. Ein eintrag ist selbst die fläche zum
+bearbeiten; die drei textknöpfe sind weg. Schritte tragen die marke aus dem
+raster: ein tipp hakt ab, die marke setzt sofort, gespeichert wird dahinter,
+und ein fehler nimmt den haken zurück. Der abgehakte schritt bleibt
+durchgestrichen an seinem platz, statt unter dem daumen zu verschwinden.
+
+**„ruht“ heißt genau das, was ENI aussortiert.** Erledigte schritte und
+abgelaufener kontext liegen eingeklappt ganz unten. Die regel dafür,
+`wirktNoch`, steht einmal in `supabase/functions/_shared/eniWissen.ts` und wird
+von der edge function und von der seite gefragt — die seite kann also nicht
+„aktiv“ zeigen, was ENI nicht mehr liest.
+
+**Der andere hat seine farbe.** Was der duellpartner teilt, steht mit einer
+2-pixel-kante in seiner farbe und „von koray“; was du teilst, trägt ein kleines
+quadrat in seiner farbe. Die freigabe im formular ist die marke in seiner
+farbe — gefüllt heißt: er sieht es. Hier unterscheidet die farbe zwei personen,
+also ist sie inhalt, nicht schmuck.
+
+**Neues entsteht unten, geändert wird an ort und stelle.** Das feld „was soll
+ENI sich merken?“ liegt dort, wo im chat auch geschrieben wird. Offen zeigt es
+die fünf bereiche mit einem satz zum gewählten, die frist als tipp (ohne ende,
+bis sonntag, 4 wochen; bei schritten heute, morgen, bis sonntag) und den
+kalender nur für alles andere. Die knopfzeile klebt unten am formular: mit
+offener tastatur lag „merken“ vorher außerhalb des bildes. Esc schließt erst
+die bearbeitung, dann das blatt; ein halb geschriebener satz bleibt als entwurf
+im zugeklappten feld stehen.
+
+**Löschen ohne nachfrage, dafür mit rückgängig.** Löschen liegt in der
+bearbeitung, also schon einen tipp hinter dem eintrag; die meldung darunter
+bietet einige sekunden „rückgängig“ an. Nach jeder änderung lädt die liste leise
+nach, statt kurz gegen „lädt …“ getauscht zu werden.
+
+**Der leere zustand lädt ein.** „ENI weiß noch nichts über dich.“ groß, und
+drei anfänge — wie ENI mit dir reden soll, woran du arbeitest, was du als
+nächstes angehst —, die das formular im passenden bereich öffnen.
+
+**Nebenbei:** Das prüfskript `scripts/check-eni-wissen-browser.mjs` suchte
+noch eine klappliste, die es seit abschnitt 37 nicht mehr gab. Es spielt jetzt
+den neuen ablauf bei 390 und 1280 pixeln durch und prüft, dass „merken“ auch
+bei 460 pixeln höhe im bild liegt und die scrollspalte nicht waagerecht
+schiebbar ist — negative ränder in ihr hätten genau das wieder angerichtet.

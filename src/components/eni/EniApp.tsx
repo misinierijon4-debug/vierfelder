@@ -1130,7 +1130,7 @@ export function EniApp({
         onErneutLaden={ladeChats}
       />
 
-      <EniWissenDialog key={speicher.kontoId} offen={wissenOffen} kontoId={speicher.kontoId} start={wissensStart} onSchliessen={() => setWissenOffen(false)} />
+      <EniWissenDialog key={speicher.kontoId} offen={wissenOffen} kontoId={speicher.kontoId} me={me} start={wissensStart} onSchliessen={() => setWissenOffen(false)} />
     </motion.div>
   )
 }
