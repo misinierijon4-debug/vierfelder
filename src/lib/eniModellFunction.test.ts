@@ -1414,6 +1414,57 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
     ...teil,
   })
 
+  it('gibt die eigenen einstellungen in jede antwort, auch in smalltalk, nie die des anderen', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({}) })
+    tabellen.eni_einstellungen = [
+      {
+        user_id: ER,
+        ton: 'sanft',
+        laenge: 'ausfuehrlich',
+        anweisungen: 'Koray-Geheimnis',
+        rollen: [],
+      },
+      {
+        user_id: ICH,
+        ton: 'streng',
+        laenge: 'kurz',
+        anweisungen: 'Nenn mich Chef.',
+        rollen: [{ id: 'boxen', name: 'Boxtrainer', thema: 'Boxen', anweisung: 'Rundenpläne geben.', aktiv: true }],
+      },
+    ]
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Hallo Eni!' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    const system = gesehen[0]!.system
+    expect(system).toContain('EINSTELLUNGEN VON ERIJON')
+    expect(system).toContain('TON: Streng')
+    expect(system).toContain('Nenn mich Chef.')
+    expect(system).toContain('Rundenpläne geben.')
+    expect(system).not.toContain('Koray-Geheimnis')
+    // die einstellungen stehen vor der moduswahl, die bleibt das letzte wort
+    expect(system.indexOf('EINSTELLUNGEN')).toBeLessThan(system.indexOf('MODUSWAHL'))
+  })
+
+  it('antwortet wie immer, wenn die einstellungen nicht lesbar sind', async () => {
+    const { abhaengigkeiten, gesehen } = deps({ routing: nur({}) })
+    const echt = abhaengigkeiten.datenbank
+    abhaengigkeiten.datenbank = (...args) => {
+      const db = echt(...args)
+      const from = db.from.bind(db)
+      db.from = (tabelle: string) => {
+        if (tabelle === 'eni_einstellungen') throw Object.assign(new Error('relation fehlt'), { code: 'PGRST205' })
+        return from(tabelle)
+      }
+      return db
+    }
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Hallo Eni!' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(gesehen[0]!.system).not.toContain('EINSTELLUNGEN')
+    expect(abhaengigkeiten.protokoll.error).toHaveBeenCalledWith(
+      'eni: einstellungen nicht lesbar, es gilt der standard',
+      expect.anything(),
+    )
+  })
+
   it('laedt fuer smalltalk weder zahlen noch erinnerungen', async () => {
     const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({}) })
     tabellen.eni_erinnerungen = [

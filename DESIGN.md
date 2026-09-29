@@ -2050,3 +2050,52 @@ noch eine klappliste, die es seit abschnitt 37 nicht mehr gab. Es spielt jetzt
 den neuen ablauf bei 390 und 1280 pixeln durch und prüft, dass „merken“ auch
 bei 460 pixeln höhe im bild liegt und die scrollspalte nicht waagerecht
 schiebbar ist — negative ränder in ihr hätten genau das wieder angerichtet.
+
+## 50. Nachtrag: ENI anpassen statt „das weiß ENI über mich“ (29.09.2026)
+
+Erijons urteil über abschnitt 49 war eindeutig: sieht schlecht aus, und das
+gedächtnis ist ihm gar nicht wichtig. Wichtig ist, **wie ENI mit einem redet** —
+so, wie man es von ChatGPT unter „Personalisierung“ kennt, und mit rollen für
+themen: „du bist mein ernährungsberater“, „du bist mein boxtrainer“.
+
+**Der menüpunkt heißt jetzt „ENI anpassen“.** Das gedächtnis ist nicht weg,
+aber nicht mehr der eingang: es steht als eine zeile unten auf der neuen seite,
+und „merken“ im chat öffnet es wie bisher.
+
+**Oben eine vorschau, keine erklärung.** Eine feste frage („Hab heute keinen
+Bock aufs Gym.“) und ENIs antwort darunter, im gewählten ton und in der
+gewählten länge. Wer „streng“ antippt, liest sofort „Keine Lust ist kein
+Grund.“ — das erklärt die einstellung besser als jeder satz darüber. Kurz ist
+ein satz, normal zwei, ausführlich drei; das beispiel ist geschrieben, keine
+echte antwort, und sagt beim eigenen ton ehrlich, dass es den standard zeigt.
+
+**Ton als kacheln, länge als umschalter, rollen als schalter.** Sechs töne
+(standard, streng, locker, sanft, sachlich, eigener) als zwei spalten mit
+zeichen, name und halbem satz; die gewählte trägt rand und haken in der eigenen
+farbe. Die länge sitzt im selben umschalter wie die tabs auf der startseite.
+Rollen sind zeilen mit zeichen, thema und einem schalter; antippen klappt
+„wann?“ und „wie soll ENI sich verhalten?“ auf. Sechs vorlagen (ernährung,
+training, boxen, faszien und mobility, lernen, schlaf) plus eigene. Anders als
+in abschnitt 49 ist hier mehr fläche: kacheln auf `flaeche`, größere
+überschriften in archivo, weniger grauer kleintext — die seite soll sich wie
+eine einstellung anfühlen, nicht wie ein protokoll.
+
+**ENI entscheidet selbst, wann eine rolle gilt.** Keine stichwortliste im
+code: der systemtext nennt jede aktive rolle mit thema und anweisung und sagt
+„betrifft die nachricht dieses thema, sprich in dieser rolle“. Das modell
+erkennt „was soll ich heute essen“ als ernährung besser als jede liste.
+
+**Gespeichert wird von selbst.** 700 ms nach der letzten änderung, nacheinander
+und nie doppelt; oben rechts steht „speichert …“ oder „gespeichert“, bei einem
+fehler „erneut speichern“. Schließen schreibt sofort, was noch offen ist. Ein
+ladefehler zeigt nur den fehler — leere einstellungen, die man dann
+versehentlich über den echten stand speichert, gibt es nicht.
+
+**Technik.** Eine zeile je person in `eni_einstellungen` (RLS: nur die eigene;
+prüfskript `scripts/check-eni-einstellungen-rls.mjs`), im prototyp im browser.
+Vorlagen und der block im systemtext stehen einmal in
+`supabase/functions/_shared/eniEinstellungen.ts`. Der block gilt in **jeder**
+antwort, nicht nur, wenn das routing persönliches wissen verlangt, steht vor der
+moduswahl und hält ENIs grenzen ausdrücklich fest: ehrlich bleiben, keine
+erfundenen zahlen, bei krisen zugewandt. Eigene texte stehen als zitat im
+prompt. Ist die tabelle nicht lesbar, antwortet ENI wie immer.
