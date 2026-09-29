@@ -19,7 +19,7 @@
  *    man das Vordenken regelt. Genau dieser Streit steht als Feld in der
  *    Zeile und nicht als `if` im heissen Pfad.
  * 4. **Das Vordenken ist eine Stellung, keine eigene Zeile.** Eine Zeit lang
- *    stand `ling 3.0 flash (denkt)` als zweiter Eintrag im Menue. Bei einem
+ *    stand ein `(denkt)`-Eintrag als zweite Zeile im Menue. Bei einem
  *    Modell ging das; bei dreien waeren es sechs Eintraege fuer drei
  *    Gespraechspartner, und das Menue haette laenger ueber den Modus geredet
  *    als ueber die Wahl. Jede Zeile bringt deshalb beide Stellungen mit, und
@@ -59,7 +59,7 @@ export type Anbieter = {
   /**
    * Beide Stellungen des Vordenkens. Jede Gegenstelle nennt den Schalter
    * anders, und keine steht von sich aus dort, wo ENI sie haben will:
-   * `ling-3.0-flash-vl` und `deepseek-flash` denken beide von sich aus vor.
+   * Qwen und `deepseek-flash` denken von sich aus vor.
    * Wer eine Stellung nicht hinschreibt, bekommt also nicht "wie das Modell es
    * macht", sondern unabsichtlich langsam.
    */
@@ -115,35 +115,24 @@ export const ANBIETER: readonly Anbieter[] = [
     maxTokens: { an: 8000 },
   },
   {
-    id: 'ling',
-    name: 'ling 3.0',
-    // ueber openrouter, kostenlos
-    // VL heisst vision-language: dieses Modell sieht die Bildbloecke selbst,
-    // sonst haette ein Wechsel die Anhaenge stillschweigend blind gemacht.
-    modell: 'inclusionai/ling-3.0-flash-vl:free',
-    endpunkt: 'https://openrouter.ai/api/v1/chat/completions',
-    schluessel: 'OPENROUTER_API_KEY',
+    id: 'qwen-flash',
+    name: 'qwen 3.8 flash',
+    // ueber infron, kostenlos, derselbe schluessel wie bei qwen 3.8 unzensiert.
+    // loest `ling 3.0` ab, das nicht mehr angeboten wird.
+    modell: 'qwen/qwen3.8-flash:free',
+    endpunkt: 'https://llm.onerouter.pro/v1/chat/completions',
+    schluessel: 'INFRON_API_KEY',
     denken: {
-      aus: { reasoning: { enabled: false } },
-      /**
-       * Stufen gibt es hier nicht. OpenRouters Modellauskunft nennt fuer dieses
-       * Modell weder `supported_efforts` noch `supports_max_tokens`, und das
-       * heisst laut deren Doku, dass es keine Abstufung anbietet. An ist also
-       * schon das hoechste, was geht.
-       *
-       * `exclude`, weil ENI die Gedanken nicht ausliefert. Sie stuenden ohnehin
-       * in `message.reasoning` und nicht in `content`, aber sie muessen deshalb
-       * auch nicht durch die Leitung.
-       */
-      an: { reasoning: { enabled: true, exclude: true } },
+      // derselbe Infron-Schalter wie bei der 27b-Zeile. Die Modellseite nennt
+      // Streaming, Tool Calling und JSON Mode, aber kein Reasoning-Etikett:
+      // ob Flash die Stufen wirklich annimmt, ist nicht gemessen.
+      aus: { reasoning: { effort: 'none' } },
+      an: { reasoning: { effort: 'xhigh' } },
       hinweis: 'langsamer, dafür gründlicher. kostet nichts.',
     },
-    /**
-     * Mehr Luft, weil das Denken von diesem Deckel abgeht. Das Modell laesst
-     * bis 32768 Ausgabe-Token zu und kostet nichts; der Deckel bremst hier nur
-     * eine Schleife, nicht die Rechnung.
-     */
-    maxTokens: { an: 8000 },
+    // wie bei der 27b-Zeile: Infron rechnet die Stufe in einen Anteil von
+    // `max_tokens` um, also mehr Luft, damit fuer die Antwort etwas bleibt.
+    maxTokens: { an: 16000 },
   },
   {
     id: 'qwen-infron',
@@ -233,7 +222,7 @@ export function anbieterFehlertext(
   }
   const status = ursache.message.match(/^([a-z0-9-]+) (?:antwortet|meldet fehler) (\d{3})$/)
   if (!status || status[1] !== anbieter.id) return allgemein
-  const name = anbieter.id === 'qwen-infron' ? 'Infron' : anbieter.name
+  const name = anbieter.id === 'qwen-infron' || anbieter.id === 'qwen-flash' ? 'Infron' : anbieter.name
   switch (Number(status[2])) {
     case 400: case 422:
       return `${name} lehnt das Anfrageformat ab (HTTP ${status[2]}). Die Modellanbindung muss geprüft werden.`

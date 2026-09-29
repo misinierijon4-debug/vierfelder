@@ -10,8 +10,6 @@ import {
   zaehltAusZustand,
 } from '../../lib/ansagen'
 import type { Ansage } from '../../lib/ansagen'
-// `heute` wechselt nur mit dem tag: hier steht die frist, der countdown steht im duell
-import { fristText } from '../../lib/ansageAnzeige'
 
 type Props = {
   zustand: Zustand
@@ -31,7 +29,7 @@ export const AnsageHinweis = memo(function AnsageHinweis({ zustand, me, heute, a
     const zaehlt = zaehltAusZustand(zustand)
     return ansagen
       .filter((a) => a.an === me)
-      .map((a) => ({ ansage: a, stand: ansageStand(zaehlt, a, heute), reagieren: reaktionsLage(zaehlt, a, me, heute) }))
+      .map((a) => ({ ansage: a, stand: ansageStand(zaehlt, a, heute), reagieren: reaktionsLage(zaehlt, ansagen, a, me, heute) }))
       .filter(({ stand }) => stand.status === 'laeuft')
   }, [zustand, me, heute, ansagen])
 
@@ -47,7 +45,7 @@ export const AnsageHinweis = memo(function AnsageHinweis({ zustand, me, heute, a
             type="button"
             onClick={onZumDuell}
             className="flex min-h-11 w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-[2px] border border-linie-hell bg-flaeche px-2.5 py-1 text-left text-[11px] text-kreide-60 hover:bg-linie"
-            aria-label={`${von.name} ${ansage.bezug ? 'muss auch' : 'fordert dich heraus'}: ${ansageZielText(ansage.feld, ansage.ziel)}, ${stand.erreicht} von ${stand.ziel} geschafft, ${e} ${e === 1 ? 'Punkt' : 'Punkte'}.${reagieren ? ' du kannst noch reagieren.' : ''} zum duell`}
+            aria-label={`${von.name} ${ansage.bezug ? 'muss auch' : 'fordert dich heraus'}: ${ansageZielText(ansage.feld, ansage.ziel)}, ${stand.erreicht} von ${stand.ziel} geschafft, ${e} ${e === 1 ? 'Punkt' : 'Punkte'}.${reagieren ? ' du kannst optional reagieren.' : ''} zum duell`}
           >
             <span className="flex min-w-0 items-center gap-1.5">
               <Megaphone size={13} weight="fill" style={{ color: von.farbe }} aria-hidden="true" />
@@ -58,10 +56,10 @@ export const AnsageHinweis = memo(function AnsageHinweis({ zustand, me, heute, a
             </span>
             <span className="tnum shrink-0 text-kreide">
               {reagieren ? (
-                <span className="font-bold" style={{ color: userDef(me).farbe }}>reagieren</span>
+                <span className="font-bold" style={{ color: userDef(me).farbe }}>ansehen</span>
               ) : (
                 <>
-                  {stand.erreicht} von {stand.ziel} · {fristText(ansage)}
+                  {stand.erreicht} von {stand.ziel} geschafft
                 </>
               )}
             </span>

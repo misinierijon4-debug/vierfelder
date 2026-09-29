@@ -76,11 +76,11 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Standort/Aufenthalt → Ticks | `src/lib/training.ts` |
 | Gewicht (Schnitt, Achse, Parsen) | `src/lib/gewicht.ts`, `src/components/Gewichtsdiagramm.tsx` |
 | Schlafphasen, Hypnogramm | `src/lib/schlafPhasen.ts`, `src/lib/nachtkurve.ts` |
-| Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts` |
+| Schlafimport (Health) | `supabase/functions/schlaf-import/index.ts`, Nachtwahl und Upsert in der Datenbank (`record_sleep_night` → `_internal`); gespeicherte Nacht nie kürzen: Migration `*_schlaf_nacht_nicht_kuerzen.sql`; jede Nacht im Fenster, Segmentgrenze `_slfn_max_segmente()`: `*_schlaf_alle_naechte.sql` |
 | Noten, MSS-Regeln Abi 2027 | `src/lib/noten.ts`, `src/components/noten/` |
 | Duell, Wetten, Druckstatus | `src/lib/duell.ts`, `src/components/duell/` |
 | **Ansagen** (Herausforderung mit Stufe, Kontern, „du auch“): Regeln und Client-Rechnung | `src/lib/ansagen.ts`, `docs/ansagen.md` |
-| Ansagen: Server (Ziel je Stufe, Reaktion, Einfrieren So 18 Uhr, Abrechnung v3, Push) | Migration `*_ansagen_stufen.sql` (erste Fassung: `*_duell_ansagen.sql`), Prüfskript `scripts/check-ansagen-stufen.mjs` |
+| Ansagen: Server (Ziel je Stufe, Reaktion, Einfrieren So 18 Uhr, Abrechnung v3, Push) | Migration `*_ansagen_stufen.sql` (erste Fassung: `*_duell_ansagen.sql`; Reaktion kostet eine Ansage: `*_ansagen_reaktion_kostet.sql`), Prüfskript `scripts/check-ansagen-stufen.mjs` |
 | Ansagen: Oberfläche und ENI-Sprüche | `src/components/duell/AnsagenBereich.tsx`, `AnsageKarte.tsx`, `AnsageSheet.tsx`, `AnsageHinweis.tsx`, Texte `src/lib/ansageAnzeige.ts`, `src/lib/ansageSprueche.ts`, `supabase/functions/_shared/ansageSprueche.ts` |
 | Rivalitäts-Badge, Freitext-Zuordnung, Tonfall (classifier.dev) | `src/lib/duellBadge.ts` (Startpfad), `src/lib/duellKlassifizierung.ts` (nachgeladen), `src/components/duell/RivalitaetsTicker.tsx` |
 | ENI (KI-Assistent) Oberfläche | `src/components/eni/EniApp.tsx` (1136 Z.) |

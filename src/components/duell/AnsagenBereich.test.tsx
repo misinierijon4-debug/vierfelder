@@ -81,49 +81,49 @@ describe('AnsagenBereich', () => {
     // schnitt 2 → sicher 3; nur boxen ist aktiv
     const vorschlaege = screen.getAllByRole('button', { name: /^vorschlag:/ })
     expect(vorschlaege).toHaveLength(1)
-    expect(vorschlaege[0]).toHaveAccessibleName('vorschlag: 3× boxen, sicher, 1 Punkt')
+    expect(vorschlaege[0]).toHaveAccessibleName('vorschlag: 3× training, sicher, 1 punkt')
   })
 
   it('sagt über das blatt an: feld, stufe mit live-ziel, bestätigen', async () => {
     const user = userEvent.setup()
     const onSageAn = vi.fn(async () => ({
-      ansage: ansage({ id: 'neu', von: 'erijon', an: 'koray', feld: 'boxen', ziel: 4, erstelltAm: DIENSTAG.toISOString() }),
+      ansage: ansage({ id: 'neu', von: 'erijon', an: 'koray', feld: 'training', ziel: 4, erstelltAm: DIENSTAG.toISOString() }),
     }))
     render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[]} onSageAn={onSageAn} />)
     await user.click(screen.getByRole('button', { name: /koray herausfordern/ }))
     const blatt = within(await screen.findByRole('dialog', { name: /ansage an koray/ }))
 
-    expect(blatt.getByRole('button', { name: /^gym/ })).toBeDisabled()
-    expect(blatt.getAllByText('macht er gerade nicht').length).toBeGreaterThan(0)
+    expect(blatt.queryByRole('button', { name: /^gym/ })).toBeNull()
+    expect(blatt.queryByRole('button', { name: /^boxen/ })).toBeNull()
     expect(blatt.getByRole('button', { name: 'feld und stufe wählen' })).toBeDisabled()
 
-    await user.click(blatt.getByRole('button', { name: /^boxen/ }))
+    await user.click(blatt.getByRole('button', { name: /^training/ }))
     // empfohlen ist sicher; mutig zeigt sein ziel schon auf dem knopf
     expect(blatt.getByRole('button', { name: 'ansage bestätigen' })).toBeEnabled()
     await user.click(blatt.getByRole('button', { name: /^mutig/ }))
     expect(blatt.getByRole('button', { name: /^mutig/ })).toHaveTextContent('4× · 2 Punkte')
-    expect(blatt.getByText('koray soll bis Sonntag, 18 Uhr 4× boxen schaffen.')).toBeInTheDocument()
+    expect(blatt.getByText('koray soll bis Sonntag, 18 Uhr 4× training schaffen.')).toBeInTheDocument()
     expect(blatt.getByText('+2 Punkte für koray.')).toBeInTheDocument()
     expect(blatt.getByText('+2 Punkte für dich.')).toBeInTheDocument()
 
     await user.click(blatt.getByRole('button', { name: 'ansage bestätigen' }))
-    expect(onSageAn).toHaveBeenCalledWith('boxen', 'mutig')
+    expect(onSageAn).toHaveBeenCalledWith('training', 'mutig')
     expect(await blatt.findByRole('status')).toHaveTextContent('angesagt')
-    expect(screen.getByText('angesagt: 4× boxen bis sonntag.')).toBeInTheDocument()
+    expect(screen.getByText('angesagt: 4× training bis sonntag.')).toBeInTheDocument()
   })
 
   it('öffnet das blatt aus enis vorschlag schon ausgefüllt und erklärt eine ablehnung', async () => {
     const user = userEvent.setup()
     const onSageAn = vi.fn(async () => ({ fehler: 'keinZiel' as const }))
     render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[]} onSageAn={onSageAn} />)
-    await user.click(screen.getByRole('button', { name: /^vorschlag: 3× boxen/ }))
+    await user.click(screen.getByRole('button', { name: /^vorschlag: 3× training/ }))
     const blatt = within(await screen.findByRole('dialog'))
     await user.click(blatt.getByRole('button', { name: 'ansage bestätigen' }))
-    expect(onSageAn).toHaveBeenCalledWith('boxen', 'sicher')
+    expect(onSageAn).toHaveBeenCalledWith('training', 'sicher')
     expect(await blatt.findByText('für dieses feld passt diese woche kein faires ziel mehr.')).toBeInTheDocument()
   })
 
-  it('zeigt eine ansage an dich groß, mit einsatz und den knöpfen zum reagieren', async () => {
+  it('lässt eine ansage ohne aktion laufen und zeigt reaktionen erst auf wunsch', async () => {
     const user = userEvent.setup()
     const onReagiere = vi.fn(async () => ({ ansage: ansage({ reaktion: { art: 'duAuch' as const, am: DIENSTAG.toISOString() } }) }))
     render(
@@ -138,14 +138,31 @@ describe('AnsagenBereich', () => {
     )
     const karte = within(screen.getByRole('article', { name: '3× lesen' }))
     expect(karte.getByRole('meter', { name: 'du: 0 von 3' })).toBeInTheDocument()
-    expect(karte.getByText('0 von 3 geschafft')).toBeInTheDocument()
-    expect(karte.getByText('mutig · 2 Punkte')).toBeInTheDocument()
-    expect(karte.getByText('Wenn du das Ziel schaffst: +2 Punkte für dich. Sonst: +2 Punkte für koray.')).toBeInTheDocument()
-    expect(karte.getByText(/noch 5 t 6 std/)).toBeInTheDocument()
-    expect(karte.getByText('Du kannst noch 21 std einmal reagieren:')).toBeInTheDocument()
-    expect(karte.getByRole('button', { name: /^kontern/ })).toHaveAccessibleDescription('4 Punkte statt 2')
+    expect(karte.getByText('0/3')).toBeInTheDocument()
+    expect(karte.getByText('mutig · 2 punkte')).toBeInTheDocument()
+    expect(karte.getByText('schaffst du es: +2 für dich. sonst +2 für koray.')).toBeInTheDocument()
+    // die frist steht einmal über allen ansagen, nicht in der karte
+    expect(screen.getByText('bis sonntag 18 uhr · noch 5 tage 6 std')).toBeInTheDocument()
+    expect(karte.queryByText(/bis sonntag/)).toBeNull()
+    expect(karte.getByText('freiwillig · noch 21 std')).toBeInTheDocument()
+    const optionen = karte.getByText('kontern oder „du auch“').closest('details')
+    expect(optionen).not.toHaveAttribute('open')
+    expect(onReagiere).not.toHaveBeenCalled()
+    await user.click(karte.getByText('kontern oder „du auch“'))
+    expect(optionen).toHaveAttribute('open')
+    expect(karte.getByRole('button', { name: /^kontern/ })).toHaveAccessibleDescription('4 punkte statt 2')
+    await user.click(karte.getByRole('button', { name: /^kontern/ }))
+    expect(karte.getByText('wirklich kontern?')).toBeInTheDocument()
+    expect(onReagiere).not.toHaveBeenCalled()
+    await user.click(karte.getByRole('button', { name: 'abbrechen' }))
 
     await user.click(karte.getByRole('button', { name: /^du auch/ }))
+    expect(karte.getByText('„du auch“ wirklich aktivieren?')).toBeInTheDocument()
+    expect(onReagiere).not.toHaveBeenCalled()
+    await user.click(karte.getByRole('button', { name: 'abbrechen' }))
+    expect(onReagiere).not.toHaveBeenCalled()
+    await user.click(karte.getByRole('button', { name: /^du auch/ }))
+    await user.click(karte.getByRole('button', { name: 'ja, „du auch“ aktivieren' }))
     expect(onReagiere).toHaveBeenCalledWith('a1', 'duAuch')
     expect(await screen.findByText('du auch — jetzt muss koray auch.')).toBeInTheDocument()
   })
@@ -168,6 +185,39 @@ describe('AnsagenBereich', () => {
     expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
+  it('stellt die ansage nach oben, bei der man selbst liefern muss', () => {
+    const meine = ansage({ id: 'an-mich', erstelltAm: new Date(2026, 8, 22, 8).toISOString() })
+    const seine = ansage({ id: 'an-ihn', von: 'erijon', an: 'koray', feld: 'boxen', erstelltAm: new Date(2026, 8, 22, 10).toISOString() })
+    render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[seine, meine]} />)
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-labelledby'))).toEqual([
+      'ansage-an-mich',
+      'ansage-an-ihn',
+    ])
+  })
+
+  it('trennt in gruppen, wer liefern muss, und färbt jede karte nur in dessen farbe', () => {
+    const meine = ansage({ id: 'an-mich', feld: 'lernen' })
+    const seine = ansage({ id: 'an-ihn', von: 'erijon', an: 'koray', feld: 'lesen' })
+    render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[seine, meine]} />)
+    const ich = within(screen.getByRole('group', { name: /du musst liefern/ }))
+    const er = within(screen.getByRole('group', { name: /koray muss liefern/ }))
+    const meineKarte = ich.getByRole('article', { name: '3× lernen' })
+    const seineKarte = er.getByRole('article', { name: '3× lesen' })
+    // die kante hat die farbe dessen, der liefern muss — nicht die des ansagenden
+    expect((meineKarte.querySelector('[aria-hidden="true"]') as HTMLElement).style.background).toBe('var(--erijon)')
+    expect((seineKarte.querySelector('[aria-hidden="true"]') as HTMLElement).style.background).toBe('var(--koray)')
+    expect(screen.queryByRole('group', { name: /entschieden/ })).toBeNull()
+  })
+
+  it('nennt die sonntagsfrist nur für v2, eine alte v1-ansage trägt ihre eigene', () => {
+    const alt = ansage({ id: 'v1', version: undefined, stufe: undefined, einsatz: undefined, bis: '2026-09-26', erstelltAm: new Date(2026, 8, 22, 11).toISOString() })
+    const neu = ansage({ id: 'v2', von: 'erijon', an: 'koray', feld: 'boxen', erstelltAm: new Date(2026, 8, 22, 8).toISOString() })
+    render(<AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={[alt, neu]} />)
+    expect(screen.getByText('bis sonntag 18 uhr · noch 5 tage 6 std')).toBeInTheDocument()
+    const altKarte = within(screen.getByRole('article', { name: '3× lesen' }))
+    expect(altKarte.getByText('bis samstag')).toBeInTheDocument()
+  })
+
   it('bietet ab freitag 18 uhr nichts mehr an und zählt verbrauchte ansagen', () => {
     vi.setSystemTime(new Date(2026, 8, 25, 19))
     const { rerender } = render(
@@ -183,5 +233,19 @@ describe('AnsagenBereich', () => {
     expect(screen.getByText('0 von 2 übrig')).toBeInTheDocument()
     expect(screen.getByText('all-in verbraucht')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /herausfordern/ })).toBeNull()
+  })
+
+  it('bietet keine reaktion an, wenn die zwei ansagen der woche weg sind', () => {
+    const alle = [
+      ansage(),
+      ansage({ id: 'x', von: 'erijon', an: 'koray', feld: 'boxen' }),
+      ansage({ id: 'y', von: 'erijon', an: 'koray', feld: 'lernen' }),
+    ]
+    render(
+      <AnsagenBereich zustand={korayBoxt()} me="erijon" heute={DIENSTAG} ansagen={alle} onSageAn={vi.fn()} onReagiere={vi.fn()} />
+    )
+    expect(screen.getByText('0 von 2 übrig')).toBeInTheDocument()
+    const karte = within(screen.getByRole('article', { name: '3× lesen' }))
+    expect(karte.queryByText('kontern oder „du auch“')).toBeNull()
   })
 })

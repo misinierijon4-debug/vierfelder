@@ -5,6 +5,12 @@ Status: **zweite Fassung (Stufen, Kontern, „du auch“) ausgerollt am
 `ansage-sprueche` (Version 3) und `eni` (Version 37) deployt. Die erste
 Fassung steht unten unter „Erste Fassung“.
 
+Ergänzung: Neue Ansagen nutzen statt getrenntem Gym und Boxen das Feld
+**Training** (`20260924210000_ansagen_training.sql`). Ein Gym- oder Boxentag
+zählt, beide am selben Tag zusammen nur einmal. Die Form beider Personen wird
+aus der Vereinigung ihrer Trainingstage berechnet. Frühere Gym- und
+Boxansagen behalten ihre ursprüngliche Bedeutung und Wertung.
+
 ## Idee
 
 Eine Ansage ist eine Herausforderung an die andere Person: „4× boxen bis
@@ -21,16 +27,16 @@ den Herausforderer praktisch ein geschenkter Punkt, für den anderen nichts.
 
 | Regel | Warum |
 | --- | --- |
-| Felder: **gym, boxen, lesen, lernen, wiegen** | lernen ist dazugekommen, wiegen bleibt — mit höherem Mindestwert |
+| Felder für neue Ansagen: **training, lesen, lernen, wiegen** | training fasst Gym und Boxen zusammen; wiegen hat einen höheren Mindestwert |
 | Ein Feld geht nur, wenn die herausgeforderte Person es in den letzten 4 Wochen an **mindestens 2 Tagen** hatte | kein Punkt für ein Feld, das der andere gar nicht macht |
 | Stufen: **sicher ±1, mutig ±2, all-in ±3** | man setzt etwas, und je mehr, desto höher das Ziel |
 | Ziel = max(Mindestwert, ⌈Schnitt × 1,3 / 1,6 / 2⌉), jede Stufe mindestens 1 über der vorigen | über der eigenen Form der herausgeforderten Person, nie darunter |
-| Mindestwerte sicher/mutig/all-in: gym, boxen, lesen, lernen **2/3/4**, wiegen **4/5/6** | 4× wiegen ist so viel wie 2× lesen; ein einzelner tag wäre wieder ein geschenkter punkt |
+| Mindestwerte sicher/mutig/all-in: training, lesen, lernen **2/3/4**, wiegen **4/5/6** | 4× wiegen ist so viel wie 2× lesen; ein einzelner tag wäre wieder ein geschenkter punkt |
 | Das Ziel muss in die Woche passen: sicher und mutig mit **einem Tag Spielraum**, all-in ohne | ohne Spielraum ist eine Ansage nach dem ersten Fehltag tot |
 | Frist **Sonntag 18 Uhr** — zusammen mit dem Finale | das Wochenende zählt mit, und um 18 Uhr ist alles entschieden |
 | Ansagen bis **Freitag 18 Uhr** (48 Stunden Mindestlaufzeit) | kein „Freitagabend ansagen, was schon erledigt ist“ |
 | Es zählt nur, was **nach der Ansage** beginnt und **am selben Tag eingetragen** wird — getippt oder gemessen, ein Tag je Feld | Punkte wie im Duell, aber ohne Nachtragen |
-| **2 Ansagen** je Person und Woche, davon **höchstens eine all-in**; dasselbe Feld nicht zweimal | mit Kontern kann eine all-in-Ansage ±6 wert sein — zwei davon würden die Woche entscheiden statt würzen |
+| **2 Ansagen** je Person und Woche, davon **höchstens eine all-in**; dasselbe Feld nicht zweimal. **Kontern und „du auch“ kosten je eine davon** | mit Kontern kann eine all-in-Ansage ±6 wert sein — zwei davon würden die Woche entscheiden statt würzen; wer beide schon verbraucht hat, kann nicht noch obendrauf verdoppeln |
 
 Gezählt wird wie im Duell: ein Tag je Feld, egal ob getippt (Box angeklickt)
 oder gemessen (Standort, Fokus). Minuten und Seiten spielen keine Rolle.
@@ -43,7 +49,9 @@ prüft die Datenbank `gewicht.erstellt`.
 ## Reagieren
 
 Die herausgeforderte Person darf **einmal** reagieren, **innerhalb von 24
-Stunden**:
+Stunden**, und nur, solange sie noch eine ihrer **zwei Ansagen** übrig hat —
+die Reaktion verbraucht sie (seit 25.09.2026,
+`20260925120000_ansagen_reaktion_kostet.sql`; vorher war sie frei):
 
 | Reaktion | Wirkung |
 | --- | --- |
@@ -52,7 +60,9 @@ Stunden**:
 | nichts | die Ansage läuft normal |
 
 „du auch“ ist in der Datenbank eine eigene Zeile mit `bezug` auf die Ansage,
-mit derselben Wertung in die Gegenrichtung. Sie kostet kein Kontingent.
+mit derselben Wertung in die Gegenrichtung. Die Zeile selbst zählt nicht als
+Ansage; verbraucht wird eine Ansage durch die Reaktion (`reaktion_am` in der
+Woche), gezählt in `private.ansagen_verbraucht` und `verbleibendeAnsagen`.
 
 ## Wertung
 

@@ -3,15 +3,16 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { user as userDef } from '../../lib/types'
 import type { UserId } from '../../lib/types'
 import {
+  ANSAGE_WORT,
   STUFEN_TEXT,
-  ansageFrist,
   ansageZielText,
   istV2,
   wirksamerEinsatz,
 } from '../../lib/ansagen'
 import type { Ansage, AnsageReaktion, AnsageStand, ReaktionsLage } from '../../lib/ansagen'
-import { ergebnisFuer, fristText, restzeitText, wer, wertungText } from '../../lib/ansageAnzeige'
+import { ANSAGE_SYMBOL, ergebnisFuer, fristText, restzeitText, wer, wertungText } from '../../lib/ansageAnzeige'
 import { ANSAGE, EASE } from '../../lib/motion'
+import { Feldsymbol } from '../Feldsymbole'
 
 type Props = {
   ansage: Ansage
@@ -26,12 +27,17 @@ type Props = {
   sendet: AnsageReaktion | null
   /** stabil über alle karten: bekommt die id der ansage mit */
   onReagiere?: (ansageId: string, art: AnsageReaktion) => void
+  /** zusehen statt liefern: kleiner, ohne fläche — die eigenen aufgaben tragen */
+  leise?: boolean
 }
 
 /**
- * eine ansage als großer block: ziel, fortschritt als zellen wie im raster,
- * frist, einsatz und was der andere daraus gemacht hat. die zellen gehören
- * der person, die liefern muss, und tragen deren farbe.
+ * eine ansage als block auf der anzeigetafel. die ganze karte trägt eine
+ * farbe: die der person, die liefern muss — kante, stand und zellen. wer
+ * angesagt hat, steht nur als text darüber; zwei farben in einer karte
+ * lasen sich so, als gehörte jede ansage beiden. das feld steht groß mit
+ * seinem zeichen, die zahl davor klein, damit lesen und lernen nicht wie
+ * dasselbe wort aussehen. die frist steht einmal über allen ansagen.
  */
 export const AnsageKarte = memo(function AnsageKarte({
   ansage,
@@ -42,13 +48,13 @@ export const AnsageKarte = memo(function AnsageKarte({
   lage,
   sendet,
   onReagiere,
+  leise = false,
 }: Props) {
   const von = userDef(ansage.von)
   const an = userDef(ansage.an)
   const v2 = istV2(ansage)
   const einsatz = wirksamerEinsatz(ansage)
   const gekontert = ansage.reaktion?.art === 'kontern'
-  const frist = ansageFrist(ansage)
   const fertig = stand.status !== 'laeuft'
 
   const titelId = `ansage-${ansage.id}`
@@ -59,48 +65,50 @@ export const AnsageKarte = memo(function AnsageKarte({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: ANSAGE.schritt, ease: EASE }}
       aria-labelledby={titelId}
-      className="relative overflow-hidden border-y border-linie bg-flaeche/40"
+      className={`relative overflow-hidden border-b border-linie ${leise ? '' : 'bg-flaeche/40'}`}
     >
-      {/* die ansagende person steht oben als farbkante, wie die marke im raster */}
-      <div className="h-[3px]" style={{ background: von.farbe }} aria-hidden="true" />
-      <div className="px-4 pb-4 pt-3">
-        <div className="flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
-          <span className="font-semibold text-kreide">
-            {ansage.von === me ? `du forderst ${an.name} heraus` : `${von.name} fordert dich heraus`}
-          </span>
-          {v2 && (
-            <span className="tnum text-kreide-60">
-              {gekontert ? 'gekontert' : STUFEN_TEXT[ansage.stufe ?? 'sicher']} · {einsatz} {einsatz === 1 ? 'Punkt' : 'Punkte'}
+      {/* die kante gehört der person, die liefern muss — wie der stand darunter */}
+      <div className={leise ? 'h-[2px]' : 'h-[3px]'} style={{ background: an.farbe }} aria-hidden="true" />
+      <div className="px-4 pb-3 pt-2.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px] text-kreide-60">
+          <span>{ansage.von === me ? `du forderst ${an.name} heraus` : `${von.name} fordert dich heraus`}</span>
+          {v2 ? (
+            <span className="tnum">
+              {gekontert ? 'gekontert' : STUFEN_TEXT[ansage.stufe ?? 'sicher']} · {einsatz} {einsatz === 1 ? 'punkt' : 'punkte'}
+            </span>
+          ) : (
+            <span>{fristText(ansage)}</span>
+          )}
+        </div>
+
+        <div className="mt-1 flex items-end justify-between gap-3">
+          <h4
+            id={titelId}
+            className={`display flex min-w-0 items-baseline gap-1.5 font-bold leading-none text-kreide [overflow-wrap:anywhere] ${leise ? 'text-[22px]' : 'text-[30px]'}`}
+          >
+            <span className="tnum text-[0.6em] text-kreide-60">{ansage.ziel}×</span>{' '}
+            <span>{ANSAGE_WORT[ansage.feld]}</span>
+            <Feldsymbol feld={ANSAGE_SYMBOL[ansage.feld]} size={leise ? 18 : 22} className="shrink-0 self-center text-kreide-60" />
+          </h4>
+          {!gegen && (
+            <span
+              className={`display tnum shrink-0 font-bold leading-none ${leise ? 'text-[22px]' : 'text-[30px]'}`}
+              style={{ color: an.farbe }}
+            >
+              {stand.erreicht}/{stand.ziel}
             </span>
           )}
         </div>
 
-        <p className="mt-3 text-[12px] font-semibold text-kreide-60">{ansage.an === me ? 'Dein Ziel' : `${an.name}s Ziel`}</p>
-        <div className="mt-1">
-          <h3 id={titelId} className="display min-w-0 text-[40px] font-bold leading-[0.95] text-kreide [overflow-wrap:anywhere]">
-            {ansageZielText(ansage.feld, ansage.ziel)}
-          </h3>
-        </div>
-
-        <p className="mt-2 text-[13px] text-kreide-60">
-          {v2 ? 'bis Sonntag, 18 Uhr' : fristText(ansage)}
-          {!fertig && (
-            <>
-              <span className="px-1.5 text-kreide-52" aria-hidden="true">·</span>
-              <span className="tnum">noch {restzeitText(jetzt, frist)}</span>
-            </>
-          )}
-        </p>
-
-        <div className="mt-4 space-y-3">
-          <Bahn person={ansage.an} me={me} stand={stand} />
-          {gegen && <Bahn person={gegen.ansage.an} me={me} stand={gegen.stand} />}
+        <div className="mt-3 space-y-1.5">
+          <Bahn person={ansage.an} me={me} stand={stand} mitName={Boolean(gegen)} />
+          {gegen && <Bahn person={gegen.ansage.an} me={me} stand={gegen.stand} mitName />}
         </div>
 
         {!fertig && v2 && (
-          <div className="mt-4 border-t border-linie pt-3 text-[13px] leading-5 text-kreide-60">
+          <div className="mt-2.5 space-y-0.5 text-[12px] leading-5 text-kreide-60">
             <p>{wertungText(ansage, me)}</p>
-            {gegen && <p className="mt-1.5">Zusätzlich {gegen.ansage.an === me ? 'musst du' : `muss ${wer(gegen.ansage.an, me)}`} auch {ansageZielText(gegen.ansage.feld, gegen.ansage.ziel)} schaffen. Das zählt als zweite Aufgabe.</p>}
+            {gegen && <p>{wertungText(gegen.ansage, me)}</p>}
           </div>
         )}
 
@@ -116,18 +124,19 @@ export const AnsageKarte = memo(function AnsageKarte({
   )
 })
 
-/** die zellen einer person: eine je nötigem tag, gefüllt in ihrer farbe */
-function Bahn({ person, me, stand }: { person: UserId; me: UserId; stand: AnsageStand }) {
+/**
+ * die zellen einer person: eine je nötigem tag, gefüllt in ihrer farbe, so
+ * groß wie eine zelle im raster. bei „du auch“ stehen zwei bahnen
+ * untereinander, dann mit name und stand je zeile.
+ */
+function Bahn({ person, me, stand, mitName }: { person: UserId; me: UserId; stand: AnsageStand; mitName: boolean }) {
   const p = userDef(person)
   const reduced = useReducedMotion()
   return (
-    <div>
-      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
-        <span className="font-semibold text-kreide">{person === me ? 'Du' : p.name}</span>
-        <span className="tnum text-kreide-60">{stand.erreicht} von {stand.ziel} geschafft</span>
-      </div>
+    <div className="flex items-center gap-3">
+      {mitName && <span className="w-12 shrink-0 text-[12px] font-semibold text-kreide">{wer(person, me)}</span>}
       <div
-        className="flex min-w-0 gap-1"
+        className="flex min-w-0 flex-1 flex-wrap gap-1"
         role="meter"
         aria-label={`${wer(person, me)}: ${stand.erreicht} von ${stand.ziel}`}
         aria-valuemin={0}
@@ -139,20 +148,25 @@ function Bahn({ person, me, stand }: { person: UserId; me: UserId; stand: Ansage
           return (
             <span
               key={i}
-              className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-[2px] border"
+              className="relative size-[22px] shrink-0 overflow-hidden rounded-[2px] border"
               style={{ borderColor: voll ? p.farbe : p.leer }}
             >
               <motion.span
-                className="absolute inset-0 origin-left"
+                className="absolute inset-0 origin-bottom"
                 style={{ background: p.farbe }}
                 initial={false}
-                animate={{ scaleX: voll ? 1 : 0, opacity: voll ? 1 : 0 }}
+                animate={{ scaleY: voll ? 1 : 0, opacity: voll ? 1 : 0 }}
                 transition={reduced ? { duration: 0 } : { ...ANSAGE.zelle, delay: i * ANSAGE.zellenVersatz }}
               />
             </span>
           )
         })}
       </div>
+      {mitName && (
+        <span className="tnum shrink-0 text-[13px] font-semibold" style={{ color: p.farbe }}>
+          {stand.erreicht}/{stand.ziel}
+        </span>
+      )}
     </div>
   )
 }
@@ -189,8 +203,8 @@ function ReaktionsZeile({
   const bis = new Date(new Date(ansage.erstelltAm).getTime() + 24 * 3_600_000)
   if (jetzt >= bis) return null
   return (
-    <p className="tnum mt-2 text-[11px] text-kreide-52">
-      {an.name} kann noch {restzeitText(jetzt, bis)} kontern oder „du auch“ sagen.
+    <p className="tnum mt-1 text-[12px] text-kreide-52">
+      {an.name} kann noch {restzeitText(jetzt, bis)} reagieren.
     </p>
   )
 }
@@ -210,36 +224,82 @@ function ReaktionsKnoepfe({
 }) {
   const von = userDef(ansage.von)
   const e = wirksamerEinsatz(ansage)
+  const [bestaetigung, setBestaetigung] = useState<AnsageReaktion | null>(null)
   return (
-    <div className="mt-3">
-      <p className="tnum text-[12px] text-kreide-60">Du kannst noch {restzeitText(jetzt, lage.bis)} einmal reagieren:</p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onReagiere(ansage.id, 'kontern')}
-          disabled={!lage.kontern || sendet !== null}
-          aria-describedby={`kontern-${ansage.id}`}
-          className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
-        >
-          <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
-          <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-            {lage.kontern ? `${e * 2} Punkte statt ${e}` : 'nur vor deinem ersten Tag'}
+    // nichts tun heißt annehmen. reagieren ist eine zeile, die man aufklappt.
+    <details className="group mt-2.5 border-t border-linie">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[13px] [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-2 font-semibold text-kreide">
+          <span className="w-3 text-kreide-60" aria-hidden="true">
+            <span className="group-open:hidden">+</span>
+            <span className="hidden group-open:inline">−</span>
           </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onReagiere(ansage.id, 'duAuch')}
-          disabled={sendet !== null}
-          aria-describedby={`duauch-${ansage.id}`}
-          className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
-        >
-          <span className="text-[14px] font-bold text-kreide">{sendet === 'duAuch' ? 'wird gesendet …' : 'du auch'}</span>
-          <span id={`duauch-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
-            {von.name} muss auch {ansageZielText(ansage.feld, ansage.ziel)}
-          </span>
-        </button>
-      </div>
-    </div>
+          kontern oder „du auch“
+        </span>
+        <span className="tnum text-[12px] text-kreide-60">freiwillig · noch {restzeitText(jetzt, lage.bis)}</span>
+      </summary>
+      {bestaetigung ? (
+        <div className="mb-3 border border-linie-hell bg-grund px-3 py-3" aria-live="polite">
+          <p className="text-[14px] font-bold text-kreide">
+            {bestaetigung === 'duAuch' ? '„du auch“ wirklich aktivieren?' : 'wirklich kontern?'}
+          </p>
+          <p className="mt-1 text-[12px] leading-5 text-kreide-60">
+            {bestaetigung === 'duAuch'
+              ? `${von.name} muss dann ebenfalls ${ansageZielText(ansage.feld, ansage.ziel)} schaffen. das zählt als zweite aufgabe.`
+              : `der einsatz steigt von ${e} auf ${e * 2}.`}{' '}
+            das lässt sich in der app nicht selbst rückgängig machen.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setBestaetigung(null)}
+              disabled={sendet !== null}
+              className="min-h-11 border border-linie-hell text-[13px] font-semibold text-kreide disabled:opacity-40"
+            >
+              abbrechen
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onReagiere(ansage.id, bestaetigung)
+                setBestaetigung(null)
+              }}
+              disabled={sendet !== null}
+              className="min-h-11 bg-kreide px-2 text-[13px] font-bold text-grund disabled:opacity-40"
+            >
+              {bestaetigung === 'duAuch' ? 'ja, „du auch“ aktivieren' : 'ja, einsatz verdoppeln'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 pb-3">
+          <button
+            type="button"
+            onClick={() => setBestaetigung('kontern')}
+            disabled={!lage.kontern || sendet !== null}
+            aria-describedby={`kontern-${ansage.id}`}
+            className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
+          >
+            <span className="text-[14px] font-bold text-kreide">{sendet === 'kontern' ? 'wird gesendet …' : 'kontern'}</span>
+            <span id={`kontern-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
+              {lage.kontern ? `${e * 2} punkte statt ${e}` : 'nur vor deinem ersten tag'}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setBestaetigung('duAuch')}
+            disabled={sendet !== null}
+            aria-describedby={`duauch-${ansage.id}`}
+            className="flex min-h-14 flex-col items-start justify-center rounded-[2px] border border-linie-hell bg-grund px-3 text-left transition-colors hover:border-kreide-52 disabled:opacity-40"
+          >
+            <span className="text-[14px] font-bold text-kreide">{sendet === 'duAuch' ? 'wird gesendet …' : 'du auch'}</span>
+            <span id={`duauch-${ansage.id}`} className="tnum text-[11px] text-kreide-60">
+              {von.name} muss auch {ansageZielText(ansage.feld, ansage.ziel)}
+            </span>
+          </button>
+        </div>
+      )}
+    </details>
   )
 }
 

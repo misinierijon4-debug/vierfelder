@@ -376,7 +376,45 @@ try {
   assert.equal(await meldung(koray, '2020-07-07 12:00'), null)
   assert.equal(await meldung(erijon, '2020-07-06 22:10'), null, 'nach 22 uhr schweigt sie')
 
-  console.log('ansagen_stufen: altbestand, rechte, ziele, sperren, ehrliche zaehlung, reaktionen, frist, abrechnung v3 und push geprueft')
+  // Neue Ansagen: Training vereint Gym und Boxen je Kalendertag einmal.
+  await alsSuperuser()
+  await db.exec(await lies('20260924210000_ansagen_training.sql'))
+  const training = await sageAn(erijon, 'training', 'sicher', '2020-07-13 10:00')
+  assert.equal(training.feld, 'training')
+  assert.equal(training.ziel >= 2, true)
+  await sitzung(koray, 'gym', '2020-07-14')
+  await sitzung(koray, 'boxen', '2020-07-14', '19:00')
+  assert.deepEqual((await query(
+    "select array_agg(t::text order by t) as tage from private.ansage_ehrliche_tage($1, 'training', $2::timestamptz, $3::timestamptz) t",
+    [koray, training.erstellt_am, berlin('2020-07-19 18:00')],
+  )).rows[0].tage, ['2020-07-14'])
+  assert.deepEqual((await query(
+    "select array_agg(t::text order by t) as tage from private.ansage_form_tage($1, 'training', '2020-07-14', '2020-07-14') t",
+    [koray],
+  )).rows[0].tage, ['2020-07-14'])
+  assert.equal((await zeile(boxen.id)).feld, 'boxen', 'alte Ansage bleibt eigenstaendig')
+
+  // Reaktionen kosten je eine der zwei Ansagen der Woche (Mo 20.07.2020).
+  await db.exec(await lies('20260925120000_ansagen_reaktion_kostet.sql'))
+  const kTraining = await sageAn(koray, 'training', 'sicher', '2020-07-20 10:00')
+  const kLesen = await sageAn(koray, 'lesen', 'sicher', '2020-07-20 10:05')
+  const eTraining = await sageAn(erijon, 'training', 'sicher', '2020-07-20 11:00')
+  // koray hat beide ansagen gemacht: keine reaktion mehr, weder kontern noch du auch
+  assert.match(await fehlerVon(reagiere(koray, eTraining.id, 'kontern', '2020-07-20 12:00')), /ansage:keineAnsagenMehr/)
+  assert.match(await fehlerVon(reagiere(koray, eTraining.id, 'duAuch', '2020-07-20 12:00')), /ansage:keineAnsagenMehr/)
+  assert.equal((await zeile(eTraining.id)).reaktion, null)
+  // erijon: eine eigene, eine reaktion — danach ist schluss, in beide richtungen
+  const eKontra = await reagiere(erijon, kTraining.id, 'kontern', '2020-07-20 12:00')
+  assert.equal(eKontra.ansage.reaktion, 'kontern')
+  assert.deepEqual((await reagiere(erijon, kTraining.id, 'kontern', '2020-07-20 12:01')).ansage, eKontra.ansage, 'wiederholung trotz 0 uebrig')
+  assert.match(await fehlerVon(reagiere(erijon, kLesen.id, 'duAuch', '2020-07-20 12:05')), /ansage:keineAnsagenMehr/)
+  assert.match(await fehlerVon(sageAn(erijon, 'lesen', 'sicher', '2020-07-20 12:10')), /ansage:keineAnsagenMehr/)
+  assert.equal(
+    (await query("select private.ansagen_verbraucht($1, '2020-07-20') as n", [erijon])).rows[0].n,
+    2,
+  )
+
+  console.log('ansagen_stufen: altbestand, rechte, ziele, sperren, ehrliche zaehlung, reaktionen, frist, abrechnung v3, push, training und reaktion kostet eine ansage geprueft')
 } finally {
   await db.close()
 }
