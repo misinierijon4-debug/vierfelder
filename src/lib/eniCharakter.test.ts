@@ -41,6 +41,55 @@ describe('ENIs Moduswahl', () => {
   })
 })
 
+describe('ENIs Lesbarkeit', () => {
+  const system = eniSystemPrompt({ person: 'erijon', lage: 'LAGE.' })
+
+  it('verlangt zuerst die Antwort und einen Gedanken je Satz statt Telegrammstil', () => {
+    expect(system).toContain('LESBARKEIT.')
+    expect(system).toContain('Nicht wie ein Urteil im Telegrammstil')
+    expect(system).toContain('Die Antwort zuerst')
+    expect(system).toContain('Ein Gedanke pro Satz')
+    expect(system).toContain('Ketten aus Doppelpunkten')
+  })
+
+  it('macht Fettdruck zur Ausnahme und verbietet Etiketten vor jedem Satz', () => {
+    expect(system).toContain('Fettdruck ist die Ausnahme')
+    expect(system).toContain('nie ein Etikett wie "Gut:" oder "Schwach:"')
+  })
+
+  it('gibt Bewertungen eine feste Reihenfolge und ein Beispiel', () => {
+    expect(system).toContain('Sag zuerst klar, ob es passt')
+    expect(system).toContain('besseren Formulierung oder einem Vorschlag')
+    expect(system).toContain('Schlecht: "Solide, aber nicht fehlerfrei.')
+    expect(system).toContain('Besser: "Dein Plan ist im Kern gut')
+  })
+
+  it('verbietet erfundene Zitate bei Bildern', () => {
+    expect(system).toContain('Erfinde kein Zitat und keine Zahl, die du nicht siehst')
+  })
+
+  it('nimmt sich bei einer Einschätzung den Platz, statt bei zwei bis vier Sätzen zu bleiben', () => {
+    expect(system).toContain('zwei bis vier vollständige Sätze')
+    expect(system).toContain('nicht verdichtete Stichworte')
+    expect(system).toContain('legt er dir etwas zur Einschätzung vor')
+  })
+
+  it('steht vor der Lage und vor dem dynamischen Kontext, die Moduswahl bleibt zuletzt', () => {
+    const mitKontext = eniSystemPrompt({
+      person: 'koray',
+      lage: 'LAGEBLOCK-TESTWERT',
+      zusatz: ['PERSOENLICHER KONTEXT'],
+    })
+    const lesbar = mitKontext.indexOf('LESBARKEIT.')
+    expect(lesbar).toBeGreaterThan(-1)
+    expect(lesbar).toBeLessThan(mitKontext.indexOf('LAGEBLOCK-TESTWERT'))
+    expect(lesbar).toBeLessThan(mitKontext.indexOf('PERSOENLICHER KONTEXT'))
+    expect(mitKontext.indexOf('MODUSWAHL FUER JEDE NEUE NACHRICHT')).toBeGreaterThan(
+      mitKontext.indexOf('PERSOENLICHER KONTEXT')
+    )
+  })
+})
+
 describe('der satz ueber die websuche', () => {
   it('steht ohne webmaterial, weil dann wirklich nichts recherchiert ist', () => {
     const ohne = eniSystemPrompt({ person: 'erijon', lage: 'LAGE.' })
