@@ -40,8 +40,9 @@ export function merkBezug(text: string, verlauf: Verlauf[]): { id: string; loesc
 
 /** Fuer „das“ nur die letzte inhaltliche Nutzerangabe, keine sechs Themen. */
 export function merkNachrichten(text: string, verlauf: Verlauf[]): Array<{ rolle: 'user'; text: string }> {
-  const vorher = [...verlauf].reverse().find((z) => z.rolle === 'mensch' &&
-    !/^(?:bitte\s+)?merk(?:e)?\s+dir\s+(?:bitte\s+)?(?:das|dies)\s*[.!?]*$/iu.test(z.text.trim()))
+  const brauchtBezug = text.length <= 160 && !/\b(?:ich|wir|mein(?:e[nmrs]?)?)\b|:/iu.test(text)
+  const vorher = brauchtBezug ? [...verlauf].reverse().find((z) => z.rolle === 'mensch' &&
+    !/^(?:bitte\s+)?merk(?:e)?\s+dir\s+(?:bitte\s+)?(?:das|dies)\s*[.!?]*$/iu.test(z.text.trim())) : undefined
   return [
     ...(vorher ? [{ rolle: 'user' as const, text: vorher.text }] : []),
     { rolle: 'user', text },

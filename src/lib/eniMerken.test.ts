@@ -35,11 +35,10 @@ describe('natuerliche Formulierungen und enger Chatbezug', () => {
   ])('erkennt %s', text => expect(willMerken(text)).toBe(true))
   it.each([
     'Wenn ich dich bitte, merk dir das.', 'Er sagt merk dir das.',
-    'Du sollst dir das nicht merken.', 'Kannst du dir Erinnerungen merken?',
+    'Du sollst dir das nicht merken.',
     'Ich frage nur als Beispiel: merk dir das.',
   ])('veraendert nichts bei %s', text => {
-    // Faehigkeitsfragen koennen Kandidaten sein, werden im semantischen Schritt abgelehnt.
-    if (!text.includes('Erinnerungen')) expect(willMerken(text)).toBe(false)
+    expect(willMerken(text)).toBe(false)
   })
   const verlauf = [
     { id: 'alt', rolle: 'mensch' as const, text: 'Ich lerne eine halbe Stunde.' },
@@ -62,4 +61,10 @@ describe('natuerliche Formulierungen und enger Chatbezug', () => {
     expect(liesMerkAenderung('{"aktion":"aendern","text":"Ich mag Reis.","art":"profil","id":"fremd"}', false))
       .toEqual({ text: 'Ich mag Reis.', art: 'profil' })
   })
+})
+
+it('schickt bei neuen eigenen Angaben keine alten Themen an die Zusammenfassung', () => {
+  expect(merkNachrichten('Ich muss in den Ferien um 5 Uhr aufstehen. Kannst du dir das merken?', [
+    { id: 'lernen', rolle: 'mensch', text: 'Ich lerne eine halbe Stunde.' },
+  ]).map(z => z.text)).toEqual(['Ich muss in den Ferien um 5 Uhr aufstehen. Kannst du dir das merken?'])
 })

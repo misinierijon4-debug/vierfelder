@@ -140,7 +140,7 @@ function baueDatenbank(
           const gebaut = eingang.map((einzeln, versatz) => ({
             ...einzeln,
             id: einzeln.id ?? `zeile-${(tabellen[tabelle]?.length ?? 0) + versatz + 1}`,
-            erstellt: JETZT.toISOString(),
+            erstellt: new Date(JETZT.getTime() + (tabellen[tabelle]?.length ?? 0) + versatz).toISOString(),
             geaendert: JETZT.toISOString(),
           }))
           tabellen[tabelle] = [...(tabellen[tabelle] ?? []), ...gebaut]
