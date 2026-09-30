@@ -527,12 +527,25 @@ export function EniApp({
 
       void (async () => {
         try {
-          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => {
+          const ergebnis = await geber.nochmal(
+            chatId,
+            controller.signal,
+            (teil) => {
               if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
                 schonGezeigt ||= teil.length > 0
                 setTeilAntwort((vorher) => vorher + teil)
               }
-            }, undefined, (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) })
+            },
+            undefined,
+            (l) => {
+              if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                setLage((vorher) => ({
+                  schritt: l.schritt,
+                  quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []),
+                }))
+              }
+            }
+          )
           letzterFehlversuchRef.current = null
           if (aktiverChatRef.current === chatId) {
             setZeilen((vorher) => [
@@ -697,7 +710,7 @@ export function EniApp({
                 (teil) => {
                   if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
                     schonGezeigt ||= teil.length > 0
-                setTeilAntwort((vorher) => vorher + teil)
+                    setTeilAntwort((vorher) => vorher + teil)
                   }
                 }
               )
