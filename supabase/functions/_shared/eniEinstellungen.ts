@@ -93,7 +93,7 @@ export const LAENGEN: Record<EniLaenge, { name: string; prompt: string }> = {
   kurz: {
     name: 'Kurz',
     prompt:
-      'Antworte kurz: meistens ein bis drei Saetze. Nur wenn ausdruecklich nach einer Erklaerung oder einem Plan gefragt wird, darfst du laenger werden, dann knapp gegliedert.',
+      'Antworte kurz: meistens ein bis drei vollstaendige, leicht verstaendliche Saetze, keine Stichworte und keine Ketten aus Doppelpunkten und Gedankenstrichen. Nur wenn ausdruecklich nach einer Erklaerung oder einem Plan gefragt wird, darfst du laenger werden, dann knapp gegliedert.',
   },
   normal: { name: 'Normal', prompt: '' },
   ausfuehrlich: {

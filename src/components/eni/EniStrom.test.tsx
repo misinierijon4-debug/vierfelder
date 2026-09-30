@@ -269,6 +269,36 @@ describe('die struktur einer antwort', () => {
     expect(screen.getByText('Das reicht nicht.')).toBeInTheDocument()
   })
 
+  describe('der kernsatz', () => {
+    const LANGER_ABSATZ =
+      'Solide, aber nicht fehlerfrei. Die Form bleibt gleich, die Technik kommt vor dem Gewicht, und schlechte Tage werden nicht mit Gewicht bestraft. ' +
+      'Schwach ist nur, dass "niemals sechs" zu absolut klingt, denn sechs schwere Wiederholungen sind ein normaler Kraftbereich.'
+
+    it('setzt einen kurzen ersten satz als schlagzeile', () => {
+      zeichneAntwort('Ja, das passt.\n\nDie Form bleibt gleich und das Gewicht steigt nur bei sauberer Technik.')
+      expect(screen.getByText('Ja, das passt.')).toHaveClass('display', 'font-semibold')
+      expect(screen.getByText(/^Die Form bleibt gleich/)).not.toHaveClass('font-semibold')
+    })
+
+    it('setzt einen langen ersten absatz nicht in halbfett', () => {
+      // vorher stand der ganze erste absatz einer antwort als halbfette schlagzeile da
+      zeichneAntwort(`${LANGER_ABSATZ}\n\nNaechster schritt: Bereich sechs bis zehn festlegen.`)
+      const erster = screen.getByText(/^Solide, aber nicht fehlerfrei/)
+      expect(erster).not.toHaveClass('font-semibold')
+      expect(erster).not.toHaveClass('display')
+    })
+
+    it('setzt auch einen einzelnen langen absatz als normalen text', () => {
+      zeichneAntwort(LANGER_ABSATZ)
+      expect(screen.getByText(/^Solide, aber nicht fehlerfrei/)).not.toHaveClass('font-semibold')
+    })
+
+    it('macht einen absatz hinter einer ueberschrift nicht zur schlagzeile', () => {
+      zeichneAntwort('## Plan\n\nDrei einheiten die woche.\n\nDazu einen ruhigen tag.')
+      expect(screen.getByText('Drei einheiten die woche.')).not.toHaveClass('font-semibold')
+    })
+  })
+
   it('rendert einen diagramm-block zwischen normalem erklaerungstext', () => {
     const json = JSON.stringify({
       typ: 'saeulen',

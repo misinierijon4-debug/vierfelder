@@ -266,6 +266,18 @@ type Block =
   | { art: 'code'; sprache: string; text: string }
   | { art: 'diagramm'; text: string }
 
+/**
+ * Ein Kernsatz steht als Schlagzeile: gross, halbfett, in Displayschrift. Das
+ * taugt nur fuer einen Satz oder zwei. Ein ganzer Absatz in Halbfett liest
+ * sich nicht als Zusammenfassung, sondern als Textblock, in dem nichts mehr
+ * hervorsticht, und ist ausgerechnet der inhaltsreichste Teil der Antwort.
+ */
+const KERNSATZ_MAX = 180
+
+function istKernsatz(text: string): boolean {
+  return text.trim().length < KERNSATZ_MAX
+}
+
 /** hat der text ueberhaupt struktur, oder ist er ein satz? */
 function hatStruktur(text: string): boolean {
   return text.split('\n').some((roh) => {
@@ -401,7 +413,7 @@ function teileInBloecke(text: string): Block[] {
  */
 function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text: string; frisch?: boolean; linksAktiv?: boolean }) {
   const absaetze = text.split(/\n\s*\n/).map((a) => a.trim()).filter(Boolean)
-  const istKurz = absaetze.length <= 1 && text.length < 180 && !hatStruktur(text)
+  const istKurz = absaetze.length <= 1 && istKernsatz(text) && !hatStruktur(text)
 
   const woerterZahl = (text.match(/[^\s]+/g) || []).length
   const schritt = Math.min(WORT_VERSATZ_MS, AUSKLAPP_MAX_MS / Math.max(woerterZahl, 1))
@@ -417,11 +429,9 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
   }
 
   const bloecke = teileInBloecke(text)
-  /** die erste zeile eines laengeren textes steht akzentuierter */
-  let ersterAbsatz = true
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {bloecke.map((block, idx) => {
         if (block.art === 'diagramm') {
           return <EniDiagramm key={idx} quelltext={block.text} />
@@ -443,11 +453,11 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
           const gross = block.stufe <= 2
           const inhalt = teile(block.text)
           return gross ? (
-            <h3 key={idx} className="display mt-4 text-pretty text-[15px] sm:text-[16px] font-bold leading-[1.3] text-kreide first:mt-0">
+            <h3 key={idx} className="display mt-5 text-pretty text-[16px] sm:text-[17px] font-bold leading-[1.3] text-kreide first:mt-0">
               {inhalt}
             </h3>
           ) : (
-            <h4 key={idx} className="display mt-3 text-pretty text-[14px] sm:text-[15px] font-bold leading-[1.3] text-kreide first:mt-0">
+            <h4 key={idx} className="display mt-4 text-pretty text-[15px] sm:text-[16px] font-bold leading-[1.3] text-kreide first:mt-0">
               {inhalt}
             </h4>
           )
@@ -455,9 +465,9 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
 
         if (block.art === 'nummern') {
           return (
-            <ol key={idx} className="my-2 space-y-1.5 pl-1">
+            <ol key={idx} className="my-1 space-y-2 pl-1">
               {block.punkte.map((punkt, lIdx) => (
-                <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
+                <li key={lIdx} className="flex items-start gap-2 text-[15px] sm:text-[16px] leading-[1.65] text-kreide">
                   <span className="tnum shrink-0 text-kreide-52" aria-hidden="true">
                     {block.beginn + lIdx}.
                   </span>
@@ -470,10 +480,10 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
 
         if (block.art === 'liste') {
           return (
-            <ul key={idx} className="my-2 space-y-1.5 pl-1">
+            <ul key={idx} className="my-1 space-y-2 pl-1">
               {block.punkte.map((punkt, lIdx) => (
-                <li key={lIdx} className="flex items-start gap-2 text-[14px] sm:text-[15px] leading-relaxed text-kreide">
-                  <span className="mt-2 block size-1 shrink-0 rounded-full bg-kreide-52" aria-hidden="true" />
+                <li key={lIdx} className="flex items-start gap-2 text-[15px] sm:text-[16px] leading-[1.65] text-kreide">
+                  <span className="mt-[0.65em] block size-1 shrink-0 rounded-full bg-kreide-52" aria-hidden="true" />
                   <span>{teile(punkt)}</span>
                 </li>
               ))}
@@ -481,17 +491,18 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
           )
         }
 
-        if (ersterAbsatz) {
-          ersterAbsatz = false
+        // nur ein kurzer erster satz steht als kernaussage, ein langer erster
+        // absatz ist normaler text (siehe KERNSATZ_MAX)
+        if (idx === 0 && istKernsatz(block.text)) {
           return (
-            <p key={idx} className="display whitespace-pre-wrap text-pretty text-[15px] sm:text-[16px] font-semibold leading-[1.4] text-kreide">
+            <p key={idx} className="display whitespace-pre-wrap text-pretty text-[16px] sm:text-[17px] font-semibold leading-[1.4] text-kreide">
               {teile(block.text)}
             </p>
           )
         }
 
         return (
-          <p key={idx} className="font-body whitespace-pre-wrap text-pretty text-[14px] sm:text-[15px] leading-relaxed text-kreide">
+          <p key={idx} className="font-body whitespace-pre-wrap text-pretty text-[15px] sm:text-[16px] leading-[1.65] text-kreide">
             {teile(block.text)}
           </p>
         )
