@@ -18,6 +18,7 @@ import { lesbareGroesse } from '../../lib/eniAnhang'
 import type { EniAnhang } from '../../lib/eniAnhang'
 import type { DuellKontext, EniZeile } from '../../lib/eniSpeicher'
 import { EniDiagramm } from './EniDiagramm'
+import { ABGESETZT_AUF, ABGESETZT_ZU, formelZuMathml, zerlegeInline, type MathKnoten } from '../../lib/eniFormel'
 import { EniMarke } from './EniMarke'
 
 const TAGESDATUM = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' })
@@ -256,6 +257,10 @@ const AUFZAEHLUNG = /^[\-•*]\s+/
 const NUMMER = /^(\d{1,3})[.)]\s+/
 const CODEBLOCK_START = /^ {0,3}```\s*([a-z0-9_-]*)\s*$/i
 const CODEBLOCK_ENDE = /^ {0,3}```\s*$/
+/** die trennzeile unter dem kopf einer markdown-tabelle: `| --- | :-: |` */
+const TABELLEN_TRENNER = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$|^\s*\|\s*:?-+:?\s*\|\s*$/
+
+type Ausrichtung = 'left' | 'center' | 'right'
 
 type Block =
   | { art: 'ueberschrift'; stufe: number; text: string }
@@ -265,6 +270,8 @@ type Block =
   | { art: 'absatz'; text: string }
   | { art: 'code'; sprache: string; text: string }
   | { art: 'diagramm'; text: string }
+  | { art: 'formel'; text: string }
+  | { art: 'tabelle'; kopf: string[]; ausrichtung: Ausrichtung[]; zeilen: string[][] }
 
 /**
  * Ein Kernsatz steht als Schlagzeile: gross, halbfett, in Displayschrift. Das
@@ -282,7 +289,8 @@ function istKernsatz(text: string): boolean {
 function hatStruktur(text: string): boolean {
   return text.split('\n').some((roh) => {
     const zeile = roh.trim()
-    return CODEBLOCK_START.test(roh) || UEBERSCHRIFT.test(zeile) || TRENNER.test(zeile) || AUFZAEHLUNG.test(zeile) || NUMMER.test(zeile)
+    return CODEBLOCK_START.test(roh) || UEBERSCHRIFT.test(zeile) || TRENNER.test(zeile) || AUFZAEHLUNG.test(zeile) || NUMMER.test(zeile) ||
+      TABELLEN_TRENNER.test(zeile) || ABGESETZT_AUF.test(zeile)
   })
 }
 
@@ -353,10 +361,26 @@ function teileTextInBloecke(text: string): Block[] {
   return bloecke
 }
 
+/** die zellen einer tabellenzeile; `\|` bleibt ein zeichen in der zelle */
+function tabellenZellen(zeile: string): string[] {
+  let z = zeile.trim()
+  if (z.startsWith('|')) z = z.slice(1)
+  if (z.endsWith('|') && !z.endsWith('\\|')) z = z.slice(0, -1)
+  return z.split(/(?<!\\)\|/).map((zelle) => zelle.trim().replace(/\\\|/g, '|'))
+}
+
+function istTabellenZeile(zeile: string): boolean {
+  return zeile.includes('|') && zeile.trim().length > 1
+}
+
 /**
  * Fences zuerst abtrennen, damit JSON-Zeilen nicht als Markdown interpretiert
  * werden. Ein offener Diagramm-Block ist beim Streamen normal: Er geht schon
  * an den fehlertoleranten Renderer, der bis zu gueltigem JSON nichts zeigt.
+ *
+ * Auf derselben Ebene stehen abgesetzte Formeln (`$$…$$`, `\[…\]`) und
+ * Tabellen. Eine noch offene Formel bleibt beim Streamen Text, bis ihr Ende
+ * da ist; eine Tabelle braucht ihre Trennzeile, sonst ist sie keine.
  */
 function teileInBloecke(text: string): Block[] {
   const bloecke: Block[] = []
@@ -380,7 +404,9 @@ function teileInBloecke(text: string): Block[] {
     fence = null
   }
 
-  for (const zeile of text.split('\n')) {
+  const zeilen = text.split('\n')
+  for (let i = 0; i < zeilen.length; i += 1) {
+    const zeile = zeilen[i]!
     if (fence) {
       if (CODEBLOCK_ENDE.test(zeile)) schliesseFence()
       else fence.zeilen.push(zeile)
@@ -393,12 +419,87 @@ function teileInBloecke(text: string): Block[] {
       fence = { sprache: (start[1] || '').toLowerCase(), zeilen: [] }
       continue
     }
+
+    const auf = ABGESETZT_AUF.exec(zeile)
+    if (auf) {
+      // das ende kann in derselben zeile stehen: $$x^2$$
+      const nachAuf = zeile.slice(auf[0].length)
+      let ende = -1
+      let inhalt: string[] = []
+      if (ABGESETZT_ZU.test(nachAuf) && nachAuf.trim().length > 2) {
+        ende = i
+        inhalt = [nachAuf.replace(ABGESETZT_ZU, '')]
+      } else {
+        for (let j = i + 1; j < zeilen.length; j += 1) {
+          if (ABGESETZT_ZU.test(zeilen[j]!)) {
+            ende = j
+            inhalt = [nachAuf, ...zeilen.slice(i + 1, j), zeilen[j]!.replace(ABGESETZT_ZU, '')]
+            break
+          }
+        }
+      }
+      if (ende >= 0) {
+        schliesseText()
+        bloecke.push({ art: 'formel', text: inhalt.join('\n').trim() })
+        i = ende
+        continue
+      }
+    }
+
+    if (istTabellenZeile(zeile) && i + 1 < zeilen.length && TABELLEN_TRENNER.test(zeilen[i + 1]!)) {
+      const kopf = tabellenZellen(zeile)
+      const ausrichtung = tabellenZellen(zeilen[i + 1]!).map((zelle): Ausrichtung =>
+        zelle.startsWith(':') && zelle.endsWith(':') ? 'center' : zelle.endsWith(':') ? 'right' : 'left'
+      )
+      const reihen: string[][] = []
+      let j = i + 2
+      while (j < zeilen.length && istTabellenZeile(zeilen[j]!)) {
+        reihen.push(tabellenZellen(zeilen[j]!))
+        j += 1
+      }
+      schliesseText()
+      bloecke.push({ art: 'tabelle', kopf, ausrichtung, zeilen: reihen })
+      i = j - 1
+      continue
+    }
+
     textzeilen.push(zeile)
   }
 
   schliesseFence()
   schliesseText()
   return bloecke
+}
+
+/**
+ * Ein MathML-Baum als React-Elemente. React legt alles unter `<math>` im
+ * MathML-Namensraum an; der Browser setzt es mit seiner eigenen Mathematik.
+ * Die `data-`-Merker des Uebersetzers bleiben draussen.
+ */
+function MathElement({ knoten }: { knoten: MathKnoten }): React.ReactElement {
+  const attribute = Object.fromEntries(
+    Object.entries(knoten.attribute ?? {}).filter(([name]) => !name.startsWith('data-'))
+  )
+  return React.createElement(
+    knoten.tag,
+    attribute,
+    ...knoten.kinder.map((kind, i) => (typeof kind === 'string' ? kind : <MathElement key={i} knoten={kind} />))
+  )
+}
+
+/** eine formel; was der uebersetzer nicht versteht, steht als quelltext da */
+function Formel({ quelle, roh, abgesetzt = false }: { quelle: string; roh: string; abgesetzt?: boolean }) {
+  const baum = formelZuMathml(quelle, abgesetzt)
+  if (!baum) {
+    return abgesetzt ? (
+      <pre className="overflow-x-auto border border-linie bg-flaeche px-3 py-2 text-[12px] leading-relaxed text-kreide">
+        <code>{roh}</code>
+      </pre>
+    ) : (
+      <code className="text-[0.92em] text-kreide">{roh}</code>
+    )
+  }
+  return <MathElement knoten={baum} />
 }
 
 /**
@@ -442,6 +543,52 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
             <pre key={idx} className="overflow-x-auto border border-linie bg-flaeche px-3 py-2 text-[12px] leading-relaxed text-kreide">
               <code data-sprache={block.sprache || undefined}>{block.text}</code>
             </pre>
+          )
+        }
+
+        if (block.art === 'formel') {
+          return (
+            <div key={idx} className="eni-formel overflow-x-auto py-1 text-kreide">
+              <Formel quelle={block.text} roh={`$$${block.text}$$`} abgesetzt />
+            </div>
+          )
+        }
+
+        if (block.art === 'tabelle') {
+          return (
+            <div key={idx} className="overflow-x-auto">
+              <table className="w-full border-collapse text-[14px] leading-snug text-kreide">
+                <thead>
+                  <tr>
+                    {block.kopf.map((zelle, sIdx) => (
+                      <th
+                        key={sIdx}
+                        scope="col"
+                        className="border-b border-linie-hell px-2 py-1.5 align-bottom font-semibold first:pl-0"
+                        style={{ textAlign: block.ausrichtung[sIdx] ?? 'left' }}
+                      >
+                        {teile(zelle)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.zeilen.map((reihe, rIdx) => (
+                    <tr key={rIdx}>
+                      {block.kopf.map((_, sIdx) => (
+                        <td
+                          key={sIdx}
+                          className="tnum border-b border-linie px-2 py-1.5 align-top first:pl-0"
+                          style={{ textAlign: block.ausrichtung[sIdx] ?? 'left' }}
+                        >
+                          {teile(reihe[sIdx] ?? '')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )
         }
 
@@ -518,6 +665,17 @@ function formatiereTextTeile(
   frisch: boolean,
   linksAktiv: boolean
 ): React.ReactNode {
+  // formeln zuerst: in `$a*b*c$` ist kein fettdruck gemeint
+  const stuecke = zerlegeInline(text)
+  if (stuecke.length > 1 || stuecke[0]?.art === 'formel') {
+    return stuecke.map((stueck, i) =>
+      stueck.art === 'formel' ? (
+        <Formel key={i} quelle={stueck.quelle} roh={stueck.roh} />
+      ) : (
+        <React.Fragment key={i}>{formatiereTextTeile(stueck.text, counter, schritt, frisch, linksAktiv)}</React.Fragment>
+      )
+    )
+  }
   const teile = text.split(/(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*)/g)
   return teile.map((teil, i) => {
     const link = teil.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
@@ -951,6 +1109,8 @@ function EniLeer({
     { id: 'aufholen', titel: aufholen.titel, prompt: aufholen.prompt },
     { id: 'abend', titel: 'abend planen', prompt: 'hilf mir den abend planen: schlaf, essen und regeneration' },
     { id: 'ernaehrung', titel: 'was soll ich heute essen', prompt: 'was soll ich heute essen' },
+    // startet ENIs abfragemodus; ohne fach schlaegt ENI eins mit schwaecheren noten vor
+    { id: 'abfrage', titel: 'frag mich ab', prompt: 'frag mich ab' },
   ]
 
   return (

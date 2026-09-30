@@ -145,6 +145,13 @@ describe('die auftakte im leeren chat', () => {
     expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
   })
 
+  it('bietet das abfragen an und schickt den auftrag so, wie er dasteht', async () => {
+    const nutzer = userEvent.setup()
+    const onAuftakt = leer(false)
+    await nutzer.click(screen.getByRole('button', { name: 'frag mich ab' }))
+    expect(onAuftakt).toHaveBeenCalledWith('frag mich ab')
+  })
+
   it('reicht den vollen satz weiter, nicht die beschriftung', async () => {
     const nutzer = userEvent.setup()
     const onAuftakt = leer(false)
@@ -344,6 +351,73 @@ describe('die struktur einer antwort', () => {
     expect(screen.getByText('Ein Vergleich entsteht.')).toBeInTheDocument()
     expect(screen.queryByRole('figure')).toBeNull()
     expect(screen.queryByText(/"typ"/)).toBeNull()
+  })
+})
+
+/*
+  Fuers Lernen: Formeln setzt der Browser als MathML, Tabellen stehen als
+  Tabelle statt als Zeilen voller senkrechter Striche.
+*/
+describe('formeln und tabellen in einer antwort', () => {
+  const zeichneAntwort = (text: string) => {
+    const { container } = render(
+      <EniStrom
+        zeilen={[{ id: 'a1', rolle: 'eni', text, erstellt: '2026-09-11T18:00:05.000Z' }]}
+        me="erijon"
+        prueft={false}
+        onAuftakt={vi.fn()}
+      />
+    )
+    return container.querySelector('li')!
+  }
+
+  it('setzt eine formel im satz als mathml, ohne dollarzeichen', () => {
+    const nachricht = zeichneAntwort('Die Fläche ist $A = \\pi r^2$ bei jedem Kreis, also auch bei deinem Beispiel hier.')
+    const formel = nachricht.querySelector('math')
+    expect(formel).not.toBeNull()
+    expect(formel!.namespaceURI).toBe('http://www.w3.org/1998/Math/MathML')
+    expect(formel!.querySelector('msup')).not.toBeNull()
+    expect(nachricht.textContent).not.toContain('$')
+  })
+
+  it('setzt eine abgesetzte formel als eigenen block', () => {
+    const nachricht = zeichneAntwort('Die Lösung:\n\n$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$\n\nDas ist die Mitternachtsformel.')
+    const formel = nachricht.querySelector('math[display="block"]')
+    expect(formel).not.toBeNull()
+    expect(formel!.querySelector('mfrac msqrt')).not.toBeNull()
+    expect(screen.getByText('Das ist die Mitternachtsformel.')).toBeInTheDocument()
+  })
+
+  it('zeigt eine unverstandene formel als quelltext statt halb richtig', () => {
+    const nachricht = zeichneAntwort('Hier steht $\\gibtsnicht{x}$ drin, und der Rest des Satzes bleibt ganz normal lesbar.')
+    expect(nachricht.querySelector('math')).toBeNull()
+    expect(nachricht.querySelector('code')).toHaveTextContent('$\\gibtsnicht{x}$')
+  })
+
+  it('laesst geldbetraege mit dollarzeichen text bleiben', () => {
+    const nachricht = zeichneAntwort('Das kostet 5 $ und das andere 10 $, beides ist also eher günstig für dich.')
+    expect(nachricht.querySelector('math')).toBeNull()
+    expect(nachricht.textContent).toContain('5 $ und das andere 10 $')
+  })
+
+  it('macht aus einer markdown-tabelle eine tabelle mit kopfzeile', () => {
+    const nachricht = zeichneAntwort(
+      'So vergleichen sich die beiden:\n\n| Fach | Note | Trend |\n|---|:---:|---:|\n| Mathe | 11 | **+2** |\n| Bio | 9 | −1 |\n\nMathe läuft.'
+    )
+    const tabelle = nachricht.querySelector('table')
+    expect(tabelle).not.toBeNull()
+    expect(screen.getAllByRole('columnheader').map((z) => z.textContent)).toEqual(['Fach', 'Note', 'Trend'])
+    expect(screen.getAllByRole('row')).toHaveLength(3)
+    expect(screen.getByRole('cell', { name: '11' })).toHaveStyle({ textAlign: 'center' })
+    // inline-formatierung gilt auch in zellen
+    expect(tabelle!.querySelector('strong')).toHaveTextContent('+2')
+    expect(nachricht.textContent).not.toContain('|---')
+    expect(screen.getByText('Mathe läuft.')).toBeInTheDocument()
+  })
+
+  it('laesst eine zeile mit strichen ohne trennzeile normalen text bleiben', () => {
+    const nachricht = zeichneAntwort('Entweder a | b oder c, das entscheidest du selbst nach dem Training.')
+    expect(nachricht.querySelector('table')).toBeNull()
   })
 })
 

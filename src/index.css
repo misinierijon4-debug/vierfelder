@@ -405,6 +405,21 @@ dialog.blatt-unten[open] {
   }
 }
 
+/*
+ * Formeln in ENIs Antworten sind MathML, gesetzt vom Browser selbst (siehe
+ * `src/lib/eniFormel.ts`). Im Fliesstext eine Spur groesser als der Text, weil
+ * Hoch- und Tiefstellungen sonst unter die Lesegrenze fallen; abgesetzt
+ * zentriert und bei Ueberlaenge waagerecht scrollbar statt ueber den Rand.
+ */
+math {
+  font-size: 1.08em;
+}
+
+.eni-formel math[display="block"] {
+  display: block;
+  font-size: 1.15em;
+}
+
 /* ENI: Einstellungen ueber dem Feld, freie Werkzeugleiste darunter. */
 .eni-eingabe {
   border-top: 0;

@@ -117,3 +117,27 @@ describe('die anweisung zu nativen diagrammen', () => {
     expect(prompt).toContain('```diagramm')
   })
 })
+
+describe('ENI beim Lernen', () => {
+  const prompt = eniSystemPrompt({ person: 'erijon', lage: 'LAGE. test' })
+
+  it('schreibt formeln in LaTeX mit den zeichen, die die oberflaeche setzt', () => {
+    expect(prompt).toContain('FORMELN, TABELLEN, ABFRAGEN')
+    expect(prompt).toContain('zwischen $$ und $$')
+    // im fertigen prompt steht ein einfacher backslash, kein doppelter
+    expect(prompt).toContain('\\frac, \\sqrt')
+    expect(prompt).not.toContain('\\\\frac')
+    expect(prompt).toContain('Geldbetraege schreibst du nie mit $')
+  })
+
+  it('fragt eine frage nach der anderen ab und bleibt dabei, bis die person aufhoert', () => {
+    expect(prompt).toContain('genau eine Frage pro Nachricht')
+    expect(prompt).toContain('gehoert zur Abfrage und ist kein neues Thema')
+    expect(prompt).toContain('Noten in der LAGE schwaecher')
+  })
+
+  it('steht vor der lage, die moduswahl bleibt zuletzt', () => {
+    expect(prompt.indexOf('FORMELN, TABELLEN')).toBeLessThan(prompt.indexOf('LAGE. test'))
+    expect(prompt.lastIndexOf('MODUSWAHL')).toBeGreaterThan(prompt.indexOf('FORMELN, TABELLEN'))
+  })
+})
