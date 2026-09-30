@@ -286,7 +286,14 @@ const INITIAL_GZIP_BUDGET = 243 * 1024
 // Rollenwahl am Chat bleibt im ENI-Lazy-Chunk: Pages vorher 314226 Byte,
 // nachher 315560 Byte gzip gesamt. Ein KiB zusaetzlicher Spielraum fuer das
 // Popup; die initiale Grenze und beide harten Budgetpruefungen bleiben bestehen.
-const GESAMT_GZIP_BUDGET = 309 * 1024
+// Formeln und Tabellen in ENIs Antworten: ein eigener kleiner Uebersetzer von
+// LaTeX nach MathML (src/lib/eniFormel.ts) statt KaTeX, das rund 75 KiB gzip
+// plus Schriften gekostet haette; gesetzt wird mit der Mathematik des Browsers.
+// Alles liegt im ENI-Lazy-Chunk. Gemessener Pages-Stand: vorher 315451 Byte
+// gzip gesamt, nachher 319600; initial unveraendert 242785. Die Gesamtsumme
+// erhaelt dafuer 4 KiB, die initiale Grenze bleibt; beide bleiben harte
+// Buildfehler, keine Budgetabschaltung.
+const GESAMT_GZIP_BUDGET = 313 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
