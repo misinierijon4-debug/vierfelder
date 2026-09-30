@@ -33,7 +33,7 @@ import {
 } from './eniWochenlage.ts'
 import { planeWebsuche, type Suchplan } from './eniSuchplan.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
-import { willMerken, MERKEN_ANWEISUNG, liesMerkEntwurf } from './eniMerken.ts'
+import { willMerken, merkBezug, merkNachrichten, MERKEN_ANWEISUNG, AENDERN_ANWEISUNG, liesMerkEntwurf, liesMerkAenderung } from './eniMerken.ts'
 import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
@@ -216,6 +216,8 @@ export type EniDatenbank = {
   }
   from(tabelle: string): {
     select(spalten: string, optionen?: { count?: 'exact'; head?: boolean }): Abfrage
+    update(zeile: Zeile): { select(spalten: string): Abfrage }
+    delete(): { select(spalten: string): Abfrage }
     insert(zeile: Zeile | Zeile[]): {
       select(spalten: string): Abfrage
     } & PromiseLike<Ergebnis<null>>
@@ -1207,7 +1209,8 @@ export async function behandleEni(
    * Satz zurueck. Deshalb wirft dieses Versprechen nie. Ein Merkauftrag
    * braucht nichts davon.
    */
-  const merken = willMerken(vorlageText)
+  const bezug = merkBezug(vorlageText, kontext)
+  const merken = willMerken(vorlageText) || bezug !== null
   const jetztMinute = lokaleMinute(deps.jetzt?.() ?? new Date())
   const kontextBereit = merken
     ? Promise.resolve({ lage: '', wissen: '', einstellungen: '' })
@@ -1290,7 +1293,7 @@ export async function behandleEni(
           zusatz: [
             k.einstellungen,
             k.wissen,
-            'DAUERHAFTES GEDAECHTNIS. Behaupte niemals, etwas gerade dauerhaft gespeichert, geaendert oder geloescht zu haben. Der Server bestaetigt echte Speichervorgaenge selbst. Bei einer Bitte ohne ausdruecklichen Merkauftrag erklaere kurz: Schreibe „Merk dir: …“. Aktuelle Nutzerangaben gehen gespeicherten Angaben vor.',
+            'DAUERHAFTES GEDAECHTNIS. Behaupte niemals, etwas gerade dauerhaft gespeichert, geaendert oder geloescht zu haben. Der Server bestaetigt echte Speichervorgaenge selbst. Normale Formulierungen wie „Kannst du dir das merken?“ werden vom Server verarbeitet; verlange keine spezielle Befehlsform. Wurde eine Bitte hier nicht eindeutig erkannt, frage kurz nach der konkreten Angabe oder Erinnerung. Behaupte niemals, ein neuer Eintrag wuerde automatisch einen alten ueberschreiben. Aktuelle Nutzerangaben gehen gespeicherten Angaben vor.',
             web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',
             webHinweis,
           ],
@@ -1368,6 +1371,40 @@ export async function behandleEni(
   try {
     if (merken) {
       melde?.({ schritt: 'denkt' })
+      if (bezug) {
+        const gelesen = await db.from('eni_erinnerungen').select('id,text,art')
+          .eq('id', bezug.id).eq('user_id', userId).maybeSingle()
+        if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
+        const alt = gelesen.data
+        if (!alt) {
+          urteil = 'Diese Erinnerung ist nicht mehr vorhanden. Welche Angabe soll ich mir stattdessen merken?'
+        } else {
+          const entwurf = liesMerkAenderung(await deps.modell({
+            signal,
+            system: AENDERN_ANWEISUNG,
+            nachrichten: [
+              { rolle: 'user', text: JSON.stringify({ erinnerung: { text: alt.text, art: alt.art }, loeschenErlaubt: bezug.loeschen }) },
+              { rolle: 'user', text: vorlageText },
+            ],
+          }, mitVordenken(zeile, false), modellSchluessel), bezug.loeschen)
+          if (entwurf === null) {
+            urteil = 'Was genau soll ich an dieser Erinnerung ändern?'
+          } else {
+            // Nutzer-ID und alter Text schuetzen auch vor Partnerdaten und
+            // einem parallelen Edit im Wissensdialog. Keine Modell-ID nutzen.
+            const geschrieben = await (entwurf === 'loeschen'
+              ? db.from('eni_erinnerungen').delete()
+              : db.from('eni_erinnerungen').update(entwurf))
+              .select('id,text,art').eq('id', bezug.id).eq('user_id', userId)
+              .eq('text', alt.text).single()
+            if (geschrieben.error || !geschrieben.data) throw new Error('erinnerung nicht geaendert')
+            urteil = entwurf === 'loeschen'
+              ? 'Erinnerung gelöscht.'
+              : `Erinnerung geändert: ${String(geschrieben.data.text)}`
+          }
+        }
+        onText?.(urteil)
+      } else {
       // Die Nachrichten-ID macht einen erneuten Versuch idempotent. Die
       // Zuordnung und Privatsphaere kommen vom Server, nie vom Modell.
       const vorhanden = await db.from('eni_erinnerungen').select('text,art')
@@ -1379,9 +1416,7 @@ export async function behandleEni(
           signal,
           system: MERKEN_ANWEISUNG,
           // Nur Text von echten Nutzerzeilen; keine Anhaenge oder Webquellen.
-          nachrichten: [...kontext.filter((z) => z.rolle === 'mensch').slice(-6)
-            .map((z) => ({ rolle: 'user' as const, text: z.text })),
-            { rolle: 'user', text: vorlageText }],
+          nachrichten: merkNachrichten(vorlageText, kontext),
         }, mitVordenken(zeile, false), modellSchluessel))
         if (entwurf) {
           const gespeichert = await db.from('eni_erinnerungen').insert({
@@ -1401,6 +1436,7 @@ export async function behandleEni(
         ? `Gemerkt: ${String(gemerkt.text)}\n\nDu findest das unter „Das weiß ENI über mich“ und kannst es dort ändern oder löschen.`
         : 'Was genau soll ich mir über dich merken? Schreib mir die Angabe bitte dazu.'
       onText?.(urteil)
+      }
     } else {
     melde?.({ schritt: 'denkt' })
     /**
@@ -1487,7 +1523,7 @@ export async function behandleEni(
     if (merken) {
       deps.protokoll.error('eni: erinnerung nicht bestaetigt', ursache)
       return antwort(502, {
-        error: 'Die Erinnerung konnte nicht gespeichert werden. Bitte versuch es erneut.',
+        error: bezug ? 'Die Erinnerung konnte nicht geändert werden. Bitte versuch es erneut.' : 'Die Erinnerung konnte nicht gespeichert werden. Bitte versuch es erneut.',
         code: 'erinnerung_nicht_gespeichert', mensch: menschZeile,
       })
     }
