@@ -1,3 +1,4 @@
+import { SUCHPLAN_ANWEISUNG } from '../../supabase/functions/_shared/eniSuchplan.ts'
 import { EniWebFehler } from '../../supabase/functions/_shared/eniWeb'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -161,6 +162,7 @@ function deps(
     tavily?: string
     infron?: string
     modell?: (anfrage: ModellAnfrage) => Promise<string>
+    suchAntwort?: string | ((anfrage: ModellAnfrage) => Promise<string>)
     limit?: string
     /**
      * die echte lage: `authenticated` darf nicht in `eni_anhaenge` schreiben.
@@ -180,6 +182,7 @@ function deps(
 ) {
   const tabellen = optionen.tabellen ?? grunddaten()
   const gesehen: ModellAnfrage[] = []
+  const suchplaene: Array<{ anfrage: ModellAnfrage; anbieter: Gegenstelle }> = []
   const gerufen: Array<{ anbieter: Gegenstelle; schluessel: string }> = []
   const abhaengigkeiten: EniAbhaengigkeiten = {
     umgebung: (name) =>
@@ -204,6 +207,10 @@ function deps(
       : () => baueDatenbank(tabellen, optionen.nutzer === undefined ? ICH : optionen.nutzer),
     routing: async () => optionen.routing ?? ROUTING_FALLBACK,
     modell: async (anfrage, anbieter, schluessel) => {
+      if (anfrage.system.startsWith(SUCHPLAN_ANWEISUNG)) {
+        suchplaene.push({ anfrage, anbieter })
+        return typeof optionen.suchAntwort === 'function' ? await optionen.suchAntwort(anfrage) : optionen.suchAntwort ?? '{"suche":false}'
+      }
       gesehen.push(anfrage)
       gerufen.push({ anbieter, schluessel })
       return optionen.modell ? await optionen.modell(anfrage) : 'das reicht nicht.'
@@ -211,7 +218,7 @@ function deps(
     protokoll: { error: vi.fn() },
     jetzt: () => JETZT,
   }
-  return { abhaengigkeiten, tabellen, gesehen, gerufen }
+  return { abhaengigkeiten, tabellen, gesehen, gerufen, suchplaene }
 }
 
 /** ein token in JWT-form, dessen nutzlast `sub` traegt. keine echte signatur */
@@ -1275,7 +1282,7 @@ describe('ENI: Gedaechtnis und Textstream', () => {
 })
 
 describe('Internet im authentifizierten Chat', () => {
-  it('recherchiert nur bei eingeschaltetem Internet und speichert Quellen am Urteil', async () => {
+  it('recherchiert aktuelle Fragen automatisch und speichert Quellen am Urteil', async () => {
     const { abhaengigkeiten, tabellen, gesehen } = deps({ openrouter: 'test' })
     const suche = vi.fn().mockResolvedValue([{ titel: 'Quelle', url: 'https://example.org/artikel', text: 'Aktueller Beleg' }])
     abhaengigkeiten.webSuche = suche
@@ -1313,8 +1320,8 @@ describe('Internet im authentifizierten Chat', () => {
       .split('\n')
       .map((zeile) => JSON.parse(zeile))
       .filter((e) => e.typ === 'lage')
-    expect(lagen.map((e) => e.schritt)).toEqual(['sucht', 'gefunden', 'denkt'])
-    expect(lagen[1].quellen).toEqual([{ titel: 'Quelle', url: 'https://example.org/artikel' }])
+    expect(lagen.map((e) => e.schritt)).toEqual(['denkt', 'sucht', 'gefunden', 'denkt'])
+    expect(lagen[2].quellen).toEqual([{ titel: 'Quelle', url: 'https://example.org/artikel' }])
     // Der Auszug ist fremder Text. Er gehoert in den Systemtext, nicht auf den
     // Bildschirm — und schon gar nicht, bevor ENI ihn gelesen hat.
     expect(gelesen).not.toContain('Geheimer Auszug')
@@ -1363,22 +1370,14 @@ describe('Internet im authentifizierten Chat', () => {
     expect(gesehen[0]!.system).toContain('Du hast keine Websuche')
   })
 
-  it('schickt nur den nachschlagenden satz an die suche, nicht die ganze nachricht', async () => {
-    const { abhaengigkeiten } = deps({ tavily: 'tvly-test' })
+  it('schickt nur das allgemeine Recherchethema an die Suche, nicht die private Nachricht', async () => {
+    const { abhaengigkeiten, suchplaene } = deps({ tavily: 'tvly-test', suchAntwort: JSON.stringify({ suche: true, frage: 'Neue Studien Proteinbedarf Krafttraining' }) })
     const suche = vi.fn().mockResolvedValue([])
     abhaengigkeiten.webSuche = suche
-
-    await behandleEni(
-      anfrage({
-        chatId: 'chat-1',
-        text: 'die woche lief bescheiden. wie viel protein brauche ich pro tag?',
-        internet: true,
-      }),
-      abhaengigkeiten
-    )
-
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'die woche lief bescheiden. welche neuen Studien gibt es zu Protein?' }), abhaengigkeiten)
+    expect(suchplaene).toHaveLength(1)
     expect(suche).toHaveBeenCalledTimes(1)
-    expect(suche.mock.calls[0]![0]).toBe('wie viel protein brauche ich pro tag?')
+    expect(suche.mock.calls[0]![0]).toBe('Neue Studien Proteinbedarf Krafttraining')
   })
 
   it('sucht bei fehlender Anmeldung oder Tageslimit nicht', async () => {
@@ -1390,16 +1389,17 @@ describe('Internet im authentifizierten Chat', () => {
     expect(suche).not.toHaveBeenCalled()
   })
   it('fällt bei einem Websuchfehler gracefully auf das modell ohne internetquellen zurück', async () => {
-    const { abhaengigkeiten, tabellen, gesehen } = deps()
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ tavily: 'tvly-test' })
     abhaengigkeiten.webSuche = vi.fn().mockRejectedValue(new EniWebFehler('Suche nicht verfügbar'))
-    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Aktuelle Frage', internet: true }), abhaengigkeiten)
     expect(res.status).toBe(200)
     expect(gesehen).toHaveLength(1)
     expect(gesehen[0]?.system).toContain(
-      '[Hinweis: Die Websuche war vorübergehend nicht erreichbar. Antworte mit deinem vorhandenen Wissen und weise den Nutzer kurz darauf hin.]'
+      'Die Websuche war vorübergehend nicht erreichbar.'
     )
     expect(tabellen.eni_quellen ?? []).toHaveLength(0)
     expect(tabellen.eni_nachrichten).toHaveLength(2)
+    expect(gesehen[0]?.system).toContain('Behaupte keine Recherche oder verifizierten aktuellen Fakten')
   })
 })
 
@@ -1612,7 +1612,7 @@ describe('ENIs gedaechtnis fuer die eigenen quellen', () => {
     })
     abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(treffer)
 
-    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Frage', internet: true }), abhaengigkeiten)
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Aktuelle Frage', internet: true }), abhaengigkeiten)
     await behandleEni(anfrage({ chatId: 'chat-1', text: 'Nochmal' }), abhaengigkeiten)
     expect(String(tabellen.eni_nachrichten.at(-1)!.text)).toContain(
       '[Quelle](https://example.org/artikel)'
@@ -1740,5 +1740,86 @@ describe('ENI merkt sich ausdrueckliche chat-angaben', () => {
     expect(tabellen.eni_erinnerungen).toHaveLength(1)
     expect(strom).toContain('Gemerkt:')
     expect(strom).not.toContain('"art":"profil"')
+  })
+})
+
+describe('automatische Recherche im echten Handler', () => {
+  const quellen = [{ titel: 'Tolino', url: 'https://example.org/tolino', text: 'Aktueller Preis' }]
+
+  it('sucht ohne Internet-Feld auch wenn der alte Sortierdienst keine Sachfrage erkannt hat', async () => {
+    const { abhaengigkeiten, tabellen, suchplaene } = deps({ tavily: 'test', routing: { brauchtLage: false, brauchtWissen: false, darfSuchen: false, erkannterIntent: 'allgemeiner_dialog' } })
+    abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(quellen)
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was kostet ein Tolino Shine 3?' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(abhaengigkeiten.webSuche).toHaveBeenCalledWith('Was kostet ein Tolino Shine 3?', expect.any(Function), expect.any(AbortSignal))
+    expect(tabellen.eni_quellen).toHaveLength(1)
+    expect(suchplaene).toHaveLength(0)
+  })
+
+  it('nutzt den echten Chatbezug mit kleinem Budget ohne Gedaechtnis, Tracker oder Anhaenge', async () => {
+    const { abhaengigkeiten, tabellen, suchplaene, gesehen } = deps({ tavily: 'test', suchAntwort: JSON.stringify({ suche: true, frage: 'Tolino Shine 3 aktueller Preis' }) })
+    tabellen.eni_nachrichten = [
+      { id: 'alt-m', chat_id: 'chat-1', user_id: ICH, rolle: 'mensch', text: 'Ich suche einen Tolino Shine 3.', erstellt: '2026-09-10T12:00:00Z' },
+      { id: 'alt-e', chat_id: 'chat-1', user_id: ICH, rolle: 'eni', text: 'Der kann EPUB lesen.', erstellt: '2026-09-10T12:00:01Z' },
+    ]
+    tabellen.eni_erinnerungen = [{ id: 'privat', user_id: ICH, text: 'Meine geheime Lieblingsfarbe', art: 'profil', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' }]
+    abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(quellen)
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Und wie teuer ist das?', denkt: true }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(suchplaene).toHaveLength(1)
+    expect(suchplaene[0]!.anbieter.maxTokens).toBe(300)
+    expect(suchplaene[0]!.anbieter.denken).toEqual({ thinking: { type: 'disabled' } })
+    const plan = suchplaene[0]!.anfrage
+    expect(plan.onText).toBeUndefined()
+    expect(plan.system).toContain('2026-09-10')
+    expect(plan.nachrichten.map(z => z.text)).toEqual(['Ich suche einen Tolino Shine 3.', 'Der kann EPUB lesen.', 'Und wie teuer ist das?'])
+    expect(JSON.stringify(plan)).not.toContain('geheime Lieblingsfarbe')
+    expect(JSON.stringify(plan)).not.toContain('81,4')
+    expect(plan.nachrichten.every(z => !z.bilder)).toBe(true)
+    expect(abhaengigkeiten.webSuche).toHaveBeenCalledWith('Tolino Shine 3 aktueller Preis', expect.any(Function), expect.any(AbortSignal))
+    expect(gesehen).toHaveLength(1)
+    expect(gesehen[0]!.system).toContain('Aktueller Preis')
+  })
+
+  it('sucht bei stabilen Sachfragen auch mit altem internet:true nicht pauschal', async () => {
+    const { abhaengigkeiten, suchplaene } = deps({ tavily: 'test' })
+    abhaengigkeiten.webSuche = vi.fn()
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Warum ist der Himmel blau?', internet: true }), abhaengigkeiten)
+    expect(suchplaene).toHaveLength(1)
+    expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
+  })
+
+  it.each([{ internet: false, text: 'Aktuelle Frage' }, { text: 'Was kostet ein Tolino? Antworte ohne Internet.' }])('respektiert ausdrueckliches Suchverbot: %j', async (inhalt) => {
+    const { abhaengigkeiten, suchplaene } = deps({ tavily: 'test' })
+    abhaengigkeiten.webSuche = vi.fn()
+    await behandleEni(anfrage({ chatId: 'chat-1', ...inhalt }), abhaengigkeiten)
+    expect(suchplaene).toHaveLength(0)
+    expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
+  })
+
+  it('bestaetigt Erinnerungen ohne Suchentscheidungsmodell und ohne Internet', async () => {
+    const { abhaengigkeiten, suchplaene } = deps({ tavily: 'test', modell: async () => '{"text":"Ich lese gerne vor dem Schlafen.","art":"profil"}' })
+    abhaengigkeiten.webSuche = vi.fn()
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Merk dir bitte, dass ich gerne lese.' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(suchplaene).toHaveLength(0)
+    expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
+  })
+
+  it('antwortet bei defektem Entscheider ehrlich weiter ohne private Daten zu suchen', async () => {
+    const { abhaengigkeiten, gesehen, tabellen } = deps({ tavily: 'test', suchAntwort: async () => { throw new Error('defekt') } })
+    abhaengigkeiten.webSuche = vi.fn()
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Und wie teuer ist das?' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
+    expect(gesehen[0]!.system).toContain('Behaupte keine Recherche')
+    expect(tabellen.eni_nachrichten).toHaveLength(2)
+  })
+
+  it('nennt bei fehlender Suchkonfiguration die fehlende Verifikation', async () => {
+    const { abhaengigkeiten, gesehen } = deps()
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was kostet ein Tolino Shine 3?' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(gesehen[0]!.system).toContain('Websuche ist nicht eingerichtet')
   })
 })

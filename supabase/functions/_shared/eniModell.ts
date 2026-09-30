@@ -1,6 +1,5 @@
 import {
   sucheWeb,
-  suchauftrag,
   webBereit,
   webWeg,
   mitWebQuellen,
@@ -33,6 +32,7 @@ import {
   type WochenDatenbank,
 } from './eniWochenlage.ts'
 import { ermittleRouting } from './eniRouting.ts'
+import { planeWebsuche } from './eniSuchplan.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { willMerken, MERKEN_ANWEISUNG, liesMerkEntwurf } from './eniMerken.ts'
 import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
@@ -741,8 +741,8 @@ export async function behandleEni(
       modell: offen[0]?.modell ?? MODELL,
       anbieter: offen,
       internet: webBereit(deps.umgebung),
-      // Nicht nur ob, sondern worueber: die Oberflaeche schreibt „kostenlos“
-      // oder „kostet Guthaben“ unter den Schalter, und raten darf sie nicht.
+      sucheAutomatisch: true,
+      // Suchweg bleibt fuer aeltere Clients und Diagnose lesbar.
       suche: webWeg(deps.umgebung),
     })
   }
@@ -1263,15 +1263,22 @@ export async function behandleEni(
         : 'Was genau soll ich mir über dich merken? Schreib mir die Angabe bitte dazu.'
       onText?.(urteil)
     } else {
-    // Der Schalter erlaubt die Suche, er erzwingt sie nicht: was nichts zum
-    // Nachschlagen ist, geht auch nicht an eine Suchmaschine.
-    //
-    // Drei Bedingungen, und alle drei koennen nur wegnehmen: der Schalter des
-    // Nutzers, das Urteil des Routings und `suchauftrag`. Letzteres bleibt
-    // bewusst die letzte Instanz — die Sperre fuer Krisen- und Ich-Saetze darf
-    // kein fremder Dienst aufmachen koennen.
-    const auftrag =
-      anfrage.internet === true && routing.darfSuchen ? suchauftrag(vorlageText) : null
+    melde?.({ schritt: 'denkt' })
+    // Automatisch, unabhaengig vom alten Sachfragen-Routing. Ein explizites
+    // false bleibt fuer aeltere API-Aufrufer ein Verbot; ohne Feld gilt auto.
+    const plan = anfrage.internet === false
+      ? { frage: null, hinweis: '' }
+      : await planeWebsuche({
+          text: vorlageText,
+          verlauf: kontext.map((z) => ({ rolle: z.rolle === 'mensch' ? 'user' as const : 'assistant' as const, text: z.text })),
+          bereit: webBereit(deps.umgebung),
+          signal,
+          entscheide: (system, nachrichten, abbruch) => deps.modell(
+            { system: `${system}\nHeute: ${lokaleMinute(deps.jetzt?.() ?? new Date()).tag}.`, nachrichten, signal: abbruch },
+            { ...mitVordenken(zeile, false), maxTokens: 300 }, modellSchluessel),
+        })
+    const auftrag = plan.frage
+    webHinweis = plan.hinweis
     if (auftrag) {
       melde?.({ schritt: 'sucht' })
       try {
@@ -1283,13 +1290,13 @@ export async function behandleEni(
         if (webFehler instanceof EniWebFehler) {
           deps.protokoll.error('eni: websuche nicht erreichbar, fahre ohne internet fort', webFehler)
           webHinweis =
-            '\n\n[Hinweis: Die Websuche war vorübergehend nicht erreichbar. Antworte mit deinem vorhandenen Wissen und weise den Nutzer kurz darauf hin.]'
+            'Die Websuche war vorübergehend nicht erreichbar. Sage das kurz. Behaupte keine Recherche oder verifizierten aktuellen Fakten, Preise oder Oeffnungszeiten. Erfinde keine Quellen. Stabiles allgemeines Wissen darfst du als solches erklaeren.'
         } else {
           throw webFehler
         }
       }
     }
-    melde?.({ schritt: 'denkt' })
+    if (auftrag) melde?.({ schritt: 'denkt' })
 
     urteil = (
       await deps.modell(
