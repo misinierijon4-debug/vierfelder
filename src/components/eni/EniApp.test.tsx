@@ -956,3 +956,20 @@ describe('ENI als eigene oberflaeche', () => {
     })
   })
 });
+
+describe('kompakte ENI-eingabe', () => {
+  it('zeigt den internet-schalter ohne erklaerzeile und erhaelt das umschalten', async () => {
+    vi.useFakeTimers()
+    render(<EniApp speicher={lokalerEniSpeicher('erijon')} onZurueck={vi.fn()}
+      pruefeModell={() => Promise.resolve({ bereit: true, internet: true, suche: 'tavily', anbieter: [anbieterInfo('deepseek', 'deepseek')] })}
+      baueGeber={() => ({ art: 'modell', anbieter: null, denkt: false }) as unknown as any}
+    />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    expect(screen.queryByText(/Websuche mit Quellen/)).not.toBeInTheDocument()
+    const schalter = screen.getByRole('button', { name: 'Internet: aus' })
+    expect(schalter).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(schalter)
+    expect(screen.getByRole('button', { name: 'Internet: an' })).toHaveAttribute('aria-pressed', 'true')
+    expect(feld()).toBeInTheDocument()
+  })
+})

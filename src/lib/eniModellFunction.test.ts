@@ -122,8 +122,9 @@ function baueDatenbank(
           const eingang = Array.isArray(zeile) ? zeile : [zeile]
           const gebaut = eingang.map((einzeln, versatz) => ({
             ...einzeln,
-            id: `zeile-${(tabellen[tabelle]?.length ?? 0) + versatz + 1}`,
+            id: einzeln.id ?? `zeile-${(tabellen[tabelle]?.length ?? 0) + versatz + 1}`,
             erstellt: JETZT.toISOString(),
+            geaendert: JETZT.toISOString(),
           }))
           tabellen[tabelle] = [...(tabellen[tabelle] ?? []), ...gebaut]
           return {
@@ -168,6 +169,7 @@ function deps(
     anhaengeNurMitDienst?: boolean
     /** kein dienstschluessel gesetzt — dann muss der anhang ehrlich scheitern */
     ohneDienst?: boolean
+    wissenGesperrt?: boolean
     /**
      * Das Urteil des Intent-Routings. Standard ist der Fallback: voller
      * Kontext, also genau das Verhalten von vor dem Routing. Ohne diese
@@ -194,7 +196,8 @@ function deps(
       baueDatenbank(
         tabellen,
         optionen.nutzer === undefined ? ICH : optionen.nutzer,
-        optionen.anhaengeNurMitDienst ? ['eni_anhaenge'] : []
+        [...(optionen.anhaengeNurMitDienst ? ['eni_anhaenge'] : []),
+          ...(optionen.wissenGesperrt ? ['eni_erinnerungen'] : [])]
       ),
     dienstDatenbank: optionen.ohneDienst
       ? () => null
@@ -1465,7 +1468,7 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
     )
   })
 
-  it('laedt fuer smalltalk weder zahlen noch erinnerungen', async () => {
+  it('kennt persoenliche vorlieben auch ohne wissens-routing, aber keine trackerzahlen', async () => {
     const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({}) })
     tabellen.eni_erinnerungen = [
       { id: 'e1', user_id: ICH, text: 'Geheime Notiz', art: 'profil', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' },
@@ -1477,8 +1480,8 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
 
     expect(res.status).toBe(200)
     const system = gesehen[0]!.system
-    expect(system).not.toContain('PERSOENLICHER KONTEXT')
-    expect(system).not.toContain('Geheime Notiz')
+    expect(system).toContain('PERSOENLICHER KONTEXT')
+    expect(system).toContain('Geheime Notiz')
     // Nicht geladen ist nicht null: ENI muss wissen, dass ihm Zahlen fehlen,
     // sonst denkt er sich welche aus.
     expect(system).toContain('keine Trackerzahlen geladen')
@@ -1497,7 +1500,7 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
     expect(system).toContain('81,4')
   })
 
-  it('haengt die erinnerungen nur an, wenn das routing sie anfordert', async () => {
+  it('haengt die erinnerungen an, wenn das routing sie anfordert', async () => {
     const eintrag = { id: 'e1', user_id: ICH, text: 'Ziel: 78 kg bis Dezember', art: 'aktuell', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' }
     const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({ brauchtWissen: true }) })
     tabellen.eni_erinnerungen = [eintrag]
@@ -1666,5 +1669,76 @@ describe('ENIs gedaechtnis fuer die eigenen quellen', () => {
     const vorlagen = tabellen.eni_nachrichten.filter((zeile) => zeile.rolle === 'mensch')
     expect(vorlagen).toHaveLength(1)
     expect((await res.json()).mensch.id).toBe('alt-1')
+  })
+})
+
+describe('ENI merkt sich ausdrueckliche chat-angaben', () => {
+  const zusammenfassung = 'Ich esse gerne Reis und lese vor dem Schlafen.'
+  const modell = async () => JSON.stringify({ text: zusammenfassung, art: 'profil', user_id: ER, gemeinsam: true })
+
+  it('speichert kurz und privat fuer den angemeldeten nutzer und bestaetigt den echten text', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ modell })
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir bitte: Ich esse gerne Reis und lese gerne vor dem Schlafen.' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    const gespeichert = tabellen.eni_erinnerungen![0]!
+    expect(gespeichert).toMatchObject({ id: tabellen.eni_nachrichten![0]!.id, user_id: ICH, text: zusammenfassung, art: 'profil', gemeinsam: false, bis: null, erledigt: false })
+    expect((await res.json()).eni.text).toContain(`Gemerkt: ${zusammenfassung}`)
+    expect(gesehen).toHaveLength(1)
+    expect(gesehen[0]!.system).toContain('Fasse den ausdruecklichen Erinnerungsauftrag')
+  })
+
+  it('nimmt bei merk dir das nur zuvor selbst genannte angaben mit', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ modell })
+    tabellen.eni_nachrichten = [
+      { id: 'm1', chat_id: 'c1', rolle: 'mensch', text: 'Ich lese gerne abends.', erstellt: '2026-09-10T15:00:00Z' },
+      { id: 'e1', chat_id: 'c1', rolle: 'eni', text: 'Du magst wohl Horrorromane.', erstellt: '2026-09-10T15:01:00Z' },
+    ]
+    await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir das.' }), abhaengigkeiten)
+    expect(gesehen[0]!.nachrichten.map((n) => n.text)).toEqual(['Ich lese gerne abends.', 'Merk dir das.'])
+  })
+
+  it('fragt nach, wenn die zusammenfassung keinen eindeutigen inhalt findet', async () => {
+    const { abhaengigkeiten, tabellen } = deps({ modell: async () => '{"text":null}' })
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir das.' }), abhaengigkeiten)
+    expect((await res.json()).eni.text).toContain('Was genau')
+    expect(tabellen.eni_erinnerungen ?? []).toHaveLength(0)
+  })
+
+  it('bestaetigt bei fehlenden schreibrechten niemals eine gespeicherte erinnerung', async () => {
+    const { abhaengigkeiten, tabellen } = deps({ modell, wissenGesperrt: true })
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir: Ich mag Reis.' }), abhaengigkeiten)
+    expect(res.status).toBe(502)
+    expect((await res.json()).code).toBe('erinnerung_nicht_gespeichert')
+    expect(tabellen.eni_erinnerungen ?? []).toHaveLength(0)
+    expect(tabellen.eni_nachrichten).toHaveLength(1)
+  })
+
+  it('verwendet nach einem abgebrochenen antwortspeichern dieselbe erinnerung', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ modell })
+    await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir: Ich mag Reis.' }), abhaengigkeiten)
+    tabellen.eni_nachrichten!.pop()
+    const res = await behandleEni(anfrage({ chatId: 'c1', wiederholen: true }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(tabellen.eni_erinnerungen).toHaveLength(1)
+    expect(gesehen).toHaveLength(1)
+  })
+
+  it('kennt die erinnerung in einem neuen chat trotz rezept-routing, ohne private partnerdaten', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ modell, routing: { brauchtLage: false, brauchtWissen: false, darfSuchen: true, erkannterIntent: 'websuche_erforderlich' } })
+    await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir: Ich mag Reis.' }), abhaengigkeiten)
+    tabellen.eni_erinnerungen!.push({ ...tabellen.eni_erinnerungen![0], id: 'fremd', user_id: ER, text: 'Korays private Vorliebe' })
+    await behandleEni(anfrage({ chatId: 'c2', text: 'Was kann ich heute essen?' }), abhaengigkeiten)
+    expect(gesehen[1]!.system).toContain(zusammenfassung)
+    expect(gesehen[1]!.system).not.toContain('Korays private Vorliebe')
+    expect(gesehen[1]!.system).toContain('Behaupte niemals, etwas gerade dauerhaft gespeichert')
+  })
+
+  it('schickt im stream erst nach dem speichern eine bestaetigung statt rohem JSON', async () => {
+    const { abhaengigkeiten, tabellen } = deps({ modell })
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir: Ich mag Reis.', stream: true }), abhaengigkeiten)
+    const strom = await res.text()
+    expect(tabellen.eni_erinnerungen).toHaveLength(1)
+    expect(strom).toContain('Gemerkt:')
+    expect(strom).not.toContain('"art":"profil"')
   })
 })

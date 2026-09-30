@@ -25,12 +25,12 @@ type Props = {
   onTextChange?: (text: string) => void
   onAbbrechen?: () => void
   /**
-   * Die wahl des modells, unten statt oben. Sie steht in dem feld, das sonst
-   * das diktat und das „wird verarbeitet" trägt: dieses feld sagt, was gerade
-   * läuft — und wenn nichts läuft, sagt es, wer spricht. Als slot übergeben,
-   * damit die eingabe nichts über anbieter und modelle wissen muss.
+   * Modellwahl und Optionen stehen direkt ueber dem Eingabefeld. Dadurch
+   * bleibt in der Werkzeugleiste Platz fuer weitere Aktionen. Als Slots
+   * uebergeben, damit die Eingabe nichts ueber Anbieter wissen muss.
    */
   modellwahl?: React.ReactNode
+  optionen?: React.ReactNode
 }
 
 export function EniEingabe({
@@ -44,6 +44,7 @@ export function EniEingabe({
   onTextChange,
   onAbbrechen,
   modellwahl,
+  optionen,
 }: Props) {
   const [text, setText] = useState('')
   const [absendeNr, setAbsendeNr] = useState(0)
@@ -109,13 +110,19 @@ export function EniEingabe({
 
   return (
     <form
-      className="border-t border-linie pt-2.5"
+      className="eni-eingabe border-t border-linie pt-2.5"
       onSubmit={(event) => {
         event.preventDefault()
         legeVor()
       }}
     >
-      <div className="rounded-[2px] border border-linie bg-flaeche transition-colors focus-within:border-kreide has-[textarea:focus-visible]:[outline:2px_solid_var(--fokus)] has-[textarea:focus-visible]:[outline-offset:3px]">
+      {(modellwahl || optionen) && (
+        <div className="eni-eingabe-optionen">
+          <div className="min-w-0">{modellwahl}</div>
+          {optionen}
+        </div>
+      )}
+      <div className="eni-eingabe-feld rounded-[2px] border border-linie bg-flaeche transition-colors focus-within:border-kreide has-[textarea:focus-visible]:[outline:2px_solid_var(--fokus)] has-[textarea:focus-visible]:[outline-offset:3px]">
         <EniAnhangStreifen
           anhaenge={anhaenge}
           gesperrt={gesperrt}
@@ -150,10 +157,10 @@ export function EniEingabe({
           enterKeyHint="send"
           data-ring="rahmen"
           autoComplete="off"
-          className="block min-h-11 w-full resize-none border-0 bg-transparent px-3 pt-3 text-[16px] leading-6 text-kreide placeholder:text-kreide-52 focus:outline-none transition-[height] duration-150 ease-out"
+          className="eni-eingabe-text block min-h-11 w-full resize-none border-0 bg-transparent px-3 pt-3 text-[16px] leading-6 text-kreide placeholder:text-kreide-52 focus:outline-none transition-[height] duration-150 ease-out"
         />
 
-        <div className="flex items-center gap-1 px-1.5 pb-1">
+        <div className="eni-eingabe-werkzeuge flex items-center gap-1 px-1.5 pb-1">
           {anhaengenMoeglich && (
             <>
               <input
@@ -177,7 +184,7 @@ export function EniEingabe({
                     ? `mehr als ${MAX_ANHAENGE} anhänge gehen nicht`
                     : 'bild, PDF oder datei anhängen'
                 }
-                className="flex size-11 shrink-0 items-center justify-center rounded-[2px] text-kreide-60 transition-colors hover:text-kreide disabled:opacity-40"
+                className="eni-eingabe-symbol flex size-11 shrink-0 items-center justify-center rounded-[2px] text-kreide-60 transition-colors hover:text-kreide disabled:opacity-40"
               >
                 <IconPaperclip size={18} />
               </button>
@@ -191,7 +198,7 @@ export function EniEingabe({
               disabled={gesperrt}
               aria-pressed={diktat.laeuft}
               aria-label={diktat.laeuft ? 'diktat beenden' : 'diktieren'}
-              className="relative flex size-11 shrink-0 items-center justify-center rounded-[2px] transition-colors disabled:opacity-40"
+              className="eni-eingabe-symbol relative flex size-11 shrink-0 items-center justify-center rounded-[2px] transition-colors disabled:opacity-40"
               style={{ color: diktat.laeuft ? 'var(--erijon)' : 'var(--kreide-60)' }}
             >
               {diktat.laeuft && (
@@ -224,7 +231,7 @@ export function EniEingabe({
                 </button>
               </div>
             ) : (
-              modellwahl ?? null
+              null
             )}
           </div>
 
@@ -234,7 +241,7 @@ export function EniEingabe({
             transition={STEMPEL}
             disabled={!etwasDabei || gesperrt}
             aria-label="vorlegen"
-            className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 disabled:shadow-none bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
+            className="eni-eingabe-senden flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 disabled:shadow-none bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
           >
             <IconArrowUp size={18} />
           </motion.button>
