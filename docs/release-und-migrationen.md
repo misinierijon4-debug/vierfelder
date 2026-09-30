@@ -348,6 +348,15 @@ die Art `aufgabe` nicht und überspringt sie still), dann Pages. Der Worker wird
 wie `eni` aus dem Commit deployt (eine Zeile, `verify_jwt: false`, Autorisierung
 weiter über `x-erinnerungs-secret`).
 
+**Eingespielt am 30.09.2026** in dieser Reihenfolge, alles aus Commit `f316016`:
+Migration `eni_meldungen` (Produktion `20260930204015`; Rumpf danach per MD5
+gleich der Datei, Prüfung um `aufgabe` erweitert, `authenticated` darf die
+Funktion weiter nicht ausführen; Sonntag 18:15 simuliert: je Person eine
+`wochenblick`-Zeile mit dem neuen Text), dann Worker `aktivitaets-erinnerung`
+Version 11 (vorher lokal in Deno: ohne Secret → 401; erster Cron-Lauf danach:
+200, `{gesendet: 0, uebersprungen: 0, fehler: 0}`), dann `eni` Version 47
+(`{pruefen: true}` → 200 in Produktion), dann Pages (Lauf #152 grün).
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
