@@ -2095,7 +2095,7 @@ versehentlich über den echten stand speichert, gibt es nicht.
 prüfskript `scripts/check-eni-einstellungen-rls.mjs`), im prototyp im browser.
 Vorlagen und der block im systemtext stehen einmal in
 `supabase/functions/_shared/eniEinstellungen.ts`. Der block gilt in **jeder**
-antwort, nicht nur, wenn das routing persönliches wissen verlangt, steht vor der
+antwort, steht vor der
 moduswahl und hält ENIs grenzen ausdrücklich fest: ehrlich bleiben, keine
 erfundenen zahlen, bei krisen zugewandt. Eigene texte stehen als zitat im
 prompt. Ist die tabelle nicht lesbar, antwortet ENI wie immer.

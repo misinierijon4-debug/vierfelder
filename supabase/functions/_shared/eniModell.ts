@@ -31,8 +31,7 @@ import {
   istWochenMontag,
   type WochenDatenbank,
 } from './eniWochenlage.ts'
-import { ermittleRouting } from './eniRouting.ts'
-import { planeWebsuche } from './eniSuchplan.ts'
+import { planeWebsuche, type Suchplan } from './eniSuchplan.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { willMerken, MERKEN_ANWEISUNG, liesMerkEntwurf } from './eniMerken.ts'
 import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
@@ -260,14 +259,13 @@ export type EniAbhaengigkeiten = {
    * Optional, damit die Tests ihn weglassen koennen.
    */
   dienstDatenbank?(): EniDatenbank | null
-  /**
-   * Sortiert die Nachricht vor, damit nur geladen wird, was sie braucht.
-   * Injiziert wie `webSuche`: die Tests sollen kein Netz brauchen.
-   */
-  routing?: typeof ermittleRouting
   /** ruft das modell. injiziert, damit die tests kein netz brauchen */
   modell(anfrage: ModellAnfrage, anbieter: Gegenstelle, schluessel: string): Promise<string>
-  protokoll: Pick<Console, 'error'>
+  /**
+   * `info` nimmt die Zeitmessung je Antwort auf (nur Dauern, nie Inhalte).
+   * Optional, damit die Tests es weglassen koennen.
+   */
+  protokoll: Pick<Console, 'error'> & Partial<Pick<Console, 'info'>>
   /** nur für tests. sonst die echte uhr */
   jetzt?(): Date
 }
@@ -691,6 +689,8 @@ export async function behandleEni(
 ): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (request.method !== 'POST') return antwort(405, { error: 'nur POST' })
+  /** fuer die zeitmessung je antwort, siehe `zeiten` */
+  const beginn = Date.now()
 
   const url = deps.umgebung('SUPABASE_URL')
   const oeffentlicherKey = publizierbarerSupabaseKey(deps.umgebung)
@@ -831,9 +831,52 @@ export async function behandleEni(
 
   if (!userId) return antwort(401, { error: 'anmeldung ist ungültig oder abgelaufen' })
 
-  // beide profile auf einmal: eins beantwortet die mitgliedschaft, beide
-  // zusammen uebersetzen die uuids in der lage in namen.
-  const profile = await db.from('profile').select('id,person')
+  /**
+   * Alles, was vor der Antwort gelesen werden muss, auf einmal statt
+   * nacheinander: Mitgliedschaft, Tagesgrenze, Verlauf, alte Anhaenge und alte
+   * Quellen. Fuenf Rundwege hintereinander kosteten spuerbar Zeit, bevor ENI
+   * ueberhaupt anfing. Jede Abfrage laeuft unter RLS mit dem Token des
+   * Aufrufers; was davon fuer einen Fremden zurueckkommt, ist leer und wird
+   * verworfen, sobald die Mitgliedschaft unten scheitert. Ausgewertet wird in
+   * derselben Reihenfolge wie vorher, also mit denselben Fehlern.
+   *
+   * Beide Profile auf einmal: eins beantwortet die Mitgliedschaft, beide
+   * zusammen uebersetzen die uuids in der Lage in Namen.
+   */
+  const tagesbeginnIso = berlinerTagesbeginnIso(deps.jetzt?.() ?? new Date())
+  const [profile, chatDaten] = await Promise.all([
+    db.from('profile').select('id,person'),
+    // Der Wochenpfad liest nichts davon, er bekommt die Abfragen nicht.
+    wochenbericht
+      ? null
+      : Promise.all([
+          db
+            .from('eni_nachrichten')
+            .select('id', { count: 'exact', head: true })
+            .eq('rolle', 'mensch')
+            .gte('erstellt', tagesbeginnIso),
+          // Der Verlauf kommt aus der Datenbank, nicht aus der Anfrage. Der
+          // Client kann ENI damit keine erfundene Vorgeschichte unterschieben.
+          db
+            .from('eni_nachrichten')
+            .select('id,rolle,text,erstellt')
+            .eq('chat_id', chatId)
+            .order('erstellt', { ascending: false })
+            .limit(KONTEXT_NACHRICHTEN),
+          db
+            .from('eni_anhaenge')
+            .select('id,nachricht_id,art,name,pfad,inhalt,groesse')
+            .eq('chat_id', chatId)
+            .order('erstellt', { ascending: false })
+            .limit(MAX_ANHAENGE * KONTEXT_NACHRICHTEN),
+          db
+            .from('eni_quellen')
+            .select('nachricht_id,nr,url,titel,auszug,erstellt')
+            .eq('chat_id', chatId)
+            .order('erstellt', { ascending: false })
+            .limit(MAX_WEB_QUELLEN * MAX_RUECKBLICK_SUCHLAEUFE),
+        ]),
+  ])
   if (profile.error) return antwort(500, { error: 'mitgliedschaft konnte nicht geprüft werden' })
   const personen = new Map<string, Person>()
   for (const zeile of profile.data ?? []) {
@@ -867,12 +910,7 @@ export async function behandleEni(
   // erzeugen, die niemand bemerkt. Die Grenze zaehlt nur die eigenen Vorlagen;
   // RLS sorgt dafuer, dass sie das ohnehin nur fuer sich selbst kann.
   const grenze = Number(deps.umgebung('ENI_TAGESLIMIT') ?? STANDARD_TAGESLIMIT)
-  const tagesbeginnIso = berlinerTagesbeginnIso(deps.jetzt?.() ?? new Date())
-  const heute = await db
-    .from('eni_nachrichten')
-    .select('id', { count: 'exact', head: true })
-    .eq('rolle', 'mensch')
-    .gte('erstellt', tagesbeginnIso)
+  const [heute, verlauf, frueher, frueherGesucht] = chatDaten!
   if (heute.error) return antwort(500, { error: 'tagesgrenze konnte nicht geprüft werden' })
   if (Number.isFinite(grenze) && (heute.count ?? 0) >= grenze) {
     return antwort(429, {
@@ -889,14 +927,6 @@ export async function behandleEni(
   if ('fehler' in geprueft) return antwort(400, { error: geprueft.fehler })
   const anhaenge = geprueft.anhaenge
 
-  // Der Verlauf kommt aus der Datenbank, nicht aus der Anfrage. Der Client
-  // kann ENI damit keine erfundene Vorgeschichte unterschieben.
-  const verlauf = await db
-    .from('eni_nachrichten')
-    .select('id,rolle,text,erstellt')
-    .eq('chat_id', chatId)
-    .order('erstellt', { ascending: false })
-    .limit(KONTEXT_NACHRICHTEN)
   if (verlauf.error) return antwort(500, { error: 'der chat konnte nicht gelesen werden' })
 
   const vorherige = ((verlauf.data ?? []) as unknown as EniZeile[]).slice().reverse()
@@ -904,12 +934,6 @@ export async function behandleEni(
   // Die Anhaenge des Verlaufs. Ein Fehler ist hier keiner, der die Antwort
   // verhindert: dann sieht ENI ein altes Bild nicht mehr, und das ist besser
   // als gar keine Antwort.
-  const frueher = await db
-    .from('eni_anhaenge')
-    .select('id,nachricht_id,art,name,pfad,inhalt,groesse')
-    .eq('chat_id', chatId)
-    .order('erstellt', { ascending: false })
-    .limit(MAX_ANHAENGE * KONTEXT_NACHRICHTEN)
   if (frueher.error) deps.protokoll.error('eni: alte anhänge nicht lesbar', frueher.error)
 
   /**
@@ -918,12 +942,6 @@ export async function behandleEni(
    * seine alten Quellen, und das ist besser als gar keine Antwort. Solange die
    * Tabelle noch nicht steht, ist genau das der Zustand.
    */
-  const frueherGesucht = await db
-    .from('eni_quellen')
-    .select('nachricht_id,nr,url,titel,auszug,erstellt')
-    .eq('chat_id', chatId)
-    .order('erstellt', { ascending: false })
-    .limit(MAX_WEB_QUELLEN * MAX_RUECKBLICK_SUCHLAEUFE)
   if (frueherGesucht.error) deps.protokoll.error('eni: alte quellen nicht lesbar', frueherGesucht.error)
 
   /** je ENI-Antwort die Quellen, die zu ihr gehoeren */
@@ -1067,7 +1085,10 @@ export async function behandleEni(
   }
 
   const adressen = new Map<string, string>()
-  if (bildpfade.length > 0 && db.storage) {
+  // Signiert wird nebenher, zusammen mit dem uebrigen Kontext (siehe
+  // `kontextBereit`). Gelesen wird die Map erst, wenn der steht.
+  const adressenBereit = (async () => {
+    if (bildpfade.length === 0 || !db.storage) return
     try {
       const signiert = await db.storage
         .from(ANHANG_BUCKET)
@@ -1082,7 +1103,7 @@ export async function behandleEni(
       // selbst, dass er nichts sieht.
       deps.protokoll.error('eni: bilder nicht signierbar', ursache)
     }
-  }
+  })()
 
   /**
    * Den Text der Dateianhaenge einfalten, neueste Nachricht zuerst. Die
@@ -1139,66 +1160,62 @@ export async function behandleEni(
   }
 
   /**
-   * Was diese eine Nachricht ueberhaupt braucht, siehe `eniRouting.ts`.
+   * Was ENI fuer die Antwort weiss: die Bilder, die Lage, das Gedaechtnis und
+   * die Einstellungen. Das laeuft los, bevor der Strom beginnt, alles
+   * gleichzeitig und parallel zur Suchentscheidung.
    *
-   * Trackerzahlen bleiben bedarfsabhaengig. Persoenliche Vorlieben werden
-   * unabhaengig davon geladen. Ein Merkauftrag braucht keinen Sortierdienst.
+   * Frueher sortierte classifier.dev die Nachricht vorher, damit nur geladen
+   * wurde, was sie braucht. Das kostete vor jeder Antwort zwei bis drei
+   * Sekunden und kam laut Protokoll nie mit einem brauchbaren Urteil zurueck
+   * („kein label ueber der schwelle“) — geladen wurde also ohnehin immer
+   * alles. Jetzt ohne den Umweg: dieselben Daten, nur sofort.
+   *
+   * Keine Quelle darf die Antwort verhindern; jede faellt auf einen ehrlichen
+   * Satz zurueck. Deshalb wirft dieses Versprechen nie. Ein Merkauftrag
+   * braucht nichts davon.
    */
   const merken = willMerken(vorlageText)
-  const routing = merken
-    ? { brauchtLage: false, brauchtWissen: false, darfSuchen: false }
-    : await (deps.routing ?? ermittleRouting)(vorlageText)
-
-  // die zahlen kommen aus der datenbank, nie aus der anfrage. faellt ein
-  // abschnitt aus, steht das drin, statt dass ENI ihn sich ausdenkt.
-  let lage: string
-  if (!routing.brauchtLage) {
-    // Nicht geladen ist nicht dasselbe wie null: waere hier gar nichts, wuerde
-    // eine falsch einsortierte Zahlenfrage frei erfunden beantwortet. Also
-    // steht da, dass die Zahlen fehlen, und wie ENI damit umzugehen hat.
-    lage =
-      'LAGE. Fuer diese Nachricht wurden keine Trackerzahlen geladen, weil sie nach keinen gefragt hat. Nenne keine Zahlen zu Schlaf, Training, Gewicht oder Duellstand und erfinde keine. Wird doch danach gefragt, sage, dass du sie gerade nicht vorliegen hast, und lass danach fragen.'
-  } else {
-    try {
-      lage = await baueLage(db, personen, deps.jetzt?.() ?? new Date())
-    } catch (ursache) {
-      deps.protokoll.error('eni: lage nicht lesbar', ursache)
-      lage = 'LAGE. die zahlen sind gerade nicht lesbar. nenne keine, frage nach.'
-    }
-  }
-
-  /**
-   * Leer heisst hier wirklich leer: `eniSystemPrompt` wirft leere Bloecke
-   * heraus, es steht also kein Platzhalter im Prompt. Anders als bei der Lage
-   * ist das unbedenklich — ohne Erinnerungsblock behauptet ENI ohnehin keine.
-   */
-  let wissen = ''
-  // Vorlieben gelten auch bei Rezepten oder Abendplaenen, selbst wenn das
-  // Routing keine ausdrueckliche Frage nach dem Gedaechtnis erkannt hat.
-  if (!merken) {
-    try {
-      const gelesen = await db.from('eni_erinnerungen').select('*').order('geaendert', { ascending: false }).limit(200)
-      if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
-      wissen = wissenText(waehleWissen((gelesen.data ?? []) as unknown as Erinnerung[], userId, vorlageText, lokaleMinute(deps.jetzt?.() ?? new Date()).tag), userId)
-    } catch {
-      wissen = 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
-    }
-  }
-
-  /**
-   * Wie die Person angesprochen werden will: Ton, Laenge, eigene Anweisungen,
-   * Rollen. Das gilt in jeder Antwort und haengt nicht am Routing.
-   * Fehlt die Tabelle oder ist sie nicht lesbar,
-   * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
-   */
-  let einstellungen = ''
-  try {
-    const gelesen = await db.from('eni_einstellungen').select('*').eq('user_id', userId).maybeSingle()
-    if (gelesen.error) throw gelesen.error
-    einstellungen = einstellungenText(bereinigeEinstellungen(gelesen.data), person)
-  } catch (ursache) {
-    deps.protokoll.error('eni: einstellungen nicht lesbar, es gilt der standard', ursache)
-  }
+  const jetztMinute = lokaleMinute(deps.jetzt?.() ?? new Date())
+  const kontextBereit = merken
+    ? Promise.resolve({ lage: '', wissen: '', einstellungen: '' })
+    : Promise.all([
+        adressenBereit,
+        // die zahlen kommen aus der datenbank, nie aus der anfrage. faellt ein
+        // abschnitt aus, steht das drin, statt dass ENI ihn sich ausdenkt.
+        baueLage(db, personen, deps.jetzt?.() ?? new Date()).catch((ursache) => {
+          deps.protokoll.error('eni: lage nicht lesbar', ursache)
+          return 'LAGE. die zahlen sind gerade nicht lesbar. nenne keine, frage nach.'
+        }),
+        /*
+         * Vorlieben gelten auch bei Rezepten oder Abendplaenen. Leer heisst
+         * hier wirklich leer: `eniSystemPrompt` wirft leere Bloecke heraus.
+         */
+        (async () => {
+          try {
+            const gelesen = await db.from('eni_erinnerungen').select('*').order('geaendert', { ascending: false }).limit(200)
+            if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
+            return wissenText(waehleWissen((gelesen.data ?? []) as unknown as Erinnerung[], userId, vorlageText, jetztMinute.tag), userId)
+          } catch {
+            return 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
+          }
+        })(),
+        /*
+         * Wie die Person angesprochen werden will: Ton, Laenge, eigene
+         * Anweisungen, Rollen. Fehlt die Tabelle oder ist sie nicht lesbar,
+         * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
+         */
+        (async () => {
+          try {
+            const gelesen = await db.from('eni_einstellungen').select('*').eq('user_id', userId).maybeSingle()
+            if (gelesen.error) throw gelesen.error
+            return einstellungenText(bereinigeEinstellungen(gelesen.data), person)
+          } catch (ursache) {
+            deps.protokoll.error('eni: einstellungen nicht lesbar, es gilt der standard', ursache)
+            return ''
+          }
+        })(),
+      ]).then(([, lage, wissen, einstellungen]) => ({ lage, wissen, einstellungen }))
+  type Kontext = Awaited<typeof kontextBereit>
 
   /**
    * Die frueheren Suchlaeufe dieses Chats, aeltester zuerst — in derselben
@@ -1217,8 +1234,77 @@ export async function behandleEni(
    */
   const bekannteQuellen: WebQuelle[] = frueherImChat.flatMap((lauf) => lauf.quellen)
 
+  /**
+   * Die eigentliche Antwort. Eine Stelle, weil sie zweimal gerufen werden
+   * kann: vorab, waehrend die Suchentscheidung noch laeuft, und — falls doch
+   * gesucht wird — noch einmal mit den Quellen.
+   */
+  const rufeAntwort = (
+    k: Kontext,
+    web: WebQuelle[],
+    webHinweis: string,
+    onText: ((text: string) => void) | undefined,
+    signal: AbortSignal | undefined,
+  ) =>
+    deps.modell(
+      {
+        onText,
+        signal,
+        system: eniSystemPrompt({
+          person,
+          lage: k.lage,
+          web: web.length > 0 || frueherImChat.length > 0,
+          zusatz: [
+            k.einstellungen,
+            k.wissen,
+            'DAUERHAFTES GEDAECHTNIS. Behaupte niemals, etwas gerade dauerhaft gespeichert, geaendert oder geloescht zu haben. Der Server bestaetigt echte Speichervorgaenge selbst. Bei einer Bitte ohne ausdruecklichen Merkauftrag erklaere kurz: Schreibe „Merk dir: …“. Aktuelle Nutzerangaben gehen gespeicherten Angaben vor.',
+            web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',
+            webHinweis,
+          ],
+        }),
+        nachrichten: [
+          ...kontext.map(baueNachricht),
+          baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
+        ],
+      },
+      anbieter,
+      modellSchluessel
+    )
+
+  /**
+   * Die Antwort vorab beginnen. Kein Wort erreicht den Menschen, bevor
+   * `freigeben` gerufen ist; `verwerfen` bricht nur diesen einen Lauf ab, ein
+   * Abbruch von aussen (der Mensch bricht ab) erreicht ihn ohnehin.
+   */
+  const beginneVorab = (
+    k: Kontext,
+    onText: ((text: string) => void) | undefined,
+    signal: AbortSignal | undefined,
+  ) => {
+    const abbruch = new AbortController()
+    const puffer: string[] = []
+    let frei = false
+    const antwort = rufeAntwort(
+      k,
+      [],
+      '',
+      onText ? (teil) => { if (frei) onText(teil); else puffer.push(teil) } : undefined,
+      signal ? AbortSignal.any([signal, abbruch.signal]) : abbruch.signal,
+    )
+    // Ein verworfener Lauf endet mit einem Abbruch, den niemand mehr abholt.
+    antwort.catch(() => {})
+    return {
+      antwort,
+      freigeben: () => {
+        frei = true
+        for (const teil of puffer.splice(0)) onText?.(teil)
+      },
+      verwerfen: () => abbruch.abort(),
+    }
+  }
+
   const abschliessen = async (
-    onText?: (text: string) => void,
+    onTextRoh?: (text: string) => void,
     melde?: (lage: Lage) => void,
     signal?: AbortSignal
   ): Promise<Response> => {
@@ -1226,6 +1312,26 @@ export async function behandleEni(
   /** was diese Antwort selbst gefunden hat. steht hier, weil es nach dem Urteil noch gespeichert wird. */
   let web: WebQuelle[] = []
   let webHinweis = ''
+  /**
+   * Die Zeitmessung dieser Antwort, in Millisekunden seit Eingang der Anfrage.
+   * Nur Dauern und der Anbieter, nie ein Wort aus dem Gespraech. Damit laesst
+   * sich im Protokoll nachsehen, wo die Wartezeit liegt, statt zu raten.
+   */
+  const zeiten: Record<string, number | string | boolean | null> = {
+    anbieter: anbieter.id,
+    strom: Date.now() - beginn,
+    kontext: null,
+    plan: null,
+    vorab: false,
+    suche: null,
+    erstesWort: null,
+  }
+  const onText = onTextRoh
+    ? (teil: string) => {
+        zeiten.erstesWort ??= Date.now() - beginn
+        onTextRoh(teil)
+      }
+    : undefined
   try {
     if (merken) {
       melde?.({ schritt: 'denkt' })
@@ -1264,66 +1370,77 @@ export async function behandleEni(
       onText?.(urteil)
     } else {
     melde?.({ schritt: 'denkt' })
-    // Automatisch, unabhaengig vom alten Sachfragen-Routing. Ein explizites
-    // false bleibt fuer aeltere API-Aufrufer ein Verbot; ohne Feld gilt auto.
-    const plan = anfrage.internet === false
-      ? { frage: null, hinweis: '' }
-      : await planeWebsuche({
+    /**
+     * Suchentscheidung, Kontext und Antwort ueberlappen sich.
+     *
+     * Die Entscheidung, ob gesucht wird, braucht oft einen eigenen kurzen
+     * Modellaufruf. Frueher wartete die Antwort darauf. Jetzt beginnt sie
+     * vorab, sobald der Kontext steht, und schreibt in einen Puffer: Sagt die
+     * Entscheidung „keine Suche“ — der Normalfall —, geht der Puffer raus und
+     * die Antwort laeuft einfach weiter. Soll doch gesucht werden, wird der
+     * Vorab-Lauf verworfen, bevor ein Wort davon beim Menschen war, und die
+     * Antwort beginnt neu mit den Quellen. Was dabei verloren geht, sind die
+     * Token der ersten Sekunden, nicht die Zeit des Menschen.
+     *
+     * Automatisch; ein explizites `internet: false` bleibt fuer aeltere
+     * API-Aufrufer ein Verbot.
+     */
+    const planBereit: Promise<Suchplan> = anfrage.internet === false
+      ? Promise.resolve({ frage: null, hinweis: '' })
+      : planeWebsuche({
           text: vorlageText,
           verlauf: kontext.map((z) => ({ rolle: z.rolle === 'mensch' ? 'user' as const : 'assistant' as const, text: z.text })),
           bereit: webBereit(deps.umgebung),
           signal,
           entscheide: (system, nachrichten, abbruch) => deps.modell(
-            { system: `${system}\nHeute: ${lokaleMinute(deps.jetzt?.() ?? new Date()).tag}.`, nachrichten, signal: abbruch },
+            { system: `${system}\nHeute: ${jetztMinute.tag}.`, nachrichten, signal: abbruch },
             { ...mitVordenken(zeile, false), maxTokens: 300 }, modellSchluessel),
         })
+    let planSteht = false
+    planBereit.then(
+      () => { planSteht = true; zeiten.plan = Date.now() - beginn },
+      () => { planSteht = true },
+    )
+    const k = await kontextBereit
+    zeiten.kontext = Date.now() - beginn
+    // Ein Takt Luft: eine Entscheidung, die ohne Modell faellt (Gruss,
+    // eindeutige Aktualitaet, keine Suche eingerichtet), steht dann schon, und
+    // es gibt nichts vorab zu beginnen.
+    await new Promise((weiter) => setTimeout(weiter, 0))
+    const vorab = planSteht ? null : beginneVorab(k, onText, signal)
+    zeiten.vorab = vorab !== null
+
+    const plan = await planBereit
     const auftrag = plan.frage
     webHinweis = plan.hinweis
-    if (auftrag) {
-      melde?.({ schritt: 'sucht' })
-      try {
-        web = await (deps.webSuche ?? sucheWeb)(auftrag, deps.umgebung, signal)
-        // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
-        // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
-        melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
-      } catch (webFehler) {
-        if (webFehler instanceof EniWebFehler) {
-          deps.protokoll.error('eni: websuche nicht erreichbar, fahre ohne internet fort', webFehler)
-          webHinweis =
-            'Die Websuche war vorübergehend nicht erreichbar. Sage das kurz. Behaupte keine Recherche oder verifizierten aktuellen Fakten, Preise oder Oeffnungszeiten. Erfinde keine Quellen. Stabiles allgemeines Wissen darfst du als solches erklaeren.'
-        } else {
-          throw webFehler
+    if (vorab && !auftrag && !webHinweis) {
+      vorab.freigeben()
+      urteil = (await vorab.antwort).trim()
+    } else {
+      vorab?.verwerfen()
+      if (auftrag) {
+        melde?.({ schritt: 'sucht' })
+        const suchbeginn = Date.now()
+        try {
+          web = await (deps.webSuche ?? sucheWeb)(auftrag, deps.umgebung, signal)
+          // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
+          // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
+          melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
+        } catch (webFehler) {
+          if (webFehler instanceof EniWebFehler) {
+            deps.protokoll.error('eni: websuche nicht erreichbar, fahre ohne internet fort', webFehler)
+            webHinweis =
+              'Die Websuche war vorübergehend nicht erreichbar. Sage das kurz. Behaupte keine Recherche oder verifizierten aktuellen Fakten, Preise oder Oeffnungszeiten. Erfinde keine Quellen. Stabiles allgemeines Wissen darfst du als solches erklaeren.'
+          } else {
+            throw webFehler
+          }
+        } finally {
+          zeiten.suche = Date.now() - suchbeginn
         }
+        melde?.({ schritt: 'denkt' })
       }
+      urteil = (await rufeAntwort(k, web, webHinweis, onText, signal)).trim()
     }
-    if (auftrag) melde?.({ schritt: 'denkt' })
-
-    urteil = (
-      await deps.modell(
-        {
-          onText,
-          signal,
-          system: eniSystemPrompt({
-            person,
-            lage,
-            web: web.length > 0 || frueherImChat.length > 0,
-            zusatz: [
-              einstellungen,
-              wissen,
-              'DAUERHAFTES GEDAECHTNIS. Behaupte niemals, etwas gerade dauerhaft gespeichert, geaendert oder geloescht zu haben. Der Server bestaetigt echte Speichervorgaenge selbst. Bei einer Bitte ohne ausdruecklichen Merkauftrag erklaere kurz: Schreibe „Merk dir: …“. Aktuelle Nutzerangaben gehen gespeicherten Angaben vor.',
-              web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',
-              webHinweis,
-            ],
-          }),
-          nachrichten: [
-            ...kontext.map(baueNachricht),
-            baueNachricht({ id: meineId, rolle: 'mensch', text: vorlageText }),
-          ],
-        },
-        anbieter,
-        modellSchluessel
-      )
-    ).trim()
     if (urteil) {
       // Auch ohne Suche: der Verlauf stellt Markdown-Links anklickbar dar, und
       // anklickbar soll nur sein, was in diesem Chat wirklich gefunden wurde.
@@ -1362,6 +1479,9 @@ export async function behandleEni(
       code: 'modell_fehler',
       mensch: menschZeile,
     })
+  } finally {
+    zeiten.gesamt = Date.now() - beginn
+    deps.protokoll.info?.(`eni: zeiten ${JSON.stringify(zeiten)}`)
   }
 
   if (!urteil) {

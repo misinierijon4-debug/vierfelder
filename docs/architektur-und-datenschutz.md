@@ -231,7 +231,12 @@ Es gibt keinen Internet-Schalter im Composer. Eindeutige öffentliche aktuelle
 Fragen werden direkt recherchiert; bei sonstigen Sachfragen und Rückfragen
 entscheidet das gewählte ENI-Modell mit höchstens sechs Textzeilen aus diesem
 Chat (je 800 Zeichen), ohne Vordenken, höchstens 300 Ausgabetoken und sechs
-Sekunden Wartezeit. Das alte Intent-Routing steuert nur den Tracker-Kontext.
+Sekunden Wartezeit. Die Entscheidung läuft parallel zur Antwort: ENI beginnt
+vorab und hält den Text zurück, bis feststeht, dass nicht gesucht wird; sonst
+wird der Vorab-Lauf verworfen, bevor ein Wort davon angezeigt wurde. Ein
+vorgeschaltetes Intent-Routing gibt es seit dem 30.09.2026 nicht mehr (es
+kostete 2–3 Sekunden und lieferte nie ein Urteil); Lage, Gedächtnis und
+Einstellungen stehen in jeder Antwort.
 
 Die Entscheidung erhält keine Datenbank-Erinnerungen, Trackerwerte,
 Dateiinhalte oder Bildadressen. An die Suchmaschine geht nur eine kurze
