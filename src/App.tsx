@@ -106,7 +106,7 @@ export function App() {
   if (route === 'eni') {
     return (
       <Suspense fallback={<EniStartzustand />}>
-        <EniTor art={backend.art} kontoId={kontoId} onZurueck={schliesseEni} initialDuellStand={duellStand} />
+        <EniTor art={backend.art} kontoId={kontoId} onZurueck={schliesseEni} initialDuellStand={duellStand} backend={backend} />
       </Suspense>
     )
   }

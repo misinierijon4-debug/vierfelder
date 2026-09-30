@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { lokalesMe } from '../../lib/lokal'
 import { lokalerEniSpeicher, supabaseEniSpeicher } from '../../lib/eniSpeicher'
 import type { DuellKontext } from '../../lib/eniSpeicher'
+import type { Backend } from '../../lib/backend'
 import { EniApp } from './EniApp'
 
 type Props = {
@@ -9,9 +10,11 @@ type Props = {
   kontoId: string | null
   onZurueck: () => void
   initialDuellStand?: DuellKontext | null
+  /** fuer vorschlaege, die ENI in die app eintragen will */
+  backend?: Backend
 }
 
-export function EniTor({ art, kontoId, onZurueck, initialDuellStand }: Props) {
+export function EniTor({ art, kontoId, onZurueck, initialDuellStand, backend }: Props) {
   const speicher = useMemo(() => {
     if (art === 'supabase' && kontoId) return supabaseEniSpeicher(kontoId)
     let me: 'erijon' | 'koray' = 'erijon'
@@ -28,6 +31,7 @@ export function EniTor({ art, kontoId, onZurueck, initialDuellStand }: Props) {
       speicher={speicher}
       onZurueck={onZurueck}
       initialDuellStand={initialDuellStand}
+      backend={backend}
     />
   )
 }

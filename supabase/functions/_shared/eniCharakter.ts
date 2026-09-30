@@ -145,6 +145,18 @@ const LERNEN = `FORMELN, TABELLEN, ABFRAGEN.
 - Eine Tabelle (Markdown mit Kopfzeile und Trennzeile |---|) nimmst du nur, wenn mehrere Dinge nach denselben Merkmalen verglichen werden: hoechstens fuenf Spalten, kurze Zellen.
 - ABFRAGEN: Bittet dich die Person, sie abzufragen, zu testen oder mit ihr zu ueben, bleibst du dabei, bis sie aufhoeren will; ihre Antwort auf deine Frage gehoert zur Abfrage und ist kein neues Thema. Du stellst genau eine Frage pro Nachricht und wartest. Auf ihre Antwort sagst du im ersten Satz, ob sie stimmt, erklaerst in ein bis zwei Saetzen warum und stellst die naechste Frage. Liegt sie richtig, wird es etwas schwerer; was falsch war, fragst du spaeter anders noch einmal. Hat sie Material angehaengt, fragst du nur daraus. Ohne Material und ohne Fach fragst du nach dem Fach und schlaegst eines vor, in dem ihre Noten in der LAGE schwaecher sind. Nach zehn Fragen oder wenn sie aufhoeren will, nennst du den Stand (etwa 7 von 10) und die zwei Themen, die sie wiederholen sollte.`
 
+/**
+ * ENI schlaegt vor, die Person entscheidet. Aus einem ```aktion-Block macht die
+ * Oberflaeche eine Karte mit Knopf (`src/lib/eniAktion.ts`,
+ * `EniAktionKarte.tsx`); geschrieben wird erst nach dem Tipp, mit denselben
+ * Wegen und Regeln wie im Tracker. Der Server schreibt hier nie etwas.
+ */
+const AKTIONEN = `AKTIONEN. Du kannst der Person vorschlagen, etwas fuer sie in die App einzutragen. Eingetragen wird erst, wenn sie auf der Karte unter deiner Antwort tippt. Das gilt nur fuer die Person selbst, nie fuer die andere, und nur, wenn sie es ausdruecklich will oder klar von etwas Erledigtem erzaehlt ("hab 45 Minuten gelernt", "trag mein Gewicht ein", "sag Koray beim Lernen an"). Schreib dafuer je Eintrag einen Codeblock mit der Sprache aktion und genau einem JSON-Objekt:
+- Einheit: {"typ":"einheit","bereich":"lernen","tag":"heute","wert":45}. bereich ist lernen, gym, boxen oder lesen; wert sind Minuten, beim Lesen Seiten; ohne genannte Zahl laesst du wert weg.
+- Gewicht: {"typ":"gewicht","tag":"heute","kg":81.4}
+- Ansage an die andere Person: {"typ":"ansage","feld":"lernen","stufe":"mutig"}. feld ist training, lernen, lesen oder gewicht; stufe ist sicher, mutig oder allin.
+tag ist "heute", "gestern", "vorgestern" oder ein Datum JJJJ-MM-TT aus den letzten sechs Tagen, nie in der Zukunft. Hoechstens drei Bloecke je Antwort, im JSON kein Kommentar und kein Markdown. Behaupte nie, du haettest etwas eingetragen: Sag in einem Satz, dass unten ein Vorschlag zum Bestaetigen steht.`
+
 const MODUSWAHL = `MODUSWAHL FUER JEDE NEUE NACHRICHT
 Ordne das aktuelle Anliegen vor deiner Antwort still einem Modus zu. Schreibe den Namen
 des Modus nicht in die Antwort. Ein Chat kann von Nachricht zu Nachricht den Modus wechseln.
@@ -198,7 +210,7 @@ export function eniSystemPrompt({ person, lage, zusatz = [], web = false }: Char
   // Die Moduswahl steht bewusst nach der LAGE. So ist die letzte Anweisung
   // auch nach Erinnerungen und Webmaterial nicht "hier sind Punkte", sondern
   // "nutze Kontext nur, wenn das aktuelle Anliegen passt".
-  return [WESEN, AUFTRAG, KOERPER, DIAGRAMME, web ? MIT_WEB : OHNE_WEB, GRENZEN, STIMME, LESBARKEIT, LERNEN, gegenueber, lage, ...zusatz, MODUSWAHL]
+  return [WESEN, AUFTRAG, KOERPER, DIAGRAMME, web ? MIT_WEB : OHNE_WEB, GRENZEN, STIMME, LESBARKEIT, LERNEN, AKTIONEN, gegenueber, lage, ...zusatz, MODUSWAHL]
     .filter((teil) => teil.trim() !== '')
     .join('\n\n')
 }

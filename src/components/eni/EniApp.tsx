@@ -29,6 +29,9 @@ import {
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
 import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
+import { fuehreAktionAus } from '../../lib/eniAktion'
+import type { EniAktion } from '../../lib/eniAktion'
+import type { Backend } from '../../lib/backend'
 import { EniEingabe } from './EniEingabe'
 import { EniWissenDialog } from './EniWissenDialog'
 import { EniEinstellungen } from './EniEinstellungen'
@@ -57,6 +60,11 @@ type Props = {
     denkt: boolean
   ) => Antwortgeber
   initialDuellStand?: DuellKontext | null
+  /**
+   * womit ein bestaetigter vorschlag von ENI geschrieben wird: dasselbe
+   * backend wie im tracker. ohne backend stehen vorschlaege ohne knopf da.
+   */
+  backend?: Pick<Backend, 'laden' | 'schreibeEinheit' | 'schreibeGewicht' | 'sageAn'>
 }
 
 const STANDARD_GEBER = (
@@ -85,11 +93,36 @@ export function EniApp({
   pruefeModell = modellBereit,
   baueGeber = STANDARD_GEBER,
   initialDuellStand = null,
+  backend,
 }: Props) {
   const viewportRef = useEniViewport()
   const reduziert = useReducedMotion() ?? false
   const [me, setMe] = useState<UserId>('erijon')
   const [duellStand, setDuellStand] = useState<DuellKontext | null>(initialDuellStand)
+
+  /**
+   * Vorschlaege ausfuehren. Ist ENI direkt geoeffnet worden (eigenes Symbol,
+   * Lesezeichen), hat der Tracker das Backend nie geladen — und erst `laden`
+   * sagt ihm, welche Tabellen es gibt und wer wer ist. Also einmal laden,
+   * bevor zum ersten Mal geschrieben wird; die Person kommt dabei aus dem
+   * Backend, nicht aus dem Chat.
+   */
+  const geladen = useRef<ReturnType<Backend['laden']> | null>(null)
+  const fuehreAus = useCallback(
+    async (aktion: EniAktion, id: string) => {
+      if (!backend) throw new Error('eintragen geht hier nicht.')
+      const laeuft = (geladen.current ??= backend.laden())
+      let anfang: Awaited<typeof laeuft>
+      try {
+        anfang = await laeuft
+      } catch {
+        geladen.current = null
+        throw new Error('die app ist gerade nicht erreichbar. versuch es gleich noch einmal.')
+      }
+      await fuehreAktionAus(aktion, id, backend, anfang.me)
+    },
+    [backend]
+  )
   const [chats, setChats] = useState<EniChat[]>([])
   const [chatsZustand, setChatsZustand] = useState<'laden' | 'bereit' | 'fehler'>('laden')
   const [aktiverChat, setAktiverChat] = useState<string | null>(null)
@@ -1042,6 +1075,7 @@ export function EniApp({
             aktionenGesperrt={prueft}
             duellStand={duellStand}
             wartetext={lage ? lageText(lage.schritt, lage.quellen.length) : undefined}
+            onAktion={backend ? fuehreAus : undefined}
           />
           {hinweis && (
             <p role="status" className="pt-4 text-[12px] leading-relaxed text-kreide-52">

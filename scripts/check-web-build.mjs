@@ -293,7 +293,12 @@ const INITIAL_GZIP_BUDGET = 243 * 1024
 // gzip gesamt, nachher 319600; initial unveraendert 242785. Die Gesamtsumme
 // erhaelt dafuer 4 KiB, die initiale Grenze bleibt; beide bleiben harte
 // Buildfehler, keine Budgetabschaltung.
-const GESAMT_GZIP_BUDGET = 313 * 1024
+// ENI schlaegt Eintraege vor (Einheit, Gewicht, Ansage), die Person bestaetigt
+// auf einer Karte: Pruefung, feste ids und Karte liegen im ENI-Lazy-Chunk, der
+// Startpfad traegt nur die Weitergabe des Backends (+7 Byte, 242792).
+// Gesamt vorher 319600, nachher 321334 Byte gzip. Dafuer 2 KiB kontrollierter
+// Spielraum; beide Grenzen bleiben harte Buildfehler.
+const GESAMT_GZIP_BUDGET = 315 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
