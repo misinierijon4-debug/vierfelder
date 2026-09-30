@@ -1960,7 +1960,7 @@ describe('ENI beginnt, waehrend die suchentscheidung noch laeuft', () => {
     const zeile = String(info.mock.calls[0]![0])
     expect(zeile.startsWith('eni: zeiten ')).toBe(true)
     const zeiten = JSON.parse(zeile.slice('eni: zeiten '.length))
-    expect(zeiten).toMatchObject({ anbieter: 'deepseek', vorab: true, suche: null })
+    expect(zeiten).toMatchObject({ anbieter: 'deepseek', denkt: false, vorab: true, suche: null })
     for (const feld of ['strom', 'kontext', 'plan', 'erstesWort', 'gesamt']) {
       expect(typeof zeiten[feld]).toBe('number')
     }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AnsageAbgelehnt } from './ansagen'
 import { aktionsId, beschreibeAktion, fuehreAktionAus, knopfText, liesTag, pruefeAktion } from './eniAktion'
 
-// donnerstag, 30.09.2026, 19 uhr in berlin
+// mittwoch, 30.09.2026, 19 uhr in berlin
 const JETZT = new Date(2026, 8, 30, 19, 0)
 
 describe('welcher tag gemeint ist', () => {

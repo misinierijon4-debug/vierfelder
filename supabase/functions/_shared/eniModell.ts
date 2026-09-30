@@ -1355,6 +1355,8 @@ export async function behandleEni(
    */
   const zeiten: Record<string, number | string | boolean | null> = {
     anbieter: anbieter.id,
+    // mit vordenken kommt das erste sichtbare wort erst nach dem denken
+    denkt: anbieter.denkt,
     strom: Date.now() - beginn,
     kontext: null,
     plan: null,

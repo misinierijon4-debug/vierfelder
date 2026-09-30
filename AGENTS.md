@@ -123,6 +123,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | Push, Erinnerungen, VAPID | `src/lib/push.ts`, `src/lib/erinnerung.ts`, `supabase/functions/_shared/versand.ts` |
 | Push-Arten, Sendefenster, Schalter | `supabase/functions/_shared/aktivitaetsVersand.ts`, `src/lib/aktivitaetsErinnerung.ts` |
 | **Neue Push-Art bauen** — Migration **und** Worker, sonst still übersprungen | `docs/wochenbericht.md` („Der Worker musste mit") |
+| **ENI meldet sich** (Sonntagsstand mit offenen Feldern und Ansagepunkten ab 18:10; fällige Aufgaben aus ENIs Gedächtnis 08:30–10:00) | Migration `*_eni_meldungen.sql` (CTEs `ansage_punkte`, `offene_felder`, `alter_wochenblick`, `faellige_aufgaben`), Fenster in `istNochImFenster` (`aktivitaetsVersand.ts`), Schalter `aufgabe_aktiv` in `src/lib/aktivitaetsErinnerung.ts`; Prüfung `src/lib/eniMeldungenMigration.test.ts` und `node scripts/check-eni-meldungen.mjs <pglite>` |
 | Kalenderraster (Tracker + Schlaf) | `src/lib/kalender.ts` |
 | Animationsdauern (alle an einer Stelle) | `src/lib/motion.ts` |
 | Tabs, oberste Verdrahtung | `src/App.tsx`, `src/components/TabLeiste.tsx` |

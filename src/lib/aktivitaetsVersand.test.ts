@@ -111,6 +111,47 @@ describe('aktivitaeten ohne doppelte oder veraltete Pushs', () => {
     await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-09-22T20:00:00Z') })
     expect(senden).not.toHaveBeenCalled()
   })
+  it('meldet faellige aufgaben nur morgens zwischen 08:30 und 10 uhr und oeffnet ENI', async () => {
+    const faellig = {
+      ...kandidat,
+      art: 'aufgabe' as const,
+      tag: '2026-10-01',
+      sendetag: '2026-10-01',
+      nachricht: 'heute fällig: Boxhandschuhe waschen',
+      url: './#/eni' as const,
+    }
+    rpc.mockImplementation(async (name: string) =>
+      ({ data: name === 'reserviere_aktivitaetsversand' ? true : [faellig], error: null }))
+
+    // Donnerstag 08:20 Berlin: noch zu früh
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-10-01T06:20:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+
+    // Donnerstag 08:40 Berlin
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-10-01T06:40:00Z') })
+    expect(senden).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Boxhandschuhe'), key, 0)
+    expect(JSON.parse(senden.mock.calls[0]![1] as string)).toMatchObject({ tag: 'aufgabe', url: './#/eni' })
+
+    // Donnerstag 10:00 Berlin: vorbei
+    senden.mockClear()
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-10-01T08:00:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+  })
+  it('schickt den sonntagsstand erst ab 18:10, wenn die ansagen entschieden sind', async () => {
+    const sonntag = {
+      ...kandidat,
+      art: 'wochenblick' as const,
+      tag: '2026-10-04',
+      sendetag: '2026-10-04',
+      nachricht: 'sonntagsstand: du 3, koray 4. dir fehlt 1 punkt. heute noch offen: lesen.',
+    }
+    rpc.mockImplementation(async (name: string) =>
+      ({ data: name === 'reserviere_aktivitaetsversand' ? true : [sonntag], error: null }))
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-10-04T16:05:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-10-04T16:15:00Z') })
+    expect(senden).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('dir fehlt 1 punkt'), key, 0)
+  })
   it('bewahrt eine unklare Providerantwort ohne Freigabe zum Wiederholen', async () => {
     senden.mockRejectedValue(new Error('timeout'))
     await versendeAktivitaeten(db, key, { senden, jetzt })
