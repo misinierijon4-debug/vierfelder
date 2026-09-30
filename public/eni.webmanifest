@@ -1,0 +1,26 @@
+{
+  "id": "eni.html",
+  "name": "ENI",
+  "short_name": "ENI",
+  "description": "ENI, direkt. ohne umweg über die anzeigetafel.",
+  "lang": "de",
+  "theme_color": "#14171c",
+  "background_color": "#14171c",
+  "display": "standalone",
+  "scope": "./",
+  "start_url": "eni.html",
+  "icons": [
+    {
+      "src": "eni-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "eni-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

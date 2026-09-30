@@ -11,6 +11,12 @@ const erforderlich = [
   'apple-touch-icon.png',
   'pwa-192x192.png',
   'pwa-512x512.png',
+  'eni.html',
+  'eni.webmanifest',
+  'eni-favicon-32x32.png',
+  'eni-apple-touch-icon.png',
+  'eni-192x192.png',
+  'eni-512x512.png',
 ]
 
 for (const datei of erforderlich) await access(new URL(datei, dist))
@@ -39,11 +45,45 @@ for (const icon of erwarteteIcons) {
   }
 }
 
+// ENIs eigener einstieg fuer das zweite homescreen-symbol. die adressen im
+// manifest sind relativ und werden gegen seinen ort aufgeloest wie im browser.
+const eniManifestUrl = new URL(`${erwartet}eni.webmanifest`, 'https://pages.invalid')
+const eniManifest = JSON.parse(await readFile(new URL('eni.webmanifest', dist), 'utf8'))
+const eniAdresse = (wert, basis = eniManifestUrl) => new URL(wert, basis).pathname
+const eniStart = new URL(eniManifest.start_url, eniManifestUrl)
+if (eniAdresse(eniManifest.scope) !== erwartet) {
+  throw new Error(`eni.webmanifest.scope zeigt nicht auf ${erwartet}`)
+}
+if (eniStart.pathname !== `${erwartet}eni.html`) {
+  throw new Error(`eni.webmanifest.start_url zeigt nicht auf ${erwartet}eni.html`)
+}
+if (eniAdresse(eniManifest.id, eniStart) === erwartet) {
+  throw new Error('eni.webmanifest hat dieselbe id wie die hauptapp')
+}
+for (const icon of [
+  { datei: 'eni-192x192.png', groesse: '192x192', purpose: 'any' },
+  { datei: 'eni-512x512.png', groesse: '512x512', purpose: 'any maskable' },
+]) {
+  const eintrag = eniManifest.icons?.find((wert) => eniAdresse(wert.src) === `${erwartet}${icon.datei}`)
+  if (
+    !eintrag ||
+    eintrag.sizes !== icon.groesse ||
+    eintrag.type !== 'image/png' ||
+    eintrag.purpose !== icon.purpose
+  ) {
+    throw new Error(`eni.webmanifest enthaelt kein gueltiges ${icon.groesse}-icon`)
+  }
+}
+
 for (const [datei, breite, hoehe] of [
   ['favicon-32x32.png', 32, 32],
   ['apple-touch-icon.png', 180, 180],
   ['pwa-192x192.png', 192, 192],
   ['pwa-512x512.png', 512, 512],
+  ['eni-favicon-32x32.png', 32, 32],
+  ['eni-apple-touch-icon.png', 180, 180],
+  ['eni-192x192.png', 192, 192],
+  ['eni-512x512.png', 512, 512],
 ]) {
   const png = await readFile(new URL(datei, dist))
   const signatur = png.subarray(0, 8).toString('hex')
@@ -63,6 +103,12 @@ for (const datei of [
   'pwa-192x192.png',
   'pwa-512x512.png',
   'manifest.webmanifest',
+  'eni.html',
+  'eni.webmanifest',
+  'eni-favicon-32x32.png',
+  'eni-apple-touch-icon.png',
+  'eni-192x192.png',
+  'eni-512x512.png',
 ]) {
   if (!worker.includes(`\"${datei}\"`)) {
     throw new Error(`${datei} fehlt im PWA-Precache`)
@@ -79,16 +125,43 @@ if (!/importScripts\(["']push-sw\.js["']\)/.test(worker)) {
 }
 
 const html = await readFile(new URL('index.html', dist), 'utf8')
-const referenzen = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
-  .map((treffer) => treffer[1])
-  .filter((pfad) => !pfad.startsWith('http') && !pfad.startsWith('data:'))
+const eniHtml = await readFile(new URL('eni.html', dist), 'utf8')
+const referenzenIn = (inhalt) =>
+  [...inhalt.matchAll(/(?:src|href)="([^"]+)"/g)]
+    .map((treffer) => treffer[1])
+    .filter((pfad) => !pfad.startsWith('http') && !pfad.startsWith('data:'))
+const referenzen = referenzenIn(html)
+const eniReferenzen = referenzenIn(eniHtml)
 
-for (const referenz of referenzen) {
-  if (!referenz.startsWith(erwartet)) {
-    throw new Error(`index.html referenziert ${referenz} ausserhalb von ${erwartet}`)
+for (const [seite, liste] of [['index.html', referenzen], ['eni.html', eniReferenzen]]) {
+  for (const referenz of liste) {
+    if (!referenz.startsWith(erwartet)) {
+      throw new Error(`${seite} referenziert ${referenz} ausserhalb von ${erwartet}`)
+    }
+    const relativ = referenz.slice(erwartet.length)
+    await access(new URL(relativ, dist))
   }
-  const relativ = referenz.slice(erwartet.length)
-  await access(new URL(relativ, dist))
+}
+
+// eni.html ist index.html mit anderem gesicht: dasselbe javascript, aber ein
+// eigenes manifest (genau eines — das der hauptapp haengt das PWA-plugin an),
+// eigenes symbol und der sprung auf die ENI-route.
+const manifestLinks = [...eniHtml.matchAll(/<link rel="manifest" href="([^"]+)"/g)].map((t) => t[1])
+if (manifestLinks.length !== 1 || manifestLinks[0] !== `${erwartet}eni.webmanifest`) {
+  throw new Error(`eni.html verweist nicht genau auf ${erwartet}eni.webmanifest: ${manifestLinks.join(', ')}`)
+}
+if (!eniHtml.includes(`rel="apple-touch-icon" sizes="180x180" href="${erwartet}eni-apple-touch-icon.png"`)) {
+  throw new Error('eni.html traegt nicht ENIs homescreen-symbol')
+}
+if (!eniHtml.includes('name="apple-mobile-web-app-title" content="ENI"')) {
+  throw new Error('eni.html traegt nicht den homescreen-titel ENI')
+}
+if (!eniHtml.includes("history.replaceState(null,'','#/eni')")) {
+  throw new Error('eni.html springt nicht auf die ENI-route')
+}
+const skripte = (liste) => liste.filter((pfad) => pfad.endsWith('.js') || pfad.endsWith('.css')).join('\n')
+if (skripte(eniReferenzen) !== skripte(referenzen)) {
+  throw new Error('eni.html laedt nicht dasselbe javascript wie index.html')
 }
 
 if (process.env.CHECK_NO_SERVER === '1') {

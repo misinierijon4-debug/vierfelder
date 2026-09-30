@@ -113,6 +113,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | **Wochenbericht: letzte Nacht nachtragen, Montagsmeldung** | Migration `*_wochenbericht_nachtrag_push_und_persoenliche_texte.sql`, `src/lib/wochenberichtNachtragMigration.test.ts`, `scripts/check-wochenbericht-archiv.mjs` |
 | Wochenbericht: gemeinsames Textschema | `supabase/functions/_shared/wochenberichtTexte.ts` (Client-Reexport: `src/lib/wochenberichtTexte.ts`) |
 | Adressen der App (`#/eni`, `#/bericht`) | `src/lib/eniRoute.ts` |
+| **ENI als eigenes Homescreen-Symbol** (`/vierfelder/eni.html`, eigenes Manifest und Zeichen) | Plugin `eniEinstieg` in `vite.config.ts` (leitet `eni.html` aus der gebauten `index.html` ab), `public/eni.webmanifest`, Zeichen `eni-*.png` aus `scripts/icons.py`, Prüfung in `scripts/check-web-build.mjs` |
 | Push, Erinnerungen, VAPID | `src/lib/push.ts`, `src/lib/erinnerung.ts`, `supabase/functions/_shared/versand.ts` |
 | Push-Arten, Sendefenster, Schalter | `supabase/functions/_shared/aktivitaetsVersand.ts`, `src/lib/aktivitaetsErinnerung.ts` |
 | **Neue Push-Art bauen** — Migration **und** Worker, sonst still übersprungen | `docs/wochenbericht.md` („Der Worker musste mit") |
