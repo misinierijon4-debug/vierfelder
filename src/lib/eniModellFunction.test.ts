@@ -15,7 +15,6 @@ import {
   type ModellAnfrage,
 } from '../../supabase/functions/_shared/eniModell.ts'
 import { ANBIETER, type Gegenstelle } from '../../supabase/functions/_shared/eniAnbieter.ts'
-import { ROUTING_FALLBACK, type EniRouting } from '../../supabase/functions/_shared/eniRouting.ts'
 
 const JETZT = new Date('2026-09-10T17:00:00Z') // donnerstag, kw 37
 const ICH = 'konto-erijon'
@@ -172,12 +171,6 @@ function deps(
     /** kein dienstschluessel gesetzt — dann muss der anhang ehrlich scheitern */
     ohneDienst?: boolean
     wissenGesperrt?: boolean
-    /**
-     * Das Urteil des Intent-Routings. Standard ist der Fallback: voller
-     * Kontext, also genau das Verhalten von vor dem Routing. Ohne diese
-     * Attrappe telefonierte jeder Test nach classifier.dev.
-     */
-    routing?: EniRouting
   } = {}
 ) {
   const tabellen = optionen.tabellen ?? grunddaten()
@@ -205,7 +198,6 @@ function deps(
     dienstDatenbank: optionen.ohneDienst
       ? () => null
       : () => baueDatenbank(tabellen, optionen.nutzer === undefined ? ICH : optionen.nutzer),
-    routing: async () => optionen.routing ?? ROUTING_FALLBACK,
     modell: async (anfrage, anbieter, schluessel) => {
       if (anfrage.system.startsWith(SUCHPLAN_ANWEISUNG)) {
         suchplaene.push({ anfrage, anbieter })
@@ -1404,21 +1396,14 @@ describe('Internet im authentifizierten Chat', () => {
 })
 
 /*
-  Das vorgeschaltete Intent-Routing, siehe `eniRouting.ts`. Hier steht nur,
-  was sein Urteil im Handler bewirkt — was der Dienst selbst antwortet, prueft
-  `eniRouting.test.ts`.
+  Was in jeden Prompt kommt. Frueher sortierte classifier.dev vorher, was eine
+  Nachricht braucht; das kostete zwei bis drei Sekunden und kam nie mit einem
+  brauchbaren Urteil zurueck. Jetzt steht immer alles da, und zwar sofort.
 */
-describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
-  const nur = (teil: Partial<EniRouting>): EniRouting => ({
-    brauchtLage: false,
-    brauchtWissen: false,
-    darfSuchen: false,
-    erkannterIntent: 'test',
-    ...teil,
-  })
+describe('ENI: was in den prompt kommt', () => {
 
   it('gibt die eigenen einstellungen in jede antwort, auch in smalltalk, nie die des anderen', async () => {
-    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({}) })
+    const { abhaengigkeiten, tabellen, gesehen } = deps()
     tabellen.eni_einstellungen = [
       {
         user_id: ER,
@@ -1448,7 +1433,7 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
   })
 
   it('antwortet wie immer, wenn die einstellungen nicht lesbar sind', async () => {
-    const { abhaengigkeiten, gesehen } = deps({ routing: nur({}) })
+    const { abhaengigkeiten, gesehen } = deps()
     const echt = abhaengigkeiten.datenbank
     abhaengigkeiten.datenbank = (...args) => {
       const db = echt(...args)
@@ -1468,8 +1453,8 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
     )
   })
 
-  it('kennt persoenliche vorlieben auch ohne wissens-routing, aber keine trackerzahlen', async () => {
-    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({}) })
+  it('kennt in jeder antwort die eigenen vorlieben und die echten zahlen', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps()
     tabellen.eni_erinnerungen = [
       { id: 'e1', user_id: ICH, text: 'Geheime Notiz', art: 'profil', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' },
     ]
@@ -1482,34 +1467,12 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
     const system = gesehen[0]!.system
     expect(system).toContain('PERSOENLICHER KONTEXT')
     expect(system).toContain('Geheime Notiz')
-    // Nicht geladen ist nicht null: ENI muss wissen, dass ihm Zahlen fehlen,
-    // sonst denkt er sich welche aus.
-    expect(system).toContain('keine Trackerzahlen geladen')
-    expect(system).toContain('erfinde keine')
-  })
-
-  it('haengt die echten zahlen an, sobald das routing sie anfordert', async () => {
-    const { abhaengigkeiten, gesehen } = deps({ routing: nur({ brauchtLage: true }) })
-    await behandleEni(
-      anfrage({ chatId: 'chat-1', text: 'Wie viele Punkte brauche ich noch gegen Koray?' }),
-      abhaengigkeiten
-    )
-    const system = gesehen[0]!.system
-    expect(system).not.toContain('keine Trackerzahlen geladen')
     expect(system).toContain('LAGE')
     expect(system).toContain('81,4')
   })
 
-  it('haengt die erinnerungen an, wenn das routing sie anfordert', async () => {
-    const eintrag = { id: 'e1', user_id: ICH, text: 'Ziel: 78 kg bis Dezember', art: 'aktuell', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' }
-    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: nur({ brauchtWissen: true }) })
-    tabellen.eni_erinnerungen = [eintrag]
-    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was war mein Ziel?' }), abhaengigkeiten)
-    expect(gesehen[0]!.system).toContain('Ziel: 78 kg bis Dezember')
-  })
-
-  it('sucht nicht, wenn das routing die frage fuer keine sachfrage haelt', async () => {
-    const { abhaengigkeiten } = deps({ tavily: 'tvly-test', routing: nur({ brauchtLage: true }) })
+  it('sucht nicht, wenn die entscheidung keine sachfrage sieht', async () => {
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test' })
     const suche = vi.fn().mockResolvedValue([])
     abhaengigkeiten.webSuche = suche
     const res = await behandleEni(
@@ -1520,13 +1483,9 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
     expect(suche).not.toHaveBeenCalled()
   })
 
-  /*
-    Die wichtigste Eigenschaft des Routings: es darf nur wegnehmen. Ein
-    fremder Sortierdienst kann die Sperre fuer Krisensaetze nicht aufmachen
-    — die liegt in `suchauftrag` und kommt nach ihm.
-  */
+  // Die Sperre fuer Krisensaetze liegt in `suchauftrag`, vor jeder Entscheidung.
   it('oeffnet die suche nicht fuer saetze, die suchauftrag sperrt', async () => {
-    const { abhaengigkeiten } = deps({ tavily: 'tvly-test', routing: nur({ darfSuchen: true }) })
+    const { abhaengigkeiten } = deps({ tavily: 'tvly-test', suchAntwort: '{"suche":true,"frage":"selbstmord"}' })
     const suche = vi.fn().mockResolvedValue([])
     abhaengigkeiten.webSuche = suche
     await behandleEni(
@@ -1534,23 +1493,6 @@ describe('ENI: intent-routing entscheidet, was in den prompt kommt', () => {
       abhaengigkeiten
     )
     expect(suche).not.toHaveBeenCalled()
-  })
-
-  /*
-    Faellt classifier.dev aus, laeuft alles wie vorher. Der Standard der
-    Attrappe ist genau dieser Fallback, aber die Zusicherung soll namentlich
-    dastehen: ENIs Antwort haengt nie an einem Sortierdienst.
-  */
-  it('laedt bei ausgefallenem routing wieder alles', async () => {
-    const { abhaengigkeiten, tabellen, gesehen } = deps({ routing: ROUTING_FALLBACK })
-    tabellen.eni_erinnerungen = [
-      { id: 'e1', user_id: ICH, text: 'Ziel: 78 kg bis Dezember', art: 'aktuell', gemeinsam: false, bis: null, erledigt: false, erstellt: '2026-09-01', geaendert: '2026-09-01' },
-    ]
-    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Hallo' }), abhaengigkeiten)
-    const system = gesehen[0]!.system
-    expect(system).toContain('81,4')
-    expect(system).toContain('Ziel: 78 kg bis Dezember')
-    expect(system).not.toContain('keine Trackerzahlen geladen')
   })
 })
 
@@ -1723,8 +1665,8 @@ describe('ENI merkt sich ausdrueckliche chat-angaben', () => {
     expect(gesehen).toHaveLength(1)
   })
 
-  it('kennt die erinnerung in einem neuen chat trotz rezept-routing, ohne private partnerdaten', async () => {
-    const { abhaengigkeiten, tabellen, gesehen } = deps({ modell, routing: { brauchtLage: false, brauchtWissen: false, darfSuchen: true, erkannterIntent: 'websuche_erforderlich' } })
+  it('kennt die erinnerung in einem neuen chat, ohne private partnerdaten', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps({ modell })
     await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir: Ich mag Reis.' }), abhaengigkeiten)
     tabellen.eni_erinnerungen!.push({ ...tabellen.eni_erinnerungen![0], id: 'fremd', user_id: ER, text: 'Korays private Vorliebe' })
     await behandleEni(anfrage({ chatId: 'c2', text: 'Was kann ich heute essen?' }), abhaengigkeiten)
@@ -1746,8 +1688,8 @@ describe('ENI merkt sich ausdrueckliche chat-angaben', () => {
 describe('automatische Recherche im echten Handler', () => {
   const quellen = [{ titel: 'Tolino', url: 'https://example.org/tolino', text: 'Aktueller Preis' }]
 
-  it('sucht ohne Internet-Feld auch wenn der alte Sortierdienst keine Sachfrage erkannt hat', async () => {
-    const { abhaengigkeiten, tabellen, suchplaene } = deps({ tavily: 'test', routing: { brauchtLage: false, brauchtWissen: false, darfSuchen: false, erkannterIntent: 'allgemeiner_dialog' } })
+  it('sucht ohne Internet-Feld bei einer eindeutig aktuellen Frage', async () => {
+    const { abhaengigkeiten, tabellen, suchplaene } = deps({ tavily: 'test' })
     abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(quellen)
     const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was kostet ein Tolino Shine 3?' }), abhaengigkeiten)
     expect(res.status).toBe(200)
@@ -1821,5 +1763,191 @@ describe('automatische Recherche im echten Handler', () => {
     const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Was kostet ein Tolino Shine 3?' }), abhaengigkeiten)
     expect(res.status).toBe(200)
     expect(gesehen[0]!.system).toContain('Websuche ist nicht eingerichtet')
+  })
+})
+
+/*
+  Die Antwort beginnt, waehrend die Suchentscheidung noch laeuft, und schreibt
+  in einen Puffer. Sagt die Entscheidung „keine Suche“, geht der Puffer raus;
+  soll gesucht werden, wird der Vorab-Lauf verworfen, bevor ein Wort davon
+  beim Menschen war.
+*/
+describe('ENI beginnt, waehrend die suchentscheidung noch laeuft', () => {
+  /** wartet, bis die bedingung stimmt. die tests laufen mit echten timern */
+  const bis = async (bedingung: () => boolean) => {
+    for (let i = 0; i < 200 && !bedingung(); i += 1) await new Promise((r) => setTimeout(r, 5))
+    expect(bedingung()).toBe(true)
+  }
+  const ereignisse = (strom: string) =>
+    strom.trim().split('\n').map((zeile) => JSON.parse(zeile) as Record<string, unknown>)
+  const texte = (strom: string) =>
+    ereignisse(strom).filter((e) => e.typ === 'text').map((e) => e.text).join('')
+
+  /** eine suchentscheidung, die erst antwortet, wenn der test es sagt */
+  const offenerPlan = () => {
+    let sage!: (antwort: string) => void
+    const antwort = new Promise<string>((r) => { sage = r })
+    return { antwort, sage }
+  }
+
+  /** liest den strom im hintergrund mit, damit der test zwischendurch hineinsehen kann */
+  const mitlesen = (res: Response) => {
+    const stand = { text: '', fertig: false }
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    const ende = (async () => {
+      for (;;) {
+        const teil = await reader.read()
+        if (teil.done) break
+        stand.text += decoder.decode(teil.value)
+      }
+      stand.fertig = true
+    })()
+    return { stand, ende }
+  }
+
+  it('beginnt vorab und laesst den puffer erst nach der entscheidung raus', async () => {
+    const plan = offenerPlan()
+    const { abhaengigkeiten, gesehen, tabellen, suchplaene } = deps({
+      tavily: 'tvly-test',
+      suchAntwort: () => plan.antwort,
+      modell: async (a) => {
+        a.onText?.('Erster Teil. ')
+        await plan.antwort
+        a.onText?.('Zweiter Teil.')
+        return 'Erster Teil. Zweiter Teil.'
+      },
+    })
+    abhaengigkeiten.webSuche = vi.fn()
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Welchen Laptop empfiehlst du fürs Studium?', stream: true }),
+      abhaengigkeiten
+    )
+    const { stand, ende } = mitlesen(res)
+
+    // die antwort laeuft schon, die entscheidung noch nicht
+    await bis(() => gesehen.length === 1 && suchplaene.length === 1)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(stand.text).not.toContain('Erster Teil')
+
+    plan.sage('{"suche":false}')
+    await ende
+    expect(texte(stand.text)).toBe('Erster Teil. Zweiter Teil.')
+    expect(gesehen).toHaveLength(1)
+    expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
+    expect(tabellen.eni_nachrichten!.at(-1)).toMatchObject({ rolle: 'eni', text: 'Erster Teil. Zweiter Teil.' })
+  })
+
+  it('verwirft den vorab-lauf, wenn doch gesucht wird, und antwortet mit den quellen', async () => {
+    const plan = offenerPlan()
+    const { abhaengigkeiten, gesehen, tabellen } = deps({
+      tavily: 'tvly-test',
+      suchAntwort: () => plan.antwort,
+      modell: async (a) => {
+        if (!a.system.includes('Aktueller Beleg')) {
+          a.onText?.('Veraltet. ')
+          return await new Promise<string>((_, fehler) =>
+            a.signal!.addEventListener('abort', () => fehler(new DOMException('verworfen', 'AbortError')))
+          )
+        }
+        a.onText?.('Mit Quelle.')
+        return 'Mit Quelle.'
+      },
+    })
+    abhaengigkeiten.webSuche = vi
+      .fn()
+      .mockResolvedValue([{ titel: 'Quelle', url: 'https://example.org/laptop', text: 'Aktueller Beleg' }])
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Welchen Laptop empfiehlst du fürs Studium?', stream: true }),
+      abhaengigkeiten
+    )
+    const { stand, ende } = mitlesen(res)
+    await bis(() => gesehen.length === 1)
+    plan.sage('{"suche":true,"frage":"Laptop Studium Empfehlung"}')
+    await ende
+
+    expect(gesehen).toHaveLength(2)
+    expect(gesehen[0]!.signal?.aborted).toBe(true)
+    expect(abhaengigkeiten.webSuche).toHaveBeenCalledWith('Laptop Studium Empfehlung', expect.any(Function), expect.any(AbortSignal))
+    expect(stand.text).not.toContain('Veraltet')
+    expect(texte(stand.text)).toContain('Mit Quelle.')
+    const lagen = ereignisse(stand.text).filter((e) => e.typ === 'lage').map((e) => e.schritt)
+    expect(lagen).toEqual(['denkt', 'sucht', 'gefunden', 'denkt'])
+    expect(String(tabellen.eni_nachrichten!.at(-1)!.text)).toContain('Mit Quelle.')
+    expect(tabellen.eni_quellen).toHaveLength(1)
+  })
+
+  it('beginnt neu, wenn die entscheidung einen hinweis mitgibt', async () => {
+    const plan = offenerPlan()
+    const { abhaengigkeiten, gesehen } = deps({
+      tavily: 'tvly-test',
+      suchAntwort: () => plan.antwort,
+      modell: async (a) => {
+        if (gesehen.length === 1) {
+          a.onText?.('Ohne Hinweis. ')
+          return await new Promise<string>((_, fehler) =>
+            a.signal!.addEventListener('abort', () => fehler(new DOMException('verworfen', 'AbortError')))
+          )
+        }
+        a.onText?.('Mit Hinweis.')
+        return 'Mit Hinweis.'
+      },
+    })
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Welchen Laptop empfiehlst du fürs Studium?', stream: true }),
+      abhaengigkeiten
+    )
+    const { stand, ende } = mitlesen(res)
+    await bis(() => gesehen.length === 1)
+    // unlesbare entscheidung: keine suche, aber ein hinweis fuer die antwort
+    plan.sage('weiss nicht')
+    await ende
+
+    expect(gesehen).toHaveLength(2)
+    expect(gesehen[1]!.system).toContain('Suchentscheidung war nicht verlaesslich')
+    expect(stand.text).not.toContain('Ohne Hinweis')
+    expect(texte(stand.text)).toBe('Mit Hinweis.')
+  })
+
+  it('beginnt nichts vorab, wenn die entscheidung ohne modell faellt', async () => {
+    const { abhaengigkeiten, gesehen, suchplaene } = deps({ tavily: 'tvly-test' })
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'Hallo', stream: true }), abhaengigkeiten)
+      .then((res) => res.text())
+    expect(suchplaene).toHaveLength(0)
+    expect(gesehen).toHaveLength(1)
+  })
+
+  it('protokolliert je antwort die zeiten, nie den inhalt', async () => {
+    const plan = offenerPlan()
+    const { abhaengigkeiten, gesehen } = deps({
+      tavily: 'tvly-test',
+      suchAntwort: () => plan.antwort,
+      modell: async (a) => {
+        a.onText?.('Antwort.')
+        await plan.antwort
+        return 'Antwort.'
+      },
+    })
+    const info = vi.fn()
+    abhaengigkeiten.protokoll.info = info
+    const res = await behandleEni(
+      anfrage({ chatId: 'chat-1', text: 'Welchen Laptop empfiehlst du fürs Studium?', stream: true }),
+      abhaengigkeiten
+    )
+    const { ende } = mitlesen(res)
+    await bis(() => gesehen.length === 1)
+    plan.sage('{"suche":false}')
+    await ende
+
+    expect(info).toHaveBeenCalledTimes(1)
+    const zeile = String(info.mock.calls[0]![0])
+    expect(zeile.startsWith('eni: zeiten ')).toBe(true)
+    const zeiten = JSON.parse(zeile.slice('eni: zeiten '.length))
+    expect(zeiten).toMatchObject({ anbieter: 'deepseek', vorab: true, suche: null })
+    for (const feld of ['strom', 'kontext', 'plan', 'erstesWort', 'gesamt']) {
+      expect(typeof zeiten[feld]).toBe('number')
+    }
+    expect(zeile).not.toContain('Laptop')
+    expect(zeile).not.toContain('Antwort')
   })
 })

@@ -6,9 +6,9 @@
  * kraftakt unter matchball — steht nirgends, obwohl genau das die frage ist,
  * die man sich beim blick auf den feed stellt.
  *
- * Dieselbe gegenstelle, die in `supabase/functions/_shared/eniRouting.ts` die
- * ENI-nachrichten sortiert und in `eniWeb.ts` die suchtreffer filtert, kann das
- * hier beantworten: ein zero-shot-klassifikator ohne schlüssel und ohne konto.
+ * Dieselbe gegenstelle, die in `supabase/functions/_shared/eniWeb.ts` ENIs
+ * suchtreffer filtert, kann das hier beantworten: ein zero-shot-klassifikator
+ * ohne schlüssel und ohne konto.
  * Neu kommt keine gegenstelle dazu.
  *
  * Drei eigenschaften tragen das ganze:
@@ -45,7 +45,7 @@ import type { RivalitaetsBadge } from './duellBadge'
 export { BADGE_KURZ, BADGE_LANG, heuristischesBadge } from './duellBadge'
 export type { RivalitaetsBadge } from './duellBadge'
 
-/** dieselbe gegenstelle wie das intent-routing und der suchfilter von ENI */
+/** dieselbe gegenstelle wie der suchfilter von ENI */
 const CLASSIFIER = 'https://classifier.dev'
 
 /**
