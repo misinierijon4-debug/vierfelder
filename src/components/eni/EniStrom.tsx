@@ -1202,7 +1202,7 @@ function EniLeer({
                   }}
                   className="group flex min-h-12 w-full items-center justify-between gap-3 py-2.5 text-left transition-colors"
                 >
-                  <span className="min-w-0 flex-1 truncate text-[15px] text-kreide-60 transition-colors group-hover:text-kreide">
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-kreide transition-colors group-hover:text-kreide">
                     {item.titel}
                   </span>
                   <span

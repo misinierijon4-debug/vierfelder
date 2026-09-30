@@ -494,3 +494,21 @@ math {
 .eni-internet[aria-pressed="true"] .eni-internet-zustand {
   color: var(--kreide);
 }
+
+/* ENIs Werkzeuge teilen dieselbe Form; Metadaten bleiben leiser als Aktionen. */
+.eni-menue {
+  border-radius: 1rem;
+  padding: 0.375rem;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--grund) 55%, transparent);
+}
+.eni-menue-zeile {
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  color: var(--kreide);
+}
+.eni-eingabe-optionen {
+  margin-bottom: 0.125rem;
+}
+.eni-eingabe-symbol {
+  color: var(--kreide);
+}

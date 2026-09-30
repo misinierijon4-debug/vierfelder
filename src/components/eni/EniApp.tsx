@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { BILDSCHIRM, EASE } from '../../lib/motion'
-import { IconCaretLeft, IconPlus } from './EniSymbole'
+import { IconArrowUp, IconCaretLeft, IconPlus } from './EniSymbole'
 import { useEniWochenbeginn } from '../../lib/eniRoute'
 import { oeffneEniWochenchat } from '../../lib/wochenEinladung'
 import { chatTitel } from '../../lib/eniSpeicher'
@@ -40,6 +40,7 @@ import { EniRollenwahl } from './EniRollenwahl'
 import { EniStrom } from './EniStrom'
 import { EniVerlauf } from './EniVerlauf'
 import { useEniViewport } from './useEniViewport'
+import { useEniScroll } from './useEniScroll'
 
 type Modus = 'pruefen' | 'modell' | 'stimmenprobe'
 
@@ -147,7 +148,9 @@ export function EniApp({
   // Referenzen fuer nebenlaeufige Aktionen & Chatwechsel
   const aktiverChatRef = useRef<string | null>(null)
   aktiverChatRef.current = aktiverChat
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const { scrollContainerRef, weiterUnten, beimScrollen, zumEnde } = useEniScroll(
+    aktiverChat, zeilen.at(-1), teilAntwort, prueft
+  )
   const endeRef = useRef<HTMLDivElement>(null)
   const vorgabeNr = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -255,22 +258,6 @@ export function EniApp({
     })
   }, [baueGeber, gewaehlt, speicher])
 
-  // Intelligentes Scrollen: Zieht den Nutzer nicht nach unten, wenn er aeltere Zeilen liest
-  const scrolleZumEndeWennSinnvoll = useCallback((erzwingen = false) => {
-    const el = scrollContainerRef.current
-    if (!el) return
-    const abstandUnten = el.scrollHeight - el.scrollTop - el.clientHeight
-    const amEnde = abstandUnten < 120
-    if (erzwingen || amEnde) {
-      // Nur den Verlauf bewegen, niemals die iOS-Seite samt Kopf und Eingabe.
-      el.scrollTo?.({ top: el.scrollHeight, behavior: 'smooth' })
-    }
-  }, [])
-
-  useEffect(() => {
-    scrolleZumEndeWennSinnvoll(prueft)
-  }, [zeilen.length, teilAntwort, prueft, scrolleZumEndeWennSinnvoll])
-
   const lieseVor = useCallback(
     (zeile: EniZeile) => {
       if (stimme.spricht === zeile.id) stimme.halt()
@@ -376,6 +363,8 @@ export function EniApp({
       stimme.halt()
       if (vorlesen) weckeStimme()
 
+      // Bereits gestreamte Worte stehen nach dem Speichern ohne zweite Animation da.
+      let schonGezeigt = false
       const controller = new AbortController()
       abortControllerRef.current = controller
 
@@ -434,7 +423,12 @@ export function EniApp({
             bisher,
             vorlagen,
             controller.signal,
-            (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) },
+            (teil) => {
+              if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                schonGezeigt ||= teil.length > 0
+                setTeilAntwort((vorher) => vorher + teil)
+              }
+            },
             undefined,
             (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) }
           )
@@ -447,7 +441,7 @@ export function EniApp({
               ergebnis.mensch,
               ...(ergebnis.eni ? [ergebnis.eni] : []),
             ])
-            setFrisch(ergebnis.eni?.id ?? null)
+            setFrisch(schonGezeigt ? null : (ergebnis.eni?.id ?? null))
             if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
             if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
           }
@@ -526,12 +520,32 @@ export function EniApp({
       stimme.halt()
       if (vorlesen) weckeStimme()
 
+      // Bereits gestreamte Worte stehen nach dem Speichern ohne zweite Animation da.
+      let schonGezeigt = false
       const controller = new AbortController()
       abortControllerRef.current = controller
 
       void (async () => {
         try {
-          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }, undefined, (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) })
+          const ergebnis = await geber.nochmal(
+            chatId,
+            controller.signal,
+            (teil) => {
+              if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                schonGezeigt ||= teil.length > 0
+                setTeilAntwort((vorher) => vorher + teil)
+              }
+            },
+            undefined,
+            (l) => {
+              if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                setLage((vorher) => ({
+                  schritt: l.schritt,
+                  quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []),
+                }))
+              }
+            }
+          )
           letzterFehlversuchRef.current = null
           if (aktiverChatRef.current === chatId) {
             setZeilen((vorher) => [
@@ -539,7 +553,7 @@ export function EniApp({
               ergebnis.mensch,
               ...(ergebnis.eni ? [ergebnis.eni] : []),
             ])
-            setFrisch(ergebnis.eni?.id ?? null)
+            setFrisch(schonGezeigt ? null : (ergebnis.eni?.id ?? null))
             if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
             if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
           }
@@ -585,6 +599,8 @@ export function EniApp({
       stimme.halt()
       if (vorlesen) weckeStimme()
 
+      // Bereits gestreamte Worte stehen nach dem Speichern ohne zweite Animation da.
+      let schonGezeigt = false
       const controller = new AbortController()
       abortControllerRef.current = controller
 
@@ -600,6 +616,7 @@ export function EniApp({
             controller.signal,
             (teil) => {
               if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                schonGezeigt ||= teil.length > 0
                 setTeilAntwort((vorher) => vorher + teil)
               }
             },
@@ -621,7 +638,7 @@ export function EniApp({
               ergebnis.mensch,
               ...(ergebnis.eni ? [ergebnis.eni] : []),
             ])
-            setFrisch(ergebnis.eni?.id ?? null)
+            setFrisch(schonGezeigt ? null : (ergebnis.eni?.id ?? null))
             if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
             if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
           }
@@ -664,6 +681,8 @@ export function EniApp({
       stimme.halt()
       if (vorlesen) weckeStimme()
 
+      // Bereits gestreamte Worte stehen nach dem Speichern ohne zweite Animation da.
+      let schonGezeigt = false
       const controller = new AbortController()
       abortControllerRef.current = controller
 
@@ -690,6 +709,7 @@ export function EniApp({
                 controller.signal,
                 (teil) => {
                   if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
+                    schonGezeigt ||= teil.length > 0
                     setTeilAntwort((vorher) => vorher + teil)
                   }
                 }
@@ -709,7 +729,7 @@ export function EniApp({
               ergebnis.mensch,
               ...(ergebnis.eni ? [ergebnis.eni] : []),
             ])
-            setFrisch(ergebnis.eni?.id ?? null)
+            setFrisch(schonGezeigt ? null : (ergebnis.eni?.id ?? null))
             if (vorlesen && ergebnis.eni) stimme.sprich(ergebnis.eni.id, ergebnis.eni.text)
             if (ergebnis.hinweis) setHinweis(ergebnis.hinweis)
           }
@@ -925,7 +945,7 @@ export function EniApp({
             onClick={onZurueck}
             aria-label="zurück zum zweikampf"
             whileTap={reduziert ? undefined : { scale: 0.96 }}
-            className="group -ml-2 flex min-h-11 min-w-0 items-center gap-1.5 justify-self-start px-2 text-[12px] text-kreide-60 transition-colors hover:text-kreide"
+            className="group -ml-2 flex min-h-11 min-w-0 items-center gap-1.5 justify-self-start px-2 text-[12px] text-kreide transition-colors hover:bg-flaeche"
           >
             <span
               aria-hidden="true"
@@ -983,7 +1003,7 @@ export function EniApp({
               type="button"
               onClick={neuerChat}
               aria-label="neuer chat"
-              className="flex size-11 items-center justify-center text-kreide-60 transition-colors hover:text-kreide"
+              className="flex size-11 items-center justify-center text-kreide transition-colors hover:bg-flaeche"
             >
               <IconPlus size={18} />
             </button>
@@ -1002,6 +1022,7 @@ export function EniApp({
       {/* Gespraechsbereich */}
       <div
         ref={scrollContainerRef}
+        onScroll={beimScrollen}
         className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
         <div className="mx-auto flex min-h-full w-full max-w-[560px] flex-col">
@@ -1039,7 +1060,15 @@ export function EniApp({
         vom unteren Rand weg. `max` gibt beiden ihren Fall: ohne Safe-Area die
         zwoelf Pixel, mit Safe-Area genau sie.
       */}
-      <div className="vollbild-safe-x shrink-0 pb-[max(0.75rem,var(--app-safe-bottom))]">
+      <div className="vollbild-safe-x relative shrink-0 pb-[max(0.75rem,var(--app-safe-bottom))]">
+        {weiterUnten && (
+          <button type="button" onClick={zumEnde}
+            className="absolute bottom-full left-1/2 z-10 mb-3 flex min-h-11 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-linie-hell bg-flaeche px-4 text-sm font-medium text-kreide"
+          >
+            <IconArrowUp size={16} className="rotate-180" />
+            Zur neuesten Antwort
+          </button>
+        )}
         <div className="mx-auto w-full max-w-[560px]">
           {stimme.hinweis && <p role="status" className="pb-2 text-xs text-kreide-60">{stimme.hinweis}</p>}
           {fehler && (

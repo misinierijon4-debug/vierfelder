@@ -26,5 +26,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run check:edge
-      - run: npm run build:web
-      - run: npm run check:dist
+      # Mit Supabase-Chunk messen, damit der Main-Deploy dasselbe Budget prüft.
+      - run: npm run build:pages
+        env:
+          VITE_BASE: /vierfelder/
+          VITE_SUPABASE_URL: https://ogxwazageufvalkocywh.supabase.co
+          # Öffentliches Platzhalterformat; für den statischen Budgetbau keine Anmeldung.
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_x
+          CHECK_NO_SERVER: '1'

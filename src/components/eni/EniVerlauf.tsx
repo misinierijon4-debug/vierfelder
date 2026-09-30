@@ -147,8 +147,8 @@ export function EniVerlauf({
                       >
                         <div className="flex items-center gap-2">
                           <span
-                            className={`truncate text-[13px] ${
-                              istAktiv ? 'font-bold text-kreide' : 'text-kreide-60'
+                            className={`truncate text-[15px] ${
+                              istAktiv ? 'font-bold text-kreide' : 'text-kreide'
                             }`}
                           >
                             {chat.titel}

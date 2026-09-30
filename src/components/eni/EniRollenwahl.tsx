@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { AnimatePresence, useReducedMotion } from 'motion/react'
 import {
-  alleRollen, EINSTELLUNGEN_GESPEICHERT, ladeEinstellungen, mitRolle, speichereEinstellungen,
+  ROLLEN_VORLAGEN, alleRollen, EINSTELLUNGEN_GESPEICHERT, ladeEinstellungen, mitRolle, speichereEinstellungen,
 } from '../../lib/eniEinstellungen'
-import type { EniEinstellungen } from '../../lib/eniEinstellungen'
+import type { EniEinstellungen, EniRolle } from '../../lib/eniEinstellungen'
 import { IconCaretDown, IconCheck } from './EniSymbole'
 import { useMenueDaneben } from './useMenueDaneben'
+import { EniMenue } from './EniMenue'
+import { ankerVon, huelleBewegung } from './menueBewegung'
 
 const API = { laden: ladeEinstellungen, speichern: speichereEinstellungen }
+
+/** Nur unveränderte Vorlagennamen kürzen; eigene Namen gehören der Person. */
+const KURZNAMEN: Record<string, string> = {
+  ernaehrung: 'Ernährung', training: 'Training', boxen: 'Boxen',
+  faszien: 'Mobilität', lernen: 'Lernen', schlaf: 'Schlaf',
+}
+function rollenname(rolle: EniRolle): string {
+  const vorlage = ROLLEN_VORLAGEN.find((v) => v.id === rolle.id)
+  return vorlage?.name === rolle.name ? (KURZNAMEN[rolle.id] ?? rolle.name) : rolle.name
+}
 
 type Props = {
   kontoId: string | null
@@ -22,7 +35,8 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
   const [laedt, setLaedt] = useState(false)
   const [speichert, setSpeichert] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
-  const [position, setPosition] = useState({ links: 0, hoehe: 352 })
+  const [position, setPosition] = useState({ links: 0, hoehe: 288 })
+  const reduziert = useReducedMotion() ?? false
   const huelle = useRef<HTMLDivElement>(null)
   const knopf = useRef<HTMLButtonElement>(null)
   const menue = useRef<HTMLDivElement>(null)
@@ -67,10 +81,10 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
     const messen = () => {
       const rahmen = huelle.current?.getBoundingClientRect()
       if (!rahmen) return
-      const breite = Math.min(290, window.innerWidth - 32)
+      const breite = Math.min(256, window.innerWidth - 32)
       setPosition({
-        links: Math.min(0, window.innerWidth - 16 - rahmen.left - breite),
-        hoehe: Math.max(44, Math.min(352, rahmen.top - (window.visualViewport?.offsetTop ?? 0) - 16)),
+        links: Math.max(16 - rahmen.left, Math.min(0, window.innerWidth - 16 - rahmen.left - breite)),
+        hoehe: Math.max(44, Math.min(288, rahmen.top - (window.visualViewport?.offsetTop ?? 0) - 16)),
       })
     }
     messen()
@@ -112,7 +126,7 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
 
   const rollen = stand ? alleRollen(stand) : []
   const aktiv = rollen.filter((r) => r.aktiv)
-  const titel = aktiv.length === 1 ? aktiv[0]!.name : aktiv.length ? `${aktiv.length} Rollen` : 'Rollen'
+  const titel = aktiv.length === 1 ? rollenname(aktiv[0]!) : aktiv.length ? `${aktiv.length} Rollen` : 'Rollen'
 
   return (
     <div ref={huelle} className="relative min-w-0 shrink"
@@ -124,15 +138,17 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
         aria-haspopup="menu" aria-expanded={offen} aria-controls={offen ? id : undefined}
         aria-label={`Rollen wählen${aktiv.length ? `, aktiv: ${aktiv.map((r) => r.name).join(', ')}` : ''}`}
         onClick={() => { if (!offen) void laden(); setOffen((war) => !war) }}
-        className="flex min-h-11 min-w-11 max-w-[8rem] items-center gap-1 rounded-xl px-2 text-sm text-kreide-60 transition-colors hover:bg-linie hover:text-kreide disabled:opacity-40"
+        className="flex min-h-11 min-w-11 max-w-[8rem] items-center gap-1 rounded-xl px-2 text-sm text-kreide transition-colors hover:bg-linie hover:text-kreide disabled:opacity-40"
       >
         <span className="truncate" style={{ color: aktiv.length ? 'var(--kreide)' : undefined }}>{titel}</span>
         <IconCaretDown size={12} className="shrink-0" />
       </button>
+      <AnimatePresence>
         {offen && (
-          <div ref={menue} id={id} role="menu" aria-label="ENI-Rollen" aria-busy={laedt || speichert}
-            style={{ left: position.links, maxHeight: position.hoehe }}
-            className="absolute bottom-full z-30 mb-2 w-[290px] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-linie-hell bg-flaeche p-1.5"
+          <EniMenue ref={menue} id={id} role="menu" aria-label="ENI-Rollen" aria-busy={laedt || speichert}
+            variants={huelleBewegung('unten-links', reduziert)} initial="zu" animate="auf" exit="weg"
+            style={{ left: position.links, maxHeight: position.hoehe, transformOrigin: ankerVon('unten-links') }}
+            className="eni-menue absolute bottom-full z-30 mb-2 w-[256px] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-linie-hell bg-flaeche p-1.5"
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault(); schliessen(); knopf.current?.focus({ preventScroll: true })
@@ -147,15 +163,16 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
               zeilen[naechste]?.focus()
             }}
           >
-            <p className="px-2.5 py-2 text-xs text-kreide-52">Aktiv bei passenden Themen</p>
+            <p className="sticky top-0 z-10 bg-flaeche px-2.5 py-2 text-xs text-kreide-60">Aktiv bei passenden Themen</p>
             {laedt && !stand ? <p role="status" className="px-2.5 py-3 text-sm text-kreide-60">lädt …</p> : rollen.map((rolle) => (
               <button key={rolle.id} type="button" role="menuitemcheckbox" aria-checked={rolle.aktiv}
+                aria-label={rolle.name} title={rolle.name}
                 disabled={laedt || speichert || gesperrt} onClick={() => void umschalten(rolle.id)}
-                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-grund disabled:opacity-50"
-                style={{ color: rolle.aktiv ? 'var(--kreide)' : 'var(--kreide-60)' }}
+                className="eni-menue-zeile flex min-h-11 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-grund disabled:opacity-50"
+                style={{ backgroundColor: rolle.aktiv ? 'var(--linie)' : undefined }}
               >
-                <span className="min-w-0 flex-1 break-words">{rolle.name}</span>
-                <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center rounded-md border border-linie-hell">
+                <span className="min-w-0 flex-1 break-words">{rollenname(rolle)}</span>
+                <span aria-hidden="true" className={`flex size-5 shrink-0 items-center justify-center rounded-md border ${rolle.aktiv ? 'border-transparent bg-kreide text-grund' : 'border-kontroll-rand'}`}>
                   {rolle.aktiv && <IconCheck size={12} />}
                 </span>
               </button>
@@ -165,8 +182,9 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
               <p>{fehler}</p>
               {!stand && <button type="button" role="menuitem" onClick={() => void laden()} className="min-h-11 font-semibold text-kreide">erneut laden</button>}
             </div>}
-          </div>
+          </EniMenue>
         )}
+      </AnimatePresence>
     </div>
   )
 }

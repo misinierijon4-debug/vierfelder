@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { IconCaretDown, IconSanduhr } from './EniSymbole'
 import { useMenueDaneben } from './useMenueDaneben'
+import { EniMenue } from './EniMenue'
 import { ankerVon, huelleBewegung, zeileBewegung } from './menueBewegung'
 import type { AnbieterInfo } from '../../lib/eniAntwort'
 
@@ -105,7 +106,7 @@ export function EniModellwahl({
         aria-expanded={offen}
         aria-label={`modell wählen, gerade ${aktiv.name}${aktiv.warnung ? `, ${aktiv.warnung}` : ''}${denktJetzt ? ', denkt vor' : ''}`}
         className="eni-modellwahl flex min-w-0 max-w-full items-center gap-1 py-1 text-[11px] transition-opacity disabled:opacity-40"
-        style={{ color: offen ? 'var(--kreide)' : 'var(--kreide-52)' }}
+        style={{ color: 'var(--kreide)' }}
       >
         <span className="truncate">{aktiv.name}</span>
         {/*
@@ -130,7 +131,7 @@ export function EniModellwahl({
             Nach oben, nicht nach unten: unter der Eingabe ist der Rand des
             Bildschirms, und auf dem Telefon steht dort die Tastatur.
           */
-          <motion.div
+          <EniMenue
             key="modell"
             role="menu"
             aria-label="modell"
@@ -139,7 +140,7 @@ export function EniModellwahl({
             animate="auf"
             exit="weg"
             style={{ transformOrigin: ankerVon('unten-links') }}
-            className="eni-modellmenue absolute bottom-full left-0 z-20 mb-1.5 w-[230px] border border-linie-hell bg-flaeche py-1"
+            className="eni-menue eni-modellmenue absolute bottom-full left-0 z-20 mb-1.5 w-[256px] max-w-[calc(100vw-2rem)] border border-linie-hell bg-flaeche py-1"
           >
             {zeigeModelle &&
               anbieter.map((eintrag) => {
@@ -158,7 +159,7 @@ export function EniModellwahl({
                       Griff zurück — 44 Pixel sind die Daumenbreite, unter der
                       auf dem Telefon niemand trifft.
                     */
-                    className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-grund"
+                    className="eni-menue-zeile flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-grund"
                   >
                     <span
                       aria-hidden="true"
@@ -169,8 +170,8 @@ export function EniModellwahl({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span
-                        className="block truncate text-[12px] font-bold leading-tight"
-                        style={{ color: dran ? 'var(--kreide)' : 'var(--kreide-60)' }}
+                        className="block truncate text-[14px] font-medium leading-tight"
+                        style={{ color: 'var(--kreide)' }}
                       >
                         {eintrag.name}
                       </span>
@@ -224,7 +225,7 @@ export function EniModellwahl({
                   raten, ob es angekommen ist. Dieselbe Regel wie im Kopfmenü.
                 */
                 onClick={onDenken}
-                className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-grund"
+                className="eni-menue-zeile flex min-h-11 w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-grund"
               >
                 <span
                   aria-hidden="true"
@@ -236,8 +237,8 @@ export function EniModellwahl({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span
-                      className="text-[12px] font-bold leading-tight"
-                      style={{ color: denkt ? 'var(--kreide)' : 'var(--kreide-60)' }}
+                      className="text-[14px] font-medium leading-tight"
+                      style={{ color: 'var(--kreide)' }}
                     >
                       erst nachdenken
                     </span>
@@ -262,7 +263,7 @@ export function EniModellwahl({
                 </span>
               </motion.button>
             )}
-          </motion.div>
+          </EniMenue>
         )}
       </AnimatePresence>
     </div>

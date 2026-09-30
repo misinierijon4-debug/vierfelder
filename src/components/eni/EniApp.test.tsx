@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lokalerEniSpeicher } from '../../lib/eniSpeicher'
 import type { EniSpeicher } from '../../lib/eniSpeicher'
 import { EniModellFehler } from '../../lib/eniAntwort'
-import type { AnbieterInfo, Modellstand } from '../../lib/eniAntwort'
+import type { AnbieterInfo, Modellstand, Antwort, Antwortgeber } from '../../lib/eniAntwort'
 import { EniApp } from './EniApp'
 
 // jsdom bringt showModal nicht mit. dieselbe kleine kruecke wie im kalender.
@@ -970,5 +970,39 @@ describe('kompakte ENI-eingabe', () => {
     expect(screen.getByRole('button', { name: /modell wählen/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /rolle/i })).toBeInTheDocument()
     expect(feld()).toBeInTheDocument()
+  })
+})
+
+describe('gespeicherte Stream-Antwort', () => {
+  it('zeigt gespeicherte Worte ohne zweite Wortanimation und gibt Quellenlinks erst danach frei', async () => {
+    vi.useFakeTimers()
+    let liefere!: (text: string) => void
+    let fertig!: (antwort: Antwort) => void
+    const speicher = lokalerEniSpeicher('erijon')
+    const geber: Antwortgeber = {
+      art: 'modell', anbieter: 'deepseek', denkt: false,
+      antworte: async (_chat, _text, _bisher, _anhaenge, _signal, onText) => {
+        liefere = onText!
+        return new Promise<Antwort>((resolve) => { fertig = resolve })
+      },
+      nochmal: async () => { throw new Error('hier nicht gebraucht') },
+    }
+    render(<EniApp speicher={speicher} onZurueck={vi.fn()}
+      pruefeModell={async () => ({ bereit: true, anbieter: [anbieterInfo('deepseek', 'deepseek')] })}
+      baueGeber={() => geber} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    lege('Erklär mir das.')
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    const text = 'Das passt.\n\nQuelle: [Beispiel](https://example.org/beleg)'
+    await act(async () => { liefere(text) })
+    expect(screen.queryByRole('link', { name: 'Beispiel' })).not.toBeInTheDocument()
+    expect(document.querySelectorAll('.eni-wort')).toHaveLength(0)
+    await act(async () => { fertig({
+      mensch: { id: 'm1', rolle: 'mensch', text: 'Erklär mir das.', erstellt: '2026-09-30T18:00:00Z' },
+      eni: { id: 'a1', rolle: 'eni', text, erstellt: '2026-09-30T18:00:05Z' },
+    }) })
+    expect(screen.getByRole('link', { name: 'Beispiel' })).toHaveAttribute('href', 'https://example.org/beleg')
+    expect(document.querySelectorAll('.eni-wort')).toHaveLength(0)
+    expect(screen.getByLabelText('dialog mit ENI')).toHaveTextContent('Das passt.')
   })
 })
