@@ -28,6 +28,17 @@ async function klick(name: string) {
 }
 
 describe('Rollen direkt am Chat', () => {
+  it('kürzt Vorlagen sichtbar und bewahrt geänderte und eigene Rollennamen', async () => {
+    const api = dienst({ ...STANDARD, rollen: [
+      { ...ROLLEN_VORLAGEN[1]!, name: 'Mein Kraftcoach' },
+      { id: 'eigen-a', name: 'Mein Abendbegleiter', thema: 'Abend', anweisung: 'Hilf mir.', aktiv: false },
+    ] })
+    await zeige(api)
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Ernährungsberater' })).toHaveTextContent('Ernährung')
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Mein Kraftcoach' })).toHaveTextContent('Mein Kraftcoach')
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Mein Abendbegleiter' })).toHaveTextContent('Mein Abendbegleiter')
+  })
+
   it('zeigt Vorlagen und eigene Rollen, speichert privat und behält aktuelle Anweisungen', async () => {
     const eigen = { id: 'eigen-p', name: 'Peptide Coach', thema: 'Peptide', anweisung: 'Erkläre Studien.', aktiv: true }
     const api = dienst({ ...STANDARD, rollen: [eigen] })
@@ -87,7 +98,7 @@ describe('Rollen direkt am Chat', () => {
     expect(screen.getByRole('button', { name: /Rollen wählen/ })).toHaveFocus()
     api.aendere({ ...STANDARD, rollen: [{ ...ROLLEN_VORLAGEN[4]!, aktiv: true }] })
     await act(async () => { window.dispatchEvent(new Event(EINSTELLUNGEN_GESPEICHERT)) })
-    expect(screen.getByRole('button', { name: /Rollen wählen/ })).toHaveTextContent('Lerncoach')
+    expect(screen.getByRole('button', { name: /Rollen wählen/ })).toHaveTextContent('Lernen')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Rollen wählen/ })) })
     fireEvent.pointerDown(document.body)
     expect(screen.getByRole('button', { name: /Rollen wählen/ })).toHaveAttribute('aria-expanded', 'false')

@@ -9,6 +9,7 @@ import {
   IconSpeakerSlash,
 } from './EniSymbole'
 import { useMenueDaneben } from './useMenueDaneben'
+import { EniMenue } from './EniMenue'
 import { ankerVon, huelleBewegung, zeileBewegung } from './menueBewegung'
 
 type Props = {
@@ -72,7 +73,7 @@ export function EniKopfmenue({
 
       <AnimatePresence>
         {offen && (
-          <motion.div
+          <EniMenue
             key="menue"
             role="menu"
             aria-label="menü"
@@ -84,22 +85,21 @@ export function EniKopfmenue({
             /*
               Rechtsbündig statt mittig: das Menü hängt am rechten Rand des
               Kopfes, und ein mittig gesetztes Feld würde dort über die Kante
-              laufen. Eine hellere Haarlinie hebt es ab — kein Schatten, die App
-              kennt nur eine Ebene.
+              laufen. Eine hellere Haarlinie hebt es ab — eine dezente Tiefe trennt das Werkzeug vom Text darunter.
             */
-            className="absolute right-0 top-full z-20 mt-1 w-[230px] border border-linie-hell bg-flaeche py-1"
+            className="eni-menue absolute right-0 top-full z-20 mt-1 w-[256px] max-w-[calc(100vw-2rem)] border border-linie-hell bg-flaeche py-1"
           >
             <motion.button
               variants={zeile}
               type="button"
               role="menuitem"
               onClick={onVerlauf}
-              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
+              className="eni-menue-zeile flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
             >
               <span aria-hidden="true" className="flex w-[16px] shrink-0 justify-center">
                 <IconClock size={16} />
               </span>
-              <span className="text-[12px] font-semibold leading-tight">verlauf</span>
+              <span className="text-[14px] font-medium leading-tight">verlauf</span>
             </motion.button>
 
             {stimmeMoeglich && (
@@ -114,7 +114,7 @@ export function EniKopfmenue({
                   raten, ob es angekommen ist.
                 */
                 onClick={onVorlesen}
-                className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-grund active:bg-grund/80"
+                className="eni-menue-zeile flex min-h-11 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-grund active:bg-grund/80"
               >
                 <span
                   aria-hidden="true"
@@ -124,8 +124,8 @@ export function EniKopfmenue({
                   {vorlesen ? <IconSpeakerHigh size={16} /> : <IconSpeakerSlash size={16} />}
                 </span>
                 <span
-                  className="text-[12px] font-semibold leading-tight"
-                  style={{ color: vorlesen ? 'var(--kreide)' : 'var(--kreide-60)' }}
+                  className="text-[14px] font-medium leading-tight"
+                  style={{ color: 'var(--kreide)' }}
                 >
                   antworten vorlesen
                 </span>
@@ -143,12 +143,12 @@ export function EniKopfmenue({
               type="button"
               role="menuitem"
               onClick={onAnpassen}
-              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
+              className="eni-menue-zeile flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
             >
               <span aria-hidden="true" className="flex w-[16px] shrink-0 justify-center">
                 <IconRegler size={16} />
               </span>
-              <span className="text-[12px] font-semibold leading-tight">
+              <span className="text-[14px] font-medium leading-tight">
                 ENI anpassen
               </span>
             </motion.button>
@@ -158,16 +158,16 @@ export function EniKopfmenue({
               type="button"
               role="menuitem"
               onClick={onGedaechtnis}
-              className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide-60 transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
+              className="eni-menue-zeile flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-kreide transition-colors hover:bg-grund hover:text-kreide active:bg-grund/80"
             >
               <span aria-hidden="true" className="flex w-[16px] shrink-0 justify-center">
                 <IconGedaechtnis size={16} />
               </span>
-              <span className="text-[12px] font-semibold leading-tight">
+              <span className="text-[14px] font-medium leading-tight">
                 das weiß ENI über mich
               </span>
             </motion.button>
-          </motion.div>
+          </EniMenue>
         )}
       </AnimatePresence>
     </div>
