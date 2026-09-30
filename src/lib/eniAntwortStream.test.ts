@@ -20,8 +20,8 @@ describe('ENI client streaming protocol', () => {
       init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
     })))
     const result = modellAntwort().antworte('c1', 'Hallo', [], [], undefined, () => {}).catch(e => e)
-    await vi.advanceTimersByTimeAsync(120_000)
-    expect(await result).toMatchObject({ message: expect.stringContaining('zwei Minuten'), code: 'modell_fehler' })
+    await vi.advanceTimersByTimeAsync(150_000)
+    expect(await result).toMatchObject({ message: expect.stringContaining('zweieinhalb Minuten'), code: 'modell_fehler' })
     expect(vi.getTimerCount()).toBe(0)
   })
   it('reicht den konkreten Anbieterfehler aus dem Stream unverändert weiter', async () => {

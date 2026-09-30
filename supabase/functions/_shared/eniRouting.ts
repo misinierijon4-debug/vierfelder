@@ -18,11 +18,10 @@
  *    spaet oder unverstaendlich, gilt wieder alles — genau das Verhalten von
  *    vorher. ENIs Antwort darf nie daran haengen, ob ein Sortierdienst
  *    erreichbar war.
- * 2. **Das Routing darf nur wegnehmen, nie hinzufuegen.** `darfSuchen` wird
- *    mit dem bestehenden `suchauftrag` verundet. Die Sperren fuer Krisen- und
- *    Ich-Saetze in `eniWeb.ts` bleiben damit die letzte Instanz davor, dass
- *    ein persoenlicher Satz an eine Suchmaschine geht; ein fremder Dienst
- *    kann diese Sperre nicht aufmachen.
+ * 2. **Das Routing steuert nur den Kontext.** `darfSuchen` bleibt fuer
+ *    Diagnose und aeltere Aufrufer im Ergebnis, autorisiert aber keine Suche.
+ *    `eniSuchplan.ts` entscheidet unabhaengig anhand Aktualitaet und Verlauf;
+ *    die festen Datenschutzsperren aus `eniWeb.ts` gelten weiterhin.
  *
  * Doku: classifier.dev (ohne Schema notiert, damit die Adressliste in
  * edgeImports.test.ts nur echte Gegenstellen fuehrt)

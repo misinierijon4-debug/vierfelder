@@ -223,3 +223,30 @@ URLs vor dem Teilen redigiert.
 
 Die Freigabe- und Nachweisreihenfolge steht im
 [Release- und Migrationsrunbook](release-und-migrationen.md).
+
+## ENI: automatische Websuche
+
+Seit 30.09.2026 entscheidet der Server pro Nachricht, ob recherchiert wird.
+Es gibt keinen Internet-Schalter im Composer. Eindeutige öffentliche aktuelle
+Fragen werden direkt recherchiert; bei sonstigen Sachfragen und Rückfragen
+entscheidet das gewählte ENI-Modell mit höchstens sechs Textzeilen aus diesem
+Chat (je 800 Zeichen), ohne Vordenken, höchstens 300 Ausgabetoken und sechs
+Sekunden Wartezeit. Das alte Intent-Routing steuert nur den Tracker-Kontext.
+
+Die Entscheidung erhält keine Datenbank-Erinnerungen, Trackerwerte,
+Dateiinhalte oder Bildadressen. An die Suchmaschine geht nur eine kurze
+öffentliche Themenfrage, nicht der Chatverlauf. Modell-Anfragen werden vor
+und nach der Bereinigung auf private Namen, Ich-Angaben, Kontaktdaten,
+Zugangsdaten und Körpermaße geprüft; die bestehenden Krisensperren gelten
+weiter. Öffentliche Produkt-/Ortsnamen bleiben möglich. Diese Filter ergänzen
+die Modellanweisung und sind keine Garantie für perfekte semantische Auswahl.
+
+Bei unklaren Bezügen wird kein Gegenstand erfunden. Bei Zeitüberschreitung
+oder ungültigem JSON wird nur eine bereits eigenständige öffentliche aktuelle
+Frage als Rückfall recherchiert. Fehlende Suchkonfiguration oder Suchausfälle
+werden dem Antwortmodell ausdrücklich als fehlende aktuelle Verifikation
+mitgegeben; es darf keine Recherche oder aktuellen Preise vortäuschen.
+„Ohne Internet“ im Chat verbietet die Suche. Für alte API-Integrationen bleibt
+`internet: false` ein explizites Verbot; fehlendes Feld und `true` verwenden
+beide die automatische Entscheidung. Der Client wartet maximal 150 Sekunden
+für Entscheidung, Recherche und Antwort; Abbruch bleibt jederzeit möglich.

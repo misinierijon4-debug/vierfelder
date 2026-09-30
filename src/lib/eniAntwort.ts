@@ -157,10 +157,10 @@ export async function rufeEniFunktion(
   const beginn = performance.now()
   let ersterText = false
   let mensch: EniZeile | null = null
-  // Der Server hat insgesamt 100 Sekunden Modellbudget. Auch eine danach
-  // haengende Verbindung muss mit einer sichtbaren Meldung enden.
+  // Automatische Suchentscheidung + Recherche kommen vor dem Modellbudget.
+  // Auch ohne Internet-Feld braucht jeder Chat dafuer denselben Zeitrahmen.
   const frist = new AbortController()
-  const timer = setTimeout(() => frist.abort(), rumpf.internet === true ? 150_000 : 120_000)
+  const timer = setTimeout(() => frist.abort(), 150_000)
   const abbruch = () => frist.abort()
   if (signal?.aborted) frist.abort()
   signal?.addEventListener('abort', abbruch, { once: true })
@@ -201,7 +201,7 @@ export async function rufeEniFunktion(
   } catch (err) {
     if (err instanceof EniModellFehler) throw err
     if (frist.signal.aborted && !signal?.aborted) {
-      throw new EniModellFehler(rumpf.internet === true ? 'Websuche und Modell haben innerhalb von zweieinhalb Minuten keine vollständige Antwort geliefert. Versuch es erneut.' : 'Das Modell hat innerhalb von zwei Minuten keine vollständige Antwort geliefert. Versuch es erneut oder wähle ein anderes Modell.', mensch, 'modell_fehler')
+      throw new EniModellFehler('ENI hat innerhalb von zweieinhalb Minuten keine vollständige Antwort geliefert. Versuch es erneut oder wähle ein anderes Modell.', mensch, 'modell_fehler')
     }
     if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
       throw new EniModellFehler('anfrage abgebrochen', mensch, 'modell_fehler')

@@ -230,9 +230,8 @@ const SUCHWORT =
 /**
  * Ob die Nachricht an die Suchmaschine darf, und mit welchem Wortlaut.
  *
- * `null` heisst: diesmal wird nicht gesucht. Das ist kein Ausschalten des
- * Schalters — er bleibt an, und die naechste Sachfrage sucht wieder. Es heisst
- * nur, dass diese eine Nachricht nichts ist, was man nachschlaegt.
+ * `null` heisst: diese Nachricht darf nicht nach aussen. Ob eine erlaubte
+ * Sachfrage wirklich recherchiert werden soll, entscheidet `eniSuchplan.ts`.
  *
  * Aus mehreren Saetzen geht nur der nachschlagende an die Suche. Wer erst
  * erzaehlt, wie seine Woche lief, und dann fragt, wie viel Protein er braucht,

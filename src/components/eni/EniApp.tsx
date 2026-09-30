@@ -73,7 +73,7 @@ const STANDARD_GEBER = (
  * mehr im systemtext sind fünf auszüge, die erst gelesen werden wollen.
  */
 const lageText = (schritt: Lage['schritt'], anzahl: number) => {
-  if (schritt === 'sucht') return 'ENI sucht im Web …'
+  if (schritt === 'sucht') return 'ENI sucht im Internet …'
   if (schritt === 'gefunden') return `${anzahl} ${anzahl === 1 ? 'Quelle' : 'Quellen'} gefunden`
   return anzahl > 0 ? 'ENI liest und denkt nach …' : 'ENI denkt nach …'
 }
@@ -110,9 +110,6 @@ export function EniApp({
    * hat, dass er lieber wartet, meint das nicht nur für eine Stimme.
    */
   const [denkt, setDenkt] = useState(false)
-  const [internet, setInternet] = useState(false)
-  const [internetBereit, setInternetBereit] = useState(false)
-  /** worüber gesucht wird — entscheidet nur, was unter dem schalter steht */
   /**
    * Woran ENI gerade ist, solange kein textstück da ist.
    *
@@ -213,7 +210,6 @@ export function EniApp({
       const stand = await pruefeModell()
       if (abgemeldet) return
       setModus(stand.bereit ? 'modell' : 'stimmenprobe')
-      setInternetBereit(stand.internet === true)
       setAnbieter(stand.anbieter)
       /**
        * Die gemerkte Wahl gilt nur, solange der Server sie noch anbietet.
@@ -439,7 +435,7 @@ export function EniApp({
             vorlagen,
             controller.signal,
             (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) },
-            internet,
+            undefined,
             (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) }
           )
 
@@ -512,7 +508,7 @@ export function EniApp({
         }
       })()
     },
-    [anhaenge, geber, internet, prueft, speicher, stimme, vorlesen, zeilen]
+    [anhaenge, geber, prueft, speicher, stimme, vorlesen, zeilen]
   )
 
   /**
@@ -535,7 +531,7 @@ export function EniApp({
 
       void (async () => {
         try {
-          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }, internet, (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) })
+          const ergebnis = await geber.nochmal(chatId, controller.signal, (teil) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setTeilAntwort((vorher) => vorher + teil) }, undefined, (l) => { if (!controller.signal.aborted && aktiverChatRef.current === chatId) setLage((vorher) => ({ schritt: l.schritt, quellen: l.schritt === 'gefunden' ? l.quellen : (vorher?.quellen ?? []) })) })
           letzterFehlversuchRef.current = null
           if (aktiverChatRef.current === chatId) {
             setZeilen((vorher) => [
@@ -566,7 +562,7 @@ export function EniApp({
         }
       })()
     },
-    [geber, internet, prueft, stimme, vorlesen]
+    [geber, prueft, stimme, vorlesen]
   )
 
   /**
@@ -607,7 +603,7 @@ export function EniApp({
                 setTeilAntwort((vorher) => vorher + teil)
               }
             },
-            internet,
+            undefined,
             (l) => {
               if (!controller.signal.aborted && aktiverChatRef.current === chatId) {
                 setLage((vorher) => ({
@@ -654,7 +650,7 @@ export function EniApp({
         }
       })()
     },
-    [geber, internet, prueft, speicher, stimme, vorlesen, zeilen]
+    [geber, prueft, speicher, stimme, vorlesen, zeilen]
   )
 
   const holeWochenbericht = useCallback(
@@ -1098,20 +1094,6 @@ export function EniApp({
                 onSpeichert={setRolleSpeichert}
               />
             }
-            optionen={modus === 'modell' && (
-              <button
-                type="button"
-                aria-pressed={internet}
-                aria-label={`Internet: ${internet ? 'an' : 'aus'}`}
-                title={!internetBereit ? 'Websuche noch nicht verfügbar' : undefined}
-                disabled={prueft || !internetBereit}
-                onClick={() => setInternet((an) => !an)}
-                className="eni-internet"
-              >
-                <span>Internet</span>
-                <span className="eni-internet-zustand" aria-hidden="true">{internet ? 'an' : 'aus'}</span>
-              </button>
-            )}
             modellwahl={
               <EniModellwahl
                 anbieter={modus === 'modell' ? anbieter : []}
