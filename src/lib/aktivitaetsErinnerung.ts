@@ -3,15 +3,18 @@ import { supabase } from './supabase'
 export const AKTIVITAETS_ERINNERUNGEN = [
   { art: 'lernen', label: 'lernen', beschreibung: 'mo–fr · 18:30 · wenn noch kein lerneintrag vorliegt' },
   { art: 'lesen', label: 'lesen', beschreibung: 'täglich · 20:45 · wenn noch kein leseeintrag vorliegt' },
-  { art: 'wochenblick', label: 'wochenendspurt', beschreibung: 'sonntag · 18:00 · euer aktueller wochenstand' },
+  { art: 'wochenblick', label: 'wochenendspurt', beschreibung: 'sonntag · 18:10 · euer stand und was heute noch offen ist' },
   { art: 'partner', label: 'partnerfortschritt', beschreibung: 'täglich · 09:00–21:00 · wenn dein Partner Punkte sammelt oder vorzieht' },
   { art: 'wochenrueckblick', label: 'wochenrückblick', beschreibung: 'sonntag · 20:00 · ENI fasst deine Woche zusammen' },
   { art: 'wochenbericht', label: 'wochenbericht', beschreibung: 'montag · sobald die letzte nacht drin ist · dein bericht ist fertig' },
   { art: 'ansage', label: 'ansagen', beschreibung: 'sofort · 08:00–22:00 · wenn dir jemand eine ansage macht' },
+  { art: 'aufgabe', label: 'fällige aufgaben', beschreibung: 'täglich · 08:30 · was du dir mit ENI für heute vorgenommen hast' },
 ] as const
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>
-const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv'
+const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv,aufgabe_aktiv'
+/** stand vor den faelligen aufgaben: ohne `aufgabe_aktiv` */
+const SPALTEN_OHNE_AUFGABE = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv'
 /** stand vor den ansagen: ohne `ansage_aktiv` */
 const SPALTEN_OHNE_ANSAGE = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv'
 const ALTE_SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv'
@@ -23,6 +26,7 @@ const STANDARD: AktivitaetsEinstellungen = {
   wochenrueckblick_aktiv: true,
   wochenbericht_aktiv: true,
   ansage_aktiv: true,
+  aufgabe_aktiv: true,
 }
 
 const FEHLENDE_SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'])
@@ -43,6 +47,7 @@ function vervollstaendigeEinstellungen(roh: unknown): AktivitaetsEinstellungen {
     wochenrueckblick_aktiv: typeof daten.wochenrueckblick_aktiv === 'boolean' ? daten.wochenrueckblick_aktiv : STANDARD.wochenrueckblick_aktiv,
     wochenbericht_aktiv: typeof daten.wochenbericht_aktiv === 'boolean' ? daten.wochenbericht_aktiv : STANDARD.wochenbericht_aktiv,
     ansage_aktiv: typeof daten.ansage_aktiv === 'boolean' ? daten.ansage_aktiv : STANDARD.ansage_aktiv,
+    aufgabe_aktiv: typeof daten.aufgabe_aktiv === 'boolean' ? daten.aufgabe_aktiv : STANDARD.aufgabe_aktiv,
   }
 }
 
@@ -58,6 +63,10 @@ export async function ladeAktivitaetsErinnerungen(): Promise<AktivitaetsEinstell
   if (!istFehlendesSchema(aktuelle.error)) {
     throw new Error('erinnerungen konnten nicht geladen werden.')
   }
+  // Frontend vor der Aufgaben-Migration: wie unten, eine Stufe spaeter.
+  const ohneAufgabe = await supabase.from('erinnerungs_einstellungen').select(SPALTEN_OHNE_AUFGABE).maybeSingle()
+  if (!ohneAufgabe.error) return vervollstaendigeEinstellungen(ohneAufgabe.data)
+  if (!istFehlendesSchema(ohneAufgabe.error)) throw new Error('erinnerungen konnten nicht geladen werden.')
   // Frontend vor der Ansagen-Migration: die uebrigen Schalter behalten ihren
   // gespeicherten Stand, nur der neue steht auf seinem Standard.
   const ohneAnsage = await supabase.from('erinnerungs_einstellungen').select(SPALTEN_OHNE_ANSAGE).maybeSingle()

@@ -324,6 +324,30 @@ Antwort am alten Constraint scheitern.
 |---|---|
 | `20260930180000_eni_antworten_laenger.sql` | `eni_antworten_laenger` (Zeitstempel der Anwendung) |
 
+## Neue Migration `eni_meldungen` (30.09.2026)
+
+Zwei Push-Meldungen werden persönlicher (Auftrag von erijon: „ENI meldet sich“):
+
+- **Sonntagsmeldung** (`wochenblick`): Stand inklusive entschiedener Ansagen
+  (Regel wie `ansagePunkte`), dazu Rückstand/Gleichstand/Führung und die heute
+  noch offenen Felder; offene Ansagen werden genannt, nicht gezählt. Fenster
+  ab **18:10** statt 18:00, weil `duell-ansagen-entscheiden` alle fünf Minuten
+  läuft und die Ansagen mit Frist 18:00 sonst noch fehlen.
+- **Neue Art `aufgabe`**: Aufgaben aus ENIs Gedächtnis mit Frist heute, einmal
+  zwischen 08:30 und 10:00, Tipp öffnet ENI. Schalter `aufgabe_aktiv`
+  (Standard an, wie alle anderen).
+
+Die Funktion ist die produktive Fassung (Rumpf per MD5 gegen Produktion
+geprüft: `85b7b8e5…a2ae`) mit genau diesen Änderungen; `eniMeldungenMigration.test.ts`
+prüft das wörtlich, `node scripts/check-eni-meldungen.mjs <pglite>` spielt die
+Texte, Fenster, Rechte und die Reservierung in eingebettetem Postgres durch.
+Keine Datenänderung.
+
+**Reihenfolge:** Migration, dann Worker `aktivitaets-erinnerung` (kennt sonst
+die Art `aufgabe` nicht und überspringt sie still), dann Pages. Der Worker wird
+wie `eni` aus dem Commit deployt (eine Zeile, `verify_jwt: false`, Autorisierung
+weiter über `x-erinnerungs-secret`).
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
