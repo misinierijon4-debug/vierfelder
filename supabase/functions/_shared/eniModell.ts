@@ -67,14 +67,47 @@ export const MODELL = findeAnbieter(STANDARD_ANBIETER)!.modell
  * ENI antwortet meist knapp, darf bei einer echten Erklaerung aber weit
  * ausholen. Der Deckel liegt so, dass eine lange Antwort nicht mittendrin
  * abgeschnitten wird; die Kuerze kommt aus dem Charakter, nicht aus dem Limit.
+ *
+ * 6000 statt 2500: ein Lernzettel oder ein Plan ueber mehrere Wochen passte
+ * vorher nicht hinein. Grob 24 000 Zeichen; die Spalte `eni_nachrichten.text`
+ * nimmt seit `*_eni_antworten_laenger.sql` bis 32 000. 8000 Token laufen beim
+ * Vordenken schon mit beiden Gegenstellen, 6000 liegt also sicher darunter.
  */
-export const MAX_TOKENS = 2500
+export const MAX_TOKENS = 6000
 
 /** so viele vorlagen darf eine person pro tag machen */
 export const STANDARD_TAGESLIMIT = 60
 
-/** so viele nachrichten aus dem verlauf gehen als kontext mit */
-export const KONTEXT_NACHRICHTEN = 24
+/**
+ * So viele Nachrichten aus dem Verlauf gehen hoechstens als Kontext mit.
+ * Frueher 24: in einem langen Lern- oder Planungschat vergass ENI dann den
+ * Anfang. Die eigentliche Grenze ist das Zeichenbudget darunter.
+ */
+export const KONTEXT_NACHRICHTEN = 60
+
+/**
+ * So viele Zeichen Verlauf gehen hoechstens mit, neueste Nachricht zuerst
+ * gezaehlt; was aelter ist und nicht mehr hineinpasst, faellt weg. Grob 15 000
+ * Token. Das haelt die Rechnung und die Wartezeit auch dann klein, wenn ein
+ * Chat aus ein paar langen Lernzetteln besteht. Die zwei neuesten Nachrichten
+ * bleiben immer, sonst fehlte ENI im Extremfall die Frage selbst.
+ */
+export const VERLAUF_ZEICHEN_BUDGET = 60_000
+
+/** den verlauf auf das zeichenbudget kuerzen, aelteste zuerst weg */
+export function imVerlaufsbudget<T extends { text: string }>(
+  zeilen: T[],
+  budget: number = VERLAUF_ZEICHEN_BUDGET,
+): T[] {
+  let summe = 0
+  let ab = zeilen.length
+  for (let i = zeilen.length - 1; i >= 0; i -= 1) {
+    summe += zeilen[i]!.text.length
+    if (summe > budget && i < zeilen.length - 2) break
+    ab = i
+  }
+  return zeilen.slice(ab)
+}
 
 export const MAX_VORLAGE_ZEICHEN = 4000
 
@@ -929,7 +962,7 @@ export async function behandleEni(
 
   if (verlauf.error) return antwort(500, { error: 'der chat konnte nicht gelesen werden' })
 
-  const vorherige = ((verlauf.data ?? []) as unknown as EniZeile[]).slice().reverse()
+  const vorherige = imVerlaufsbudget(((verlauf.data ?? []) as unknown as EniZeile[]).slice().reverse())
 
   // Die Anhaenge des Verlaufs. Ein Fehler ist hier keiner, der die Antwort
   // verhindert: dann sieht ENI ein altes Bild nicht mehr, und das ist besser

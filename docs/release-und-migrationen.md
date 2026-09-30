@@ -287,6 +287,43 @@ Ohne lesbare Tabelle antwortet ENI wie vorher, die Reihenfolge Migration vor
 Function ist damit unkritisch, wurde aber eingehalten. Die Sperre gegen
 `db push` gilt unverändert weiter.
 
+## Edge Function `eni` Version 44: Deploy aus dem Commit (30.09.2026)
+
+ENI-Tempo aus #76 (Routing entfernt, parallele Abfragen, Vorab-Start). Neu ist,
+**wie** deployt wird: statt ein 100-KB-Bundle von Hand in den Deploy-Aufruf zu
+übertragen, ist die hochgeladene `index.ts` eine einzige Zeile, die den
+gemergten Stand aus dem öffentlichen Repository lädt — fest auf einen Commit:
+
+```ts
+import 'https://raw.githubusercontent.com/misinierijon4-debug/vierfelder/<commit>/supabase/functions/eni/index.ts'
+```
+
+Supabase bündelt den ganzen Graphen beim Deploy (relative `.ts`-Importe
+lösen gegen dieselbe Adresse auf, `npm:` wie gehabt); zur Laufzeit wird nichts
+von GitHub geholt. Ein Commit-Hash ist unveränderlich, der Deploy ist damit
+byte für byte der gemergte Stand, ohne Abschreibfehler. Zurückrollen heißt:
+dieselbe Zeile mit dem vorherigen Commit deployen.
+
+Version 44 = Commit `571c453` (`verify_jwt: true`). Vorher lokal in Deno
+gestartet (dieselbe Zeile): `{pruefen: true}` → 200, ohne Anmeldung → 401.
+Nach dem Deploy aus der Datenbank per `net.http_post` mit dem publizierbaren
+Schlüssel geprüft: `{pruefen: true}` → 200; Log: `booted (time: 41ms)`, keine
+Fehler. Je Antwort steht jetzt `eni: zeiten {…}` im Function-Log (nur Dauern).
+
+## Neue Migration `eni_antworten_laenger` (30.09.2026)
+
+ENIs Antwortdeckel steigt von 2500 auf 6000 Token (~24 000 Zeichen); die
+Spalte `eni_nachrichten.text` erlaubte nur 8000 Zeichen. Die Migration hebt nur
+die Obergrenze auf 32 000, keine Zeile wird geändert. Vorher geprüft: Name und
+Definition des Constraints in Produktion (`eni_nachrichten_text_check`,
+`char_length(text) <= 8000`), längste gespeicherte Nachricht 4243 Zeichen.
+Reihenfolge: **erst Migration, dann Function** — umgekehrt könnte eine lange
+Antwort am alten Constraint scheitern.
+
+| Datei | produktive Version |
+|---|---|
+| `20260930180000_eni_antworten_laenger.sql` | `eni_antworten_laenger` (Zeitstempel der Anwendung) |
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

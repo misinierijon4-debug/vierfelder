@@ -5,8 +5,11 @@ import {
   ABLEHNUNG,
   behandleEni,
   berlinerTagesbeginnIso,
+  imVerlaufsbudget,
+  KONTEXT_NACHRICHTEN,
   MAX_ANHAENGE,
   MAX_TOKENS,
+  VERLAUF_ZEICHEN_BUDGET,
   mitAnhangText,
   pruefeAnhaenge,
   subAusToken,
@@ -1949,5 +1952,55 @@ describe('ENI beginnt, waehrend die suchentscheidung noch laeuft', () => {
     }
     expect(zeile).not.toContain('Laptop')
     expect(zeile).not.toContain('Antwort')
+  })
+})
+
+/*
+  Ein langer Lern- oder Planungschat soll seinen Anfang nicht vergessen, und
+  eine lange Antwort (Lernzettel, Plan) soll nicht mittendrin abbrechen.
+*/
+describe('ENIs gedaechtnis im chat und laenge der antwort', () => {
+  const zeile = (i: number, laenge = 10) => ({
+    id: `n${i}`,
+    rolle: i % 2 === 0 ? 'mensch' : 'eni',
+    text: 'x'.repeat(laenge),
+  })
+
+  it('kuerzt den verlauf von vorn auf das zeichenbudget', () => {
+    const zeilen = [zeile(1, 40), zeile(2, 40), zeile(3, 40), zeile(4, 40)]
+    expect(imVerlaufsbudget(zeilen, 100).map((z) => z.id)).toEqual(['n3', 'n4'])
+    expect(imVerlaufsbudget(zeilen, 1000)).toHaveLength(4)
+  })
+
+  it('behaelt die zwei neuesten nachrichten auch ueber dem budget', () => {
+    const zeilen = [zeile(1, 10), zeile(2, 500), zeile(3, 500)]
+    expect(imVerlaufsbudget(zeilen, 100).map((z) => z.id)).toEqual(['n2', 'n3'])
+  })
+
+  it('gibt einem langen chat deutlich mehr als 24 nachrichten mit', async () => {
+    const tabellen = grunddaten()
+    tabellen.eni_nachrichten = Array.from({ length: 80 }, (_, i) => ({
+      id: `alt-${i}`,
+      chat_id: 'chat-1',
+      user_id: ICH,
+      rolle: i % 2 === 0 ? 'mensch' : 'eni',
+      text: `nachricht ${i}`,
+      erstellt: new Date(Date.UTC(2026, 8, 1, 0, i)).toISOString(),
+    }))
+    const { abhaengigkeiten, gesehen } = deps({ tabellen })
+    await behandleEni(anfrage({ chatId: 'chat-1', text: 'und jetzt?' }), abhaengigkeiten)
+
+    const texte = gesehen[0]!.nachrichten.map((n) => n.text)
+    expect(KONTEXT_NACHRICHTEN).toBeGreaterThan(24)
+    // die neueste vorlage plus die juengsten aus dem verlauf, in der richtigen reihenfolge
+    expect(texte.at(-1)).toBe('und jetzt?')
+    expect(texte.at(-2)).toContain('nachricht 79')
+    expect(texte.length).toBeGreaterThan(24)
+    expect(texte.some((t) => t.includes('nachricht 0'))).toBe(false)
+  })
+
+  it('laesst lange antworten zu und haelt das zeichenbudget grosszuegig', () => {
+    expect(MAX_TOKENS).toBeGreaterThanOrEqual(6000)
+    expect(VERLAUF_ZEICHEN_BUDGET).toBeGreaterThanOrEqual(40_000)
   })
 })
