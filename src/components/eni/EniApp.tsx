@@ -17,7 +17,7 @@ import {
   NACHHOLBAR,
   stimmenprobeAntwort,
 } from '../../lib/eniAntwort'
-import type { AnbieterInfo, Antwortgeber, Lage, Modellstand, Suchweg } from '../../lib/eniAntwort'
+import type { AnbieterInfo, Antwortgeber, Lage, Modellstand } from '../../lib/eniAntwort'
 import {
   bereiteVor,
   bildAdressen as holeBildAdressen,
@@ -111,7 +111,6 @@ export function EniApp({
   const [internet, setInternet] = useState(false)
   const [internetBereit, setInternetBereit] = useState(false)
   /** worüber gesucht wird — entscheidet nur, was unter dem schalter steht */
-  const [suchweg, setSuchweg] = useState<Suchweg | null>(null)
   /**
    * Woran ENI gerade ist, solange kein textstück da ist.
    *
@@ -213,7 +212,6 @@ export function EniApp({
       if (abgemeldet) return
       setModus(stand.bereit ? 'modell' : 'stimmenprobe')
       setInternetBereit(stand.internet === true)
-      setSuchweg(stand.suche ?? null)
       setAnbieter(stand.anbieter)
       /**
        * Die gemerkte Wahl gilt nur, solange der Server sie noch anbietet.
@@ -1061,22 +1059,6 @@ export function EniApp({
               )}
             </div>
           )}
-          {modus === 'modell' && (
-            <div className="flex flex-wrap items-center gap-x-3 pb-1">
-              <button type="button" aria-pressed={internet} disabled={prueft || !internetBereit}
-                onClick={() => setInternet((an) => !an)}
-                className="min-h-11 px-1 text-xs font-semibold text-kreide disabled:opacity-40">
-                Internet: {internet ? 'an' : 'aus'}
-              </button>
-              <span className="text-[10px] text-kreide-60">
-                {!internetBereit
-                  ? 'Websuche noch nicht verfügbar'
-                  : suchweg === 'tavily'
-                    ? 'Websuche mit Quellen · kostenlos'
-                    : 'Websuche mit Quellen · kostet OpenRouter-Guthaben'}
-              </span>
-            </div>
-          )}
           {/*
             Der satz dazu steht am takt im verlauf, nicht noch einmal hier.
             Was diese stelle allein hat, sind die gefundenen quellen.
@@ -1106,6 +1088,20 @@ export function EniApp({
               setFeldBelegt((vorher) => (vorher === belegt ? vorher : belegt))
             }}
             onAbbrechen={prueft ? brecheAb : undefined}
+            optionen={modus === 'modell' && (
+              <button
+                type="button"
+                aria-pressed={internet}
+                aria-label={`Internet: ${internet ? 'an' : 'aus'}`}
+                title={!internetBereit ? 'Websuche noch nicht verfügbar' : undefined}
+                disabled={prueft || !internetBereit}
+                onClick={() => setInternet((an) => !an)}
+                className="eni-internet"
+              >
+                <span>Internet</span>
+                <span className="eni-internet-zustand" aria-hidden="true">{internet ? 'an' : 'aus'}</span>
+              </button>
+            )}
             modellwahl={
               <EniModellwahl
                 anbieter={modus === 'modell' ? anbieter : []}

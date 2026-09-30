@@ -34,6 +34,7 @@ import {
 } from './eniWochenlage.ts'
 import { ermittleRouting } from './eniRouting.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
+import { willMerken, MERKEN_ANWEISUNG, liesMerkEntwurf } from './eniMerken.ts'
 import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
@@ -1140,11 +1141,13 @@ export async function behandleEni(
   /**
    * Was diese eine Nachricht ueberhaupt braucht, siehe `eniRouting.ts`.
    *
-   * Steht vor den beiden Datenbankwegen, weil genau das der Punkt ist: „danke
-   * fuer gestern“ soll weder die Trackerzahlen noch das Gedaechtnis anfassen.
-   * Faellt der Dienst aus, kommt alles zurueck — die Antwort haengt nie daran.
+   * Trackerzahlen bleiben bedarfsabhaengig. Persoenliche Vorlieben werden
+   * unabhaengig davon geladen. Ein Merkauftrag braucht keinen Sortierdienst.
    */
-  const routing = await (deps.routing ?? ermittleRouting)(vorlageText)
+  const merken = willMerken(vorlageText)
+  const routing = merken
+    ? { brauchtLage: false, brauchtWissen: false, darfSuchen: false }
+    : await (deps.routing ?? ermittleRouting)(vorlageText)
 
   // die zahlen kommen aus der datenbank, nie aus der anfrage. faellt ein
   // abschnitt aus, steht das drin, statt dass ENI ihn sich ausdenkt.
@@ -1170,7 +1173,9 @@ export async function behandleEni(
    * ist das unbedenklich — ohne Erinnerungsblock behauptet ENI ohnehin keine.
    */
   let wissen = ''
-  if (routing.brauchtWissen) {
+  // Vorlieben gelten auch bei Rezepten oder Abendplaenen, selbst wenn das
+  // Routing keine ausdrueckliche Frage nach dem Gedaechtnis erkannt hat.
+  if (!merken) {
     try {
       const gelesen = await db.from('eni_erinnerungen').select('*').order('geaendert', { ascending: false }).limit(200)
       if (gelesen.error) throw new Error('gedaechtnis nicht lesbar')
@@ -1182,8 +1187,8 @@ export async function behandleEni(
 
   /**
    * Wie die Person angesprochen werden will: Ton, Laenge, eigene Anweisungen,
-   * Rollen. Anders als das Gedaechtnis gilt das in jeder Antwort, deshalb
-   * haengt es nicht am Routing. Fehlt die Tabelle oder ist sie nicht lesbar,
+   * Rollen. Das gilt in jeder Antwort und haengt nicht am Routing.
+   * Fehlt die Tabelle oder ist sie nicht lesbar,
    * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
    */
   let einstellungen = ''
@@ -1222,6 +1227,42 @@ export async function behandleEni(
   let web: WebQuelle[] = []
   let webHinweis = ''
   try {
+    if (merken) {
+      melde?.({ schritt: 'denkt' })
+      // Die Nachrichten-ID macht einen erneuten Versuch idempotent. Die
+      // Zuordnung und Privatsphaere kommen vom Server, nie vom Modell.
+      const vorhanden = await db.from('eni_erinnerungen').select('text,art')
+        .eq('id', meineId).eq('user_id', userId).maybeSingle()
+      if (vorhanden.error) throw new Error('gedaechtnis nicht lesbar')
+      let gemerkt = vorhanden.data
+      if (!gemerkt) {
+        const entwurf = liesMerkEntwurf(await deps.modell({
+          signal,
+          system: MERKEN_ANWEISUNG,
+          // Nur Text von echten Nutzerzeilen; keine Anhaenge oder Webquellen.
+          nachrichten: [...kontext.filter((z) => z.rolle === 'mensch').slice(-6)
+            .map((z) => ({ rolle: 'user' as const, text: z.text })),
+            { rolle: 'user', text: vorlageText }],
+        }, mitVordenken(zeile, false), modellSchluessel))
+        if (entwurf) {
+          const gespeichert = await db.from('eni_erinnerungen').insert({
+            id: meineId, user_id: userId, ...entwurf,
+            gemeinsam: false, bis: null, erledigt: false,
+          }).select('text,art').single()
+          if (gespeichert.error || !gespeichert.data) {
+            // Auch zwei parallele Wiederholungen erzeugen nur eine Erinnerung.
+            const erneut = await db.from('eni_erinnerungen').select('text,art')
+              .eq('id', meineId).eq('user_id', userId).maybeSingle()
+            if (erneut.error || !erneut.data) throw new Error('erinnerung nicht gespeichert')
+            gemerkt = erneut.data
+          } else gemerkt = gespeichert.data
+        }
+      }
+      urteil = gemerkt
+        ? `Gemerkt: ${String(gemerkt.text)}\n\nDu findest das unter „Das weiß ENI über mich“ und kannst es dort ändern oder löschen.`
+        : 'Was genau soll ich mir über dich merken? Schreib mir die Angabe bitte dazu.'
+      onText?.(urteil)
+    } else {
     // Der Schalter erlaubt die Suche, er erzwingt sie nicht: was nichts zum
     // Nachschlagen ist, geht auch nicht an eine Suchmaschine.
     //
@@ -1262,6 +1303,7 @@ export async function behandleEni(
             zusatz: [
               einstellungen,
               wissen,
+              'DAUERHAFTES GEDAECHTNIS. Behaupte niemals, etwas gerade dauerhaft gespeichert, geaendert oder geloescht zu haben. Der Server bestaetigt echte Speichervorgaenge selbst. Bei einer Bitte ohne ausdruecklichen Merkauftrag erklaere kurz: Schreibe „Merk dir: …“. Aktuelle Nutzerangaben gehen gespeicherten Angaben vor.',
               web.length || frueherImChat.length ? webLage(web, frueherImChat) : '',
               webHinweis,
             ],
@@ -1283,7 +1325,15 @@ export async function behandleEni(
       if (geprueft.anhang) onText?.(geprueft.anhang)
       urteil = geprueft.text
     }
+    }
   } catch (ursache) {
+    if (merken) {
+      deps.protokoll.error('eni: erinnerung nicht bestaetigt', ursache)
+      return antwort(502, {
+        error: 'Die Erinnerung konnte nicht gespeichert werden. Bitte versuch es erneut.',
+        code: 'erinnerung_nicht_gespeichert', mensch: menschZeile,
+      })
+    }
     if (ursache instanceof EniWebFehler) {
       return antwort(502, { error: ursache.message, code: 'modell_fehler', mensch: menschZeile })
     }

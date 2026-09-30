@@ -104,7 +104,7 @@ export function EniModellwahl({
         aria-haspopup="menu"
         aria-expanded={offen}
         aria-label={`modell wählen, gerade ${aktiv.name}${aktiv.warnung ? `, ${aktiv.warnung}` : ''}${denktJetzt ? ', denkt vor' : ''}`}
-        className="flex min-w-0 max-w-full items-center gap-1 py-1 text-[11px] transition-opacity disabled:opacity-40"
+        className="eni-modellwahl flex min-w-0 max-w-full items-center gap-1 py-1 text-[11px] transition-opacity disabled:opacity-40"
         style={{ color: offen ? 'var(--kreide)' : 'var(--kreide-52)' }}
       >
         <span className="truncate">{aktiv.name}</span>
@@ -139,7 +139,7 @@ export function EniModellwahl({
             animate="auf"
             exit="weg"
             style={{ transformOrigin: ankerVon('unten-links') }}
-            className="absolute bottom-full left-0 z-20 mb-1.5 w-[230px] border border-linie-hell bg-flaeche py-1"
+            className="eni-modellmenue absolute bottom-full left-0 z-20 mb-1.5 w-[230px] border border-linie-hell bg-flaeche py-1"
           >
             {zeigeModelle &&
               anbieter.map((eintrag) => {
