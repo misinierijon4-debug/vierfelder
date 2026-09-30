@@ -62,7 +62,7 @@ function baueDatenbank(
   /** tabellen, in die diese rolle nicht schreiben darf. wie ein fehlendes GRANT. */
   gesperrt: string[] = []
 ) {
-  const kette = (zeilen: Array<Record<string, unknown>>) => {
+  const kette = (zeilen: Array<Record<string, unknown>>, schreiben?: (zeilen: Array<Record<string, unknown>>) => void, fehler?: { code: string; message: string }) => {
     let aktuell = [...zeilen]
     const api = {
       eq(spalte: string, wert: unknown) {
@@ -85,7 +85,11 @@ function baueDatenbank(
         return api
       },
       maybeSingle: () => Promise.resolve({ data: aktuell[0] ?? null, error: null }),
-      single: () => Promise.resolve({ data: aktuell[0] ?? null, error: null }),
+      single: () => {
+        if (fehler) return Promise.resolve({ data: null, error: fehler })
+        schreiben?.(aktuell)
+        return Promise.resolve({ data: aktuell[0] ?? null, error: null })
+      },
       then: (aufloesen: (wert: unknown) => unknown) =>
         Promise.resolve({ data: aktuell, error: null, count: aktuell.length }).then(
           aufloesen
@@ -105,6 +109,16 @@ function baueDatenbank(
     from(tabelle: string) {
       return {
         select: () => kette(tabellen[tabelle] ?? []),
+        update(werte: Record<string, unknown>) {
+          return { select: () => kette(tabellen[tabelle] ?? [], (zeilen) => {
+            for (const zeile of zeilen) Object.assign(zeile, werte)
+          }, gesperrt.includes(tabelle) ? { code: '42501', message: 'schreiben gesperrt' } : undefined) }
+        },
+        delete() {
+          return { select: () => kette(tabellen[tabelle] ?? [], (zeilen) => {
+            tabellen[tabelle] = (tabellen[tabelle] ?? []).filter(z => !zeilen.includes(z))
+          }, gesperrt.includes(tabelle) ? { code: '42501', message: 'schreiben gesperrt' } : undefined) }
+        },
         insert(zeile: Record<string, unknown> | Array<Record<string, unknown>>) {
           if (gesperrt.includes(tabelle)) {
             const abgewiesen = {
@@ -2002,5 +2016,88 @@ describe('ENIs gedaechtnis im chat und laenge der antwort', () => {
   it('laesst lange antworten zu und haelt das zeichenbudget grosszuegig', () => {
     expect(MAX_TOKENS).toBeGreaterThanOrEqual(6000)
     expect(VERLAUF_ZEICHEN_BUDGET).toBeGreaterThanOrEqual(40_000)
+  })
+})
+
+describe('natuerliche Merkauftraege und echte Korrekturen', () => {
+  const arbeit = 'Manchmal muss ich samstags um 5 Uhr für die Arbeit aufwachen. In den kommenden Ferien muss ich täglich um diese Uhrzeit aufstehen.'
+  const original = 'Ich lerne manchmal eine halbe Stunde. ' + arbeit
+
+  function mitErinnerung(modell: (a: ModellAnfrage) => Promise<string>, gesperrt = false) {
+    const d = deps({ modell, wissenGesperrt: gesperrt })
+    d.tabellen.eni_nachrichten = [
+      { id: 'm-lernen', chat_id: 'c1', rolle: 'mensch', text: 'Ich lerne manchmal eine halbe Stunde.', erstellt: '2026-09-10T14:00:00Z' },
+      { id: 'm-arbeit', chat_id: 'c1', rolle: 'mensch', text: arbeit, erstellt: '2026-09-10T14:01:00Z' },
+      { id: 'm-merken', chat_id: 'c1', rolle: 'mensch', text: 'Merk dir das.', erstellt: '2026-09-10T14:02:00Z' },
+      { id: 'e-merken', chat_id: 'c1', rolle: 'eni', text: 'Gemerkt: ' + original, erstellt: '2026-09-10T14:03:00Z' },
+    ]
+    d.tabellen.eni_erinnerungen = [
+      { id: 'm-merken', user_id: ICH, text: original, art: 'aktuell', gemeinsam: false, bis: null, erledigt: false },
+      { id: 'andere', user_id: ICH, text: 'Ich lese abends.', art: 'profil', gemeinsam: false, bis: null, erledigt: false },
+      { id: 'partner', user_id: ER, text: original, art: 'profil', gemeinsam: true, bis: null, erledigt: false },
+    ]
+    return d
+  }
+
+  it('erkennt die Bitte am Ende der langen Nachricht aus dem Screenshot', async () => {
+    const d = deps({ modell: async () => JSON.stringify({ text: arbeit, art: 'aktuell' }) })
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: arbeit + ' Kannst du dir das merken' }), d.abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(d.tabellen.eni_erinnerungen).toHaveLength(1)
+    expect((await res.json()).eni.text).toContain('Gemerkt:')
+  })
+
+  it('schickt bei merk dir das nur die Arbeit, niemals das aeltere Lernen', async () => {
+    const d = mitErinnerung(async () => JSON.stringify({ text: arbeit, art: 'aktuell' }))
+    d.tabellen.eni_nachrichten = d.tabellen.eni_nachrichten!.slice(0, 2)
+    await behandleEni(anfrage({ chatId: 'c1', text: 'Merk dir das' }), d.abhaengigkeiten)
+    expect(d.gesehen[0]!.nachrichten.map(n => n.text)).toEqual([arbeit, 'Merk dir das'])
+  })
+
+  it('ersetzt bei Nein ohne das Lernen den echten Eintrag statt einen zweiten anzulegen', async () => {
+    const d = mitErinnerung(async () => JSON.stringify({ aktion: 'aendern', text: arbeit, art: 'aktuell', id: 'partner' }))
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Nein ohne das lernen' }), d.abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(d.tabellen.eni_erinnerungen).toHaveLength(3)
+    expect(d.tabellen.eni_erinnerungen![0]).toMatchObject({ id: 'm-merken', text: arbeit, user_id: ICH, gemeinsam: false })
+    expect(d.tabellen.eni_erinnerungen![1]!.text).toBe('Ich lese abends.')
+    expect(d.tabellen.eni_erinnerungen![2]!.text).toBe(original)
+    expect((await res.json()).eni.text).toBe('Erinnerung geändert: ' + arbeit)
+    expect(d.gesehen[0]!.nachrichten).toHaveLength(2)
+    expect(d.gesehen[0]!.nachrichten[0]!.text).toContain(original)
+  })
+
+  it('laesst eine zweite Korrektur auf derselben Erinnerung arbeiten', async () => {
+    const d = mitErinnerung(async () => JSON.stringify({ aktion: 'aendern', text: arbeit, art: 'aktuell' }))
+    await behandleEni(anfrage({ chatId: 'c1', text: 'Nein ohne das lernen' }), d.abhaengigkeiten)
+    await behandleEni(anfrage({ chatId: 'c1', text: 'Nur den Teil mit den Ferien' }), d.abhaengigkeiten)
+    expect(d.tabellen.eni_erinnerungen).toHaveLength(3)
+    expect(d.gesehen).toHaveLength(2)
+    expect(d.gesehen[1]!.nachrichten[0]!.text).not.toContain('halbe Stunde')
+  })
+
+  it('loescht nur die gerade bestaetigte eigene Erinnerung auf ausdrueckliche Bitte', async () => {
+    const d = mitErinnerung(async () => '{"aktion":"loeschen"}')
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Vergiss diese Erinnerung bitte' }), d.abhaengigkeiten)
+    expect((await res.json()).eni.text).toBe('Erinnerung gelöscht.')
+    expect(d.tabellen.eni_erinnerungen!.map(z => z.id)).toEqual(['andere', 'partner'])
+  })
+
+  it('bestaetigt weder fehlgeschlagene Updates noch unaufgeforderte Modell-Loeschungen', async () => {
+    for (const gesperrt of [true, false]) {
+      const d = mitErinnerung(async () => gesperrt
+        ? JSON.stringify({ aktion: 'aendern', text: arbeit, art: 'aktuell' })
+        : '{"aktion":"loeschen"}', gesperrt)
+      const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Nein ohne das lernen' }), d.abhaengigkeiten)
+      expect(res.status).toBe(502)
+      expect(d.tabellen.eni_erinnerungen![0]!.text).toBe(original)
+    }
+  })
+
+  it('fragt bei unklarer Korrektur nach und veraendert nichts', async () => {
+    const d = mitErinnerung(async () => '{"text":null}')
+    const res = await behandleEni(anfrage({ chatId: 'c1', text: 'Nein das war anders' }), d.abhaengigkeiten)
+    expect((await res.json()).eni.text).toContain('Was genau')
+    expect(d.tabellen.eni_erinnerungen![0]!.text).toBe(original)
   })
 })
