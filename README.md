@@ -70,7 +70,8 @@ nur Tokens aus [DESIGN.md](DESIGN.md) und folgt derselben Bildsprache wie die
 App: harte Kanten, eine Ebene, kein Verlauf, kein Schatten.
 
 `scripts/icons.py` erzeugt alle Dateien in `public/` aus einer einzigen
-Geometrie — die zwei SVGs fürs Web und die vier PNGs für Homescreen und Tab:
+Geometrie — die zwei SVGs fürs Web, die vier PNGs für Homescreen und Tab und
+die vier PNGs mit ENIs Monolith (`eni-*.png`) für den ENI-Einstieg:
 
 ```bash
 python3 scripts/icons.py
@@ -80,6 +81,17 @@ Das Skript bringt einen eigenen Rasterizer und PNG-Encoder mit und braucht
 weder npm-Pakete noch ein Grafikprogramm. Wer das Zeichen ändern will, ändert
 die Konstanten oben im Skript und lässt es einmal laufen; von Hand bearbeitete
 PNGs würden beim nächsten Lauf überschrieben.
+
+### ENI als eigenes Symbol
+
+<https://misinierijon4-debug.github.io/vierfelder/eni.html> ist dieselbe App,
+nur mit ENIs Zeichen, dem Titel „ENI“ und eigenem Manifest; sie öffnet ohne
+Umweg den Chat. In Safari öffnen, Teilen → „Zum Home-Bildschirm“, und ENI
+liegt als zweites Symbol neben zweikampf. Die Seite entsteht beim Bauen aus
+der fertigen `index.html` (Plugin `eniEinstieg` in `vite.config.ts`) und lädt
+byte für byte dasselbe JavaScript; `check:dist` prüft Manifest, Symbol und
+Sprung auf `#/eni`. iOS gibt jeder Home-Bildschirm-App ihren eigenen Speicher:
+im ENI-Symbol meldet man sich deshalb einmal gesondert an.
 
 **Technische Namen bleiben `vierfelder`:** das Repository und damit die
 Pages-URL, das Supabase-Projekt und die localStorage-Schlüssel des

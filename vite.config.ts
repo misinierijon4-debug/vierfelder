@@ -1,6 +1,7 @@
 // vitest steuert die testumgebung mit, deshalb kommt defineConfig von dort:
 // nur diese fassung kennt den `test`-abschnitt weiter unten.
 import { defineConfig } from 'vitest/config'
+import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -22,6 +23,48 @@ function standDerFassung(): string {
     }).trim()
   } catch {
     return '1970-01-01T00:00:00.000Z'
+  }
+}
+
+/**
+ * ENI hat einen zweiten einstieg: `eni.html`, mit eigenem zeichen, eigenem
+ * titel und eigenem manifest (`public/eni.webmanifest`). so liegt ENI als
+ * eigenes symbol auf dem homescreen und oeffnet direkt den chat. iOS nimmt
+ * symbol und titel aus der seite, von der aus man sie ablegt — ein hash auf
+ * index.html reicht dafuer nicht.
+ *
+ * die seite wird aus der fertig gebauten index.html abgeleitet statt als
+ * zweiter html-einstieg gebaut: zwei einstiege zerlegen das bundle in einen
+ * gemeinsamen chunk und machen es groesser. so laden beide seiten byte fuer
+ * byte dasselbe. jede ersetzung muss greifen, sonst bricht der bau ab.
+ */
+const ENI_ERSETZUNGEN: [string, string][] = [
+  ['<title>zweikampf</title>', '<title>ENI</title>'],
+  ['name="apple-mobile-web-app-title" content="zweikampf"', 'name="apple-mobile-web-app-title" content="ENI"'],
+  ['content="lernen, gym, boxen, lesen. zu zweit, eine woche."', 'content="ENI, direkt. ohne umweg über die anzeigetafel."'],
+  ['favicon-32x32.png"', 'eni-favicon-32x32.png"'],
+  ['apple-touch-icon.png"', 'eni-apple-touch-icon.png"'],
+  ['manifest.webmanifest"', 'eni.webmanifest"'],
+  // ohne adresse gleich zu ENI. eine andere (etwa der bericht aus einer push)
+  // bleibt stehen. laeuft vor dem bundle, die route liest den hash beim start.
+  ['<script type="module"', "<script>if(!location.hash)history.replaceState(null,'','#/eni')</script>\n    <script type=\"module\""],
+]
+
+function eniEinstieg(): Plugin {
+  return {
+    name: 'zweikampf:eni-einstieg',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_, bundle) {
+      const index = bundle['index.html']
+      if (index?.type !== 'asset') throw new Error('eni.html: index.html fehlt im bundle')
+      let html = String(index.source)
+      for (const [alt, neu] of ENI_ERSETZUNGEN) {
+        if (!html.includes(alt)) throw new Error(`eni.html: ${alt} fehlt in index.html`)
+        html = html.replace(alt, neu)
+      }
+      this.emitFile({ type: 'asset', fileName: 'eni.html', source: html })
+    },
   }
 }
 
@@ -77,6 +120,11 @@ export default defineConfig(({ mode }) => {
         'apple-touch-icon.png',
         'pwa-192x192.png',
         'pwa-512x512.png',
+        'eni.webmanifest',
+        'eni-favicon-32x32.png',
+        'eni-apple-touch-icon.png',
+        'eni-192x192.png',
+        'eni-512x512.png',
       ],
       workbox: {
         /**
@@ -150,6 +198,7 @@ export default defineConfig(({ mode }) => {
         ],
       },
     }),
+    eniEinstieg(),
   ],
   }
 })

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """erzeugt das zweikampf-zeichen: svg fuer das web, png fuer homescreen und tab.
+dazu ENIs zeichen fuer den eigenen einstieg `eni.html` (zweites homescreen-symbol).
 
 zwei keile stossen ineinander — der warme von links oben, der kuehle von rechts
 unten, die spitzen laufen aneinander vorbei. dazwischen bleibt ein schmaler
@@ -24,6 +25,7 @@ GRUND = (0x14, 0x17, 0x1C)
 FLAECHE = (0x1B, 0x20, 0x27)
 ERIJON = (0xF2, 0xC1, 0x4E)
 KORAY = (0x57, 0xB8, 0xA5)
+KREIDE = (0xE6, 0xE9, 0xE4)
 
 E = 512.0  # alle koordinaten in diesem raster, gerendert wird skaliert
 MITTE = E / 2
@@ -53,6 +55,29 @@ def keile(xl: float, yt: float, xc: float, schlitz: float):
 GROSS = keile(xl=114, yt=112, xc=384, schlitz=26)
 # klein: fuer 32 px. fettere keile, breiterer schlitz — sonst faellt er zu.
 KLEIN = keile(xl=104, yt=104, xc=396, schlitz=44)
+
+
+# ENI: der monolith aus EniMarke.tsx, im 40er raster abgeschrieben. keine
+# sechste farbe, kein gegenstueck — ein stein in kreide auf der flaeche.
+STEIN_GROSS = [(11.5, 6.5), (28.5, 4), (28.8, 14), (22, 17.5), (29.2, 21), (30, 37), (10, 37)]
+STEIN_KLEIN = [(11, 6), (28, 3.5), (28.5, 13.5), (21, 17.5), (29, 21.5), (30, 37), (10, 37)]
+
+
+def monolith(punkte40, skala: float):
+    """den stein aus dem 40er raster mittig ins 512er raster setzen."""
+    xs = [x for x, _ in punkte40]
+    ys = [y for _, y in punkte40]
+    mx = (min(xs) + max(xs)) / 2
+    my = (min(ys) + max(ys)) / 2
+    return [(MITTE + (x - mx) * skala, MITTE + (y - my) * skala) for x, y in punkte40]
+
+
+# gross: 9.6 haelt die fussecken bei 185 px vom mittelpunkt, also im sicheren
+# kreis der maskable-icons. klein: der stein fuellt den tab, sonst wird er strich.
+ENI_GROSS = [(monolith(STEIN_GROSS, 9.6), KREIDE)]
+ENI_KLEIN = [(monolith(STEIN_KLEIN, 11.5), KREIDE)]
+ZWEIKAMPF_GROSS = [(GROSS[0], ERIJON), (GROSS[1], KORAY)]
+ZWEIKAMPF_KLEIN = [(KLEIN[0], ERIJON), (KLEIN[1], KORAY)]
 
 
 def gerundetes_quadrat(r: float, n: int = 24):
@@ -102,13 +127,12 @@ def fuelle(deckung: list[float], n: int, polygon, ss: int = 4) -> None:
                     deckung[basis + ib] += (b - ib) * gewicht
 
 
-def zeichne(n: int, rund: bool, klein: bool) -> bytes:
-    """ein icon als rgba-puffer."""
-    warm, kuehl = KLEIN if klein else GROSS
+def zeichne(n: int, rund: bool, figuren) -> bytes:
+    """ein icon als rgba-puffer: die flaeche, darauf die figuren in ihrer farbe."""
     grund = gerundetes_quadrat(RADIUS) if rund else [(0, 0), (E, 0), (E, E), (0, E)]
 
     bild = bytearray(n * n * 4)
-    for flaeche, farbe in ((grund, FLAECHE), (warm, ERIJON), (kuehl, KORAY)):
+    for flaeche, farbe in ((grund, FLAECHE), *figuren):
         deckung = [0.0] * (n * n)
         fuelle(deckung, n, flaeche)
         r, g, b = farbe
@@ -171,13 +195,17 @@ def main() -> None:
 
     # rund fuer den browsertab, voll fuer den homescreen: ios und android
     # runden selbst, ein vorgerundetes png bekaeme einen zweiten rand
-    for name, n, rund, klein in (
-        ("favicon-32x32.png", 32, True, True),
-        ("apple-touch-icon.png", 180, False, False),
-        ("pwa-192x192.png", 192, False, False),
-        ("pwa-512x512.png", 512, False, False),
+    for name, n, rund, figuren in (
+        ("favicon-32x32.png", 32, True, ZWEIKAMPF_KLEIN),
+        ("apple-touch-icon.png", 180, False, ZWEIKAMPF_GROSS),
+        ("pwa-192x192.png", 192, False, ZWEIKAMPF_GROSS),
+        ("pwa-512x512.png", 512, False, ZWEIKAMPF_GROSS),
+        ("eni-favicon-32x32.png", 32, True, ENI_KLEIN),
+        ("eni-apple-touch-icon.png", 180, False, ENI_GROSS),
+        ("eni-192x192.png", 192, False, ENI_GROSS),
+        ("eni-512x512.png", 512, False, ENI_GROSS),
     ):
-        schreibe_png(ziel / name, n, zeichne(n, rund, klein))
+        schreibe_png(ziel / name, n, zeichne(n, rund, figuren))
         print(f"{name}: {n}x{n}")
 
 
