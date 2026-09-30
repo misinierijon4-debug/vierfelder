@@ -36,6 +36,7 @@ import type { Erinnerung } from '../../lib/eniWissen'
 import { EniMarke } from './EniMarke'
 import { EniKopfmenue } from './EniKopfmenue'
 import { EniModellwahl } from './EniModellwahl'
+import { EniRollenwahl } from './EniRollenwahl'
 import { EniStrom } from './EniStrom'
 import { EniVerlauf } from './EniVerlauf'
 import { useEniViewport } from './useEniViewport'
@@ -98,6 +99,7 @@ export function EniApp({
   const [verlaufOffen, setVerlaufOffen] = useState(false)
   const [wissenOffen, setWissenOffen] = useState(false)
   const [anpassenOffen, setAnpassenOffen] = useState(false)
+  const [rolleSpeichert, setRolleSpeichert] = useState(false)
   const [wissensStart, setWissensStart] = useState<{ text: string; art: Erinnerung['art'] } | undefined>()
   const [anbieter, setAnbieter] = useState<AnbieterInfo[]>([])
   const [gewaehlt, setGewaehlt] = useState<string | null>(null)
@@ -1074,7 +1076,7 @@ export function EniApp({
           )}
           {anhangStatus && <p role="status" aria-live="polite" className="pb-2 text-xs text-kreide-60">{anhangStatus}</p>}
           <EniEingabe
-            gesperrt={prueft || geber === null || anhangStatus !== null}
+            gesperrt={prueft || rolleSpeichert || geber === null || anhangStatus !== null}
             onVorlegen={legeVor}
             vorgabe={vorgabe}
             anhaengenMoeglich={anhaengenMoeglich}
@@ -1088,6 +1090,14 @@ export function EniApp({
               setFeldBelegt((vorher) => (vorher === belegt ? vorher : belegt))
             }}
             onAbbrechen={prueft ? brecheAb : undefined}
+            rollenwahl={
+              <EniRollenwahl
+                key={`rollen-${speicher.kontoId}`}
+                kontoId={speicher.kontoId}
+                gesperrt={prueft || anpassenOffen}
+                onSpeichert={setRolleSpeichert}
+              />
+            }
             optionen={modus === 'modell' && (
               <button
                 type="button"

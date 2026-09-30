@@ -31,6 +31,7 @@ type Props = {
    */
   modellwahl?: React.ReactNode
   optionen?: React.ReactNode
+  rollenwahl?: React.ReactNode
 }
 
 export function EniEingabe({
@@ -45,6 +46,7 @@ export function EniEingabe({
   onAbbrechen,
   modellwahl,
   optionen,
+  rollenwahl,
 }: Props) {
   const [text, setText] = useState('')
   const [absendeNr, setAbsendeNr] = useState(0)
@@ -213,6 +215,8 @@ export function EniEingabe({
               <IconMicrophone size={18} />
             </button>
           )}
+
+          {rollenwahl}
 
           <div className="min-w-0 flex-1 px-1">
             {diktat.laeuft ? (
