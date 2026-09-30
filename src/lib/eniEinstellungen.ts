@@ -21,6 +21,7 @@ export type { EniEinstellungen, EniLaenge, EniRolle, EniTon }
  */
 
 const LOKAL = 'eni-einstellungen'
+export const EINSTELLUNGEN_GESPEICHERT = 'eni-einstellungen-gespeichert'
 
 function lokalLesen(): EniEinstellungen {
   try {
@@ -53,6 +54,7 @@ export async function speichereEinstellungen(userId: string | null, e: EniEinste
     } catch {
       throw new Error('Nicht gespeichert: der Browser lässt gerade keinen Speicher zu.')
     }
+    window.dispatchEvent(new Event(EINSTELLUNGEN_GESPEICHERT))
     return
   }
   if (!userId) throw new Error('Zum Speichern braucht es eine Anmeldung.')
@@ -60,6 +62,7 @@ export async function speichereEinstellungen(userId: string | null, e: EniEinste
     .from('eni_einstellungen')
     .upsert({ user_id: userId, ...sauber }, { onConflict: 'user_id' })
   if (error) throw new Error(fehlertext(error.code, error.message))
+  window.dispatchEvent(new Event(EINSTELLUNGEN_GESPEICHERT))
 }
 
 /**

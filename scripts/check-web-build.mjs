@@ -210,7 +210,10 @@ for (const name of jsDateien) {
 // Die Gesamtsumme erhaelt dafuer 11 KiB, die initiale Grenze bleibt, wo sie
 // stand. Beide Pruefungen bleiben harte Buildfehler; keine Budgetabschaltung.
 const INITIAL_GZIP_BUDGET = 243 * 1024
-const GESAMT_GZIP_BUDGET = 308 * 1024
+// Rollenwahl am Chat bleibt im ENI-Lazy-Chunk: Pages vorher 314226 Byte,
+// nachher 315560 Byte gzip gesamt. Ein KiB zusaetzlicher Spielraum fuer das
+// Popup; die initiale Grenze und beide harten Budgetpruefungen bleiben bestehen.
+const GESAMT_GZIP_BUDGET = 309 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
