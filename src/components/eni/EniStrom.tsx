@@ -18,6 +18,8 @@ import { lesbareGroesse } from '../../lib/eniAnhang'
 import type { EniAnhang } from '../../lib/eniAnhang'
 import type { DuellKontext, EniZeile } from '../../lib/eniSpeicher'
 import { EniDiagramm } from './EniDiagramm'
+import { EniAktionKarte } from './EniAktionKarte'
+import type { EniAktion } from '../../lib/eniAktion'
 import { ABGESETZT_AUF, ABGESETZT_ZU, formelZuMathml, zerlegeInline, type MathKnoten } from '../../lib/eniFormel'
 import { EniMarke } from './EniMarke'
 
@@ -57,6 +59,11 @@ type Props = {
   aktionenGesperrt?: boolean
   /** woran ENI gerade ist, solange kein textstueck da ist */
   wartetext?: string
+  /**
+   * fuehrt einen bestaetigten vorschlag aus einem ```aktion-block aus. ohne
+   * ihn steht der vorschlag nur als text da, ohne knopf.
+   */
+  onAktion?: (aktion: EniAktion, id: string) => Promise<void>
 }
 
 export function EniStrom({
@@ -75,6 +82,7 @@ export function EniStrom({
   feldBelegt = false,
   aktionenGesperrt = false,
   wartetext,
+  onAktion,
 }: Props) {
   /**
    * Welche zeile gerade ihre notizknoepfe zeigt, und zwar genau eine.
@@ -121,6 +129,9 @@ export function EniStrom({
             {zeile.rolle === 'eni' ? (
               <EniWort
                 text={zeile.text}
+                nachrichtId={zeile.id}
+                erstellt={zeile.erstellt}
+                onAktion={onAktion}
                 frisch={zeile.id === frisch}
                 spricht={spricht === zeile.id}
                 onVorlesen={onVorlesen && (() => onVorlesen(zeile))}
@@ -199,6 +210,9 @@ function Tagestrenner({ iso }: { iso: string }) {
 /** ENIs worte: ruhige leseschrift fuer laengere texte, display fuer kurze urteile */
 function EniWort({
   text,
+  nachrichtId,
+  erstellt,
+  onAktion,
   frisch,
   spricht,
   linksAktiv = true,
@@ -209,6 +223,10 @@ function EniWort({
   onKopieren,
 }: {
   text: string
+  /** nur gespeicherte antworten haben eine id; erst dann gibt es einen knopf fuer vorschlaege */
+  nachrichtId?: string
+  erstellt?: string
+  onAktion?: (aktion: EniAktion, id: string) => Promise<void>
   frisch: boolean
   spricht: boolean
   /** nur gespeicherte Antworten: dort hat der Server die Links gegen die Quellen geprueft */
@@ -242,7 +260,12 @@ function EniWort({
       </div>
 
       <div className="mt-2 text-kreide">
-        <StrukturierterText text={text} frisch={frisch} linksAktiv={linksAktiv} />
+        <StrukturierterText
+          text={text}
+          frisch={frisch}
+          linksAktiv={linksAktiv}
+          aktion={nachrichtId && erstellt && onAktion ? { nachrichtId, erstellt, ausfuehren: onAktion } : undefined}
+        />
       </div>
       {onKopieren && (
         <NachrichtenAktionen kopiert={kopiert === true} onKopieren={onKopieren} />
@@ -271,6 +294,7 @@ type Block =
   | { art: 'code'; sprache: string; text: string }
   | { art: 'diagramm'; text: string }
   | { art: 'formel'; text: string }
+  | { art: 'aktion'; text: string }
   | { art: 'tabelle'; kopf: string[]; ausrichtung: Ausrichtung[]; zeilen: string[][] }
 
 /**
@@ -399,7 +423,9 @@ function teileInBloecke(text: string): Block[] {
     bloecke.push(
       fence.sprache === 'diagramm'
         ? { art: 'diagramm', text: inhalt }
-        : { art: 'code', sprache: fence.sprache, text: inhalt }
+        : fence.sprache === 'aktion'
+          ? { art: 'aktion', text: inhalt }
+          : { art: 'code', sprache: fence.sprache, text: inhalt }
     )
     fence = null
   }
@@ -512,7 +538,18 @@ function Formel({ quelle, roh, abgesetzt = false }: { quelle: string; roh: strin
  * element bekam denselben punkt. Bei einem trainingsplan oder einer anleitung
  * ist die reihenfolge aber die halbe aussage.
  */
-function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text: string; frisch?: boolean; linksAktiv?: boolean }) {
+function StrukturierterText({
+  text,
+  frisch = false,
+  linksAktiv = true,
+  aktion,
+}: {
+  text: string
+  frisch?: boolean
+  linksAktiv?: boolean
+  /** wie vorschlaege aus ```aktion-bloecken ausgefuehrt werden; fehlt im laufenden strom */
+  aktion?: { nachrichtId: string; erstellt: string; ausfuehren: (aktion: EniAktion, id: string) => Promise<void> }
+}) {
   const absaetze = text.split(/\n\s*\n/).map((a) => a.trim()).filter(Boolean)
   const istKurz = absaetze.length <= 1 && istKernsatz(text) && !hatStruktur(text)
 
@@ -530,10 +567,30 @@ function StrukturierterText({ text, frisch = false, linksAktiv = true }: { text:
   }
 
   const bloecke = teileInBloecke(text)
+  // die stelle jedes vorschlags in der nachricht, fuer seine feste id
+  let aktionNr = 0
 
   return (
     <div className="space-y-4">
       {bloecke.map((block, idx) => {
+        if (block.art === 'aktion') {
+          const nr = aktionNr++
+          return aktion ? (
+            <EniAktionKarte
+              key={idx}
+              quelle={block.text}
+              nachrichtId={aktion.nachrichtId}
+              nr={nr}
+              erstellt={aktion.erstellt}
+              ausfuehren={aktion.ausfuehren}
+            />
+          ) : (
+            <p key={idx} className="text-[13px] leading-snug text-kreide-60">
+              ENI bereitet einen vorschlag vor …
+            </p>
+          )
+        }
+
         if (block.art === 'diagramm') {
           return <EniDiagramm key={idx} quelltext={block.text} />
         }

@@ -3,7 +3,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EniStrom } from './EniStrom'
 import type { EniZeile } from '../../lib/eniSpeicher'
 
@@ -442,5 +442,88 @@ describe('der wartetext am takt', () => {
     const stand = screen.getByRole('status')
     expect(stand).toHaveTextContent('ENI sucht im Web …')
     expect(stand).not.toHaveTextContent('denkt nach')
+  })
+})
+
+/*
+  ENI schlaegt vor, die Person entscheidet. Erst der Tipp schreibt, mit einer
+  festen id je Vorschlag, damit ein zweiter Tipp nichts doppelt anlegt.
+*/
+describe('vorschlaege von ENI', () => {
+  const block = '```aktion\n{"typ":"einheit","bereich":"lernen","tag":"heute","wert":45}\n```'
+  const zeichne = (text: string, onAktion?: (aktion: unknown, id: string) => Promise<void>, erstellt = new Date().toISOString()) =>
+    render(
+      <EniStrom
+        zeilen={[{ id: 'antwort-1', rolle: 'eni', text, erstellt }]}
+        me="erijon"
+        prueft={false}
+        onAuftakt={vi.fn()}
+        onAktion={onAktion}
+      />
+    )
+
+  beforeEach(() => {
+    try { localStorage.clear() } catch { /* ohne speicher auch gut */ }
+  })
+
+  it('zeigt den vorschlag als karte und schreibt erst nach dem tipp', async () => {
+    const nutzer = userEvent.setup()
+    const onAktion = vi.fn().mockResolvedValue(undefined)
+    zeichne(`Gut gemacht.\n\n${block}`, onAktion)
+
+    expect(screen.getByText('45 min lernen · heute')).toBeInTheDocument()
+    expect(screen.queryByText(/"typ"/)).toBeNull()
+    expect(onAktion).not.toHaveBeenCalled()
+
+    const knopf = await screen.findByRole('button', { name: 'eintragen' })
+    await waitFor(() => expect(knopf).toBeEnabled())
+    await nutzer.click(knopf)
+
+    expect(onAktion).toHaveBeenCalledTimes(1)
+    const [aktion, id] = onAktion.mock.calls[0]!
+    expect(aktion).toMatchObject({ typ: 'einheit', bereich: 'lernen', wert: 45 })
+    expect(id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(await screen.findByRole('status')).toHaveTextContent('eingetragen')
+    expect(screen.queryByRole('button', { name: 'eintragen' })).toBeNull()
+  })
+
+  it('zeigt den grund, wenn es nicht geklappt hat, und laesst den knopf stehen', async () => {
+    const nutzer = userEvent.setup()
+    const onAktion = vi.fn().mockRejectedValue(new Error('ab freitag 18 uhr gibt es keine ansagen mehr — montag wieder.'))
+    zeichne('```aktion\n{"typ":"ansage","feld":"lernen","stufe":"mutig"}\n```', onAktion)
+
+    const knopf = await screen.findByRole('button', { name: 'ansagen' })
+    await waitFor(() => expect(knopf).toBeEnabled())
+    await nutzer.click(knopf)
+    expect(await screen.findByRole('alert')).toHaveTextContent('ab freitag 18 uhr')
+    expect(screen.getByRole('button', { name: 'ansagen' })).toBeInTheDocument()
+  })
+
+  it('bietet einen alten vorschlag nicht mehr zum tippen an', () => {
+    zeichne(block, vi.fn(), '2026-09-01T10:00:00.000Z')
+    expect(screen.getByText('nicht mehr aktuell')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'eintragen' })).toBeNull()
+  })
+
+  it('macht aus einem unpassenden vorschlag einen satz statt eines knopfs', () => {
+    zeichne('```aktion\n{"typ":"einheit","bereich":"schwimmen"}\n```', vi.fn())
+    expect(screen.getByText('diesen bereich gibt es nicht.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'eintragen' })).toBeNull()
+  })
+
+  it('zeigt im laufenden strom noch keinen knopf und kein json', () => {
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={true}
+        teilAntwort={'Trag ich dir ein.\n\n```aktion\n{"typ":"einheit",'}
+        onAuftakt={vi.fn()}
+        onAktion={vi.fn()}
+      />
+    )
+    expect(screen.getByText('ENI bereitet einen vorschlag vor …')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'eintragen' })).toBeNull()
+    expect(screen.queryByText(/"typ"/)).toBeNull()
   })
 })

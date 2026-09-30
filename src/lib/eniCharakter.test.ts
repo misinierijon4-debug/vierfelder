@@ -141,3 +141,20 @@ describe('ENI beim Lernen', () => {
     expect(prompt.lastIndexOf('MODUSWAHL')).toBeGreaterThan(prompt.indexOf('FORMELN, TABELLEN'))
   })
 })
+
+describe('ENI schlaegt eintraege vor', () => {
+  const prompt = eniSystemPrompt({ person: 'erijon', lage: 'LAGE. test' })
+
+  it('kennt das format der karte und alle drei arten', () => {
+    expect(prompt).toContain('Codeblock mit der Sprache aktion')
+    expect(prompt).toContain('{"typ":"einheit","bereich":"lernen","tag":"heute","wert":45}')
+    expect(prompt).toContain('{"typ":"gewicht","tag":"heute","kg":81.4}')
+    expect(prompt).toContain('{"typ":"ansage","feld":"lernen","stufe":"mutig"}')
+  })
+
+  it('schreibt nie selbst, nie fuer den anderen und behauptet nichts', () => {
+    expect(prompt).toContain('erst, wenn sie auf der Karte unter deiner Antwort tippt')
+    expect(prompt).toContain('nie fuer die andere')
+    expect(prompt).toContain('Behaupte nie, du haettest etwas eingetragen')
+  })
+})

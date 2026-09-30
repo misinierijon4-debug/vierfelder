@@ -110,6 +110,7 @@ Tabellen: `profile`, `eintraege`, `werte`, `einheiten`, `aufenthalte`,
 | ENI Sprachausgabe/Diktat | `src/lib/eniStimme.ts`, `src/lib/eniDiktat.ts` |
 | **ENI beim Lernen: Formeln, Tabellen, Abfragen** | Formeln: LaTeX→MathML in `src/lib/eniFormel.ts` (kein KaTeX, Budget), Darstellung und Markdown-Tabellen in `src/components/eni/EniStrom.tsx`; Prompt-Block `LERNEN` in `supabase/functions/_shared/eniCharakter.ts` (wirkt erst nach Deploy der Function `eni`); Einstieg „frag mich ab“ im leeren Chat |
 | ENI Wochenvorlage (Wortlaut wird wiedererkannt) | `supabase/functions/_shared/eniVorlagen.ts` |
+| **ENI schlägt Einträge vor** (Einheit, Gewicht, Ansage; Karte mit Knopf, erst der Tipp schreibt) | Format und Prüfung `src/lib/eniAktion.ts` (feste id je Vorschlag → kein Doppeleintrag), Karte `src/components/eni/EniAktionKarte.tsx`, Block ```` ```aktion ```` in `EniStrom.tsx`, Backend kommt über `EniTor` aus `App.tsx` und wird vor der ersten Aktion einmal `laden()`; Prompt-Block `AKTIONEN` in `eniCharakter.ts`. Der Server schreibt nie selbst. |
 | **Wochenbericht: Zahlen** (rechnet der Client, nie ENI) | `src/lib/wochenbericht.ts` |
 | Wochenbericht: Blatt, Diagramme, Zeile im Kalender | `src/components/wochenbericht/` (Zeile: `BerichtZeile.tsx`, dort auch `KALENDER_SPALTEN`) |
 | Wochenbericht: Archiv, Montag-Abschluss und ENI-Texte | `src/lib/wochenberichtArchiv.ts`, `supabase/functions/wochenbericht/index.ts`, `supabase/functions/_shared/wochenberichtHandler.ts`, `docs/wochenbericht.md` |
