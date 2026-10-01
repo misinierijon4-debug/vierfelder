@@ -1,5 +1,6 @@
 import { lokaleMinute } from './erinnerung.ts'
-import { FELDER, tafelAusZeilen } from './duellPunkte.ts'
+import { BEREICHE, FELDER, endetInDerWoche, messungZaehlt, tafelAusZeilen } from './duellPunkte.ts'
+import type { Feld } from './duellPunkte.ts'
 
 /**
  * Die Lage: der Stand des Duells, so knapp wie moeglich, damit ENI vergleichen
@@ -74,6 +75,77 @@ function spalte(text: string, breite: number): string {
   return text.length >= breite ? `${text} ` : text.padEnd(breite, ' ')
 }
 
+/** so viele Tage zurueck reicht die Serie; mehr liest die Lage nicht */
+const SERIE_TAGE = 35
+/** so viele Tage zurueck zaehlt der Gewichtstrend */
+const TREND_TAGE = 28
+/** Wochen, die die Lage einzeln nennt; die Bilanz zaehlt alle gelesenen */
+const WOCHEN_GENANNT = 5
+
+function mitVorzeichen(n: number): string {
+  return n > 0 ? `+${n}` : String(n)
+}
+
+function tageZwischen(von: string, bis: string): number {
+  return Math.round((Date.parse(`${bis}T12:00:00Z`) - Date.parse(`${von}T12:00:00Z`)) / 86_400_000)
+}
+
+/**
+ * Wie viele Tage in Folge ein Feld erledigt ist. Heute zaehlt, sobald es
+ * erledigt ist; sonst beginnt die Serie gestern — wie `streak` im Client.
+ */
+function serieTage(tafel: { felderAm: (person: string, tag: string) => Feld[] }, person: Person, feld: Feld, heute: string): number {
+  let tag = tafel.felderAm(person, heute).includes(feld) ? heute : minusTage(heute, 1)
+  let tage = 0
+  while (tage < SERIE_TAGE && tafel.felderAm(person, tag).includes(feld)) {
+    tage += 1
+    tag = minusTage(tag, 1)
+  }
+  return tage
+}
+
+/**
+ * Wie viel Zeit diese Woche in einem Bereich steckt, getrennt nach Quelle.
+ * Gemessene Aufenthalte und als Einheit erfasste Werte koennen denselben
+ * Termin beschreiben, deshalb werden sie nie addiert.
+ */
+function zeitDerWoche(
+  einheiten: Array<Record<string, unknown>>,
+  aufenthalte: Array<Record<string, unknown>>,
+  wer: (id: unknown) => Person | null,
+  tagVon: (zeitpunkt: Date) => string,
+  montag: string,
+  heute: string,
+): Map<string, { gemessen: number; erfasst: number }> {
+  const summen = new Map<string, { gemessen: number; erfasst: number }>()
+  const eintrag = (person: Person, bereich: string) => {
+    const schluessel = `${person}:${bereich}`
+    const alt = summen.get(schluessel) ?? { gemessen: 0, erfasst: 0 }
+    summen.set(schluessel, alt)
+    return alt
+  }
+  for (const e of einheiten) {
+    const person = wer(e.user_id)
+    const tag = String(e.tag)
+    const wert = Number(e.wert)
+    if (!person || tag < montag || tag > heute || !Number.isFinite(wert) || wert <= 0) continue
+    if ((BEREICHE as readonly string[]).includes(String(e.bereich))) eintrag(person, String(e.bereich)).erfasst += wert
+  }
+  for (const a of aufenthalte) {
+    const person = wer(a.user_id)
+    const bereich = String(a.bereich)
+    if (!person || !a.abgang || !(BEREICHE as readonly string[]).includes(bereich)) continue
+    const start = new Date(String(a.ankunft))
+    const ende = new Date(String(a.abgang))
+    const minuten = (ende.getTime() - start.getTime()) / 60_000
+    const startTag = tagVon(start)
+    if (!messungZaehlt(bereich, minuten) || !endetInDerWoche(startTag, tagVon(ende))) continue
+    if (startTag < montag || startTag > heute) continue
+    eintrag(person, bereich).gemessen += minuten
+  }
+  return summen
+}
+
 /**
  * Liest die Lage. Faellt eine einzelne Abfrage aus, fehlt nur ihr Abschnitt;
  * ENI bekommt dann eine Zeile, die das sagt, statt einer erfundenen Zahl.
@@ -94,38 +166,58 @@ export async function baueLage(
   ]
 
   // Unabhaengige Datenquellen gleichzeitig lesen; Berechnung bleibt identisch.
-  const [aufenthalte, gewicht, einheiten, schlaf, faecher, noten, ansagen] = await Promise.all([
+  // Die Noten je Person: eine gemeinsame Abfrage mit Grenze liess die Person
+  // mit weniger Eintraegen leer ausgehen, und ENI sagte „nichts eingetragen“.
+  const notenVon = (person: Person) =>
+    db
+      .from('noten')
+      .select('user_id,fach_id,art,punkte,datum')
+      .eq('user_id', [...personen].find(([, name]) => name === person)?.[0] ?? '')
+      .order('datum', { ascending: false })
+      .limit(6)
+  const [aufenthalte, gewicht, einheiten, schlaf, faecher, notenErijon, notenKoray, ansagen, wochen] = await Promise.all([
     db
     .from('aufenthalte')
     .select('user_id,bereich,ankunft,abgang')
-    // Puffer fuer den Wochenbeginn in Europe/Berlin (UTC liegt am Vortag).
-    .gte('ankunft', `${minusTage(montag, 1)}T00:00:00Z`),
+    // Fuenf Wochen zurueck fuer die Serie; Puffer fuer den Tagesbeginn in
+    // Europe/Berlin (UTC liegt am Vortag). Neueste zuerst, falls die Grenze
+    // der Abfrage greift: dann fehlt das Alte, nicht die laufende Woche.
+    .gte('ankunft', `${minusTage(tag, SERIE_TAGE + 1)}T00:00:00Z`)
+    .order('ankunft', { ascending: false })
+    .limit(1000),
     db
     .from('gewicht')
     .select('user_id,tag,kg')
-    .gte('tag', minusTage(tag, 13))
+    .gte('tag', minusTage(tag, SERIE_TAGE))
     .order('tag', { ascending: false }),
     db
     .from('einheiten')
     .select('user_id,bereich,tag,wert')
-    .gte('tag', montag),
+    .gte('tag', minusTage(tag, SERIE_TAGE)),
     db
     .from('schlafnaechte_ansicht')
     .select('user_id,nacht,schlaf_minuten,nachtwert')
     .gte('nacht', minusTage(tag, 6))
     .order('nacht', { ascending: false }),
     db.from('faecher').select('id,user_id,name'),
-    db
-    .from('noten')
-    .select('user_id,fach_id,art,punkte,datum')
-    .order('datum', { ascending: false })
-    .limit(20),
+    notenVon('erijon'),
+    notenVon('koray'),
     // ansagen enden spaetestens sonntag; alles ab montag ist die laufende woche
     db
     .from('duell_ansagen')
     .select('von,an,feld,ziel,bis,ergebnis,version,stufe,einsatz,reaktion,bezug')
     .gte('bis', montag),
+    // das Ergebnis jeder abgeschlossenen Woche, wie der Server es festgeschrieben hat
+    db
+    .from('wochenabrechnung')
+    .select('woche,sieger,grund,differenz,punkte_erijon,punkte_koray')
+    .order('woche', { ascending: false })
+    .limit(52),
   ])
+  const noten = {
+    data: [...(notenErijon.data ?? []), ...(notenKoray.data ?? [])],
+    error: notenErijon.error ?? notenKoray.error,
+  }
   // Dieselben Quellen wie im Tracker: manuelle Einheiten, Messungen und Gewicht.
 
 
@@ -164,7 +256,6 @@ export async function baueLage(
     }
     zeilen.push(`Wochenstand (Erijon : Koray): ${anzahl('erijon') + ansagePunkte.erijon}:${anzahl('koray') + ansagePunkte.koray}.`)
     if (ansageZeilen.length > 0) {
-      const mitVorzeichen = (n: number) => (n > 0 ? `+${n}` : String(n))
       zeilen.push(`Davon Ansagen: Erijon ${mitVorzeichen(ansagePunkte.erijon)}, Koray ${mitVorzeichen(ansagePunkte.koray)}. Die Bereichstabelle unten zaehlt nur die Felder.`)
       zeilen.push('Ansageregel: Wer ansagt, fordert die andere Person in einem Feld heraus; das Ziel liegt ueber ihrem Schnitt der letzten vier Wochen. Stufen: sicher 1, mutig 2, all-in 3 Punkte. Schafft sie es bis Sonntag 18 Uhr, bekommt SIE den Einsatz, sonst der Ansager. Sie kann einmal reagieren: kontern verdoppelt den Einsatz, „du auch" verlangt dasselbe vom Ansager. Es zaehlt nur, was nach der Ansage passiert und am selben Tag eingetragen wird.')
       for (const a of ansageZeilen) {
@@ -210,8 +301,58 @@ export async function baueLage(
       zeilen.push(`${spalte(bereich, 8)}${spalte(String(e), 8)}${k}`)
     }
     zeilen.push(`${spalte('Summe', 8)}${spalte(String(summeE), 8)}${summeK}`)
+
+    // Serie: dieselbe Tafel, nur fuenf Wochen breit statt einer.
+    const verlauf = tafelAusZeilen(
+      { einheiten: einheiten.data, aufenthalte: aufenthalte.data, gewicht: gewicht.data },
+      wer,
+      (zeitpunkt) => lokaleMinute(zeitpunkt).tag,
+      minusTage(tag, SERIE_TAGE),
+      tag
+    )
+    zeilen.push('')
+    zeilen.push(`Serie, Tage in Folge je Feld (heute zaehlt, sobald es erledigt ist, sonst beginnt die Serie gestern; mehr als ${SERIE_TAGE} Tage liest die Lage nicht):`)
+    for (const person of ['erijon', 'koray'] as const) {
+      zeilen.push(`${spalte(gross(person), 8)}${FELDER.map((feld) => `${feld} ${serieTage(verlauf, person, feld, tag)}`).join(', ')}`)
+    }
+
+    // Zeit: aus Messungen und aus erfassten Einheiten, nie addiert.
+    const zeit = zeitDerWoche(einheiten.data ?? [], aufenthalte.data ?? [], wer, (zeitpunkt) => lokaleMinute(zeitpunkt).tag, montag, tag)
+    zeilen.push('')
+    zeilen.push('Zeit dieser Woche, Montag bis heute. Gemessen sind abgeschlossene Aufenthalte ab der Mindestdauer, erfasst sind Einheiten mit Minuten (beim Lesen Seiten), ob vom Fokus-Modus oder von Hand. Beides kann denselben Termin meinen und wird nie addiert: nenne es getrennt oder als „mindestens“ den groesseren Wert.')
+    for (const person of ['erijon', 'koray'] as const) {
+      const teile = BEREICHE.flatMap((bereich) => {
+        const summe = zeit.get(`${person}:${bereich}`)
+        if (!summe || (summe.gemessen === 0 && summe.erfasst === 0)) return []
+        const einheit = bereich === 'lesen' ? 'Seiten' : 'min'
+        const wo = [
+          summe.gemessen > 0 ? `${Math.round(summe.gemessen)} min gemessen` : '',
+          summe.erfasst > 0 ? `${Math.round(summe.erfasst)} ${einheit} erfasst` : '',
+        ].filter(Boolean)
+        return [`${bereich} ${wo.join(', ')}`]
+      })
+      zeilen.push(`${spalte(gross(person), 8)}${teile.length ? teile.join('; ') : 'nichts mit Minuten'}`)
+    }
   }
   zeilen.push('')
+
+  // abgeschlossene Wochen: gelesen wird das Ergebnis, nicht neu gerechnet
+  if (wochen.error) {
+    zeilen.push('Abgeschlossene Wochen: nicht lesbar.')
+  } else if ((wochen.data ?? []).length > 0) {
+    const liste = wochen.data ?? []
+    const stand = (z: Record<string, unknown>) => {
+      const e = z.punkte_erijon
+      const k = z.punkte_koray
+      const punkte = e == null || k == null ? `Differenz ${mitVorzeichen(Number(z.differenz))} fuer Erijon` : `${Number(e)}:${Number(k)}`
+      const sieger = z.sieger === 'unentschieden' ? 'unentschieden' : gross(String(z.sieger))
+      return `Woche ab ${kurz(String(z.woche))} ${sieger} (${punkte}${z.grund === 'beleg' ? ', nach Beleg' : ''})`
+    }
+    const siege = (wer: string) => liste.filter((z) => z.sieger === wer).length
+    zeilen.push(`Abgeschlossene Wochen, neueste zuerst (Erijon : Koray): ${liste.slice(0, WOCHEN_GENANNT).map(stand).join('; ')}.`)
+    zeilen.push(`Bilanz aus ${liste.length} abgeschlossenen Wochen: Erijon ${siege('erijon')} Siege, Koray ${siege('koray')}, unentschieden ${siege('unentschieden')}. Die laufende Woche ist darin nicht enthalten.`)
+    zeilen.push('')
+  }
 
   // gewicht, letzte zwei wochen
   if (gewicht.error) {
@@ -225,6 +366,21 @@ export async function baueLage(
         .map((zeile) => `${kurz(String(zeile.tag))} ${komma(Number(zeile.kg), 1)}`)
       zeilen.push(`${spalte(gross(person), 8)}${werte.length ? werte.join('  ') : 'nichts eingetragen'}`)
     }
+    // Trend: aeltester gegen neuester Wert der letzten Wochen. Unter einer
+    // Woche Abstand sagt der Unterschied nichts ueber eine Richtung.
+    const trend = (['erijon', 'koray'] as const).flatMap((person) => {
+      const werte = (gewicht.data ?? [])
+        .filter((zeile) => wer(zeile.user_id) === person && String(zeile.tag) >= minusTage(tag, TREND_TAGE))
+        .map((zeile) => ({ tag: String(zeile.tag), kg: Number(zeile.kg) }))
+        .sort((a, b) => a.tag.localeCompare(b.tag))
+      const erster = werte[0]
+      const letzter = werte[werte.length - 1]
+      if (!erster || !letzter || tageZwischen(erster.tag, letzter.tag) < 7) return []
+      const unterschied = Math.round((letzter.kg - erster.kg) * 10) / 10
+      const richtung = unterschied === 0 ? 'unveraendert' : `${unterschied > 0 ? 'plus' : 'minus'} ${komma(Math.abs(unterschied), 1)} kg`
+      return [`${spalte(gross(person), 8)}${kurz(erster.tag)} ${komma(erster.kg, 1)} auf ${kurz(letzter.tag)} ${komma(letzter.kg, 1)}: ${richtung}`]
+    })
+    if (trend.length) zeilen.push(`Gewichtstrend, erster und letzter Wert der letzten ${TREND_TAGE / 7} Wochen (Schwankungen im Tagesverlauf sind normal, ein Wert ist kein Trend):`, ...trend)
   }
   zeilen.push('')
 
@@ -245,7 +401,13 @@ export async function baueLage(
           const stunden = komma(Number(zeile.schlaf_minuten) / 60, 1)
           return `${kurz(String(zeile.nacht))} ${stunden}h/${String(zeile.nachtwert)}`
         })
-      zeilen.push(`${spalte(gross(person), 8)}${naechte.length ? naechte.join('  ') : 'nichts importiert'}`)
+      const minuten = (schlaf.data ?? [])
+        .filter((zeile) => wer(zeile.user_id) === person)
+        .slice(0, 5)
+        .map((zeile) => Number(zeile.schlaf_minuten))
+        .filter((m) => Number.isFinite(m))
+      const schnitt = minuten.length >= 2 ? `  (Schnitt ${komma(minuten.reduce((a, b) => a + b, 0) / minuten.length / 60, 1)}h aus ${minuten.length} Naechten)` : ''
+      zeilen.push(`${spalte(gross(person), 8)}${naechte.length ? naechte.join('  ') + schnitt : 'nichts importiert'}`)
     }
   }
   zeilen.push('')

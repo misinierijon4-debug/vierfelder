@@ -1,3 +1,5 @@
+import { stammwoerter } from './eniWorte.ts'
+
 /**
  * Die Recherche fuer eine Rolle: ENI liest sich in eine Person ein, bevor er
  * sie spielt.
@@ -332,6 +334,39 @@ function leer(antwort: string): boolean {
   return kurz === '' || /^nichts$/i.test(kurz)
 }
 
+/**
+ * Ein Zitat gilt nur, wenn es in einer Quelle steht. Der Prompt verlangt das,
+ * aber ein freies Modell haelt sich nicht verlaesslich daran, und ein
+ * erfundenes Zitat in der Akte spricht ENI spaeter als Wort der Person aus.
+ * Deshalb prueft der Code: jede Stelle in Anfuehrungszeichen, lang genug, um
+ * ein Zitat zu sein (kein Buchtitel, kein Fachwort), muss in den Belegen
+ * vorkommen. Gross- und Kleinschreibung, Satzzeichen und Zeilenumbrueche
+ * zaehlen nicht; Auslassungen („…“, „[...]“) trennen Teilstuecke, die einzeln
+ * vorkommen muessen. Was nicht belegt ist, bleibt als Aussage stehen, aber
+ * ohne Anfuehrungszeichen und mit dem Hinweis, dass es kein Zitat ist.
+ */
+const ZITAT = /„([^„“”"]{1,600})[“”"]|“([^“”]{1,600})”|"([^"]{1,600})"|»([^»«]{1,600})«|«([^«»]{1,600})»/gu
+const ZITAT_MIN_ZEICHEN = 40
+const ZITAT_MIN_WOERTER = 7
+
+function glatt(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+}
+
+export function pruefeZitate(text: string, belege: string[]): string {
+  const heu = belege.map(glatt).join(' | ')
+  return text.replace(ZITAT, (ganz: string, ...gruppen: unknown[]) => {
+    const inhalt = gruppen.slice(0, 5).find((g): g is string => typeof g === 'string') ?? ''
+    if (inhalt.length < ZITAT_MIN_ZEICHEN || inhalt.split(/\s+/).length < ZITAT_MIN_WOERTER) return ganz
+    const teile = inhalt
+      .split(/\s*(?:…|\.{3}|\[\s*(?:…|\.{3})\s*\])\s*/)
+      .map(glatt)
+      .filter((teil) => teil.length >= 12)
+    if (teile.length === 0 || teile.every((teil) => heu.includes(teil))) return ganz
+    return `${inhalt.trim()} (sinngemäß, nicht als wörtliches Zitat belegt)`
+  })
+}
+
 /** denkspuren mancher freier modelle stehen im text statt daneben */
 export function ohneDenken(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim()
@@ -354,9 +389,11 @@ async function notizAus(
     }),
   )
   if (leer(antwort)) return null
+  // belegt wird gegen den Text, den das Modell wirklich gelesen hat
+  const geprueft = pruefeZitate(antwort, seiten.map((s) => s.text.slice(0, jeSeite)))
   return {
     titel,
-    text: antwort.slice(0, NOTIZ_MAX),
+    text: geprueft.slice(0, NOTIZ_MAX),
     quellen: seiten.map(({ titel: t, url }) => ({ titel: t.replace(/\s+/g, ' ').trim().slice(0, 180), url })),
   }
 }
@@ -407,10 +444,10 @@ export function nummeriere(notizen: Notiz[]): { texte: Array<{ titel: string; te
   return { texte, quellen }
 }
 
-const WORT = /[\p{L}\p{N}]{4,}/gu
+const KEIN_THEMA = new Set(['werk', 'über', 'ueber', 'with', 'from'])
 
 function woerter(text: string): Set<string> {
-  return new Set((text.toLowerCase().match(WORT) ?? []).filter((w) => !['werk', 'über', 'ueber', 'with', 'from'].includes(w)))
+  return stammwoerter(text, 4, KEIN_THEMA)
 }
 
 /**
@@ -527,7 +564,8 @@ export async function fuehreSchrittAus(
             fristMs: ABSCHNITT_FRIST_MS,
           }),
         )
-        const text = antwort.replace(/^#+\s.*\n+/, '').trim().slice(0, ABSCHNITT_MAX)
+        // ein Zitat im Abschnitt muss in den Notizen stehen, aus denen er entsteht
+        const text = pruefeZitate(antwort.replace(/^#+\s.*\n+/, '').trim(), [material]).slice(0, ABSCHNITT_MAX)
         const gefunden = text && !/^in den quellen nicht gefunden\.?$/i.test(text)
         return {
           recherche: mitSchritt(
@@ -566,9 +604,28 @@ function geplant(r: Recherche, i: number, plan: { person: boolean; werke: string
  * Abschnitte in Planreihenfolge, unten die Quellen — nur die, auf die ein
  * Abschnitt wirklich verweist, mit derselben Nummer wie im Text.
  */
+/**
+ * Muss die Akte gekuerzt werden, fallen zuerst die Abschnitte, deren Fehlen
+ * am wenigsten schadet. Das Kurzprofil, der Abschnitt zu dem, was belegt ist,
+ * und die Grenzen bleiben immer: sie sagen, wie ENI die Rolle spielt und wo
+ * die Person widerlegt oder gefaehrlich liegt. Frueher fielen einfach die
+ * hintersten, und das waren genau diese.
+ */
+const GESCHUETZT = new Set(['Kurzprofil und Stimme', 'Kurzprofil und Haltung', 'Was belegt ist und was nicht', 'Grenzen und Sicherheit'])
+const ABWURF = ['Begriffe', 'Häufige Fragen', 'Positionen zu Themen', 'Lebenslauf', 'Zitate']
+
+function naechsterAbwurf(titel: string[]): number {
+  for (const t of ABWURF) {
+    const i = titel.lastIndexOf(t)
+    if (i >= 0) return i
+  }
+  for (let i = titel.length - 1; i >= 0; i -= 1) if (titel[i]!.startsWith('Werk:')) return i
+  for (let i = titel.length - 1; i >= 0; i -= 1) if (!GESCHUETZT.has(titel[i]!)) return i
+  return -1
+}
+
 export function baueAkte(r: Recherche, datum: string): { akte: string; quellen: Quelle[] } {
   const { quellen } = nummeriere(r.notizen)
-  const koerper = r.abschnitte.map((a) => `## ${a.titel}\n\n${a.text.trim()}`)
   const genannt = new Set<number>()
   for (const a of r.abschnitte) for (const m of a.text.matchAll(/\[(\d{1,3})\]/g)) genannt.add(Number(m[1]))
   const liste = quellen
@@ -578,11 +635,17 @@ export function baueAkte(r: Recherche, datum: string): { akte: string; quellen: 
   const quellenTeil = liste.length
     ? `## Quellen\n\n${liste.map(({ q, nr }) => `[${nr}] ${q.titel} – ${q.url}`).join('\n')}`
     : ''
-  // passt alles nicht hinein, fallen erst die hinteren abschnitte, nie die quellen
-  let teile = [kopf, ...koerper]
-  while (teile.length > 1 && [...teile, quellenTeil].join('\n\n').length > AKTE_MAX) teile = teile.slice(0, -1)
+  // passt alles nicht hinein, fallen erst die unwichtigeren abschnitte, nie die quellen
+  let abschnitte = r.abschnitte
+  const zusammen = () =>
+    [kopf, ...abschnitte.map((a) => `## ${a.titel}\n\n${a.text.trim()}`), quellenTeil].filter(Boolean).join('\n\n')
+  while (zusammen().length > AKTE_MAX) {
+    const i = naechsterAbwurf(abschnitte.map((a) => a.titel))
+    if (i < 0) break
+    abschnitte = abschnitte.filter((_, j) => j !== i)
+  }
   return {
-    akte: [...teile, quellenTeil].filter(Boolean).join('\n\n').slice(0, AKTE_MAX),
+    akte: zusammen().slice(0, AKTE_MAX),
     quellen: liste.map(({ q }) => q),
   }
 }

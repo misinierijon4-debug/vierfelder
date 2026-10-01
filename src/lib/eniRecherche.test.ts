@@ -13,6 +13,7 @@ import {
   notizenFuer,
   nummeriere,
   ohneDenken,
+  pruefeZitate,
   type ModellAufruf,
   type Recherche,
   type RechercheDienste,
@@ -233,6 +234,92 @@ describe('recherche: quellen und akte', () => {
     expect(akte).toContain('## A0')
     expect(akte).not.toContain('## A14')
     expect(akte).toContain('[1] Q – https://q')
+  })
+})
+
+describe('recherche: akte kürzen', () => {
+  it('behält Kurzprofil, Belegtes und Grenzen und wirft zuerst Unwichtigeres ab', () => {
+    const lang = (titel: string) => ({ titel, text: `${'z'.repeat(9_000)} [1]` })
+    const r: Recherche = {
+      ...start(),
+      notizen: [{ titel: 'a', text: '[1]', quellen: [{ titel: 'Q', url: 'https://q' }] }],
+      abschnitte: [
+        lang('Kurzprofil und Stimme'),
+        lang('Lebenslauf'),
+        lang('Kernideen'),
+        lang('Werk: Eins'),
+        lang('Werk: Zwei'),
+        lang('Begriffe'),
+        lang('Positionen zu Themen'),
+        lang('Zitate'),
+        lang('Was belegt ist und was nicht'),
+        lang('Grenzen und Sicherheit'),
+        ...Array.from({ length: 4 }, (_, i) => lang(`Zusatz ${i}`)),
+      ],
+    }
+    const { akte } = baueAkte(r, 'heute')
+    expect(akte.length).toBeLessThanOrEqual(100_000)
+    expect(akte).toContain('## Kurzprofil und Stimme')
+    expect(akte).toContain('## Was belegt ist und was nicht')
+    expect(akte).toContain('## Grenzen und Sicherheit')
+    expect(akte).toContain('## Kernideen')
+    // zuerst fallen Begriffe, Positionen und Lebenslauf, nicht der Schluss
+    expect(akte).not.toContain('## Begriffe')
+    expect(akte).not.toContain('## Positionen zu Themen')
+    expect(akte).toContain('[1] Q – https://q')
+  })
+})
+
+describe('recherche: zitate', () => {
+  const SEITE =
+    'He said: "The only thing we have to fear is fear itself, nameless, unreasoning, unjustified terror" in 1933. Later, "Ask not what your country can do for you" followed.'
+
+  it('lässt ein Zitat stehen, das wörtlich in der Quelle steht', () => {
+    const text = 'Er sagte „The only thing we have to fear is fear itself, nameless, unreasoning, unjustified terror“ [1].'
+    expect(pruefeZitate(text, [SEITE])).toBe(text)
+  })
+
+  it('ignoriert Groß- und Kleinschreibung, Satzzeichen und Zeilenumbrüche', () => {
+    const text = '„the only thing we have\nto fear is fear itself nameless unreasoning unjustified terror“'
+    expect(pruefeZitate(text, [SEITE])).toBe(text)
+  })
+
+  it('nimmt einem erfundenen Zitat die Anführungszeichen und sagt, dass es keins ist', () => {
+    const text = 'Er sagte „Wer rohes Fleisch isst, der wird hundert Jahre alt und niemals krank“ [1].'
+    const geprueft = pruefeZitate(text, [SEITE])
+    expect(geprueft).not.toContain('„')
+    expect(geprueft).toContain('Wer rohes Fleisch isst, der wird hundert Jahre alt und niemals krank (sinngemäß, nicht als wörtliches Zitat belegt)')
+  })
+
+  it('prüft Teilstücke vor und nach einer Auslassung einzeln', () => {
+    const echt = '„The only thing we have to fear is fear itself … unjustified terror in 1933“'
+    expect(pruefeZitate(echt, [SEITE])).toBe(echt)
+    const falsch = '„The only thing we have to fear is fear itself … and then he left the room quietly“'
+    expect(pruefeZitate(falsch, [SEITE])).toContain('nicht als wörtliches Zitat belegt')
+  })
+
+  it('lässt kurze Stellen in Anführungszeichen in Ruhe: Buchtitel und Fachwörter', () => {
+    const text = 'Das Buch „We Want To Live“ erklärt „Rohmilch“ und den „Sonnenkuss“.'
+    expect(pruefeZitate(text, [SEITE])).toBe(text)
+  })
+
+  it('prüft Notizen gegen die gelesene Seite, nicht gegen die Phantasie des Modells', async () => {
+    const dienste: RechercheDienste = {
+      suche: async () => [{ titel: 'Seite', url: 'https://s', text: SEITE }],
+      wikipedia: async () => [],
+      modell: async () =>
+        'Echt: „Ask not what your country can do for you“ [1]. Erfunden: „Mein Körper ist mein Tempel und ich esse nur, was die Natur mir schenkt“ [1].',
+    }
+    const r: Recherche = {
+      ...start(),
+      schritte: [{ art: 'suche', frage: 'x quotes', erledigt: false, versuche: 0 }],
+    }
+    const { recherche } = await fuehreSchrittAus(r, dienste)
+    const notiz = recherche.notizen[0]!.text
+    // „Ask not ...“ hat nur sieben Wörter und ist kurz genug, um stehen zu bleiben;
+    // das erfundene Zitat verliert seine Anführungszeichen
+    expect(notiz).not.toContain('„Mein Körper')
+    expect(notiz).toContain('nicht als wörtliches Zitat belegt')
   })
 })
 

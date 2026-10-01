@@ -75,6 +75,30 @@ export async function speichereWissen(
   if (!data?.length)
     throw new Error("Der Eintrag wurde inzwischen geändert. Bitte neu laden.");
 }
+/**
+ * Legt eine Erinnerung an, die ENI vorgeschlagen und die Person auf der Karte
+ * bestaetigt hat. Die Id ist fest (aus Nachricht und Stelle): ein zweiter Tipp,
+ * ein zweites Geraet oder ein Neuladen legen nichts doppelt an. Doppelt heisst
+ * hier nicht Fehler, sondern: ist schon da.
+ */
+export async function legeErinnerungAn(
+  userId: string,
+  id: string,
+  entwurf: Pick<Erinnerung, "art" | "text" | "bis">,
+): Promise<void> {
+  const { error } = await db().from("eni_erinnerungen").insert({
+    id,
+    user_id: userId,
+    art: entwurf.art,
+    text: entwurf.text.trim(),
+    bis: entwurf.bis,
+    gemeinsam: false,
+    erledigt: false,
+  });
+  // 23505: die feste id gibt es schon, die Erinnerung steht also im Gedaechtnis
+  if (error && error.code !== "23505")
+    throw new Error(ladefehler(error.code, error.message));
+}
 export async function loescheWissen(userId: string, id: string): Promise<void> {
   const { data, error } = await db()
     .from("eni_erinnerungen")

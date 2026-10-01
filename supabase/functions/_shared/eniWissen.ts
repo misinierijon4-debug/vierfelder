@@ -1,3 +1,5 @@
+import { stamm, stammwoerter } from "./eniWorte.ts";
+
 /** Inhalte sind Nutzerdaten, niemals zusaetzliche Systemanweisungen. */
 export type Erinnerung = {
   id: string;
@@ -21,21 +23,35 @@ export function wirktNoch(e: Erinnerung, heute: string): boolean {
   return !e.erledigt && (e.art === "aufgabe" || !e.bis || e.bis >= heute);
 }
 
+/**
+ * So viele Eintraege gehen hoechstens mit einer Nachricht mit. Frueher zwoelf:
+ * wer zwanzig Dinge ueber sich gespeichert hatte, sah bei jeder Sachfrage nur
+ * die, deren Woerter zufaellig in der Frage standen. Dreissig kurze Eintraege
+ * sind etwa tausend Token; mehr als dreissig werden nach Treffern gereiht.
+ */
+export const MAX_WISSEN = 30;
+
 export function waehleWissen(
   zeilen: Erinnerung[],
   userId: string,
   frage: string,
   heute: string,
 ): Erinnerung[] {
-  const woerter = new Set(
-    frage.toLocaleLowerCase("de").match(/[\p{L}\p{N}]{3,}/gu) ?? [],
-  );
-  const wert = (e: Erinnerung) =>
-    (e.art === "stil" ? 100 : e.art === "profil" ? 8 : 2) +
-    (e.art === "aufgabe" && e.bis && e.bis <= heute ? 10 : 0) +
-    [...woerter].filter((wort) => e.text.toLocaleLowerCase("de").includes(wort))
-      .length *
-      5;
+  const woerter = frage.toLocaleLowerCase("de").match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+  const wert = (e: Erinnerung) => {
+    const text = e.text.toLocaleLowerCase("de");
+    const eigene = stammwoerter(text, 3);
+    // Stammwort (Rezept/Rezepte) oder das ganze Wort mitten in einem anderen
+    // (Milch in Rohmilch) zaehlt als Treffer.
+    const treffer = [...new Set(woerter)].filter(
+      (wort) => text.includes(wort) || eigene.has(stamm(wort)),
+    ).length;
+    return (
+      (e.art === "stil" ? 100 : e.art === "profil" ? 8 : 2) +
+      (e.art === "aufgabe" && e.bis && e.bis <= heute ? 10 : 0) +
+      treffer * 5
+    );
+  };
   return zeilen
     .filter(
       (e) =>
@@ -43,7 +59,7 @@ export function waehleWissen(
         wirktNoch(e, heute),
     )
     .sort((a, b) => wert(b) - wert(a) || b.geaendert.localeCompare(a.geaendert))
-    .slice(0, 12);
+    .slice(0, MAX_WISSEN);
 }
 
 export function wissenText(zeilen: Erinnerung[], userId: string): string {

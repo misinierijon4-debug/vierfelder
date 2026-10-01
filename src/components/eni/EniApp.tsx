@@ -29,12 +29,13 @@ import {
 import type { VorbereiteterAnhang } from '../../lib/eniAnhang'
 import { useStimme, weckeStimme } from '../../lib/eniStimme'
 import type { UserId } from '../../lib/types'
-import { fuehreAktionAus } from '../../lib/eniAktion'
+import { fuehreAktionAus, fuehreErinnerungAus } from '../../lib/eniAktion'
 import type { EniAktion } from '../../lib/eniAktion'
 import type { Backend } from '../../lib/backend'
 import { EniEingabe } from './EniEingabe'
 import { EniWissenDialog } from './EniWissenDialog'
 import { EniEinstellungen } from './EniEinstellungen'
+import { legeErinnerungAn } from '../../lib/eniWissen'
 import type { Erinnerung } from '../../lib/eniWissen'
 import { EniMarke } from './EniMarke'
 import { EniKopfmenue } from './EniKopfmenue'
@@ -110,6 +111,11 @@ export function EniApp({
   const geladen = useRef<ReturnType<Backend['laden']> | null>(null)
   const fuehreAus = useCallback(
     async (aktion: EniAktion, id: string) => {
+      // eine Erinnerung gehoert ins Gedaechtnis, nicht in den Tracker
+      if (aktion.typ === 'erinnerung') {
+        const konto = speicher.kontoId
+        return fuehreErinnerungAus(aktion, id, konto ? (neueId, a) => legeErinnerungAn(konto, neueId, a) : undefined)
+      }
       if (!backend) throw new Error('eintragen geht hier nicht.')
       const laeuft = (geladen.current ??= backend.laden())
       let anfang: Awaited<typeof laeuft>
@@ -121,7 +127,7 @@ export function EniApp({
       }
       await fuehreAktionAus(aktion, id, backend, anfang.me)
     },
-    [backend]
+    [backend, speicher.kontoId]
   )
   const [chats, setChats] = useState<EniChat[]>([])
   const [chatsZustand, setChatsZustand] = useState<'laden' | 'bereit' | 'fehler'>('laden')

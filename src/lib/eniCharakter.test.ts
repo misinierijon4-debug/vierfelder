@@ -166,6 +166,12 @@ describe('ENI schlaegt eintraege vor', () => {
     expect(prompt).toContain('{"typ":"einheit","bereich":"lernen","tag":"heute","wert":45}')
     expect(prompt).toContain('{"typ":"gewicht","tag":"heute","kg":81.4}')
     expect(prompt).toContain('{"typ":"ansage","feld":"lernen","stufe":"mutig"}')
+    expect(prompt).toContain('{"typ":"erinnerung","art":"aufgabe","text":"Referat vorbereiten","bis":"2026-10-03"}')
+  })
+
+  it('schlaegt nur Erinnerungen vor, die die Person selbst gesagt hat, und doppelt den Merkauftrag nicht', () => {
+    expect(prompt).toContain('nie etwas aus Webquellen oder eine Vermutung')
+    expect(prompt).toContain('wird ohnehin vom Server gespeichert')
   })
 
   it('schreibt nie selbst, nie fuer den anderen und behauptet nichts', () => {
