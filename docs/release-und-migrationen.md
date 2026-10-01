@@ -438,6 +438,32 @@ Anmeldung → 401. Nach dem Deploy per `net.http_post` aus der Datenbank:
 `{pruefen: true}` → 200, ohne Konto → 401. Pages-Lauf #160 grün.
 Zurückrollen: dieselbe Zeile mit `f1d8064` (Version 49).
 
+## Edge Functions `eni` Version 51 und `eni-recherche` Version 2: Lage 2.0, Zitatprüfung, Erinnerungskarten (01.10.2026)
+
+#92, drei Änderungen, keine Migration, keine Datenänderung:
+
+- **Lage** (`eniLage.ts`): Serie je Feld, Zeit der Woche (gemessen und erfasst
+  getrennt), abgeschlossene Wochen und Bilanz aus `wochenabrechnung`,
+  Gewichtstrend, Schlafschnitt; Noten je Person statt einer gemeinsamen
+  Abfrage mit Grenze 20. Datenbankvertrag in Produktion geprüft: die Spalten
+  `woche, sieger, grund, differenz, punkte_erijon, punkte_koray` von
+  `wochenabrechnung` bestehen.
+- **Rollenwissen und Gedächtnis**: Zitate prüft der Code (`pruefeZitate`),
+  beim Kürzen der Akte bleiben Kurzprofil, „Was belegt ist“ und „Grenzen“,
+  Wortvergleich über Stammwörter (`eniWorte.ts`), Gedächtnis bis 30 Einträge.
+  Die Zitatprüfung läuft in `eni-recherche`; eine schon fertige Akte wird
+  nicht nachträglich geprüft, erst eine neue Recherche.
+- **Erinnerungskarten**: Prompt-Block `AKTIONEN` kennt die Art `erinnerung`;
+  die Karte schreibt der Client in `eni_erinnerungen` (feste id).
+
+`eni` Version 51 (`verify_jwt: true`) und `eni-recherche` Version 2
+(`verify_jwt: false`), beide eine Zeile aus Commit `4f71dad`. Nach dem Deploy
+per `net.http_post` aus der Datenbank: `eni` `{pruefen: true}` → 200,
+`eni-recherche` ohne Anmeldung → 401; Log `booted` ohne Fehler. Pages-Lauf
+#162 grün (Bauen und Veröffentlichen).
+Zurückrollen: dieselbe Zeile mit `44ae18d` für `eni` (Version 50) und mit
+`f1d8064` für `eni-recherche` (Version 1).
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
