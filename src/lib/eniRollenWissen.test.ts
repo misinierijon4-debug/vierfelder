@@ -55,6 +55,21 @@ describe('rollenwissen: abschnitte wählen', () => {
     expect(auszug.length).toBeLessThanOrEqual(4_300)
   })
 
+  it('findet den abschnitt auch bei anderer wortform in der frage', () => {
+    // „Ernährung“ steht in der Frage, der Abschnitt sagt „ernähren“ und „Rezepte“
+    const akte = [
+      '# X',
+      '## Kurzprofil und Stimme',
+      'Spricht direkt.',
+      '## Werk: Eins',
+      `Wie man sich ernähren soll. ${'a '.repeat(500)}`,
+      '## Werk: Zwei',
+      `Nur Rezepte für Suppen. ${'b '.repeat(500)}`,
+    ].join('\n\n')
+    expect(akteFuer(akte, 'Wie sieht deine Ernährung aus?', 1_800)).toContain('## Werk: Eins')
+    expect(akteFuer(akte, 'Gib mir ein Rezept für eine Suppe', 1_800)).toContain('## Werk: Zwei')
+  })
+
   it('nimmt für eine andere frage den anderen abschnitt', () => {
     const auszug = akteFuer(AKTE, 'Gib mir ein Rezept mit rohen Eiern', 4_000)
     expect(auszug).toContain('## Werk: The Recipe for Living Without Disease')

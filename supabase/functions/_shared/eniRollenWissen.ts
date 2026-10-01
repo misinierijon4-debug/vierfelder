@@ -1,4 +1,5 @@
 import type { EniRolle } from './eniEinstellungen.ts'
+import { stammwoerter } from './eniWorte.ts'
 
 /**
  * Die recherchierte Akte einer Rolle im Systemtext.
@@ -7,8 +8,8 @@ import type { EniRolle } from './eniEinstellungen.ts'
  * Zitate, Positionen. Ganz mit jeder Nachricht mitzuschicken waere teuer und
  * langsam, und das meiste passt nicht zur Frage. Mit geht deshalb immer der
  * Kopf und das Kurzprofil — wer die Person ist und wie sie redet —, danach
- * die Abschnitte, die mit der Nachricht die meisten Woerter teilen, bis das
- * Budget voll ist. Wer nach „We Want To Live“ fragt, bekommt den Abschnitt zu
+ * die Abschnitte, die mit der Nachricht die meisten Woerter (als Stammwort,
+ * siehe `eniWorte.ts`) teilen, bis das Budget voll ist. Wer nach „We Want To Live“ fragt, bekommt den Abschnitt zu
  * diesem Buch, nicht den Lebenslauf.
  *
  * Die Datei hat keine Deno-Eigenheiten; die Tests lesen sie direkt.
@@ -45,7 +46,7 @@ const UNWICHTIG = new Set([
 ])
 
 function woerter(text: string): Set<string> {
-  return new Set((text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []).filter((w) => !UNWICHTIG.has(w)))
+  return stammwoerter(text, 4, UNWICHTIG)
 }
 
 const block = (t: Teil) => `## ${t.titel}\n${t.text}`

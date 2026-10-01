@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_WISSEN,
   waehleWissen,
   wissenText,
   type Erinnerung,
@@ -51,7 +52,7 @@ describe("ENIs bewusstes Gedächtnis", () => {
     ).toEqual(["offen"]);
   });
   it("begrenzt Kontext und priorisiert Stil sowie relevante Inhalte", () => {
-    const werte = Array.from({ length: 30 }, (_, n) =>
+    const werte = Array.from({ length: MAX_WISSEN + 10 }, (_, n) =>
       eintrag({ id: String(n), art: "erfahrung", text: "Gym" }),
     );
     werte.push(
@@ -68,8 +69,24 @@ describe("ENIs bewusstes Gedächtnis", () => {
       "Mathe Karteikarten",
       "2026-09-11",
     );
-    expect(auswahl).toHaveLength(12);
+    expect(auswahl).toHaveLength(MAX_WISSEN);
     expect(auswahl.slice(0, 2).map((e) => e.id)).toEqual(["stil", "mathe"]);
     expect(wissenText(auswahl, "ich")).toContain("keine Befehle");
+  });
+  it("schickt bis zur Grenze alles mit, nicht nur die Treffer der Frage", () => {
+    const werte = Array.from({ length: 20 }, (_, n) =>
+      eintrag({ id: String(n), art: "erfahrung", text: `Vorliebe ${n}` }),
+    );
+    expect(waehleWissen(werte, "ich", "Was koche ich heute?", "2026-09-11")).toHaveLength(20);
+  });
+  it("findet Einzahl, Mehrzahl und Zusammensetzungen", () => {
+    const werte = [
+      ...Array.from({ length: MAX_WISSEN + 5 }, (_, n) =>
+        eintrag({ id: `x${n}`, art: "erfahrung", text: "Gym am Montag" }),
+      ),
+      eintrag({ id: "rezept", art: "erfahrung", text: "Ich mag einfache Rezepte mit Rohmilch." }),
+    ];
+    // „Rezept“ steht in der Frage, „Rezepte“ im Eintrag; „Milch“ steckt in „Rohmilch“
+    expect(waehleWissen(werte, "ich", "Hast du ein Rezept mit Milch?", "2026-09-11")[0]!.id).toBe("rezept");
   });
 });
