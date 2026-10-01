@@ -74,8 +74,13 @@ Erlaubte Typen sind "saeulen" fuer vertikale Saeulen und "balken" fuer horizonta
  * Der Satz gilt nur, solange nichts recherchiert wurde. Stand darunter
  * Webmaterial, behauptete ENI im selben Prompt beides: keine Websuche zu
  * haben und Quellen anzuhaengen.
+ *
+ * Ist die Suche eingerichtet, wurde nur diesmal nicht gesucht. „Du hast keine
+ * Websuche“ war dann falsch, und ENI sagte es der Person auch so: Sie bat um
+ * ein Protokoll aus einem Buch und hoerte, er koenne es „hier nicht liefern“.
  */
 const OHNE_WEB = `Du hast keine Websuche und erfindest weder Quellen noch aktuelle Recherche.`
+const NICHT_GESUCHT = `Fuer diese Antwort wurde nicht im Web gesucht, also erfindest du weder Quellen noch aktuelle Recherche. Suchen kannst du trotzdem: die Anwendung sucht, wenn eine Frage es verlangt oder die Person darum bittet. Verlangt die Frage genaue Angaben, die du nicht sicher weisst (Zitate, Protokolle, Mengen aus einem Buch), gib das sichere Wissen und biete in einem Satz an, den Rest nachzuschlagen. Sag nie, du koenntest nicht suchen.`
 const MIT_WEB = `Recherchiert ist ausschliesslich, was im Webmaterial unter deinem Auftrag steht. Darueber hinaus erfindest du weder Quellen noch aktuelle Recherche.`
 
 const GRENZEN = `Bei Krisen, Selbstverletzung oder Hungern als Strafe hoerst du auf zu sticheln und reagierst zugewandt. Bei unmittelbarer Gefahr rate zu erreichbarer menschlicher Hilfe. Respektiere Privatsphaere: private Informationen der anderen Person stehen dir nicht zu.
@@ -198,10 +203,12 @@ export type CharakterKontext = {
   zusatz?: string[]
   /** haengt in diesem prompt webmaterial? dann gilt der satz "keine websuche" nicht */
   web?: boolean
+  /** ist die websuche eingerichtet? dann wurde ohne webmaterial nur diesmal nicht gesucht */
+  suche?: boolean
 }
 
 /** der system-prompt. eine einzige stelle, an der ENIs wesen zusammenkommt. */
-export function eniSystemPrompt({ person, lage, zusatz = [], web = false }: CharakterKontext): string {
+export function eniSystemPrompt({ person, lage, zusatz = [], web = false, suche = false }: CharakterKontext): string {
   const gegenueber =
     person === 'erijon'
       ? 'Du sprichst gerade mit Erijon. Sein Gegner im Zweikampf ist Koray. Diese Information allein aktiviert den Duellmodus nicht.'
@@ -210,7 +217,7 @@ export function eniSystemPrompt({ person, lage, zusatz = [], web = false }: Char
   // Die Moduswahl steht bewusst nach der LAGE. So ist die letzte Anweisung
   // auch nach Erinnerungen und Webmaterial nicht "hier sind Punkte", sondern
   // "nutze Kontext nur, wenn das aktuelle Anliegen passt".
-  return [WESEN, AUFTRAG, KOERPER, DIAGRAMME, web ? MIT_WEB : OHNE_WEB, GRENZEN, STIMME, LESBARKEIT, LERNEN, AKTIONEN, gegenueber, lage, ...zusatz, MODUSWAHL]
+  return [WESEN, AUFTRAG, KOERPER, DIAGRAMME, web ? MIT_WEB : suche ? NICHT_GESUCHT : OHNE_WEB, GRENZEN, STIMME, LESBARKEIT, LERNEN, AKTIONEN, gegenueber, lage, ...zusatz, MODUSWAHL]
     .filter((teil) => teil.trim() !== '')
     .join('\n\n')
 }

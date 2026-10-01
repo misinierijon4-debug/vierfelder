@@ -1,5 +1,5 @@
 import { SUCHPLAN_ANWEISUNG } from '../../supabase/functions/_shared/eniSuchplan.ts'
-import { EniWebFehler } from '../../supabase/functions/_shared/eniWeb'
+import { EniWebFehler, EniWebLeer } from '../../supabase/functions/_shared/eniWeb'
 import { describe, expect, it, vi } from 'vitest'
 import {
   ABLEHNUNG,
@@ -1375,8 +1375,9 @@ describe('Internet im authentifizierten Chat', () => {
 
     expect(res.status).toBe(200)
     expect(suche).not.toHaveBeenCalled()
-    // und ENI weiss dann auch, dass er keine recherche hat
-    expect(gesehen[0]!.system).toContain('Du hast keine Websuche')
+    // und ENI weiss dann auch, dass er diesmal keine recherche hat
+    expect(gesehen[0]!.system).toContain('Fuer diese Antwort wurde nicht im Web gesucht')
+    expect(gesehen[0]!.system).not.toContain('Du hast keine Websuche')
   })
 
   it('schickt nur das allgemeine Recherchethema an die Suche, nicht die private Nachricht', async () => {
@@ -1830,6 +1831,103 @@ describe('automatische Recherche im echten Handler', () => {
     expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
     expect(gesehen[0]!.system).toContain('Behaupte keine Recherche')
     expect(tabellen.eni_nachrichten).toHaveLength(2)
+  })
+
+  /*
+    Der Befund aus dem Chat: ENI spielte Aajonus Vonderplanitz, sollte das
+    Zahnputz-Protokoll aus „seinem Buch“ nennen, und auf „Such im Internet“ ging
+    genau dieser Satz an die Suchmaschine.
+  */
+  describe('rolle einer realen person und blosser suchbefehl', () => {
+    const rolle = {
+      id: 'eigen-aajonus',
+      name: 'Aajounus Vonderplanitz',
+      thema: '',
+      anweisung: 'Du bist Aajonus Vonderplanitz. Du kennst all deine Bücher.',
+      aktiv: true,
+    }
+    const chat = (tabellen: Tabellen) => {
+      tabellen.eni_einstellungen = [
+        { user_id: ICH, ton: 'standard', laenge: 'normal', anweisungen: '', rollen: [rolle] },
+        { user_id: ER, ton: 'standard', laenge: 'normal', anweisungen: '', rollen: [{ ...rolle, id: 'fremd', name: 'Koray-Rolle' }] },
+      ]
+      tabellen.eni_nachrichten = [
+        { id: 'alt-m', chat_id: 'chat-1', user_id: ICH, rolle: 'mensch', text: 'Sag mir ein genaues Protokoll, was du in deinem Buch zum Zähneputzen benannt hast', erstellt: '2026-09-10T12:00:00Z' },
+        { id: 'alt-e', chat_id: 'chat-1', user_id: ICH, rolle: 'eni', text: 'Ein wortgetreues Protokoll kann ich dir nicht liefern.', erstellt: '2026-09-10T12:00:01Z' },
+      ]
+    }
+    const zahnQuelle = [{ titel: 'Aajonus on teeth', url: 'https://example.org/aajonus-teeth', text: 'Brush with raw coconut cream' }]
+
+    it('sucht nach dem thema aus dem verlauf und nennt dem entscheider die rolle', async () => {
+      const { abhaengigkeiten, tabellen, suchplaene, gesehen } = deps({
+        tavily: 'test',
+        suchAntwort: JSON.stringify({ suche: true, frage: 'Aajonus Vonderplanitz teeth brushing protocol' }),
+      })
+      chat(tabellen)
+      abhaengigkeiten.webSuche = vi.fn().mockResolvedValue(zahnQuelle)
+      const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Such im Internet' }), abhaengigkeiten)
+      expect(res.status).toBe(200)
+      expect(suchplaene).toHaveLength(1)
+      expect(suchplaene[0]!.anfrage.system).toContain('"Aajounus Vonderplanitz"')
+      expect(suchplaene[0]!.anfrage.system).not.toContain('Koray-Rolle')
+      expect(abhaengigkeiten.webSuche).toHaveBeenCalledTimes(1)
+      expect(abhaengigkeiten.webSuche).toHaveBeenCalledWith('Aajonus Vonderplanitz teeth brushing protocol', expect.any(Function), expect.any(AbortSignal))
+      expect(abhaengigkeiten.webSuche).not.toHaveBeenCalledWith('Such im Internet', expect.anything(), expect.anything())
+      expect(gesehen.at(-1)!.system).toContain('Brush with raw coconut cream')
+      expect(gesehen.at(-1)!.system).toContain('Stellt eine Rolle eine reale Person dar')
+    })
+
+    it('versucht die zweite formulierung, wenn die erste nichts passendes findet', async () => {
+      const { abhaengigkeiten, tabellen } = deps({
+        tavily: 'test',
+        suchAntwort: JSON.stringify({ suche: true, frage: 'Aajonus Zähneputzen Protokoll', ersatz: 'Aajonus Vonderplanitz teeth brushing' }),
+      })
+      chat(tabellen)
+      abhaengigkeiten.webSuche = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce(zahnQuelle)
+      await behandleEni(anfrage({ chatId: 'chat-1', text: 'Such im Internet' }), abhaengigkeiten)
+      expect(vi.mocked(abhaengigkeiten.webSuche).mock.calls.map((c) => c[0])).toEqual(['Aajonus Zähneputzen Protokoll', 'Aajonus Vonderplanitz teeth brushing'])
+      expect(tabellen.eni_quellen).toHaveLength(1)
+    })
+
+    it('sagt ehrlich, dass gesucht und nichts gefunden wurde, statt einen ausfall zu melden', async () => {
+      const { abhaengigkeiten, tabellen, gesehen } = deps({
+        tavily: 'test',
+        suchAntwort: JSON.stringify({ suche: true, frage: 'Aajonus Zähneputzen Protokoll', ersatz: 'Aajonus teeth brushing' }),
+      })
+      chat(tabellen)
+      abhaengigkeiten.webSuche = vi.fn().mockRejectedValueOnce(new EniWebLeer('leer')).mockResolvedValueOnce([])
+      await behandleEni(anfrage({ chatId: 'chat-1', text: 'Such im Internet' }), abhaengigkeiten)
+      expect(abhaengigkeiten.webSuche).toHaveBeenCalledTimes(2)
+      const system = gesehen.at(-1)!.system
+      expect(system).toContain('nichts Passendes gefunden')
+      expect(system).not.toContain('vorübergehend nicht erreichbar')
+      expect(system).not.toContain('Du hast keine Websuche')
+    })
+
+    it('sucht bei einem ausfall nicht ein zweites mal', async () => {
+      const { abhaengigkeiten, tabellen, gesehen } = deps({
+        tavily: 'test',
+        suchAntwort: JSON.stringify({ suche: true, frage: 'Aajonus Zähneputzen Protokoll', ersatz: 'Aajonus teeth brushing' }),
+      })
+      chat(tabellen)
+      abhaengigkeiten.webSuche = vi.fn().mockRejectedValue(new EniWebFehler('Zeitlimit'))
+      await behandleEni(anfrage({ chatId: 'chat-1', text: 'Such im Internet' }), abhaengigkeiten)
+      expect(abhaengigkeiten.webSuche).toHaveBeenCalledTimes(1)
+      expect(gesehen.at(-1)!.system).toContain('vorübergehend nicht erreichbar')
+    })
+
+    it('protokolliert, wie die entscheidung fiel, ohne ein wort aus dem gespraech', async () => {
+      const { abhaengigkeiten, tabellen } = deps({ tavily: 'test', suchAntwort: 'kein json' })
+      chat(tabellen)
+      abhaengigkeiten.webSuche = vi.fn()
+      const info = vi.fn()
+      abhaengigkeiten.protokoll.info = info
+      await behandleEni(anfrage({ chatId: 'chat-1', text: 'Such im Internet' }), abhaengigkeiten)
+      const zeile = info.mock.calls.map((c) => String(c[0])).find((t) => t.startsWith('eni: zeiten'))
+      expect(zeile).toContain('"planweg":"unlesbar"')
+      expect(zeile).not.toContain('Zähneputzen')
+      expect(abhaengigkeiten.webSuche).not.toHaveBeenCalled()
+    })
   })
 
   it('nennt bei fehlender Suchkonfiguration die fehlende Verifikation', async () => {
