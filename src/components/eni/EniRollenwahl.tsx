@@ -148,7 +148,7 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
           <EniMenue ref={menue} id={id} role="menu" aria-label="ENI-Rollen" aria-busy={laedt || speichert}
             variants={huelleBewegung('unten-links', reduziert)} initial="zu" animate="auf" exit="weg"
             style={{ left: position.links, maxHeight: position.hoehe, transformOrigin: ankerVon('unten-links') }}
-            className="eni-menue absolute bottom-full z-30 mb-2 w-[256px] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-linie-hell bg-flaeche p-1.5"
+            className="eni-menue absolute bottom-full z-30 mb-2 flex w-[256px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-linie-hell bg-flaeche p-1.5"
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault(); schliessen(); knopf.current?.focus({ preventScroll: true })
@@ -163,7 +163,8 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
               zeilen[naechste]?.focus()
             }}
           >
-            <p className="sticky top-0 z-10 bg-flaeche px-2.5 py-2 text-xs text-kreide-60">Aktiv bei passenden Themen</p>
+            <p className="shrink-0 border-b border-linie px-2.5 py-2 text-xs text-kreide-60">Aktiv bei passenden Themen</p>
+            <div className="ohne-balken min-h-0 overflow-y-auto overscroll-contain" data-rollen-liste>
             {laedt && !stand ? <p role="status" className="px-2.5 py-3 text-sm text-kreide-60">lädt …</p> : rollen.map((rolle) => (
               <button key={rolle.id} type="button" role="menuitemcheckbox" aria-checked={rolle.aktiv}
                 aria-label={rolle.name} title={rolle.name}
@@ -182,6 +183,7 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
               <p>{fehler}</p>
               {!stand && <button type="button" role="menuitem" onClick={() => void laden()} className="min-h-11 font-semibold text-kreide">erneut laden</button>}
             </div>}
+            </div>
           </EniMenue>
         )}
       </AnimatePresence>
