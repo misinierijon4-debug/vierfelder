@@ -36,6 +36,8 @@ describe('edge-function-abhaengigkeiten', () => {
       'https://api.deepseek.com/chat/completions',
       'https://api.tavily.com/search',
       'https://classifier.dev',
+      'https://de.wikipedia.org',
+      'https://en.wikipedia.org',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent',
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:streamGenerateContent?alt=sse',
       'https://llm.onerouter.pro/v1/chat/completions',

@@ -1450,6 +1450,63 @@ describe('ENI: was in den prompt kommt', () => {
     expect(system.indexOf('EINSTELLUNGEN')).toBeLessThan(system.indexOf('MODUSWAHL'))
   })
 
+  it('gibt die recherchierte akte einer aktiven rolle mit, nie die des anderen', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps()
+    tabellen.eni_einstellungen = [
+      {
+        user_id: ICH,
+        ton: 'standard',
+        laenge: 'normal',
+        anweisungen: '',
+        rollen: [
+          { id: 'eigen-ali', name: 'Muhammad Ali', thema: '', anweisung: 'Du bist Ali.', aktiv: true },
+          { id: 'eigen-aus', name: 'Ausgeschaltet', thema: '', anweisung: '', aktiv: false },
+        ],
+      },
+    ]
+    tabellen.eni_rollen_wissen = [
+      { user_id: ICH, rolle_id: 'eigen-ali', akte: '# Muhammad Ali\n\n## Kurzprofil und Stimme\n\nBoxer aus Louisville [1].' },
+      { user_id: ICH, rolle_id: 'eigen-aus', akte: '# Aus\n\n## Kurzprofil und Stimme\n\nNicht mitschicken.' },
+      { user_id: ER, rolle_id: 'eigen-ali', akte: '# Koray-Akte\n\nGeheim.' },
+    ]
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Wer bist du?' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    const system = gesehen[0]!.system
+    expect(system).toContain('ROLLENWISSEN')
+    expect(system).toContain('Boxer aus Louisville [1].')
+    expect(system).not.toContain('Nicht mitschicken.')
+    expect(system).not.toContain('Koray-Akte')
+    expect(system.indexOf('EINSTELLUNGEN')).toBeLessThan(system.indexOf('ROLLENWISSEN'))
+  })
+
+  it('spielt die rolle ohne akte, wenn das rollenwissen nicht lesbar ist', async () => {
+    const { abhaengigkeiten, tabellen, gesehen } = deps()
+    tabellen.eni_einstellungen = [
+      {
+        user_id: ICH,
+        ton: 'standard',
+        laenge: 'normal',
+        anweisungen: '',
+        rollen: [{ id: 'eigen-ali', name: 'Muhammad Ali', thema: '', anweisung: 'Du bist Ali.', aktiv: true }],
+      },
+    ]
+    const echt = abhaengigkeiten.datenbank
+    abhaengigkeiten.datenbank = (...args) => {
+      const db = echt(...args)
+      const from = db.from.bind(db)
+      db.from = (tabelle: string) => {
+        if (tabelle === 'eni_rollen_wissen') throw Object.assign(new Error('relation fehlt'), { code: 'PGRST205' })
+        return from(tabelle)
+      }
+      return db
+    }
+    const res = await behandleEni(anfrage({ chatId: 'chat-1', text: 'Wer bist du?' }), abhaengigkeiten)
+    expect(res.status).toBe(200)
+    expect(gesehen[0]!.system).toContain('Du bist Ali.')
+    expect(gesehen[0]!.system).not.toContain('ROLLENWISSEN')
+    expect(abhaengigkeiten.protokoll.error).toHaveBeenCalledWith('eni: rollenwissen nicht lesbar', expect.anything())
+  })
+
   it('antwortet wie immer, wenn die einstellungen nicht lesbar sind', async () => {
     const { abhaengigkeiten, gesehen } = deps()
     const echt = abhaengigkeiten.datenbank

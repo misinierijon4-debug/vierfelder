@@ -27,6 +27,8 @@ import { useDialogNachlauf } from '../../lib/dialogNachlauf'
 import { Feldsymbol } from '../Feldsymbole'
 import { EniMarke } from './EniMarke'
 import { IconFood, IconGedaechtnis, IconMoon, IconPencil, IconPlus, IconX } from './EniSymbole'
+import { RECHERCHE, rechercheStand, type RechercheApi } from '../../lib/eniRollenWissen'
+import { AkteAnsicht, useRollenAkten, WissenBlock } from './EniRollenWissen'
 
 const API = { laden: ladeEinstellungen, speichern: speichereEinstellungen }
 
@@ -43,6 +45,8 @@ type Props = {
   /** öffnet die liste dessen, was ENI sich gemerkt hat */
   onGedaechtnis?: () => void
   api?: typeof API
+  /** die recherche zu den rollen. im prototyp ohne supabase nicht verfügbar */
+  recherche?: RechercheApi
 }
 
 const FELD =
@@ -57,7 +61,15 @@ const FELD =
  * anweisungen, laenge und rollen. Gespeichert wird von selbst, kurz nach der
  * letzten aenderung; oben rechts steht, ob es geklappt hat.
  */
-export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtnis, api = API }: Props) {
+export function EniEinstellungen({
+  offen,
+  kontoId,
+  me,
+  onSchliessen,
+  onGedaechtnis,
+  api = API,
+  recherche = RECHERCHE,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [stand, setStand] = useState<EniEinstellungen | null>(null)
   const [ladefehler, setLadefehler] = useState<string | null>(null)
@@ -65,6 +77,8 @@ export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtn
   const [fehler, setFehler] = useState<string | null>(null)
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(null)
   const [zuruecksetzen, setZuruecksetzen] = useState(false)
+  const [akteOffen, setAkteOffen] = useState<string | null>(null)
+  const wissen = useRollenAkten(offen, recherche)
   const offenerStand = useRef<EniEinstellungen | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const kette = useRef<Promise<void>>(Promise.resolve())
@@ -114,6 +128,7 @@ export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtn
       setFehler(null)
       setAufgeklappt(null)
       setZuruecksetzen(false)
+      setAkteOffen(null)
       offenerStand.current = null
       void laden()
     } else if (dialog.current?.open) {
@@ -153,7 +168,8 @@ export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtn
       aria-label="So redet ENI mit dir"
       onCancel={(e) => {
         e.preventDefault()
-        if (aufgeklappt) setAufgeklappt(null)
+        if (akteOffen) setAkteOffen(null)
+        else if (aufgeklappt) setAufgeklappt(null)
         else schliessen()
       }}
       className="m-0 h-[100dvh] max-h-none w-screen max-w-none bg-grund p-0 text-kreide backdrop:bg-grund/80 backdrop:backdrop-blur-sm"
@@ -283,28 +299,53 @@ export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtn
                   text="Sag ENI, wer er für dich sein soll. Ist eine Rolle an, wechselt er von selbst hinein, sobald es um ihr Thema geht."
                 >
                   <ul className="divide-y divide-linie rounded-[2px] border border-linie">
-                    {rollen.map((rolle) => (
-                      <RollenZeile
-                        key={rolle.id}
-                        rolle={rolle}
-                        farbe={farbe}
-                        offen={aufgeklappt === rolle.id}
-                        reduziert={reduziert}
-                        onUmschalten={() => setAufgeklappt((vorher) => (vorher === rolle.id ? null : rolle.id))}
-                        onRolle={(neu) => aendere(mitRolle(stand, neu))}
-                        onZuruecksetzen={
-                          istVorlage(rolle.id) ? () => aendere(ohneRolle(stand, rolle.id)) : undefined
-                        }
-                        onLoeschen={
-                          istVorlage(rolle.id)
-                            ? undefined
-                            : () => {
-                                setAufgeklappt(null)
-                                aendere(ohneRolle(stand, rolle.id))
-                              }
-                        }
-                      />
-                    ))}
+                    {rollen.map((rolle) => {
+                      const akte = wissen.akten.get(rolle.id)
+                      return (
+                        <RollenZeile
+                          key={rolle.id}
+                          rolle={rolle}
+                          farbe={farbe}
+                          offen={aufgeklappt === rolle.id}
+                          reduziert={reduziert}
+                          unterzeile={
+                            akte?.status === 'laeuft'
+                              ? `recherchiert ${rechercheStand(akte).prozent} %`
+                              : akte?.akte.trim() && !rolle.thema.trim()
+                                ? 'Akte fertig'
+                                : undefined
+                          }
+                          wissen={
+                            <WissenBlock
+                              rolle={rolle}
+                              stand={akte}
+                              farbe={farbe}
+                              verfuegbar={recherche.verfuegbar}
+                              fehler={wissen.fehlerFuer(rolle.id) ?? wissen.ladefehler}
+                              onStarten={() => void wissen.starten(rolle)}
+                              onAbbrechen={() => void wissen.abbrechen(rolle.id)}
+                              onAnsehen={() => setAkteOffen(rolle.id)}
+                              onLoeschen={() => void wissen.loeschen(rolle.id)}
+                            />
+                          }
+                          onUmschalten={() => setAufgeklappt((vorher) => (vorher === rolle.id ? null : rolle.id))}
+                          onRolle={(neu) => aendere(mitRolle(stand, neu))}
+                          onZuruecksetzen={
+                            istVorlage(rolle.id) ? () => aendere(ohneRolle(stand, rolle.id)) : undefined
+                          }
+                          onLoeschen={
+                            istVorlage(rolle.id)
+                              ? undefined
+                              : () => {
+                                  setAufgeklappt(null)
+                                  aendere(ohneRolle(stand, rolle.id))
+                                  // ohne rolle keine akte: sie würde nie mehr gelesen
+                                  if (akte) void wissen.loeschen(rolle.id)
+                                }
+                          }
+                        />
+                      )
+                    })}
                     <li>
                       <button
                         type="button"
@@ -400,6 +441,15 @@ export function EniEinstellungen({ offen, kontoId, me, onSchliessen, onGedaechtn
           )}
         </motion.div>
       )}
+      {sichtbar && akteOffen && wissen.akten.get(akteOffen)?.akte.trim() ? (
+        <AkteAnsicht
+          key={akteOffen}
+          name={rollen.find((r) => r.id === akteOffen)?.name.trim() || wissen.akten.get(akteOffen)!.name}
+          stand={wissen.akten.get(akteOffen)!}
+          onSchliessen={() => setAkteOffen(null)}
+          onSpeichern={(akte) => wissen.speichern(akteOffen, akte)}
+        />
+      ) : null}
     </dialog>
   )
 }
@@ -612,6 +662,8 @@ function RollenZeile({
   onRolle,
   onZuruecksetzen,
   onLoeschen,
+  unterzeile,
+  wissen,
 }: {
   rolle: EniRolle
   farbe: string
@@ -621,6 +673,10 @@ function RollenZeile({
   onRolle: (rolle: EniRolle) => void
   onZuruecksetzen?: () => void
   onLoeschen?: () => void
+  /** statt des themas, etwa während der recherche */
+  unterzeile?: string
+  /** recherche und akte zu dieser rolle */
+  wissen?: ReactNode
 }) {
   const vorlage = ROLLEN_VORLAGEN.find((v) => v.id === rolle.id)
   const geaendert =
@@ -648,7 +704,7 @@ function RollenZeile({
             {titel}
           </span>
           <span className="block truncate text-[12px] text-kreide-60">
-            {offen ? 'zuklappen' : rolle.thema.trim() || 'Thema und Anweisung festlegen'}
+            {offen ? 'zuklappen' : unterzeile || rolle.thema.trim() || 'Thema und Anweisung festlegen'}
           </span>
         </button>
         <Schalter
@@ -704,6 +760,7 @@ function RollenZeile({
                   onWert={(anweisung) => onRolle({ ...rolle, anweisung })}
                 />
               </Feldblock>
+              {wissen}
               <div className="flex items-center justify-between gap-2">
                 {geaendert && onZuruecksetzen ? (
                   <button

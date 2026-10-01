@@ -36,6 +36,7 @@ import { planeWebsuche, suchplanRollen, type Suchplan } from './eniSuchplan.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { willMerken, merkBezug, merkNachrichten, MERKEN_ANWEISUNG, AENDERN_ANWEISUNG, liesMerkEntwurf, liesMerkAenderung } from './eniMerken.ts'
 import { bereinigeEinstellungen, einstellungenText, type EniEinstellungen } from './eniEinstellungen.ts'
+import { rollenWissenText, type RollenAkte } from './eniRollenWissen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
 
@@ -1231,6 +1232,26 @@ export async function behandleEni(
           return null
         }
       })()
+  /*
+   * Die recherchierten Akten der aktiven Rollen, gelesen parallel zu den
+   * Einstellungen. Eine fehlende Akte heisst nur: diese Rolle spielt ENI ohne
+   * Recherche, wie vorher.
+   */
+  const aktenBereit: Promise<RollenAkte[]> = merken
+    ? Promise.resolve([])
+    : (async () => {
+        try {
+          const gelesen = await db.from('eni_rollen_wissen').select('rolle_id, akte').eq('user_id', userId)
+          if (gelesen.error) throw gelesen.error
+          return (gelesen.data ?? []).map((zeile) => ({
+            rolleId: String(zeile.rolle_id ?? ''),
+            akte: typeof zeile.akte === 'string' ? zeile.akte : '',
+          }))
+        } catch (ursache) {
+          deps.protokoll.error('eni: rollenwissen nicht lesbar', ursache)
+          return []
+        }
+      })()
   const kontextBereit = merken
     ? Promise.resolve({ lage: '', wissen: '', einstellungen: '' })
     : Promise.all([
@@ -1254,7 +1275,11 @@ export async function behandleEni(
             return 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
           }
         })(),
-        einstellungenBereit.then((e) => (e ? einstellungenText(e, person) : '')),
+        Promise.all([einstellungenBereit, aktenBereit]).then(([e, akten]) =>
+          e
+            ? [einstellungenText(e, person), rollenWissenText(akten, e.rollen, vorlageText)].filter(Boolean).join('\n\n')
+            : '',
+        ),
       ]).then(([, lage, wissen, einstellungen]) => ({ lage, wissen, einstellungen }))
   type Kontext = Awaited<typeof kontextBereit>
 
