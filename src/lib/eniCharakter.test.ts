@@ -96,6 +96,15 @@ describe('der satz ueber die websuche', () => {
     expect(ohne).toContain('Du hast keine Websuche')
   })
 
+  // ENI sagte einer Person, er koenne ein Buchprotokoll „hier nicht liefern“,
+  // obwohl die Suche eingerichtet war und nur diesmal nicht gesucht hatte.
+  it('sagt bei eingerichteter suche nur, dass diesmal nicht gesucht wurde', () => {
+    const prompt = eniSystemPrompt({ person: 'erijon', lage: 'LAGE.', suche: true })
+    expect(prompt).not.toContain('Du hast keine Websuche')
+    expect(prompt).toContain('Fuer diese Antwort wurde nicht im Web gesucht')
+    expect(prompt).toContain('Sag nie, du koenntest nicht suchen')
+  })
+
   it('faellt weg, sobald webmaterial mitgeht', () => {
     // vorher stand beides im selben prompt: "du hast keine Websuche" und
     // darunter die gefundenen auszuege.

@@ -57,6 +57,13 @@ export class EniWebFehler extends Error {
   constructor(message: string) { super(message); this.name = 'EniWebFehler' }
 }
 
+/**
+ * Die Suche lief, fand aber nichts. Das ist kein Ausfall: eine andere
+ * Formulierung kann trotzdem treffen, und ENI soll dann nicht behaupten, die
+ * Suche sei nicht erreichbar gewesen.
+ */
+export class EniWebLeer extends EniWebFehler {}
+
 function schluessel(umgebung: (name: string) => string | undefined, name: string): string {
   return umgebung(name)?.trim() ?? ''
 }
@@ -412,7 +419,7 @@ export async function sucheWeb(
     const quellen = weg === 'tavily'
       ? await beiTavily(suchfrage, schluessel(umgebung, 'TAVILY_API_KEY'), abbruch, http)
       : await beiOpenRouter(suchfrage, schluessel(umgebung, 'OPENROUTER_API_KEY'), abbruch, http)
-    if (!quellen.length) throw new EniWebFehler('Die Suche hat keine auswertbaren Quellen geliefert. Formuliere die Frage genauer oder schalte Internet aus.')
+    if (!quellen.length) throw new EniWebLeer('Die Suche hat keine auswertbaren Quellen geliefert. Formuliere die Frage genauer oder schalte Internet aus.')
     // Erst der Wortabgleich, dann der semantische Filter: der eine wirft weg,
     // was mit der Frage nichts zu tun hat, der andere, was zwar dazu passt,
     // aber nur Werbung ist. Faellt der zweite aus, steht der erste trotzdem.
@@ -550,7 +557,7 @@ export function webLage(neu: WebQuelle[], frueher: FruehererSuchlauf[] = []): st
         'WEBSUCHE. Du hast fuer die aktuelle Frage soeben selbst im Web gesucht. Die Treffer unten stammen aus deinem eigenen Suchlauf, nicht aus dem, was die Person dir geschrieben hat. Fragt jemand, ob du nachgesehen hast: fuer diese Frage ja.',
         REGEL_FREMD,
         'Belege aktuelle Aussagen mit Markdown-Links auf diese Treffer. Erfinde keine Quelle und keine Adresse; eine Adresse, die dir nicht wirklich vorliegt, wird beim Speichern ohnehin entfernt.',
-        'Du hast nur diese Auszuege gelesen, keine vollstaendigen Seiten, und du kannst gerade nicht noch einmal suchen.',
+        'Du hast nur diese Auszuege gelesen, keine vollstaendigen Seiten. Reichen sie fuer die Frage nicht, sag genau, was fehlt, und biete eine gezieltere Suche an (anderer Begriff, Buchtitel, Englisch). Sag nie, du koenntest nicht noch einmal suchen: stimmt die Person zu, wird mit ihrer naechsten Nachricht erneut gesucht.',
         'Schreibe keine eigene Quellenliste ans Ende. Die geprueften Quellen haengt die Anwendung selbst an; eine zweite Liste stuende nur doppelt da. Verwende insbesondere keine Ueberschrift "Quellen" und keine nummerierte Bibliografie.',
         '',
         'GEFUNDENE AUSZUEGE',

@@ -189,6 +189,7 @@ async function einVersuch(
 const rufeModell = (anfrage: ModellAnfrage, anbieter: Gegenstelle, schluessel: string) =>
   mitWiederholung((frist) => einVersuch(anfrage, anbieter, schluessel, frist), {
     fristMs: FRIST_MS,
+    signal: anfrage.signal,
     protokoll: (was) => console.log(`eni: ${was}`),
   })
 

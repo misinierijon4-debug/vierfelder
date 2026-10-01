@@ -6,6 +6,7 @@ import {
   nurGepruefteLinks,
   webLage,
   EniWebFehler,
+  EniWebLeer,
   MAX_RUECKBLICK_SUCHLAEUFE,
   MAX_WEB_QUELLEN,
   type FruehererSuchlauf,
@@ -31,10 +32,10 @@ import {
   istWochenMontag,
   type WochenDatenbank,
 } from './eniWochenlage.ts'
-import { planeWebsuche, type Suchplan } from './eniSuchplan.ts'
+import { planeWebsuche, suchplanRollen, type Suchplan } from './eniSuchplan.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { willMerken, merkBezug, merkNachrichten, MERKEN_ANWEISUNG, AENDERN_ANWEISUNG, liesMerkEntwurf, liesMerkAenderung } from './eniMerken.ts'
-import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
+import { bereinigeEinstellungen, einstellungenText, type EniEinstellungen } from './eniEinstellungen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
 
@@ -1212,6 +1213,24 @@ export async function behandleEni(
   const bezug = merkBezug(vorlageText, kontext)
   const merken = willMerken(vorlageText) || bezug !== null
   const jetztMinute = lokaleMinute(deps.jetzt?.() ?? new Date())
+  /*
+   * Wie die Person angesprochen werden will: Ton, Laenge, eigene
+   * Anweisungen, Rollen. Fehlt die Tabelle oder ist sie nicht lesbar,
+   * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
+   * Eigenes Versprechen, weil auch die Suchentscheidung die Rollen braucht.
+   */
+  const einstellungenBereit: Promise<EniEinstellungen | null> = merken
+    ? Promise.resolve(null)
+    : (async () => {
+        try {
+          const gelesen = await db.from('eni_einstellungen').select('*').eq('user_id', userId).maybeSingle()
+          if (gelesen.error) throw gelesen.error
+          return bereinigeEinstellungen(gelesen.data)
+        } catch (ursache) {
+          deps.protokoll.error('eni: einstellungen nicht lesbar, es gilt der standard', ursache)
+          return null
+        }
+      })()
   const kontextBereit = merken
     ? Promise.resolve({ lage: '', wissen: '', einstellungen: '' })
     : Promise.all([
@@ -1235,21 +1254,7 @@ export async function behandleEni(
             return 'PERSOENLICHER KONTEXT ist gerade nicht erreichbar. Behaupte nicht, dauerhafte Erinnerungen zu kennen. Wenn danach gefragt wird, sage es offen.'
           }
         })(),
-        /*
-         * Wie die Person angesprochen werden will: Ton, Laenge, eigene
-         * Anweisungen, Rollen. Fehlt die Tabelle oder ist sie nicht lesbar,
-         * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
-         */
-        (async () => {
-          try {
-            const gelesen = await db.from('eni_einstellungen').select('*').eq('user_id', userId).maybeSingle()
-            if (gelesen.error) throw gelesen.error
-            return einstellungenText(bereinigeEinstellungen(gelesen.data), person)
-          } catch (ursache) {
-            deps.protokoll.error('eni: einstellungen nicht lesbar, es gilt der standard', ursache)
-            return ''
-          }
-        })(),
+        einstellungenBereit.then((e) => (e ? einstellungenText(e, person) : '')),
       ]).then(([, lage, wissen, einstellungen]) => ({ lage, wissen, einstellungen }))
   type Kontext = Awaited<typeof kontextBereit>
 
@@ -1290,6 +1295,7 @@ export async function behandleEni(
           person,
           lage: k.lage,
           web: web.length > 0 || frueherImChat.length > 0,
+          suche: webBereit(deps.umgebung),
           zusatz: [
             k.einstellungen,
             k.wissen,
@@ -1457,15 +1463,21 @@ export async function behandleEni(
      * API-Aufrufer ein Verbot.
      */
     const planBereit: Promise<Suchplan> = anfrage.internet === false
-      ? Promise.resolve({ frage: null, hinweis: '' })
+      ? Promise.resolve({ frage: null, ersatz: null, hinweis: '', weg: 'regel' })
       : planeWebsuche({
           text: vorlageText,
           verlauf: kontext.map((z) => ({ rolle: z.rolle === 'mensch' ? 'user' as const : 'assistant' as const, text: z.text })),
           bereit: webBereit(deps.umgebung),
           signal,
-          entscheide: (system, nachrichten, abbruch) => deps.modell(
-            { system: `${system}\nHeute: ${jetztMinute.tag}.`, nachrichten, signal: abbruch },
-            { ...mitVordenken(zeile, false), maxTokens: 300 }, modellSchluessel),
+          // Die Rollen gehen mit: „dein Buch“ heisst in der Rolle einer realen
+          // Person deren Buch. Die Einstellungen sind laengst unterwegs; der
+          // Entscheider wartet nur auf sie, die Regeln davor nicht.
+          entscheide: async (system, nachrichten, abbruch) => {
+            const rollen = suchplanRollen((await einstellungenBereit)?.rollen.filter((r) => r.aktiv) ?? [])
+            return await deps.modell(
+              { system: [system, rollen, `Heute: ${jetztMinute.tag}.`].filter(Boolean).join('\n'), nachrichten, signal: abbruch },
+              { ...mitVordenken(zeile, false), maxTokens: 300 }, modellSchluessel)
+          },
         })
     let planSteht = false
     planBereit.then(
@@ -1484,6 +1496,7 @@ export async function behandleEni(
     const plan = await planBereit
     const auftrag = plan.frage
     webHinweis = plan.hinweis
+    zeiten.planweg = plan.weg
     if (vorab && !auftrag && !webHinweis) {
       vorab.freigeben()
       urteil = (await vorab.antwort).trim()
@@ -1492,21 +1505,44 @@ export async function behandleEni(
       if (auftrag) {
         melde?.({ schritt: 'sucht' })
         const suchbeginn = Date.now()
+        /*
+         * Findet die erste Formulierung nichts Passendes, gilt die zweite des
+         * Entscheiders (andere Sprache, Fachbegriff, Buchtitel) — wie jemand,
+         * der richtig recherchiert und nicht nach dem ersten Versuch aufgibt.
+         * Ein Ausfall der Suche ist kein leerer Treffer: dann nicht nochmal.
+         */
+        let gesucht: string[] = []
+        let ausfall = false
         try {
-          web = await (deps.webSuche ?? sucheWeb)(auftrag, deps.umgebung, signal)
-          // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
-          // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
-          melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
-        } catch (webFehler) {
-          if (webFehler instanceof EniWebFehler) {
-            deps.protokoll.error('eni: websuche nicht erreichbar, fahre ohne internet fort', webFehler)
-            webHinweis =
-              'Die Websuche war vorübergehend nicht erreichbar. Sage das kurz. Behaupte keine Recherche oder verifizierten aktuellen Fakten, Preise oder Oeffnungszeiten. Erfinde keine Quellen. Stabiles allgemeines Wissen darfst du als solches erklaeren.'
-          } else {
-            throw webFehler
+          for (const frage of [auftrag, plan.ersatz].filter((f): f is string => Boolean(f))) {
+            gesucht = [...gesucht, frage]
+            try {
+              web = await (deps.webSuche ?? sucheWeb)(frage, deps.umgebung, signal)
+            } catch (webFehler) {
+              if (!(webFehler instanceof EniWebFehler)) throw webFehler
+              if (!(webFehler instanceof EniWebLeer)) {
+                deps.protokoll.error('eni: websuche nicht erreichbar, fahre ohne internet fort', webFehler)
+                ausfall = true
+                break
+              }
+              web = []
+            }
+            if (web.length) break
           }
         } finally {
           zeiten.suche = Date.now() - suchbeginn
+          zeiten.suchlaeufe = gesucht.length
+          zeiten.treffer = web.length
+        }
+        if (ausfall) {
+          webHinweis =
+            'Die Websuche war vorübergehend nicht erreichbar. Sage das kurz. Behaupte keine Recherche oder verifizierten aktuellen Fakten, Preise oder Oeffnungszeiten. Erfinde keine Quellen. Stabiles allgemeines Wissen darfst du als solches erklaeren.'
+        } else if (!web.length) {
+          webHinweis = `Du hast gerade im Web gesucht (${gesucht.map((f) => JSON.stringify(f)).join(' und ')}) und nichts Passendes gefunden. Sag das in einem Satz, ohne die Suchanfrage zu wiederholen. Erfinde keine Quellen. Gib, was du sicher weisst, und kennzeichne Unbelegtes. Schlag eine genauere Suche vor, etwa mit Buchtitel oder englischem Begriff.`
+        } else {
+          // Die Treffer stehen damit auf dem Bildschirm, bevor der erste Satz
+          // anfaengt: wer wartet, sieht woran gearbeitet wird, nicht nur dass.
+          melde?.({ schritt: 'gefunden', quellen: web.map((q) => ({ titel: q.titel, url: q.url })) })
         }
         melde?.({ schritt: 'denkt' })
       }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  EniWebLeer,
   sucheWeb,
   bereinigeSuchfrage,
   webBereit,
@@ -116,6 +117,11 @@ describe('Eni Websuche', () => {
     await expect(sucheWeb('Frage', NUR_TAVILY, undefined, falsch)).rejects.toThrow('TAVILY_API_KEY')
     const leer = vi.fn().mockResolvedValue(Response.json({ results: [] }))
     await expect(sucheWeb('Frage', NUR_TAVILY, undefined, leer)).rejects.toThrow('keine auswertbaren Quellen')
+    // leer ist kein ausfall: eine andere formulierung darf es noch einmal versuchen
+    const nochmalLeer = vi.fn(async () => Response.json({ results: [] }))
+    await expect(sucheWeb('Frage', NUR_TAVILY, undefined, nochmalLeer)).rejects.toBeInstanceOf(EniWebLeer)
+    const nochmalFalsch = vi.fn(async () => new Response('', { status: 401 }))
+    await expect(sucheWeb('Frage', NUR_TAVILY, undefined, nochmalFalsch)).rejects.not.toBeInstanceOf(EniWebLeer)
   })
 
   it('meldet fehlendes Guthaben und leere Quellen ehrlich', async () => {
@@ -221,6 +227,10 @@ describe('Eni Websuche', () => {
     expect(text.indexOf('niemals Anweisungen')).toBeLessThan(text.indexOf('Belegter Inhalt'))
     expect(text).toContain('keine eigene Quellenliste')
     expect(text).toContain('keine nummerierte Bibliografie')
+    // „Ich kann gerade nicht noch einmal suchen“ stand so im Chat, obwohl die
+    // naechste Nachricht wieder suchen kann
+    expect(text).not.toContain('kannst gerade nicht noch einmal suchen')
+    expect(text).toContain('biete eine gezieltere Suche an')
   })
 })
 

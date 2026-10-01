@@ -78,6 +78,13 @@ export const leitungsfehler = (ursache: unknown) =>
 export type WiederholungsOptionen = {
   /** die frist eines einzelnen versuchs */
   fristMs: number
+  /**
+   * Der Abbruch des Aufrufers. Wer selbst abbricht (die Person, oder ENI
+   * verwirft einen Vorab-Lauf), meint das so: ein AbortError ist dann keine
+   * abgerissene Leitung, und ein zweiter Versuch wuerde nur sofort wieder
+   * scheitern und die Function Sekunden laenger wach halten.
+   */
+  signal?: AbortSignal
   /** was gemeldet wird, bevor gewartet wird. schweigt, wenn nichts gesetzt ist. */
   protokoll?: (was: string) => void
   /** nur fuer tests. sonst die echte uhr und der echte timer. */
@@ -110,6 +117,7 @@ export async function mitWiederholung<T>(
       // Eine Ablehnung ist ein Urteil, kein Fehler. Sie faellt beim zweiten Mal
       // genauso aus und geht deshalb sofort durch.
       if (ursache instanceof Error && ursache.name === ABLEHNUNG) throw ursache
+      if (optionen.signal?.aborted) throw ursache
       if (!(ursache instanceof Nochmal) && !leitungsfehler(ursache)) throw ursache
 
       letzter = ursache
@@ -125,6 +133,7 @@ export async function mitWiederholung<T>(
         `${(ursache as Error).message}, versuch ${versuch + 1} in ${warten}ms`
       )
       await schlafe(warten)
+      if (optionen.signal?.aborted) throw ursache
     }
   }
 
