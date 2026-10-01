@@ -1056,7 +1056,7 @@ export function EniApp({
       <div
         ref={scrollContainerRef}
         onScroll={beimScrollen}
-        className="vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className="ohne-balken vollbild-safe-x min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
         <div className="mx-auto flex min-h-full w-full max-w-[560px] flex-col">
           <EniStrom
