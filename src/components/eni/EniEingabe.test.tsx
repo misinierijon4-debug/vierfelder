@@ -106,6 +106,29 @@ describe('der streifen über dem feld', () => {
 })
 
 describe('was vorgelegt werden darf', () => {
+  it('ersetzt senden beim antworten durch stoppen und behält den entwurf', () => {
+    const props = zeige({
+      gesperrt: true,
+      onAbbrechen: vi.fn(),
+      rollenwahl: <button type="button">Aajonus Vonderplanitz</button>,
+    })
+    fireEvent.change(feld(), { target: { value: 'meine nächste frage' } })
+    expect(screen.queryByRole('button', { name: 'vorlegen' })).not.toBeInTheDocument()
+    expect(screen.queryByText('wird verarbeitet')).not.toBeInTheDocument()
+    fireEvent.keyDown(feld(), { key: 'Enter' })
+    expect(props.onVorlegen).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'antwort abbrechen' }))
+    expect(props.onAbbrechen).toHaveBeenCalledOnce()
+    expect(feld()).toHaveValue('meine nächste frage')
+    expect(props.onVorlegen).not.toHaveBeenCalled()
+  })
+
+  it('bietet beim Laden ohne laufende Antwort keinen Stoppknopf an', () => {
+    zeige({ gesperrt: true })
+    expect(vorlegen()).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'antwort abbrechen' })).not.toBeInTheDocument()
+  })
+
   it('lässt ein leeres feld nicht durch', () => {
     zeige()
     expect(vorlegen()).toBeDisabled()
