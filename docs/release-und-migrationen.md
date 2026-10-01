@@ -357,6 +357,22 @@ Version 11 (vorher lokal in Deno: ohne Secret → 401; erster Cron-Lauf danach:
 200, `{gesendet: 0, uebersprungen: 0, fehler: 0}`), dann `eni` Version 47
 (`{pruefen: true}` → 200 in Produktion), dann Pages (Lauf #152 grün).
 
+## Edge Function `eni` Version 48: Recherche mit Thema und Rolle (01.10.2026)
+
+Anlass: In der Rolle „Aajonus Vonderplanitz“ ging „Such im Internet“ wörtlich
+an Tavily (Treffer: „Search engine - Wikipedia“). Davor hatte die
+Suchentscheidung zur Buchfrage kein brauchbares Urteil geliefert. Inhalt in
+#86: Ein bloßer Suchbefehl nimmt das Thema aus dem Verlauf, der Entscheider
+kennt die aktiven Rollen, `ersatz` läuft nur bei leerem Treffer, und
+`planweg`/`suchlaeufe`/`treffer` stehen jetzt in `eni: zeiten`. Keine Migration,
+kein geänderter Datenbankvertrag.
+
+Version 48 = Commit `2792684` (eine Zeile wie bei Version 44,
+`verify_jwt: true`). Vorher lokal in Deno: `{pruefen: true}` → 200, ohne
+Anmeldung → 401. Nach dem Deploy per `net.http_post` aus der Datenbank:
+`{pruefen: true}` → 200. Pages-Lauf #156 grün (Bauen und Veröffentlichen).
+Zurückrollen: dieselbe Zeile mit `f316016` (Version 47).
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
