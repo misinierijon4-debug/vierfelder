@@ -13,20 +13,27 @@ import type { AreaId, UserId } from './types'
  * sieht davon nichts: geschrieben wird mit genau dem Backend und denselben
  * Regeln, mit denen auch der Tracker schreibt, in beiden Datenmodi.
  *
- * Drei Dinge gehen, alle nur fuer die eigene Person:
+ * Vier Dinge gehen, alle nur fuer die eigene Person:
  *
- *   einheit  eine Durchfuehrung in lernen, gym, boxen oder lesen, optional mit
- *            Minuten (Seiten beim Lesen)
- *   gewicht  das Gewicht eines Tages
- *   ansage   eine Ansage an den anderen; ob sie gilt, entscheidet der Server
+ *   einheit     eine Durchfuehrung in lernen, gym, boxen oder lesen, optional
+ *               mit Minuten (Seiten beim Lesen)
+ *   gewicht     das Gewicht eines Tages
+ *   ansage      eine Ansage an den anderen; ob sie gilt, entscheidet der Server
+ *   erinnerung  ein Eintrag in ENIs Gedaechtnis: eine Aufgabe (mit Frist
+ *               meldet sich die App am Morgen per Push), vorlaeufiger
+ *               Kontext, eine Vorliebe oder eine bewaehrte Methode
  *
- * Tage gehen nur rueckwaerts und hoechstens eine Woche weit. Was hier nicht
- * durchgeht, wird keine Karte, sondern ein ehrlicher Satz.
+ * Tage einer Einheit oder des Gewichts gehen nur rueckwaerts und hoechstens
+ * eine Woche weit; die Frist einer Erinnerung nur vorwaerts, hoechstens ein
+ * Jahr. Was hier nicht durchgeht, wird keine Karte, sondern ein ehrlicher Satz.
  */
+export type ErinnerungsArt = 'aufgabe' | 'aktuell' | 'profil' | 'erfahrung'
+export type ErinnerungsAktion = { typ: 'erinnerung'; art: ErinnerungsArt; text: string; bis: string | null }
 export type EniAktion =
   | { typ: 'einheit'; bereich: AreaId; tag: string; wert: number | null }
   | { typ: 'gewicht'; tag: string; kg: number }
   | { typ: 'ansage'; feld: AnsageFeld; stufe: AnsageStufe }
+  | ErinnerungsAktion
 
 export type AktionsUrteil = { ok: true; aktion: EniAktion } | { ok: false; grund: string }
 
@@ -58,6 +65,33 @@ export function liesTag(roh: unknown, jetzt: Date = new Date()): string | null {
   if (toKey(datum) !== roh) return null
   // ISO-Zeichenketten gleicher Form lassen sich lexikalisch vergleichen
   return roh <= heute && roh >= vor(RUECKBLICK_TAGE - 1) ? roh : null
+}
+
+const ERINNERUNGS_ARTEN: readonly ErinnerungsArt[] = ['aufgabe', 'aktuell', 'profil', 'erfahrung']
+
+/** so lang darf der Text einer vorgeschlagenen Erinnerung sein; die Tabelle erlaubt tausend */
+export const ERINNERUNG_MAX_ZEICHEN = 300
+
+/** so weit darf die Frist einer Erinnerung in die Zukunft reichen */
+export const FRIST_MAX_TAGE = 365
+
+/**
+ * Bis wann eine Erinnerung gilt. `null` heisst: ohne Frist. `undefined` heisst:
+ * kein Datum, das ENI setzen darf (Vergangenheit, mehr als ein Jahr, Unsinn).
+ */
+export function liesFrist(roh: unknown, jetzt: Date = new Date()): string | null | undefined {
+  if (roh === undefined || roh === null || roh === '') return null
+  const nach = (tage: number) => {
+    const d = new Date(jetzt)
+    d.setDate(d.getDate() + tage)
+    return toKey(d)
+  }
+  if (roh === 'heute') return nach(0)
+  if (roh === 'morgen') return nach(1)
+  if (typeof roh !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(roh)) return undefined
+  const [j, m, t] = roh.split('-').map(Number)
+  if (toKey(new Date(j!, m! - 1, t!)) !== roh) return undefined
+  return roh >= nach(0) && roh <= nach(FRIST_MAX_TAGE) ? roh : undefined
 }
 
 /** den inhalt eines ```aktion-blocks pruefen */
@@ -102,6 +136,17 @@ export function pruefeAktion(quelle: string, jetzt: Date = new Date()): AktionsU
     return { ok: true, aktion: { typ: 'ansage', feld, stufe } }
   }
 
+  if (roh.typ === 'erinnerung') {
+    const art = roh.art as ErinnerungsArt
+    if (!ERINNERUNGS_ARTEN.includes(art)) return { ok: false, grund: 'diese art von erinnerung gibt es nicht.' }
+    const text = typeof roh.text === 'string' ? roh.text.trim().replace(/\s+/g, ' ') : ''
+    if (!text) return { ok: false, grund: 'bei der erinnerung fehlt der text.' }
+    if (text.length > ERINNERUNG_MAX_ZEICHEN) return { ok: false, grund: 'der text der erinnerung ist zu lang.' }
+    const bis = liesFrist(roh.bis, jetzt)
+    if (bis === undefined) return { ok: false, grund: 'die frist muss heute oder später in den nächsten zwölf monaten liegen.' }
+    return { ok: true, aktion: { typ: 'erinnerung', art, text, bis } }
+  }
+
   return { ok: false, grund: 'das kann ENI nicht eintragen.' }
 }
 
@@ -114,6 +159,16 @@ function tagText(tag: string, jetzt: Date): string {
   return `am ${Number(t)}.${Number(m)}.`
 }
 
+function fristText(bis: string, jetzt: Date): string {
+  const heute = toKey(jetzt)
+  const morgen = new Date(jetzt)
+  morgen.setDate(morgen.getDate() + 1)
+  if (bis === heute) return 'bis heute'
+  if (bis === toKey(morgen)) return 'bis morgen'
+  const [, m, t] = bis.split('-')
+  return `bis ${Number(t)}.${Number(m)}.`
+}
+
 /** was auf der karte steht, in einem satzteil */
 export function beschreibeAktion(aktion: EniAktion, jetzt: Date = new Date()): string {
   if (aktion.typ === 'einheit') {
@@ -124,12 +179,23 @@ export function beschreibeAktion(aktion: EniAktion, jetzt: Date = new Date()): s
   if (aktion.typ === 'gewicht') {
     return `${aktion.kg.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg · ${tagText(aktion.tag, jetzt)}`
   }
+  if (aktion.typ === 'erinnerung') {
+    const kopf = aktion.art === 'aufgabe' ? 'aufgabe' : aktion.art === 'aktuell' ? 'merken, gerade aktuell' : 'merken'
+    return [kopf, aktion.text, aktion.bis ? fristText(aktion.bis, jetzt) : ''].filter(Boolean).join(' · ')
+  }
   return `ansage ${aktion.feld} · ${aktion.stufe === 'allin' ? 'all-in' : aktion.stufe}`
 }
 
 /** die beschriftung des knopfs */
 export function knopfText(aktion: EniAktion): string {
+  if (aktion.typ === 'erinnerung') return aktion.art === 'aufgabe' ? 'vormerken' : 'merken'
   return aktion.typ === 'ansage' ? 'ansagen' : 'eintragen'
+}
+
+/** was auf der karte steht, wenn es geschrieben ist */
+export function erledigtText(aktion: EniAktion): string {
+  if (aktion.typ === 'erinnerung') return aktion.art === 'aufgabe' ? 'vorgemerkt' : 'gemerkt'
+  return aktion.typ === 'ansage' ? 'angesagt' : 'eingetragen'
 }
 
 /**
@@ -151,7 +217,7 @@ export async function aktionsId(nachrichtId: string, nr: number): Promise<string
 
 /** fuehrt einen bestaetigten vorschlag aus. wirft mit einem satz, der auf die karte passt */
 export async function fuehreAktionAus(
-  aktion: EniAktion,
+  aktion: Exclude<EniAktion, ErinnerungsAktion>,
   id: string,
   backend: Pick<Backend, 'schreibeEinheit' | 'schreibeGewicht' | 'sageAn'>,
   me: UserId,
@@ -168,5 +234,23 @@ export async function fuehreAktionAus(
   } catch (fehler) {
     const grund = ansageFehlerAus(fehler)
     throw new Error(grund ? ANSAGE_FEHLERTEXT[grund] : 'hat nicht geklappt. versuch es gleich noch einmal.')
+  }
+}
+
+/**
+ * Eine Erinnerung ins Gedaechtnis schreiben. Sie braucht kein Backend des
+ * Trackers, nur das Konto: ohne Anmeldung gibt es kein Gedaechtnis. Die feste
+ * Id sorgt dafuer, dass ein zweiter Tipp nichts doppelt anlegt.
+ */
+export async function fuehreErinnerungAus(
+  aktion: ErinnerungsAktion,
+  id: string,
+  schreibe: ((id: string, aktion: ErinnerungsAktion) => Promise<void>) | undefined,
+): Promise<void> {
+  if (!schreibe) throw new Error('das gedächtnis gibt es nur mit anmeldung.')
+  try {
+    await schreibe(id, aktion)
+  } catch {
+    throw new Error('hat nicht geklappt. versuch es gleich noch einmal.')
   }
 }

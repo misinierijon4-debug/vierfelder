@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { aktionsId, beschreibeAktion, knopfText, pruefeAktion } from '../../lib/eniAktion'
+import { aktionsId, beschreibeAktion, erledigtText, knopfText, pruefeAktion } from '../../lib/eniAktion'
 import type { EniAktion } from '../../lib/eniAktion'
 import { IconCheck } from './EniSymbole'
 
@@ -86,7 +86,7 @@ export function EniAktionKarte({ quelle, nachrichtId, nr, erstellt, ausfuehren }
     <div className="flex items-center justify-between gap-3 border border-linie bg-flaeche px-3 py-2.5">
       <div className="min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kreide-52">vorschlag</p>
-        <p className="mt-0.5 text-[15px] font-semibold leading-snug text-kreide">{beschreibeAktion(aktion, geschrieben)}</p>
+        <p className="mt-0.5 break-words text-[15px] font-semibold leading-snug text-kreide">{beschreibeAktion(aktion, geschrieben)}</p>
         {fehler && (
           <p role="alert" className="mt-1 text-[12px] leading-snug text-kreide-60">
             {fehler}
@@ -96,7 +96,7 @@ export function EniAktionKarte({ quelle, nachrichtId, nr, erstellt, ausfuehren }
       {stand === 'erledigt' ? (
         <p role="status" className="flex shrink-0 items-center gap-1.5 text-[13px] text-kreide-60">
           <IconCheck size={14} />
-          {aktion.typ === 'ansage' ? 'angesagt' : 'eingetragen'}
+          {erledigtText(aktion)}
         </p>
       ) : abgelaufen ? (
         <p className="shrink-0 text-[12px] text-kreide-52">nicht mehr aktuell</p>

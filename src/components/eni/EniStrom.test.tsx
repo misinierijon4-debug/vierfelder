@@ -528,6 +528,23 @@ describe('vorschlaege von ENI', () => {
     expect(screen.getByRole('button', { name: 'ansagen' })).toBeInTheDocument()
   })
 
+  it('zeigt eine aufgabe mit frist als karte und meldet sie danach als vorgemerkt', async () => {
+    const nutzer = userEvent.setup()
+    const onAktion = vi.fn().mockResolvedValue(undefined)
+    zeichne('Mach ich.\n\n```aktion\n{"typ":"erinnerung","art":"aufgabe","text":"Referat vorbereiten","bis":"morgen"}\n```', onAktion)
+
+    expect(screen.getByText('aufgabe · Referat vorbereiten · bis morgen')).toBeInTheDocument()
+    const knopf = await screen.findByRole('button', { name: 'vormerken' })
+    await waitFor(() => expect(knopf).toBeEnabled())
+    await nutzer.click(knopf)
+
+    expect(onAktion).toHaveBeenCalledWith(
+      { typ: 'erinnerung', art: 'aufgabe', text: 'Referat vorbereiten', bis: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent('vorgemerkt')
+  })
+
   it('bietet einen alten vorschlag nicht mehr zum tippen an', () => {
     zeichne(block, vi.fn(), '2026-09-01T10:00:00.000Z')
     expect(screen.getByText('nicht mehr aktuell')).toBeInTheDocument()
