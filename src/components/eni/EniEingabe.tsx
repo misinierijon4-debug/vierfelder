@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
-import { IconArrowUp, IconMicrophone, IconPaperclip } from './EniSymbole'
+import { IconArrowUp, IconMicrophone, IconPaperclip, IconStop } from './EniSymbole'
 import { STEMPEL, TAKT } from '../../lib/motion'
 import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { fuegeAn, useDiktat } from '../../lib/eniDiktat'
@@ -216,40 +216,42 @@ export function EniEingabe({
             </button>
           )}
 
-          {rollenwahl}
+          <div className="min-w-0 flex-1">{rollenwahl}</div>
 
-          <div className="min-w-0 flex-1 px-1">
-            {diktat.laeuft ? (
-              <span className="block truncate text-[11px] italic text-kreide-52">
-                {diktat.vorlaeufig || 'hört zu …'}
-              </span>
-            ) : gesperrt && onAbbrechen ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-kreide-52">wird verarbeitet</span>
-                <button
-                  type="button"
-                  onClick={onAbbrechen}
-                  className="text-[11px] font-semibold text-kreide-60 hover:text-kreide underline underline-offset-2"
-                >
-                  abbrechen
-                </button>
-              </div>
-            ) : (
-              null
-            )}
-          </div>
-
-          <motion.button
-            type="submit"
-            whileTap={{ scale: 0.96 }}
-            transition={STEMPEL}
-            disabled={!etwasDabei || gesperrt}
-            aria-label="vorlegen"
-            className="eni-eingabe-senden flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 disabled:shadow-none bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
-          >
-            <IconArrowUp size={18} />
-          </motion.button>
+          {/* dieselbe feste flaeche fuer senden und stoppen: auch auf dem
+              schmalsten iphone braucht der laufende zustand keinen extra platz. */}
+          {gesperrt && onAbbrechen ? (
+            <motion.button
+              key="stoppen"
+              type="button"
+              whileTap={{ scale: 0.96 }}
+              transition={STEMPEL}
+              onClick={onAbbrechen}
+              aria-label="antwort abbrechen"
+              title="antwort abbrechen"
+              className="eni-eingabe-senden flex size-11 shrink-0 items-center justify-center rounded-[2px] border border-transparent bg-kreide text-grund transition-colors hover:bg-white active:bg-kreide-60"
+            >
+              <IconStop size={16} />
+            </motion.button>
+          ) : (
+            <motion.button
+              key="senden"
+              type="submit"
+              whileTap={{ scale: 0.96 }}
+              transition={STEMPEL}
+              disabled={!etwasDabei || gesperrt}
+              aria-label="vorlegen"
+              className="eni-eingabe-senden flex min-h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border transition-all duration-200 disabled:border-linie disabled:bg-transparent disabled:text-kreide-52 disabled:opacity-40 disabled:shadow-none bg-kreide text-grund hover:bg-white active:bg-kreide-60 border-transparent shadow-[0_0_10px_rgba(255,255,255,0.12)]"
+            >
+              <IconArrowUp size={18} />
+            </motion.button>
+          )}
         </div>
+        {diktat.laeuft && (
+          <p role="status" className="truncate px-4 pb-2 text-[11px] italic text-kreide-52">
+            {diktat.vorlaeufig || 'hört zu …'}
+          </p>
+        )}
       </div>
 
       {diktat.laeuft && (

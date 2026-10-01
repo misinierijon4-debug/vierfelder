@@ -155,7 +155,10 @@ describe('ENI als eigene oberflaeche', () => {
 
     expect(feld()).toHaveValue('')
     fireEvent.change(feld(), { target: { value: 'und lesen auch' } })
-    expect(screen.getByRole('button', { name: 'vorlegen' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'vorlegen' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'antwort abbrechen' })).toBeEnabled()
+    fireEvent.keyDown(feld(), { key: 'Enter' })
+    expect(feld()).toHaveValue('und lesen auch')
   })
 
   it('legt den chat erst mit der ersten vorlage an und benennt ihn danach', async () => {

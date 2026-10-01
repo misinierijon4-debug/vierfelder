@@ -138,7 +138,8 @@ export function EniRollenwahl({ kontoId, gesperrt = false, onSpeichert, api = AP
         aria-haspopup="menu" aria-expanded={offen} aria-controls={offen ? id : undefined}
         aria-label={`Rollen wählen${aktiv.length ? `, aktiv: ${aktiv.map((r) => r.name).join(', ')}` : ''}`}
         onClick={() => { if (!offen) void laden(); setOffen((war) => !war) }}
-        className="flex min-h-11 min-w-11 max-w-[8rem] items-center gap-1 rounded-xl px-2 text-sm text-kreide transition-colors hover:bg-linie hover:text-kreide disabled:opacity-40"
+        title={aktiv.length ? aktiv.map((r) => r.name).join(', ') : 'Rollen wählen'}
+        className="flex min-h-11 w-full min-w-0 items-center gap-1 rounded-xl px-2 text-sm text-kreide transition-colors hover:bg-linie hover:text-kreide disabled:opacity-40"
       >
         <span className="truncate" style={{ color: aktiv.length ? 'var(--kreide)' : undefined }}>{titel}</span>
         <IconCaretDown size={12} className="shrink-0" />

@@ -27,9 +27,8 @@ type Props = {
  * gehört es dorthin, wo man ihn zum Reden bringt, und nicht in den Kopf, wo
  * sein Name steht. Oben steht, mit wem du redest; unten, womit er antwortet.
  *
- * Die Zeile sitzt in dem Feld, das sonst das Diktat und das „wird verarbeitet"
- * trägt. Dieses Feld sagt ohnehin, was gerade läuft — wenn nichts läuft, sagt
- * es, wer spricht.
+ * Die Zeile sitzt ueber dem Eingabefeld. In der Werkzeugleiste bleiben damit
+ * Anhaenge, Diktat, Rollen und die feste Flaeche fuer Senden oder Stoppen.
  *
  * **Das Vordenken ist ein Umschalter, keine zweite Zeile.** Eine Zeit lang
  * stand `ling 3.0 flash (denkt)` als eigener Eintrag daneben, und bei einem
