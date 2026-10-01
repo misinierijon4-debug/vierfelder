@@ -399,14 +399,28 @@ Schlüssel: `INFRON_API_KEY` (kostenloses Modell `qwen-flash`) und
 `TAVILY_API_KEY` (Suche mit `include_raw_content`), beide schon für `eni`
 gesetzt.
 
-**Stand 01.10.2026:** Code auf `main` (Wunsch von erijon), Migration noch
-offen. `apply_migration` und `execute_sql` des Agenten blieben viermal ohne
-Wirkung hängen, sobald die SQL `vault.decrypted_secrets` liest (der
-Cron-Job); derselbe Inhalt ohne den Cron-Teil lief in einer zurückgerollten
-Transaktion sauber durch. Einspielen deshalb von Hand im SQL-Editor (ganze
-Datei), danach `eni-recherche` und `eni` deployen. Bis dahin zeigt „Wissen“ in
-„ENI anpassen“ den Hinweis, dass die Migration fehlt; der Chat läuft
-unverändert, weil `eni` noch Version 48 ist.
+**Eingespielt am 01.10.2026**, alles aus Commit `f1d8064`:
+
+- Migration `eni_rollen_wissen`: `apply_migration` und `execute_sql` des
+  Agenten blieben viermal ohne Wirkung hängen, sobald die SQL
+  `vault.decrypted_secrets` liest (der Cron-Job); derselbe Inhalt ohne den
+  Cron-Teil lief in einer zurückgerollten Transaktion sauber durch. Deshalb hat
+  erijon die Datei im SQL-Editor ausgeführt (Cron-Job 11). Danach geprüft:
+  Tabelle leer, RLS an, drei Policies, ein Trigger, `authenticated` darf
+  lesen/löschen und nur `akte` ändern, kein Insert, `eni_recherche_nehmen` nur
+  `service_role`, `anon` nichts. Funktionsrümpfe und Cron-Befehl sind bis auf
+  CRLF-Zeilenenden (vom Kopieren) gleich der Datei: Länge und MD5 nach
+  Leerraum-Normalisierung stimmen. In `supabase_migrations` nachgetragen als
+  `20261001170112_eni_rollen_wissen`.
+- Function `eni-recherche` Version 1 (`verify_jwt: false`, eine Zeile aus dem
+  Commit). Vorher lokal in Deno: ohne Anmeldung 401, falsches Geheimnis 401,
+  OPTIONS 204. In Produktion per `net.http_post`: ohne Anmeldung 401, falsches
+  Geheimnis 401 (die Prüfung lief über `pruefe_aktivitaets_scheduler`, die
+  Function erreicht die Datenbank also mit Dienstrechten).
+- Function `eni` Version 49 (`verify_jwt: true`), enthält #86 und #88. In
+  Produktion: `{pruefen: true}` → 200, ohne Konto → 401; Log `booted` ohne
+  Fehler. Zurückrollen: dieselbe Zeile mit `2792684` (Version 48).
+- Pages-Lauf #158 grün (Bauen und Veröffentlichen).
 
 ## Aktuelle Sperre
 
