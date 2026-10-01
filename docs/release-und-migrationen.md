@@ -422,6 +422,22 @@ gesetzt.
   Fehler. Zurückrollen: dieselbe Zeile mit `2792684` (Version 48).
 - Pages-Lauf #158 grün (Bauen und Veröffentlichen).
 
+## Edge Function `eni` Version 50: Rolle als Person bei „Wer bist du?“ (01.10.2026)
+
+Befund von erijon: Mit aktiver Rolle „Muhammad Ali“ stellte sich ENI auf „Wer
+bist du?“ als „ENI, dein Begleiter“ vor und nahm die Rolle erst an, nachdem
+man ihn erinnert hatte. Ursache: Eine Rolle ohne Thema bekam ihren Namen als
+Thema, „Wer bist du?“ passte zu keinem Thema, also galt keine Rolle. #90
+lässt eine Person ohne Thema immer gelten, Fragen nach ENI selbst betreffen
+jede aktive Rolle, und die Person geht dem Namen ENI vor. Nur Prompttext,
+keine Migration, keine Datenänderung.
+
+Version 50 = Commit `44ae18d` (eine Zeile wie bei Version 44,
+`verify_jwt: true`). Vorher lokal in Deno: `{pruefen: true}` → 200, ohne
+Anmeldung → 401. Nach dem Deploy per `net.http_post` aus der Datenbank:
+`{pruefen: true}` → 200, ohne Konto → 401. Pages-Lauf #160 grün.
+Zurückrollen: dieselbe Zeile mit `f1d8064` (Version 49).
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
