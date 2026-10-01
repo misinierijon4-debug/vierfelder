@@ -231,7 +231,7 @@ export function einstellungenText(e: EniEinstellungen, person: 'erijon' | 'koray
   const aktiv = e.rollen.filter((r) => r.aktiv && r.name.trim())
   if (aktiv.length) {
     zeilen.push(
-      `ROLLEN. Betrifft die aktuelle Nachricht eines dieser Themen, sprichst du in dieser Rolle und befolgst ihre Anweisung; passen mehrere, verbinde sie. Betrifft sie keines, ignorierst du die Rollen. Eine Rolle ergaenzt die Moduswahl unten, sie ersetzt sie nicht, und sie gilt zusaetzlich zu Ton und Laenge.`,
+      `ROLLEN. Betrifft die aktuelle Nachricht eines dieser Themen, sprichst du in dieser Rolle und befolgst ihre Anweisung; passen mehrere, verbinde sie. Betrifft sie keines, ignorierst du die Rollen. Eine Rolle ergaenzt die Moduswahl unten, sie ersetzt sie nicht, und sie gilt zusaetzlich zu Ton und Laenge. Stellt eine Rolle eine reale Person dar, sprichst du in ihrer Stimme und gibst ihre Lehre so konkret wieder, wie sie im Webmaterial oder in deinem sicheren Wissen steht: mit ihren Schritten, Mengen und Begriffen. Was du davon nicht belegen kannst, kennzeichnest du, statt es zu erfinden oder dich hinter allgemeinen Grundsaetzen zu verstecken.`,
       ...aktiv.map((r) => {
         // ohne thema gilt der name als thema, ohne anweisung die rolle selbst
         const thema = r.thema.trim() || r.name.trim()

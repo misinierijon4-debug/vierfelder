@@ -138,6 +138,35 @@ describe('ENI fragt noch einmal', () => {
     expect(await mitWiederholung(versuch, optionen())).toBe('gut')
   })
 
+  // Im Protokoll stand nach jedem verworfenen Vorab-Lauf „The signal has been
+  // aborted, versuch 2 in 1500ms“ und danach „versuch 3 in 4000ms“: zwei
+  // Anlaeufe, die sofort wieder am selben Abbruch scheiterten.
+  it('versucht es nicht noch einmal, wenn der aufrufer selbst abgebrochen hat', async () => {
+    const { optionen, geschlafen } = uhr()
+    const abbruch = new AbortController()
+    abbruch.abort(new DOMException('verworfen', 'AbortError'))
+    const versuch = vi.fn(() => Promise.reject(new DOMException('The signal has been aborted', 'AbortError')))
+    const gemeldet: string[] = []
+
+    await expect(
+      mitWiederholung(versuch, optionen({ signal: abbruch.signal, protokoll: (was) => gemeldet.push(was) }))
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(versuch).toHaveBeenCalledTimes(1)
+    expect(geschlafen).toEqual([])
+    expect(gemeldet).toEqual([])
+  })
+
+  it('hoert nach dem warten auf, wenn inzwischen abgebrochen wurde', async () => {
+    const abbruch = new AbortController()
+    const { optionen } = uhr()
+    const versuch = vi.fn(() => Promise.reject(new Nochmal('ling antwortet 429')))
+
+    await expect(
+      mitWiederholung(versuch, optionen({ signal: abbruch.signal, schlafe: async () => { abbruch.abort() } }))
+    ).rejects.toThrow('ling antwortet 429')
+    expect(versuch).toHaveBeenCalledTimes(1)
+  })
+
   it('gibt einen dauerhaften fehler sofort weiter, statt jemanden warten zu lassen', async () => {
     const { optionen, geschlafen } = uhr()
     const versuch = vi.fn(() => Promise.reject(new Error('ling antwortet 401')))
