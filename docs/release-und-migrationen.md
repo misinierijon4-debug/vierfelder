@@ -370,8 +370,8 @@ kein geänderter Datenbankvertrag.
 Version 48 = Commit `2792684` (eine Zeile wie bei Version 44,
 `verify_jwt: true`). Vorher lokal in Deno: `{pruefen: true}` → 200, ohne
 Anmeldung → 401. Nach dem Deploy per `net.http_post` aus der Datenbank:
-`{pruefen: true}` → 200. Zurückrollen: dieselbe Zeile mit `f316016`
-(Version 47).
+`{pruefen: true}` → 200. Pages-Lauf #156 grün (Bauen und Veröffentlichen).
+Zurückrollen: dieselbe Zeile mit `f316016` (Version 47).
 
 ## Aktuelle Sperre
 
