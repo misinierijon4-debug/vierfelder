@@ -420,6 +420,31 @@ math {
   font-size: 1.15em;
 }
 
+/*
+ * Matrizen, `cases` und `aligned` sind MathML-Tabellen. Den Zellabstand des
+ * Browsers nimmt der Tailwind-Reset weg (sonst klebt „−x“ an „sonst“), er
+ * kommt hier zurueck. Chrome kennt `columnalign` nicht und setzt die Zellen
+ * als Block, deshalb die `-webkit-`-Ausrichtung. In `aligned` stehen die
+ * Spalten links und rechts vom `&` ohne Luft aneinander.
+ */
+mtd {
+  padding: 0.5ex 0.4em;
+}
+mtable[columnalign="left"] > mtr > mtd {
+  text-align: left;
+  text-align: -webkit-left;
+}
+mtable[columnalign="right left"] > mtr > mtd:nth-child(odd) {
+  padding-right: 0;
+  text-align: right;
+  text-align: -webkit-right;
+}
+mtable[columnalign="right left"] > mtr > mtd:nth-child(even) {
+  padding-left: 0;
+  text-align: left;
+  text-align: -webkit-left;
+}
+
 /* ENI: Einstellungen ueber dem Feld, freie Werkzeugleiste darunter. */
 .eni-eingabe {
   border-top: 0;

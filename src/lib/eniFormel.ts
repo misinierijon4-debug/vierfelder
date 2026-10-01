@@ -8,7 +8,9 @@
  *
  * Verstanden wird, was im Schulstoff vorkommt: Brüche, Wurzeln, Hoch- und
  * Tiefstellung, griechische Buchstaben, die üblichen Operatoren und Pfeile,
- * Summen, Integrale, Grenzwerte, Vektoren, Text in Formeln. Was der Übersetzer
+ * Summen, Integrale, Grenzwerte, Binomialkoeffizienten, Vektoren und Matrizen
+ * (`pmatrix` und Verwandte), Fallunterscheidungen, untereinander
+ * ausgerichtete Umformungen (`aligned`), Text in Formeln. Was der Übersetzer
  * nicht kennt, macht die ganze Formel ungültig (`null`): dann steht sie als
  * Quelltext da. Eine halb richtige Formel wäre schlimmer als eine rohe, weil
  * man ihr den Fehler nicht ansieht.
@@ -37,15 +39,39 @@ const ZEICHEN: Record<string, string> = {
   equiv: '≡', sim: '∼', simeq: '≃', cong: '≅', propto: '∝', ll: '≪', gg: '≫',
   to: '→', rightarrow: '→', leftarrow: '←', Rightarrow: '⇒', Leftarrow: '⇐',
   leftrightarrow: '↔', Leftrightarrow: '⇔', implies: '⇒', iff: '⇔',
-  mapsto: '↦', uparrow: '↑', downarrow: '↓',
+  longrightarrow: '⟶', Longrightarrow: '⟹', Longleftrightarrow: '⟺',
+  mapsto: '↦', uparrow: '↑', downarrow: '↓', leqslant: '⩽', geqslant: '⩾',
   in: '∈', notin: '∉', ni: '∋', subset: '⊂', subseteq: '⊆', supset: '⊃',
   supseteq: '⊇', cup: '∪', cap: '∩', setminus: '∖', emptyset: '∅',
   varnothing: '∅', forall: '∀', exists: '∃', neg: '¬', land: '∧', lor: '∨',
   wedge: '∧', vee: '∨', partial: '∂', nabla: '∇', infty: '∞',
   cdots: '⋯', ldots: '…', dots: '…', vdots: '⋮', circ: '∘', bullet: '∙',
   perp: '⊥', parallel: '∥', angle: '∠', triangle: '△', mid: '∣',
-  degree: '°', prime: '′', hbar: 'ℏ', ell: 'ℓ',
+  degree: '°', prime: '′', hbar: 'ℏ', ell: 'ℓ', checkmark: '✓', colon: ':',
 }
+
+/** klammern, die als befehl geschrieben werden; auch hinter \left und \right */
+const KLAMMERN: Record<string, string> = {
+  '{': '{', '}': '}', '|': '‖', lbrace: '{', rbrace: '}', langle: '⟨', rangle: '⟩',
+  vert: '|', lvert: '|', rvert: '|', Vert: '‖', lVert: '‖', rVert: '‖',
+  lfloor: '⌊', rfloor: '⌋', lceil: '⌈', rceil: '⌉',
+}
+
+/**
+ * umgebungen aus `\begin{…}`: die klammern links und rechts und, wo es
+ * zaehlt, die ausrichtung der spalten. `cases` steht links am rand,
+ * `aligned` richtet am `&` aus, meist vor dem gleichheitszeichen.
+ */
+const UMGEBUNGEN: Record<string, { auf?: string; zu?: string; spalten?: string }> = {
+  matrix: {}, pmatrix: { auf: '(', zu: ')' }, bmatrix: { auf: '[', zu: ']' },
+  Bmatrix: { auf: '{', zu: '}' }, vmatrix: { auf: '|', zu: '|' }, Vmatrix: { auf: '‖', zu: '‖' },
+  smallmatrix: {}, array: {}, cases: { auf: '{', spalten: 'left' }, gathered: {},
+  aligned: { spalten: 'right left' }, align: { spalten: 'right left' },
+  'align*': { spalten: 'right left' }, split: { spalten: 'right left' },
+}
+
+/** befehle, die nur den satzstil aendern; die mathematik des browsers macht das selbst */
+const OHNE_WIRKUNG = new Set(['displaystyle', 'textstyle', 'scriptstyle', 'limits', 'nolimits', 'hline', '!'])
 
 /** grosse operatoren: grenzen stehen im abgesetzten satz darueber und darunter */
 const GROSS: Record<string, string> = {
@@ -69,7 +95,9 @@ const AKZENTE: Record<string, string> = {
 const DOPPELSTRICH: Record<string, string> = { N: 'ℕ', Z: 'ℤ', Q: 'ℚ', R: 'ℝ', C: 'ℂ', P: 'ℙ' }
 
 /** abstaende. werden zu leerraum, nicht zu zeichen */
-const ABSTAENDE: Record<string, string> = { ',': '0.17em', ':': '0.22em', ';': '0.28em', ' ': '0.25em', quad: '1em', qquad: '2em' }
+const ABSTAENDE: Record<string, string> = {
+  ',': '0.17em', ':': '0.22em', '>': '0.22em', ';': '0.28em', ' ': '0.25em', enspace: '0.5em', quad: '1em', qquad: '2em',
+}
 
 type Token =
   | { art: 'befehl'; name: string }
@@ -80,6 +108,10 @@ type Token =
   | { art: 'zahl'; wert: string }
   | { art: 'buchstabe'; wert: string }
   | { art: 'zeichen'; wert: string }
+  | { art: 'text'; wert: string }
+
+/** befehle, deren inhalt text ist; dort zaehlen die leerzeichen */
+const TEXTBEFEHLE = new Set(['text', 'textrm', 'textnormal', 'mbox', 'textit', 'textbf'])
 
 class Ungueltig extends Error {}
 
@@ -95,6 +127,12 @@ function zerlege(quelle: string): Token[] {
       if (wort) {
         tokens.push({ art: 'befehl', name: wort[0] })
         i += 1 + wort[0].length
+        // `\text{für }` bleibt roh, sonst klebte „für“ am naechsten zeichen
+        const roh = TEXTBEFEHLE.has(wort[0]) ? /^\s*\{((?:[^{}\\]|\\.)*)\}/.exec(quelle.slice(i)) : null
+        if (roh) {
+          tokens.push({ art: 'text', wert: roh[1]!.replace(/\\([^A-Za-z])/g, '$1').replace(/\\[A-Za-z]+\s*/g, ' ') })
+          i += roh[0].length
+        }
       } else if (rest.length > 0) {
         tokens.push({ art: 'befehl', name: rest[0]! })
         i += 2
@@ -123,6 +161,10 @@ const mo = (zeichen: string, attribute?: Record<string, string>) => k('mo', [zei
 const mi = (zeichen: string, attribute?: Record<string, string>) => k('mi', [zeichen], attribute)
 const zeile = (kinder: MathKnoten[]): MathKnoten => (kinder.length === 1 ? kinder[0]! : k('mrow', kinder))
 
+/** wo in einer umgebung eine zelle endet: `&`, `\\` oder `\end` */
+const istZellgrenze = (t: Token) =>
+  (t.art === 'zeichen' && t.wert === '&') || (t.art === 'befehl' && (t.name === '\\' || t.name === 'end'))
+
 class Leser {
   private pos = 0
   constructor(private readonly tokens: Token[], private readonly abgesetzt: boolean) {}
@@ -135,6 +177,12 @@ class Leser {
     return this.tokens[this.pos]
   }
 
+  /** steht als naechstes genau dieses zeichen? */
+  private istZeichen(wert: string): boolean {
+    const t = this.sieh()
+    return t?.art === 'zeichen' && t.wert === wert
+  }
+
   private nimm(): Token {
     const t = this.tokens[this.pos]
     if (!t) throw new Ungueltig('formel endet zu frueh')
@@ -142,20 +190,25 @@ class Leser {
     return t
   }
 
-  /** eine folge bis zum ende oder bis zur schliessenden klammer */
-  folge(bisKlammer: boolean): MathKnoten[] {
+  /**
+   * eine folge bis zum ende, bis zur schliessenden klammer oder, als zelle
+   * einer umgebung, bis zum naechsten `&`, `\\` oder `\end` (die bleiben
+   * stehen, die umgebung nimmt sie selbst)
+   */
+  folge(bis: 'ende' | 'klammer' | 'zelle'): MathKnoten[] {
     const knoten: MathKnoten[] = []
     for (;;) {
       const t = this.sieh()
       if (!t) {
-        if (bisKlammer) throw new Ungueltig('klammer nicht geschlossen')
+        if (bis !== 'ende') throw new Ungueltig('klammer oder umgebung nicht geschlossen')
         return knoten
       }
       if (t.art === 'zu') {
-        if (!bisKlammer) throw new Ungueltig('klammer zu viel')
+        if (bis !== 'klammer') throw new Ungueltig('klammer zu viel')
         this.pos += 1
         return knoten
       }
+      if (bis === 'zelle' && istZellgrenze(t)) return knoten
       const atom = this.atom()
       if (atom) knoten.push(this.skripte(atom))
     }
@@ -166,14 +219,14 @@ class Leser {
     const t = this.sieh()
     if (t?.art === 'auf') {
       this.pos += 1
-      return zeile(this.folge(true))
+      return zeile(this.folge('klammer'))
     }
     const atom = this.atom()
     if (!atom) throw new Ungueltig('argument fehlt')
     return atom
   }
 
-  /** text in \text{...}: roh bis zur schliessenden klammer */
+  /** der inhalt einer klammer als ein wort, etwa in \mathrm{d} oder \begin{pmatrix} */
   private rohText(): string {
     if (this.nimm().art !== 'auf') throw new Ungueltig('text ohne klammer')
     let tiefe = 1
@@ -202,6 +255,8 @@ class Leser {
       if (t?.art === 'hoch' && !hoch) { this.pos += 1; hoch = this.argument(); continue }
       if (t?.art === 'tief' && !tief) { this.pos += 1; tief = this.argument(); continue }
       if (t?.art === 'zeichen' && t.wert === "'" && !hoch) { this.pos += 1; hoch = mo('′'); continue }
+      // \sum\limits_{k=0}: die grenzen setzt der browser ohnehin richtig
+      if (t?.art === 'befehl' && (t.name === 'limits' || t.name === 'nolimits')) { this.pos += 1; continue }
       break
     }
     if (!hoch && !tief) return basis
@@ -219,9 +274,11 @@ class Leser {
       case 'buchstabe':
         return mi(t.wert)
       case 'auf':
-        return zeile(this.folge(true))
+        return zeile(this.folge('klammer'))
       case 'zu':
         throw new Ungueltig('klammer zu viel')
+      case 'text':
+        throw new Ungueltig('text ohne befehl')
       case 'hoch':
       case 'tief':
         // hoch- oder tiefstellung ohne basis, etwa ^{2} am anfang: das token
@@ -233,6 +290,40 @@ class Leser {
       case 'befehl':
         return this.befehl(t.name)
     }
+  }
+
+  /** `\begin{…}` bis `\end{…}`: zeilen trennt `\\`, spalten trennt `&` */
+  private umgebung(): MathKnoten {
+    const name = this.rohText()
+    const art = UMGEBUNGEN[name]
+    if (!art) throw new Ungueltig(`unbekannte umgebung ${name}`)
+    // die spaltenangabe von array, etwa {cc|c}, zeichnet der browser nicht
+    if (name === 'array') this.rohText()
+    const zeilen: MathKnoten[][] = []
+    let zellen: MathKnoten[] = []
+    for (;;) {
+      zellen.push(zeile(this.folge('zelle')))
+      const t = this.nimm()
+      if (t.art === 'zeichen') continue
+      if (t.art === 'befehl' && t.name === '\\') {
+        zeilen.push(zellen)
+        zellen = []
+        // abstand nach dem zeilenumbruch wie \\[2pt] faellt weg; eine zeile,
+        // die mit einem intervall wie [0;1] beginnt, bleibt stehen
+        const abstand = this.tokens.slice(this.pos, this.pos + 5).map((t) => (t.art === 'zeichen' ? t.wert : t.art))
+        if (abstand.join(' ') === '[ zahl buchstabe buchstabe ]') this.pos += 5
+        continue
+      }
+      if (this.rohText() !== name) throw new Ungueltig('umgebung falsch geschlossen')
+      // ein \\ vor \end laesst keine leere zeile zurueck
+      if (zellen.length > 1 || zellen[0]!.kinder.length > 0 || zeilen.length === 0) zeilen.push(zellen)
+      break
+    }
+    // den abstand zwischen den spalten regelt src/index.css
+    const attribute = art.spalten ? { columnalign: art.spalten } : undefined
+    const tabelle = k('mtable', zeilen.map((z) => k('mtr', z.map((zelle) => k('mtd', [zelle])))), attribute)
+    if (!art.auf) return tabelle
+    return k('mrow', art.zu ? [mo(art.auf), tabelle, mo(art.zu)] : [mo(art.auf), tabelle])
   }
 
   private befehl(name: string): MathKnoten | null {
@@ -251,13 +342,38 @@ class Leser {
     }
     if (name in AKZENTE) return k('mover', [this.argument(), mo(AKZENTE[name]!)], { accent: 'true' })
     if (name in ABSTAENDE) return k('mspace', [], { width: ABSTAENDE[name]! })
+    if (name in KLAMMERN) return mo(KLAMMERN[name]!)
+    if (OHNE_WIRKUNG.has(name)) return null
     switch (name) {
       case 'frac':
       case 'dfrac':
       case 'tfrac':
+      case 'cfrac':
         return k('mfrac', [this.argument(), this.argument()])
+      case 'binom':
+      case 'dbinom':
+      case 'tbinom':
+        // n ueber k: ein bruch ohne strich in runden klammern
+        return k('mrow', [mo('('), k('mfrac', [this.argument(), this.argument()], { linethickness: '0' }), mo(')')])
+      case 'begin':
+        return this.umgebung()
+      case 'boxed':
+        return k('menclose', [this.argument()], { notation: 'box' })
+      case 'overset':
+      case 'stackrel': {
+        const oben = this.argument()
+        return k('mover', [this.argument(), oben])
+      }
+      case 'underset': {
+        const unten = this.argument()
+        return k('munder', [this.argument(), unten])
+      }
+      case 'overbrace':
+        return k('mover', [this.argument(), mo('⏞')], { 'data-gross': 'ja' })
+      case 'underbrace':
+        return k('munder', [this.argument(), mo('⏟')], { 'data-gross': 'ja' })
       case 'sqrt': {
-        if (this.sieh()?.art === 'zeichen' && (this.sieh() as { wert: string }).wert === '[') {
+        if (this.istZeichen('[')) {
           this.pos += 1
           const index: MathKnoten[] = []
           for (;;) {
@@ -274,10 +390,17 @@ class Leser {
       }
       case 'text':
       case 'textrm':
+      case 'textnormal':
       case 'mbox':
       case 'textit':
-      case 'textbf':
-        return k('mtext', [this.rohText()])
+      case 'textbf': {
+        // verschachtelte klammern im text liest rohText, ohne leerzeichen
+        const t = this.sieh()
+        if (t?.art !== 'text') return k('mtext', [this.rohText()])
+        this.pos += 1
+        // leerzeichen am rand schneidet MathML ab, geschuetzte nicht
+        return k('mtext', [t.wert.replace(/^\s+|\s+$/g, '\u00A0')])
+      }
       case 'mathrm':
       case 'operatorname':
         return mi(this.rohText(), { mathvariant: 'normal' })
@@ -290,6 +413,7 @@ class Leser {
       }
       case 'left':
       case 'right':
+      case 'middle':
       case 'big':
       case 'Big':
       case 'bigl':
@@ -299,25 +423,15 @@ class Leser {
         // die klammer danach zaehlt, die groesse regelt der browser selbst
         const t = this.nimm()
         if (t.art === 'zeichen') return t.wert === '.' ? null : mo(t.wert)
-        if (t.art === 'befehl' && (t.name === '{' || t.name === '}' || t.name === '|')) return mo(t.name)
+        if (t.art === 'befehl' && t.name in KLAMMERN) return mo(KLAMMERN[t.name]!)
         if (t.art === 'befehl' && t.name in ZEICHEN) return mo(ZEICHEN[t.name]!)
-        if (t.art === 'befehl' && (t.name === 'langle' || t.name === 'rangle')) return mo(t.name === 'langle' ? '⟨' : '⟩')
         throw new Ungueltig('unbekannte klammer')
       }
-      case 'langle':
-        return mo('⟨')
-      case 'rangle':
-        return mo('⟩')
-      case '{':
-      case '}':
       case '%':
       case '#':
       case '&':
       case '_':
-      case '|':
         return mo(name)
-      case '!':
-        return null
       case '\\':
         return k('mspace', [], { width: '1em' })
       default:
@@ -335,7 +449,7 @@ export function formelZuMathml(quelle: string, abgesetzt = false): MathKnoten | 
   if (!text || text.length > 2000) return null
   try {
     const leser = new Leser(zerlege(text), abgesetzt)
-    const kinder = leser.folge(false)
+    const kinder = leser.folge('ende')
     if (!leser.fertig()) return null
     return k('math', [zeile(kinder.length ? kinder : [k('mrow', [])])], abgesetzt ? { display: 'block' } : undefined)
   } catch (fehler) {

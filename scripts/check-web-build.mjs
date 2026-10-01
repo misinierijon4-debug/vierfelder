@@ -298,7 +298,12 @@ const INITIAL_GZIP_BUDGET = 243 * 1024
 // Startpfad traegt nur die Weitergabe des Backends (+7 Byte, 242792).
 // Gesamt vorher 319600, nachher 321334 Byte gzip. Dafuer 2 KiB kontrollierter
 // Spielraum; beide Grenzen bleiben harte Buildfehler.
-const GESAMT_GZIP_BUDGET = 315 * 1024
+// Formeln wie im Unterricht: Binomialkoeffizienten, Matrizen und Vektoren,
+// Fallunterscheidungen, `aligned`, und Fettdruck, der eine Formel enthaelt.
+// Alles im ENI-Lazy-Chunk. Gesamt vorher 321960, nachher 322968 Byte gzip;
+// initial roh gleich, gzip 242811 statt 242809 (nur Chunk-Namen). Dafuer 2 KiB
+// kontrollierter Spielraum; beide Grenzen bleiben harte Buildfehler.
+const GESAMT_GZIP_BUDGET = 317 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
