@@ -715,6 +715,9 @@ function StrukturierterText({
   )
 }
 
+/** eine formel im fliesstext, solange fettdruck und links gesucht werden: `\uE000<nr>\uE001` */
+const FORMEL_PLATZHALTER = /\uE000(\d+)\uE001/
+
 function formatiereTextTeile(
   text: string,
   counter: { current: number },
@@ -722,30 +725,33 @@ function formatiereTextTeile(
   frisch: boolean,
   linksAktiv: boolean
 ): React.ReactNode {
-  // formeln zuerst: in `$a*b*c$` ist kein fettdruck gemeint
-  const stuecke = zerlegeInline(text)
-  if (stuecke.length > 1 || stuecke[0]?.art === 'formel') {
-    return stuecke.map((stueck, i) =>
-      stueck.art === 'formel' ? (
-        <Formel key={i} quelle={stueck.quelle} roh={stueck.roh} />
-      ) : (
-        <React.Fragment key={i}>{formatiereTextTeile(stueck.text, counter, schritt, frisch, linksAktiv)}</React.Fragment>
-      )
-    )
-  }
-  const teile = text.split(/(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*)/g)
+  // formeln zuerst: in `$a*b*c$` ist kein fettdruck gemeint. sie weichen
+  // platzhaltern, damit `**beispiel mit $(a+b)^3$**` trotzdem ein fetter
+  // abschnitt bleibt; die platzhalter werden danach wieder zu formeln
+  const formeln: Array<{ quelle: string; roh: string }> = []
+  const ohneFormeln = zerlegeInline(text)
+    .map((stueck) => (stueck.art === 'text' ? stueck.text : `\uE000${formeln.push(stueck) - 1}\uE001`))
+    .join('')
+  // linkbeschriftungen klappen nicht wortweise auf, der rest schon
+  const mitFormeln = (stueck: string, aufklappen = true) =>
+    stueck.split(FORMEL_PLATZHALTER).map((teil, i) => {
+      if (i % 2 === 0) return <React.Fragment key={i}>{aufklappen ? rendereWoerter(teil, counter, schritt, frisch) : teil}</React.Fragment>
+      const formel = formeln[Number(teil)]!
+      return <Formel key={i} quelle={formel.quelle} roh={formel.roh} />
+    })
+  const teile = ohneFormeln.split(/(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*)/g)
   return teile.map((teil, i) => {
     const link = teil.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
     if (link) {
       // Waehrend des Streams steht die Antwort noch nicht in der Datenbank, also
       // hat auch niemand die Adresse gegen die gefundenen Quellen gehalten. Bis
       // dahin bleibt nur die Beschriftung stehen, nie ein anklickbares Ziel.
-      if (!linksAktiv) return <React.Fragment key={i}>{link[1]}</React.Fragment>
+      if (!linksAktiv) return <React.Fragment key={i}>{mitFormeln(link[1]!, false)}</React.Fragment>
       try {
         const url = new URL(link[2]!)
         if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) {
           return <a key={i} href={url.href} target="_blank" rel="noopener noreferrer"
-            className="break-words underline underline-offset-2">{link[1]}</a>
+            className="break-words underline underline-offset-2">{mitFormeln(link[1]!, false)}</a>
         }
       } catch { /* fehlerhafte Links als Text zeigen */ }
     }
@@ -753,13 +759,13 @@ function formatiereTextTeile(
       const kern = teil.slice(2, -2)
       return (
         <strong key={i} className="font-bold text-kreide">
-          {rendereWoerter(kern, counter, schritt, frisch)}
+          {mitFormeln(kern)}
         </strong>
       )
     }
     return (
       <React.Fragment key={i}>
-        {rendereWoerter(teil, counter, schritt, frisch)}
+        {mitFormeln(teil)}
       </React.Fragment>
     )
   })

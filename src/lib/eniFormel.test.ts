@@ -41,6 +41,9 @@ describe('LaTeX nach MathML', () => {
   it('versteht text, vektoren, zahlbereiche und klammern mit left und right', () => {
     expect(kurz(formelZuMathml('\\vec{v}'))).toBe('math(mover(mi(v),mo(→)))')
     expect(kurz(formelZuMathml('E_{\\text{kin}}'))).toBe('math(msub(mi(E),mtext(kin)))')
+    // leerzeichen im text bleiben, am rand geschuetzt
+    expect(kurz(formelZuMathml('a \\text{ und } b'))).toBe('math(mrow(mi(a),mtext(\u00A0und\u00A0),mi(b)))')
+    expect(kurz(formelZuMathml('\\text{Kosten in \\%}'))).toBe('math(mtext(Kosten in %))')
     expect(kurz(formelZuMathml('x \\in \\mathbb{R}'))).toBe('math(mrow(mi(x),mo(∈),mi(ℝ)))')
     expect(kurz(formelZuMathml('\\left( \\frac{1}{2} \\right)^2'))).toBe(
       'math(mrow(mo((),mfrac(mn(1),mn(2)),msup(mo()),mn(2))))'
@@ -51,11 +54,80 @@ describe('LaTeX nach MathML', () => {
     expect(kurz(formelZuMathml('-1,5'))).toBe('math(mrow(mo(−),mn(1,5)))')
   })
 
+  it('setzt binomialkoeffizienten als bruch ohne strich in klammern', () => {
+    const n = formelZuMathml('\\binom{n}{k}')!
+    expect(kurz(n)).toBe('math(mrow(mo((),mfrac(mi(n),mi(k)),mo())))')
+    const bruch = (n.kinder[0] as MathKnoten).kinder[1] as MathKnoten
+    expect(bruch.attribute).toEqual({ linethickness: '0' })
+    expect(kurz(formelZuMathml('\\tbinom{3}{1}'))).toBe('math(mrow(mo((),mfrac(mn(3),mn(1)),mo())))')
+  })
+
+  it('versteht die formeln aus einer antwort zum binomischen lehrsatz', () => {
+    // so kamen sie in einer echten antwort an und standen als quelltext da
+    for (const quelle of [
+      '(a+b)^n = \\sum_{k=0}^{n} \\binom{n}{k}\\, a^{\\,n-k}\\, b^{k}',
+      '\\binom{n}{k} = \\frac{n!}{k!\\,(n-k)!}',
+      '\\binom{3}{0}=1,\\quad \\binom{3}{1}=3,\\quad \\binom{3}{2}=3,\\quad \\binom{3}{3}=1',
+      '(a+b)^3 = a^3 + 3a^2b + 3ab^2 + b^3',
+    ]) {
+      expect(formelZuMathml(quelle, true), quelle).not.toBeNull()
+    }
+  })
+
+  it('setzt vektoren und matrizen als tabelle in klammern', () => {
+    expect(kurz(formelZuMathml('\\begin{pmatrix} 1 \\\\ -2 \\\\ 3 \\end{pmatrix}'))).toBe(
+      'math(mrow(mo((),mtable(mtr(mtd(mn(1))),mtr(mtd(mrow(mo(−),mn(2)))),mtr(mtd(mn(3)))),mo())))'
+    )
+    expect(kurz(formelZuMathml('\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}'))).toBe(
+      'math(mrow(mo(|),mtable(mtr(mtd(mi(a)),mtd(mi(b))),mtr(mtd(mi(c)),mtd(mi(d)))),mo(|)))'
+    )
+    // ein \\ vor \end laesst keine leere zeile stehen
+    expect(kurz(formelZuMathml('\\begin{matrix} x \\\\ y \\\\ \\end{matrix}'))).toBe(
+      'math(mtable(mtr(mtd(mi(x))),mtr(mtd(mi(y)))))'
+    )
+  })
+
+  it('setzt fallunterscheidungen links buendig hinter eine geschweifte klammer', () => {
+    const f = formelZuMathml('f(x) = \\begin{cases} x^2 & \\text{für } x \\ge 0 \\\\ -x & \\text{sonst} \\end{cases}', true)!
+    expect(kurz(f)).toContain('mrow(mo({),mtable(mtr(mtd(msup(mi(x),mn(2))),mtd(mrow(mtext(für\u00A0),mi(x),mo(≥),mn(0)))),')
+    const tabelle = ((f.kinder[0] as MathKnoten).kinder.at(-1) as MathKnoten).kinder[1] as MathKnoten
+    expect(tabelle).toMatchObject({ tag: 'mtable', attribute: { columnalign: 'left' } })
+  })
+
+  it('richtet umformungen in aligned am & aus', () => {
+    const f = formelZuMathml('\\begin{aligned} 2x + 4 &= 10 \\\\[2pt] x &= 3 \\end{aligned}', true)!
+    expect(kurz(f)).toBe(
+      'math(mtable(mtr(mtd(mrow(mn(2),mi(x),mo(+),mn(4))),mtd(mrow(mo(=),mn(10)))),mtr(mtd(mi(x)),mtd(mrow(mo(=),mn(3))))))'
+    )
+    expect((f.kinder[0] as MathKnoten).attribute).toEqual({ columnalign: 'right left' })
+    // eckige klammern nach \\ sind nur dann ein abstand, wenn eine laenge drinsteht
+    expect(kurz(formelZuMathml('\\begin{matrix} a \\\\ [b] \\end{matrix}'))).toBe(
+      'math(mtable(mtr(mtd(mi(a))),mtr(mtd(mrow(mo([),mi(b),mo(]))))))'
+    )
+  })
+
+  it('kennt boxed, overset, underbrace, betragsstriche und limits', () => {
+    expect(kurz(formelZuMathml('\\boxed{x = 2}'))).toBe('math(menclose(mrow(mi(x),mo(=),mn(2))))')
+    expect(kurz(formelZuMathml('\\overset{!}{=}'))).toBe('math(mover(mo(=),mo(!)))')
+    expect(kurz(formelZuMathml('\\underbrace{a-a}_{=0}', true))).toBe(
+      'math(munder(munder(mrow(mi(a),mo(−),mi(a)),mo(⏟)),mrow(mo(=),mn(0))))'
+    )
+    expect(kurz(formelZuMathml('\\left\\lvert x \\right\\rvert + \\|v\\|'))).toBe(
+      'math(mrow(mo(|),mi(x),mo(|),mo(+),mo(‖),mi(v),mo(‖)))'
+    )
+    expect(kurz(formelZuMathml('\\displaystyle\\sum\\limits_{k=1}^{n} k', true))).toBe(
+      'math(mrow(munderover(mo(∑),mrow(mi(k),mo(=),mn(1)),mi(n)),mi(k)))'
+    )
+  })
+
   it('gibt bei unbekanntem oder kaputtem null zurueck, statt halb richtig zu zeichnen', () => {
     expect(formelZuMathml('\\unbekannt{x}')).toBeNull()
     expect(formelZuMathml('\\frac{a}{b')).toBeNull()
     expect(formelZuMathml('a}')).toBeNull()
     expect(formelZuMathml('')).toBeNull()
+    expect(formelZuMathml('\\begin{tabular} a \\end{tabular}')).toBeNull()
+    expect(formelZuMathml('\\begin{pmatrix} 1 & 2')).toBeNull()
+    expect(formelZuMathml('\\begin{pmatrix} 1 \\end{bmatrix}')).toBeNull()
   })
 })
 

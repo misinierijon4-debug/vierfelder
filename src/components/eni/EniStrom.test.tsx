@@ -388,6 +388,35 @@ describe('formeln und tabellen in einer antwort', () => {
     expect(screen.getByText('Das ist die Mitternachtsformel.')).toBeInTheDocument()
   })
 
+  it('setzt binomialkoeffizienten im satz und abgesetzt als mathml', () => {
+    // so stand die antwort zum binomischen lehrsatz da: \\binom als quelltext
+    const nachricht = zeichneAntwort(
+      'Dabei ist $\\binom{n}{k}$ der Binomialkoeffizient.\n\n$$\\binom{n}{k} = \\frac{n!}{k!\\,(n-k)!}$$\n\nDas Ausrufezeichen ist die Fakultät.'
+    )
+    expect(nachricht.querySelectorAll('math')).toHaveLength(2)
+    expect(nachricht.querySelector('math[display="block"]')).not.toBeNull()
+    expect(nachricht.querySelector('pre')).toBeNull()
+    expect(nachricht.textContent).not.toContain('\\binom')
+  })
+
+  it('setzt fettdruck auch dann, wenn eine formel darin steht', () => {
+    const nachricht = zeichneAntwort(
+      'Die Rechnung von vorhin geht so weiter, Schritt für Schritt.\n\n**Beispiel mit $(a+b)^3$.** Hier ist $n=3$, du gehst $k$ von 0 bis 3 durch.'
+    )
+    const fett = nachricht.querySelector('strong')
+    expect(fett).not.toBeNull()
+    expect(fett).toHaveTextContent('Beispiel mit')
+    expect(fett!.querySelector('math msup')).not.toBeNull()
+    expect(nachricht.textContent).not.toContain('**')
+    expect(nachricht.querySelectorAll('math')).toHaveLength(3)
+  })
+
+  it('liest sternchen in einer formel nicht als fettdruck', () => {
+    const nachricht = zeichneAntwort('Das Produkt $a**b$ ist hier gemeint und **nicht** etwas anderes, das musst du beachten.')
+    expect(nachricht.querySelectorAll('strong')).toHaveLength(1)
+    expect(nachricht.querySelector('strong')).toHaveTextContent('nicht')
+  })
+
   it('zeigt eine unverstandene formel als quelltext statt halb richtig', () => {
     const nachricht = zeichneAntwort('Hier steht $\\gibtsnicht{x}$ drin, und der Rest des Satzes bleibt ganz normal lesbar.')
     expect(nachricht.querySelector('math')).toBeNull()
