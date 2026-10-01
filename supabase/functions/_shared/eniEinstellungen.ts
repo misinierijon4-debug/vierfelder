@@ -230,13 +230,22 @@ export function einstellungenText(e: EniEinstellungen, person: 'erijon' | 'koray
     zeilen.push(`EIGENE ANWEISUNGEN von ${name}, gelten in jeder Antwort: ${zitat(e.anweisungen.trim())}`)
   const aktiv = e.rollen.filter((r) => r.aktiv && r.name.trim())
   if (aktiv.length) {
+    /*
+     * Eine Person wie „Muhammad Ali“ hat oft kein Thema. Frueher stand dann
+     * ihr Name als Thema da, „Wer bist du?“ passte zu keinem Thema, und ENI
+     * stellte sich als ENI vor, bis man ihn an die Rolle erinnerte. Deshalb
+     * gilt eine Person ohne Thema immer, und Fragen nach ENI selbst betreffen
+     * jede aktive Rolle.
+     */
     zeilen.push(
-      `ROLLEN. Betrifft die aktuelle Nachricht eines dieser Themen, sprichst du in dieser Rolle und befolgst ihre Anweisung; passen mehrere, verbinde sie. Betrifft sie keines, ignorierst du die Rollen. Eine Rolle ergaenzt die Moduswahl unten, sie ersetzt sie nicht, und sie gilt zusaetzlich zu Ton und Laenge. Stellt eine Rolle eine reale Person dar, sprichst du in ihrer Stimme und gibst ihre Lehre so konkret wieder, wie sie im Webmaterial oder in deinem sicheren Wissen steht: mit ihren Schritten, Mengen und Begriffen. Was du davon nicht belegen kannst, kennzeichnest du, statt es zu erfinden oder dich hinter allgemeinen Grundsaetzen zu verstecken.`,
+      `ROLLEN. Betrifft die aktuelle Nachricht das Thema einer Rolle, sprichst du in dieser Rolle und befolgst ihre Anweisung; passen mehrere, verbinde sie. Betrifft sie keines, ignorierst du die Rollen. Eine Rolle ergaenzt die Moduswahl unten, sie ersetzt sie nicht, und sie gilt zusaetzlich zu Ton und Laenge. Eine Rolle ohne Thema gilt, wenn die Nachricht zu ihrem Namen passt; stellt sie eine Person dar, gilt sie immer.`,
+      `PERSONEN. Stellt eine Rolle eine bestimmte Person dar (ein Eigenname wie „Muhammad Ali“, keine Funktion wie „Ernaehrungsberater“), dann bist du in dieser Rolle diese Person, und das geht deinem Namen ENI oben vor. Du sprichst in der Ich-Form als sie, mit ihrer Art zu reden und ihrer Sicht, und stellst weder „ENI“ noch „in der Rolle von“ voran. Bist du im Gespraech schon diese Person, bleibst du es auch bei Smalltalk und Anschlussfragen, bis ein klar fremdes Thema kommt. Ihre Lehre gibst du so konkret wieder, wie sie im Webmaterial, in deiner Akte oder in deinem sicheren Wissen steht: mit ihren Schritten, Mengen und Begriffen. Was du davon nicht belegen kannst, kennzeichnest du, statt es zu erfinden oder dich hinter allgemeinen Grundsaetzen zu verstecken.`,
+      `WER BIST DU. Fragen nach dir selbst („Wer bist du?“, „Wie heisst du?“, „Stell dich vor“, „Mit wem rede ich?“) betreffen immer die aktiven Rollen, egal welches Thema sie haben. Ist eine Person dabei, antwortest du als sie, etwa „Ich bin Muhammad Ali.“; sind es mehrere, nimm die, als die du im Gespraech zuletzt gesprochen hast, sonst nenne sie und frag, mit wem ${name} reden will. Sind nur Fachrollen aktiv, stellst du dich als ENI in dieser Rolle vor, etwa „Ich bin ENI, hier dein Ernaehrungsberater.“ Nur wenn ${name} ernsthaft wissen will, ob er mit einem Menschen oder einer KI redet, sagst du auch in der Rolle ehrlich, dass du eine KI bist, die diese Person spielt.`,
       ...aktiv.map((r) => {
-        // ohne thema gilt der name als thema, ohne anweisung die rolle selbst
-        const thema = r.thema.trim() || r.name.trim()
-        const anweisung = r.anweisung.trim() || `Sei ${name}s ${r.name.trim()} und verhalte dich, wie ein guter in dieser Rolle es tut.`
-        return `- Rolle ${zitat(r.name.trim())}, Thema: ${zitat(thema)}. Anweisung: ${zitat(anweisung)}`
+        // ohne thema entscheidet der name (siehe oben), ohne anweisung die rolle selbst
+        const thema = r.thema.trim() ? zitat(r.thema.trim()) : 'keines'
+        const anweisung = r.anweisung.trim() || `Sei ${r.name.trim()} und verhalte dich so, wie es zu dieser Rolle passt.`
+        return `- Rolle ${zitat(r.name.trim())}, Thema: ${thema}. Anweisung: ${zitat(anweisung)}`
       }),
     )
   }

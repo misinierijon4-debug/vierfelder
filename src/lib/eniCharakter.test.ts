@@ -25,6 +25,13 @@ describe('ENIs Moduswahl', () => {
     expect(system).toContain('Bei Mehrdeutigkeit gilt ALLTAG UND WISSEN')
   })
 
+  it('lässt eine gegebene Rolle vor dem Namen ENI gelten und bleibt bei der ernsten Frage ehrlich', () => {
+    expect(system).toContain('steht weiter unten unter ROLLEN, wann du wer bist; das geht diesem Namen vor')
+    expect(system).toContain('Fragt dich jemand ernsthaft, ob er mit einem Menschen redet, sagst du ehrlich, dass du eine KI bist')
+    // der alte satz verbot jede rolle als person und hielt ENI bei „wer bist du?“ fest
+    expect(system).not.toContain('Du behauptest nicht, ein Mensch zu sein')
+  })
+
   it('setzt die Moduswahl auch hinter dynamischen Kontext', () => {
     const mitKontext = eniSystemPrompt({
       person: 'koray',
