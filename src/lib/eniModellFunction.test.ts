@@ -1874,7 +1874,10 @@ describe('automatische Recherche im echten Handler', () => {
       expect(abhaengigkeiten.webSuche).toHaveBeenCalledWith('Aajonus Vonderplanitz teeth brushing protocol', expect.any(Function), expect.any(AbortSignal))
       expect(abhaengigkeiten.webSuche).not.toHaveBeenCalledWith('Such im Internet', expect.anything(), expect.anything())
       expect(gesehen.at(-1)!.system).toContain('Brush with raw coconut cream')
-      expect(gesehen.at(-1)!.system).toContain('Stellt eine Rolle eine reale Person dar')
+      expect(gesehen.at(-1)!.system).toContain('Stellt eine Rolle eine bestimmte Person dar')
+      // ohne thema gilt die person im ganzen chat, auch bei „wer bist du?“
+      expect(gesehen.at(-1)!.system).toContain('Rolle "Aajounus Vonderplanitz", Thema: keines.')
+      expect(gesehen.at(-1)!.system).toContain('WER BIST DU.')
     })
 
     it('versucht die zweite formulierung, wenn die erste nichts passendes findet', async () => {

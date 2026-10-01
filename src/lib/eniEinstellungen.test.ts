@@ -62,10 +62,42 @@ describe('einstellungenText', () => {
     expect(text).toContain('"Nenn mich Chef."')
     expect(text).toContain('Rolle "Ernährungsberater"')
     // ohne thema und anweisung trägt der name die rolle
-    expect(text).toContain('Rolle "Faszienberater", Thema: "Faszienberater"')
+    expect(text).toContain('Rolle "Faszienberater", Thema: keines. Anweisung: "Sei Faszienberater')
+    expect(text).toContain('Eine Rolle ohne Thema gilt, wenn die Nachricht zu ihrem Namen passt')
     expect(text).not.toContain('Boxtrainer')
     // die grenzen bleiben stehen, auch wenn der ton streng ist
     expect(text).toContain('erfindest keine Zahlen')
+  })
+
+  it('macht eine Person zur Antwort auf „Wer bist du?“, auch ohne Thema', () => {
+    const text = einstellungenText(
+      { ...STANDARD, rollen: [{ id: 'eigen-ali', name: 'Muhammad Ali', thema: '', anweisung: '', aktiv: true }] },
+      'erijon',
+    )
+    // der name ist kein thema mehr, sonst passt „wer bist du?“ zu keiner rolle
+    expect(text).toContain('Rolle "Muhammad Ali", Thema: keines.')
+    expect(text).not.toContain('Thema: "Muhammad Ali"')
+    expect(text).toContain('stellt sie eine Person dar, gilt sie immer')
+    // die person geht dem namen ENI vor und spricht in der ich-form
+    expect(text).toContain('das geht deinem Namen ENI oben vor')
+    expect(text).toContain('Ich-Form')
+    expect(text).toContain('weder „ENI“ noch „in der Rolle von“')
+    // fragen nach ENI selbst betreffen jede aktive rolle, egal welches thema
+    expect(text).toContain('„Wer bist du?“')
+    expect(text).toContain('betreffen immer die aktiven Rollen, egal welches Thema sie haben')
+    expect(text).toContain('„Ich bin Muhammad Ali.“')
+    // ehrlich bleibt sie nur bei der ernsten frage nach mensch oder KI
+    expect(text).toContain('ernsthaft wissen will, ob er mit einem Menschen oder einer KI redet')
+  })
+
+  it('lässt eine Person mit Thema im Gespräch nicht beim ersten Smalltalk fallen', () => {
+    const text = einstellungenText(
+      { ...STANDARD, rollen: [{ id: 'eigen-ali', name: 'Muhammad Ali', thema: 'Boxen', anweisung: 'Du bist Muhammad Ali.', aktiv: true }] },
+      'koray',
+    )
+    expect(text).toContain('Rolle "Muhammad Ali", Thema: "Boxen". Anweisung: "Du bist Muhammad Ali."')
+    expect(text).toContain('bleibst du es auch bei Smalltalk und Anschlussfragen')
+    expect(text).toContain('mit wem Koray reden will')
   })
 
   it('setzt eigene Texte in Anführungszeichen, damit sie Text bleiben', () => {
