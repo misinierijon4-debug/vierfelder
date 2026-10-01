@@ -35,6 +35,7 @@ import { planeWebsuche, type Suchplan } from './eniSuchplan.ts'
 import { waehleWissen, wissenText, type Erinnerung } from './eniWissen.ts'
 import { willMerken, merkBezug, merkNachrichten, MERKEN_ANWEISUNG, AENDERN_ANWEISUNG, liesMerkEntwurf, liesMerkAenderung } from './eniMerken.ts'
 import { bereinigeEinstellungen, einstellungenText } from './eniEinstellungen.ts'
+import { rollenWissenText, type RollenAkte } from './eniRollenWissen.ts'
 import { lokaleMinute } from './erinnerung.ts'
 import type { Person } from './eniLage.ts'
 
@@ -1239,12 +1240,35 @@ export async function behandleEni(
          * Wie die Person angesprochen werden will: Ton, Laenge, eigene
          * Anweisungen, Rollen. Fehlt die Tabelle oder ist sie nicht lesbar,
          * redet ENI wie immer — eine Einstellung darf die Antwort nie verhindern.
+         *
+         * Dazu die recherchierten Akten der aktiven Rollen, gelesen parallel
+         * zu den Einstellungen. Eine fehlende Akte heisst nur: diese Rolle
+         * spielt ENI ohne Recherche, wie vorher.
          */
         (async () => {
+          const akten = (async (): Promise<RollenAkte[]> => {
+            try {
+              const gelesen = await db.from('eni_rollen_wissen').select('rolle_id, akte').eq('user_id', userId)
+              if (gelesen.error) throw gelesen.error
+              return (gelesen.data ?? []).map((zeile) => ({
+                rolleId: String(zeile.rolle_id ?? ''),
+                akte: typeof zeile.akte === 'string' ? zeile.akte : '',
+              }))
+            } catch (ursache) {
+              deps.protokoll.error('eni: rollenwissen nicht lesbar', ursache)
+              return []
+            }
+          })()
           try {
             const gelesen = await db.from('eni_einstellungen').select('*').eq('user_id', userId).maybeSingle()
             if (gelesen.error) throw gelesen.error
-            return einstellungenText(bereinigeEinstellungen(gelesen.data), person)
+            const einstellungen = bereinigeEinstellungen(gelesen.data)
+            return [
+              einstellungenText(einstellungen, person),
+              rollenWissenText(await akten, einstellungen.rollen, vorlageText),
+            ]
+              .filter(Boolean)
+              .join('\n\n')
           } catch (ursache) {
             deps.protokoll.error('eni: einstellungen nicht lesbar, es gilt der standard', ursache)
             return ''

@@ -357,6 +357,32 @@ Version 11 (vorher lokal in Deno: ohne Secret → 401; erster Cron-Lauf danach:
 200, `{gesendet: 0, uebersprungen: 0, fehler: 0}`), dann `eni` Version 47
 (`{pruefen: true}` → 200 in Produktion), dann Pages (Lauf #152 grün).
 
+## Neue Migration `eni_rollen_wissen` (01.10.2026)
+
+Rollen recherchieren (Wunsch von erijon und koray: „Aajonus“ und „Muhammad
+Ali“ sollen sich wirklich auskennen). Neue, leere Tabelle
+`eni_rollen_wissen`, keine Datenänderung. Dazu:
+
+- `eni_recherche_starten` / `eni_recherche_abbrechen` (security definer, nur
+  die eigene Zeile, höchstens drei laufende Recherchen je Person);
+- `eni_recherche_nehmen` (nur `service_role`): eine wartende Recherche mit
+  drei Minuten Sperre, `for update skip locked`;
+- Cron-Job `eni-recherche` jede Minute, ruft nur, wenn eine Recherche wartet
+  und frei ist; Geheimnis `vierfelder_aktivitaets_scheduler` wie bei
+  `aktivitaets-erinnerung`, geprüft über `pruefe_aktivitaets_scheduler`.
+
+Vorab in eingebettetem Postgres:
+`node scripts/check-eni-rollen-wissen.mjs <pglite/dist/index.js>` (Rechte,
+fremd lesen/schreiben, Sperre, Abbruch mit und ohne Akte, Cron ruft nur bei
+Bedarf).
+
+**Reihenfolge:** Migration, dann die neue Function `eni-recherche`
+(`verify_jwt: false`, aus dem Commit wie `eni`), dann `eni` (liest die Akten;
+ohne Tabelle loggt sie nur `eni: rollenwissen nicht lesbar`), dann Pages.
+Schlüssel: `INFRON_API_KEY` (kostenloses Modell `qwen-flash`) und
+`TAVILY_API_KEY` (Suche mit `include_raw_content`), beide schon für `eni`
+gesetzt.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

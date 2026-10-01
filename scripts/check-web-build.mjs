@@ -303,7 +303,13 @@ const INITIAL_GZIP_BUDGET = 243 * 1024
 // Alles im ENI-Lazy-Chunk. Gesamt vorher 321960, nachher 322968 Byte gzip;
 // initial roh gleich, gzip 242811 statt 242809 (nur Chunk-Namen). Dafuer 2 KiB
 // kontrollierter Spielraum; beide Grenzen bleiben harte Buildfehler.
-const GESAMT_GZIP_BUDGET = 317 * 1024
+// Rollen recherchieren: Knopf, Fortschritt und Akte in „ENI anpassen“ liegen
+// im ENI-Lazy-Chunk; die Recherche selbst laeuft auf dem Server, ihre Prompts
+// kommen nicht ins Bundle. Gesamt vorher 322968, nachher 325932 Byte gzip;
+// initial roh gleich (838541 Byte).
+// Dafuer 3 KiB kontrollierter Spielraum; beide Grenzen bleiben harte
+// Buildfehler.
+const GESAMT_GZIP_BUDGET = 320 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`
