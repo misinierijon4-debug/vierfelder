@@ -297,7 +297,7 @@ describe('ENIs modellverbindung', () => {
     expect(JSON.stringify(liste)).not.toContain('https://')
   })
 
-  it('nennt qwen sichtbar als versuchsmodell, die anderen ohne warnung', async () => {
+  it('nennt die unzensierten sichtbar als versuchsmodell, die anderen ohne warnung', async () => {
     // es gab die systemanweisung woertlich aus, nannte das interne wort LAGE
     // und schrieb kaputtes deutsch. es bleibt waehlbar, aber nicht stillschweigend.
     const antwort = await behandleEni(
@@ -306,7 +306,7 @@ describe('ENIs modellverbindung', () => {
     )
     const liste = await antwort.json()
     const mitWarnung = liste.anbieter.filter((a: { warnung: string }) => a.warnung !== '')
-    expect(mitWarnung.map((a: { id: string }) => a.id)).toEqual(['qwen-infron'])
+    expect(mitWarnung.map((a: { id: string }) => a.id)).toEqual(['qwen-infron', 'mimo-infron'])
     expect(mitWarnung[0].warnung).toContain('versuchsmodell')
   })
 
@@ -359,7 +359,7 @@ describe('ENIs modellverbindung', () => {
     const pruefung = await behandleEni(anfrage({ pruefen: true }), abhaengigkeiten)
     const info = await pruefung.json()
     expect(info.bereit).toBe(true)
-    expect(info.anbieter.map((a: { id: string }) => a.id)).toEqual(['qwen-flash', 'qwen-infron'])
+    expect(info.anbieter.map((a: { id: string }) => a.id)).toEqual(['qwen-flash', 'qwen-infron', 'mimo-infron'])
     const antwort = await behandleEni(anfrage({ chatId: 'c1', text: 'hallo' }), abhaengigkeiten)
     expect(antwort.status).toBe(200)
     expect(gerufen[0]!.anbieter.id).toBe('qwen-flash')
@@ -406,18 +406,19 @@ describe('ENIs modellverbindung', () => {
     const { abhaengigkeiten, gerufen } = deps({
       schluessel: 'sk-deepseek', infron: 'infron-test',
     })
-    for (const id of ['deepseek', 'qwen-flash', 'qwen-infron']) {
+    for (const id of ['deepseek', 'qwen-flash', 'qwen-infron', 'mimo-infron']) {
       await behandleEni(
         anfrage({ chatId: 'c1', text: 'hallo', modell: id, denkt: true }),
         abhaengigkeiten
       )
     }
 
-    expect(gerufen.map((ruf) => ruf.anbieter.denkt)).toEqual([true, true, true])
+    expect(gerufen.map((ruf) => ruf.anbieter.denkt)).toEqual([true, true, true, true])
     expect(gerufen.map((ruf) => ruf.anbieter.denken)).toEqual([
       { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
       { reasoning: { effort: 'xhigh' } },
       { reasoning: { effort: 'xhigh' } },
+      { reasoning: { effort: 'low' } },
     ])
     // denk-token sind ausgabe-token: ohne eigenen deckel frisst das denken die
     // antwort, und eine leere antwort mit `length` geht ohne fehler durch.
