@@ -1,99 +1,11 @@
--- Klausurplan MSS 13, Schuljahr 2026/27 (Kursarbeiten bis Dezember 2026).
+-- Klausur-Meldung konkreter (Nachtrag zu `20261005190000_klausuren.sql`,
+-- dieselbe Nacht, vor dem ersten moeglichen Versand am 13.10.).
 --
--- 1. Neue Tabelle `klausuren`: je Person und Fach ein Termin. Die Liste ist
---    fest wie die Faecher: sie stammt aus dem Kursarbeitsplan der Schule und
---    wird nur ueber Migrationen gepflegt. Beide Konten lesen beide Plaene,
---    niemand schreibt aus der App. Die Art `abitur` ist fuer die
---    Abiturpruefungen vorgesehen, die spaeter dazukommen.
---
---    Erijon: Kurse aus seinem Kalender (skek1, eth, E2, bk1, G, m3, BIO1, inf).
---    Koray: aus seinen Faechern abgeleitet. Bei mehreren Parallelkursen steht
---    kein Kurs; Datum und Stunden sind fuer alle Parallelkurse gleich. Nur in
---    Sozialkunde unterscheiden sie sich (skek1/skek2 3.–4. Std., skekf
---    1.–5. Std.): dort steht keine Uhrzeit, bis sein Kurs feststeht.
---    Uhrzeiten der Stunden aus Erijons Kalender: 1.–2. 07:55–09:30 (die 2.
---    beginnt 08:45), 3.–4. 09:45–11:20, 5.–6. 11:35–13:05, 10.–11.
---    15:30–17:00; Leistungskurse mit der Zeit aus dem Plan.
---
--- 2. Neue Push-Art `klausur`: 14, 7 und 3 Tage vorher und am Vortag, abends
---    zwischen 17:00 und 19:00, einmal am Tag je Person. Schalter
---    `klausur_aktiv`, standardmaessig an. Der Worker kennt die Art (Fenster in
---    `istNochImFenster`), sonst wuerde sie still uebersprungen.
---
--- Bestehende Daten werden nicht geaendert; neu sind nur die Zeilen in
--- `klausuren`. Die Funktion ist die produktive Fassung aus
--- `20260930210000_eni_meldungen.sql` (Rumpf per MD5 gegen Produktion geprueft:
--- 59625b62…70ed) mit genau der neuen Art.
-
-create table if not exists public.klausuren (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users on delete cascade,
-  fach_id uuid not null references public.faecher on delete cascade,
-  art text not null default 'klausur' check (art in ('klausur', 'abitur')),
-  -- kurskuerzel aus dem plan (`m3`, `BIO1`); leer, wenn er nicht feststeht
-  kurs text check (kurs is null or char_length(btrim(kurs)) between 1 and 16),
-  datum date not null,
-  beginn time,
-  ende time,
-  bemerkung text not null default '' check (char_length(bemerkung) <= 80),
-  erstellt timestamptz not null default now(),
-  constraint klausuren_zeit_check check (
-    (beginn is null and ende is null) or (beginn is not null and ende is not null and ende > beginn)
-  ),
-  unique (fach_id, art, datum)
-);
-
-alter table public.klausuren
-  add constraint klausuren_duellprofil_fk
-  foreign key (user_id) references public.profile(id);
-
-alter table public.klausuren enable row level security;
-revoke all on table public.klausuren from anon;
-revoke all on table public.klausuren from authenticated;
--- der plan ist fest: lesen ja, schreiben nur ueber migrationen
-grant select on table public.klausuren to authenticated;
-
-create policy "klausuren lesen" on public.klausuren for select to authenticated using (
-  (select auth.uid()) in (select id from public.profile)
-);
-
-create index if not exists klausuren_nutzer_datum_idx on public.klausuren (user_id, datum);
-
-insert into public.klausuren (user_id, fach_id, art, kurs, datum, beginn, ende, bemerkung)
-select p.id, f.id, 'klausur', k.kurs, k.datum::date, k.beginn::time, k.ende::time, k.bemerkung
-from (values
-  ('erijon', 'deutsch',              null,    '2026-09-30', '08:45', '11:20', '3-stündig'),
-  ('erijon', 'sozialkunde',          'skek1', '2026-10-27', '09:45', '11:20', ''),
-  ('erijon', 'ethik',                'eth',   '2026-10-29', '11:35', '13:05', ''),
-  ('erijon', 'englisch',             'E2',    '2026-11-06', '09:00', '13:30', 'Zentraltermin'),
-  ('erijon', 'bildende kunst',       'bk1',   '2026-11-12', '15:30', '17:00', ''),
-  ('erijon', 'geschichte',           'G',     '2026-11-18', '08:00', '12:00', '4 Zeitstunden'),
-  ('erijon', 'mathe',                'm3',    '2026-11-23', '07:55', '09:30', ''),
-  ('erijon', 'bio',                  'BIO1',  '2026-12-03', '08:00', '12:00', '4 Zeitstunden'),
-  ('erijon', 'informatik',           'inf',   '2026-12-07', '15:30', '17:00', ''),
-  ('koray',  'deutsch',              'D',     '2026-09-30', '08:45', '13:15', '4,5 Zeitstunden'),
-  ('koray',  'sozialkunde',          null,    '2026-10-27', null,    null,    'Uhrzeit hängt am Kurs'),
-  ('koray',  'katholische religion', null,    '2026-10-29', '11:35', '13:05', ''),
-  ('koray',  'bildende kunst',       null,    '2026-11-12', '15:30', '17:00', ''),
-  ('koray',  'geschichte',           'G',     '2026-11-18', '08:00', '12:00', '4 Zeitstunden'),
-  ('koray',  'mathe',                null,    '2026-11-23', '07:55', '09:30', ''),
-  ('koray',  'französisch',          null,    '2026-11-27', '11:35', '13:05', ''),
-  ('koray',  'physik',               'PH',    '2026-12-03', '08:00', '12:00', '4 Zeitstunden'),
-  ('koray',  'englisch',             null,    '2026-12-09', '09:45', '11:20', '')
-) as k(person, fach, kurs, datum, beginn, ende, bemerkung)
-join public.profile p on p.person = k.person
-join public.faecher f on f.user_id = p.id and f.name = k.fach
-on conflict (fach_id, art, datum) do nothing;
-
-alter table public.erinnerungs_einstellungen
-  add column if not exists klausur_aktiv boolean not null default true;
-
-alter table public.aktivitaets_versand
-  drop constraint if exists aktivitaets_versand_art_check;
-alter table public.aktivitaets_versand
-  add constraint aktivitaets_versand_art_check
-    check (art in ('lernen', 'lesen', 'wochenblick', 'partner', 'wochenrueckblick',
-      'wochenbericht', 'ansage', 'aufgabe', 'klausur'));
+-- Statt „dazu 1 weitere bald.“ nennt die Meldung die naechste Klausur danach
+-- beim Namen, wenn sie hoechstens 14 Tage spaeter liegt: „danach: geschichte
+-- lk in 7 tagen.“ 7 und 14 Tage heissen „in einer woche“ und „in zwei
+-- wochen“. Sonst ist die Funktion die Fassung aus `*_klausuren.sql` (Rumpf
+-- per MD5 gegen Produktion geprueft: 1ff64b47…3c7d). Keine Datenaenderung.
 
 create or replace function public.aktivitaets_kandidaten(
   p_jetzt timestamptz default now()
@@ -544,15 +456,21 @@ as $$
       and exists (select 1 from public.push_abos x where x.user_id = s.user_id)
   ),
   -- Klausuren aus dem festen Plan, 14, 7 und 3 Tage vorher und am Vortag,
-  -- abends einmal. Die naechste steht in der Meldung, weitere werden gezaehlt;
-  -- schreibt die andere Person am selben Tag im selben Fach, steht das dabei.
+  -- abends einmal. Die naechste steht in der Meldung; die danach folgende
+  -- (hoechstens 14 Tage spaeter) wird beim Namen genannt. Schreibt die andere
+  -- Person am selben Tag im selben Fach, steht das dabei.
   anstehende_klausuren as (
     select
       s.user_id,
       'klausur'::text as art,
       l.tag,
       l.tag as sendetag,
-      case when k.tage = 1 then 'morgen ' else 'in ' || k.tage || ' tagen ' end ||
+      case k.tage
+        when 1 then 'morgen '
+        when 7 then 'in einer woche '
+        when 14 then 'in zwei wochen '
+        else 'in ' || k.tage || ' tagen '
+      end ||
         case k.art when 'abitur' then 'abiprüfung' else 'klausur' end || ': ' ||
         k.fach || case when k.kursart = 'lk' then ' lk' else '' end ||
         case when k.tage = 1 then '' else ' am ' || pg_catalog.to_char(k.datum::timestamp, 'DD.MM.') end ||
@@ -562,40 +480,47 @@ as $$
         -- das datum endet schon mit einem punkt
         case when k.tage <> 1 and k.beginn is null then '' else '.' end ||
         case when k.partner is not null then ' ' || k.partner || ' schreibt sie auch.' else '' end ||
-        case
-          when k.anzahl = 2 then ' dazu 1 weitere bald.'
-          when k.anzahl > 2 then ' dazu ' || (k.anzahl - 1) || ' weitere bald.'
-          else ''
-        end as nachricht,
+        case when d.fach is not null
+          then ' danach: ' || d.fach || case when d.kursart = 'lk' then ' lk' else '' end ||
+            ' in ' || d.tage || ' tagen.'
+          else '' end
+        as nachricht,
       './#/abi'::text as url
     from public.erinnerungs_einstellungen s
     join public.profile p on p.id = s.user_id and p.person in ('erijon', 'koray')
     cross join lokal l
     join lateral (
-      select x.*, count(*) over ()::integer as anzahl
-      from (
-        select
-          kl.art, kl.datum, kl.beginn, kl.ende, f.name as fach, f.kursart,
-          (kl.datum - l.tag)::integer as tage,
-          (
-            select gp.person
-            from public.klausuren gk
-            join public.faecher gf on gf.id = gk.fach_id
-            join public.profile gp on gp.id = gk.user_id
-            where gk.user_id <> s.user_id
-              and gk.art = kl.art
-              and gk.datum = kl.datum
-              and gf.name = f.name
-            limit 1
-          ) as partner
-        from public.klausuren kl
-        join public.faecher f on f.id = kl.fach_id
-        where kl.user_id = s.user_id
-          and (kl.datum - l.tag) in (1, 3, 7, 14)
-      ) x
-      order by x.tage, x.fach
+      select
+        kl.art, kl.datum, kl.beginn, kl.ende, f.name as fach, f.kursart,
+        (kl.datum - l.tag)::integer as tage,
+        (
+          select gp.person
+          from public.klausuren gk
+          join public.faecher gf on gf.id = gk.fach_id
+          join public.profile gp on gp.id = gk.user_id
+          where gk.user_id <> s.user_id
+            and gk.art = kl.art
+            and gk.datum = kl.datum
+            and gf.name = f.name
+          limit 1
+        ) as partner
+      from public.klausuren kl
+      join public.faecher f on f.id = kl.fach_id
+      where kl.user_id = s.user_id
+        and (kl.datum - l.tag) in (1, 3, 7, 14)
+      order by kl.datum, f.name
       limit 1
     ) k on true
+    left join lateral (
+      select f.name as fach, f.kursart, (kl.datum - l.tag)::integer as tage
+      from public.klausuren kl
+      join public.faecher f on f.id = kl.fach_id
+      where kl.user_id = s.user_id
+        and kl.datum > k.datum
+        and kl.datum <= k.datum + 14
+      order by kl.datum, f.name
+      limit 1
+    ) d on true
     where s.klausur_aktiv
       and l.zeit >= time '17:00' and l.zeit < time '19:00'
       and exists (select 1 from public.push_abos x where x.user_id = s.user_id)

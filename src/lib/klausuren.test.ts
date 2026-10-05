@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Fach, Klausur, Note, Notenstand, UserId } from './types'
-import { abstandText, datumKurz, kommendeKlausuren, naechsteKlausur, ohneNote, tageBis, zeitText } from './klausuren'
+import { abstandText, datumKurz, eniKlausur, eniKlausurAusStand, kommendeKlausuren, naechsteKlausur, ohneNote, tageBis, zeitText } from './klausuren'
 
 const fach = (id: string, user: UserId, name: string, kursart: Fach['kursart'] = 'gk'): Fach =>
   ({ id, user, name, kursart, pruefungsfach: null, sortierung: 0 })
@@ -71,5 +71,15 @@ describe('klausuren', () => {
 
   it('kommt ohne klausurplan aus', () => {
     expect(kommendeKlausuren({ faecher: FAECHER, noten: [] }, 'erijon', '2026-10-05')).toEqual([])
+  })
+
+  it('gibt ENI nur eine klausur in den nächsten drei wochen', () => {
+    expect(eniKlausurAusStand(stand(), 'erijon', '2026-10-05')).toBeNull()
+    expect(eniKlausurAusStand(stand(), 'erijon', '2026-10-28')).toEqual({ fach: 'geschichte lk', datum: '2026-11-18', tage: 21 })
+    expect(eniKlausurAusStand(stand(), 'erijon', '2026-11-18')).toEqual({ fach: 'geschichte lk', datum: '2026-11-18', tage: 0 })
+    expect(eniKlausur([
+      { fach: 'mathe', lk: false, datum: '2026-11-23' },
+      { fach: 'bio', lk: true, datum: '2026-11-20' },
+    ], '2026-11-19')).toEqual({ fach: 'bio lk', datum: '2026-11-20', tage: 1 })
   })
 })

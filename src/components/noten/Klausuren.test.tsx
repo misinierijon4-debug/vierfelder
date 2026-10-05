@@ -62,4 +62,16 @@ describe('Klausuren im abi-tab', () => {
     const { container } = render(<Klausuren stand={{ faecher: [], noten: [] }} me="erijon" heute="2026-10-05" onFachOeffnen={() => {}} />)
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('zeigt nach vier weiteren terminen den rest erst auf tipp', async () => {
+    const faecher = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((name) => fach(name, 'erijon', name))
+    const klausuren = faecher.map((f, i) => klausur(f.id, 'erijon', f.id, `2026-11-${String(10 + i).padStart(2, '0')}`, '08:00', '09:30'))
+    render(<Klausuren stand={{ faecher, noten: [], klausuren }} me="erijon" heute="2026-11-01" onFachOeffnen={() => {}} />)
+    expect(screen.queryByText('f')).not.toBeInTheDocument()
+    const mehr = screen.getByRole('button', { name: '2 weitere bis mo 16.11.' })
+    expect(mehr).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(mehr)
+    expect(screen.getByText('g')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'weniger zeigen' })).toHaveAttribute('aria-expanded', 'true')
+  })
 })

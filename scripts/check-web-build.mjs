@@ -309,12 +309,14 @@ const INITIAL_GZIP_BUDGET = 243 * 1024
 // initial roh gleich (838541 Byte).
 // Dafuer 3 KiB kontrollierter Spielraum; beide Grenzen bleiben harte
 // Buildfehler.
-// Klausurplan im Tab „abi“: Countdown, Liste, fehlende Note, Laden der
-// Tabelle `klausuren` und die Adresse `#/abi`. Gesamt vorher 326435, nachher
-// 328037 Byte gzip; initial 242815 auf 244327 (der Tab liegt im Startpfad,
-// innerhalb der initialen Grenze). Dafuer 2 KiB kontrollierter
-// Spielraum; beide Grenzen bleiben harte Buildfehler.
-const GESAMT_GZIP_BUDGET = 322 * 1024
+// Klausurplan im Tab „abi“: Countdown, Liste, fehlende Note, nächste Klausur
+// im Fach, Punkt am Tab, Laden der Tabelle `klausuren`, die Adresse `#/abi`
+// und ENIs Einstieg „lernplan“. Der Prototyp liegt im Startbündel und bringt
+// seinen Plan mit (rund 0,4 KiB gzip). Gesamt vorher 326435, nachher 329741
+// Byte gzip; initial 242815 auf 245732, innerhalb der initialen Grenze.
+// Dafuer 3 KiB kontrollierter Spielraum; beide Grenzen bleiben harte
+// Buildfehler.
+const GESAMT_GZIP_BUDGET = 323 * 1024
 if (initialGzip > INITIAL_GZIP_BUDGET) {
   throw new Error(
     `Initiales JavaScript-Budget ueberschritten: ${initialGzip} > ${INITIAL_GZIP_BUDGET} Byte gzip`

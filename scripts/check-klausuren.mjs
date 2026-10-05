@@ -24,6 +24,7 @@ const altStart = alt.indexOf('create or replace function public.aktivitaets_kand
 const altEndeMarke = 'grant execute on function public.aktivitaets_kandidaten(timestamptz) to service_role;'
 const altFunktion = alt.slice(altStart, alt.indexOf(altEndeMarke, altStart) + altEndeMarke.length)
 const migration = await lies('20261005190000_klausuren.sql')
+const konkret = await lies('20261005220000_klausur_meldung_konkret.sql')
 
 const query = (sql, params = []) => db.query(sql, params)
 const berlin = (zeit) => `${zeit} Europe/Berlin`
@@ -216,6 +217,28 @@ try {
   )).rows[0].ok
   assert.equal(await reserviere(), true)
   assert.equal(await reserviere(), false, 'am selben tag kein zweites mal')
+
+  // ------------------------------------------------------ meldung konkret
+  // der nachtrag nennt die naechste klausur danach beim namen
+  await db.exec(konkret)
+  await query("insert into public.push_abos values ($1, 'https://push/k3')", [koray])
+  assert.deepEqual(await kandidaten('2026-11-17 17:30', 'klausur'), [
+    { user_id: erijon, art: 'klausur', tag: '2026-11-17', nachricht: 'morgen klausur: geschichte lk, 08:00–12:00. koray schreibt sie auch. danach: mathe in 6 tagen.', url: './#/abi' },
+    { user_id: koray, art: 'klausur', tag: '2026-11-17', nachricht: 'morgen klausur: geschichte lk, 08:00–12:00. erijon schreibt sie auch. danach: mathe in 6 tagen.', url: './#/abi' },
+  ])
+  assert.equal(
+    await meldung('2026-11-11 18:00', erijon),
+    'morgen klausur: bildende kunst, 15:30–17:00. koray schreibt sie auch. danach: geschichte lk in 7 tagen.',
+  )
+  assert.equal(await meldung('2026-10-13 17:10', erijon), 'in zwei wochen klausur: sozialkunde am 27.10., 09:45–11:20. koray schreibt sie auch. danach: ethik in 16 tagen.')
+  assert.equal(await meldung('2026-10-24 17:10', koray), 'in 3 tagen klausur: sozialkunde am 27.10. erijon schreibt sie auch. danach: katholische religion in 5 tagen.')
+  assert.equal(await meldung('2026-10-30 17:10', erijon), 'in einer woche klausur: englisch lk am 06.11., 09:00–13:30. danach: bildende kunst in 13 tagen.')
+  // die letzte klausur hat kein danach
+  assert.equal(await meldung('2026-12-08 17:10', koray), 'morgen klausur: englisch, 09:45–11:20.')
+  assert.equal(await meldung('2026-12-01 17:10', erijon), null)
+  await query('update public.erinnerungs_einstellungen set klausur_aktiv = false where user_id = $1', [erijon])
+  assert.equal(await meldung('2026-11-17 17:30', erijon), null)
+  await query('update public.erinnerungs_einstellungen set klausur_aktiv = true where user_id = $1', [erijon])
 
   // ------------------------------------------------------ die uebrigen arten
   // dienstag 17.11. 18:40, erijon hat nichts gelernt

@@ -16,6 +16,11 @@ type Props = {
 
 /** ab hier steht der countdown in der farbe der person */
 const NAH_TAGE = 7
+/** so viele weitere termine stehen offen da, der rest auf tipp */
+const SICHTBAR = 4
+
+/** nur kürzel, die einen parallelkurs unterscheiden (`m3`, `skek1`); „G“ sagt nichts */
+const kursHinweis = (kurs: string | null) => (kurs && /\d/.test(kurs) ? ` · ${kurs}` : '')
 
 const fachLabel = (zeile: KlausurZeile) =>
   `${zeile.fach.name}${zeile.fach.kursart === 'lk' ? ' lk' : ''}`
@@ -27,11 +32,14 @@ const fachLabel = (zeile: KlausurZeile) =>
  */
 export function Klausuren({ stand, me, heute, onFachOeffnen }: Props) {
   const [wer, setWer] = useState<UserId>(me)
+  const [alle, setAlle] = useState(false)
   if (!stand.klausuren) return null
   const eigen = wer === me
   const kommend = kommendeKlausuren(stand, wer, heute)
   const offen = eigen ? ohneNote(stand, me, heute) : []
   const [naechste, ...rest] = kommend
+  const sichtbar = alle ? rest : rest.slice(0, SICHTBAR)
+  const verborgen = rest.length - sichtbar.length
   const farbe = user(wer).farbe
   const partner = other(wer).name
 
@@ -62,7 +70,7 @@ export function Klausuren({ stand, me, heute, onFachOeffnen }: Props) {
             <p className="display mt-1 break-words text-[24px] font-bold lowercase leading-none">{fachLabel(naechste)}</p>
             <p className="mt-1.5 text-[12px] text-kreide-60">
               {datumKurz(naechste.klausur.datum)} · {zeitText(naechste.klausur) ?? 'uhrzeit offen'}
-              {naechste.klausur.kurs ? ` · ${naechste.klausur.kurs}` : ''}
+              {kursHinweis(naechste.klausur.kurs)}
             </p>
             {naechste.zusammen && <p className="mt-0.5 text-[11px]" style={{ color: user(other(wer).id).farbe }}>{partner} schreibt sie auch</p>}
           </div>
@@ -83,7 +91,7 @@ export function Klausuren({ stand, me, heute, onFachOeffnen }: Props) {
 
       {rest.length > 0 && (
         <ul className="mt-3 border-t border-linie">
-          {rest.map((zeile) => (
+          {sichtbar.map((zeile) => (
             <li key={zeile.klausur.id} className="grid min-h-11 grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 border-b border-linie py-1 text-[12px]">
               <span className="tnum text-[11px] text-kreide-60">{datumKurz(zeile.klausur.datum)}</span>
               <span className="min-w-0">
@@ -100,27 +108,38 @@ export function Klausuren({ stand, me, heute, onFachOeffnen }: Props) {
           ))}
         </ul>
       )}
+      {rest.length > SICHTBAR && (
+        <button
+          type="button"
+          aria-expanded={alle}
+          onClick={() => setAlle((offen) => !offen)}
+          className="min-h-11 w-full text-left text-[11px] text-kreide-52 active:translate-y-px"
+        >
+          {alle ? 'weniger zeigen' : `${verborgen} weitere bis ${datumKurz(rest[rest.length - 1]!.klausur.datum)}`}
+        </button>
+      )}
 
       {offen.length > 0 && (
-        <ul className="mt-3" aria-label="geschrieben, note fehlt">
-          {offen.map((zeile) => (
-            <li key={zeile.klausur.id}>
-              <button
-                type="button"
-                onClick={() => onFachOeffnen(zeile.fach.id)}
-                aria-label={`${fachLabel(zeile)}, geschrieben ${datumKurz(zeile.klausur.datum)}: note eintragen`}
-                className="flex min-h-11 w-full items-center gap-2 text-left text-[12px] active:translate-y-px"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="lowercase">{fachLabel(zeile)}</span>
-                  <span className="text-kreide-52"> · geschrieben {datumKurz(zeile.klausur.datum)} · </span>
-                  <span style={{ color: farbe }}>note eintragen</span>
-                </span>
-                <CaretRight size={14} className="shrink-0 text-kreide-52" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4">
+          <h3 id="note-fehlt" className="text-[11px] text-kreide-52">geschrieben, note fehlt</h3>
+          <ul aria-labelledby="note-fehlt" className="mt-1 border-t border-linie">
+            {offen.map((zeile) => (
+              <li key={zeile.klausur.id} className="border-b border-linie">
+                <button
+                  type="button"
+                  onClick={() => onFachOeffnen(zeile.fach.id)}
+                  aria-label={`${fachLabel(zeile)}, geschrieben ${datumKurz(zeile.klausur.datum)}: note eintragen`}
+                  className="grid min-h-11 w-full grid-cols-[64px_minmax(0,1fr)_auto_14px] items-center gap-2 text-left text-[12px] active:translate-y-px"
+                >
+                  <span className="tnum text-[11px] text-kreide-60">{datumKurz(zeile.klausur.datum)}</span>
+                  <span className="truncate lowercase">{fachLabel(zeile)}</span>
+                  <span className="text-[11px]" style={{ color: farbe }}>eintragen</span>
+                  <CaretRight size={14} className="text-kreide-52" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   )

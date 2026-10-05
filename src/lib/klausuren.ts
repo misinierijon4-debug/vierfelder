@@ -87,3 +87,32 @@ export function ohneNote(stand: Notenstand, wer: UserId, heute: string): Klausur
       && note.art === 'klausur'
       && note.datum >= zeile.klausur.datum))
 }
+
+/** so weit vorher bietet ENI im leeren chat einen lernplan an */
+export const LERNPLAN_VORLAUF_TAGE = 21
+
+/** die nächste eigene klausur, so knapp, wie ENIs begrüßung sie braucht */
+export type EniKlausur = { fach: string; datum: string; tage: number }
+
+/**
+ * die nächste klausur in den nächsten drei wochen, oder null. nimmt rohe
+ * zeilen, weil ENI auch ohne tracker-zustand startet (eigenes homescreen-symbol).
+ */
+export function eniKlausur(
+  termine: ReadonlyArray<{ fach: string; lk: boolean; datum: string }>,
+  heute: string,
+): EniKlausur | null {
+  const naechste = termine
+    .map((t) => ({ ...t, tage: tageBis(heute, t.datum) }))
+    .filter((t) => t.tage >= 0 && t.tage <= LERNPLAN_VORLAUF_TAGE)
+    .sort((a, b) => a.datum.localeCompare(b.datum))[0]
+  return naechste ? { fach: `${naechste.fach}${naechste.lk ? ' lk' : ''}`, datum: naechste.datum, tage: naechste.tage } : null
+}
+
+/** dieselbe auswahl aus dem notenstand des trackers */
+export function eniKlausurAusStand(stand: Notenstand, wer: UserId, heute: string): EniKlausur | null {
+  return eniKlausur(
+    kommendeKlausuren(stand, wer, heute).map((z) => ({ fach: z.fach.name, lk: z.fach.kursart === 'lk', datum: z.klausur.datum })),
+    heute,
+  )
+}

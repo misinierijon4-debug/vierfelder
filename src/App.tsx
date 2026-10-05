@@ -40,6 +40,7 @@ import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
 import { oeffneEni, oeffneEniWoche, schliesseEni, useAbiAdresse, useBerichtWoche, useRoute, verlasseAbi, verlasseBericht } from './lib/eniRoute'
 import type { DuellKontext } from './lib/eniSpeicher'
+import { abstandText, eniKlausurAusStand } from './lib/klausuren'
 /**
  * ENI haengt am startpfad nicht mit drin. die anzeigetafel startet ohne sie,
  * und das JavaScript-Budget in scripts/check-web-build.mjs misst genau diesen
@@ -250,6 +251,20 @@ function Tracker({
     verlasseAbi()
   }, [abiAusAdresse])
 
+  // nur die nächste eigene klausur geht an ENI, nicht der ganze plan
+  const eniKlausurStand = useMemo(
+    () => eniKlausurAusStand(notenstand, me, heuteKey),
+    [notenstand, me, heuteKey]
+  )
+
+  // ein punkt am tab „abi“, solange die nächste eigene klausur höchstens drei tage weg ist
+  const tabHinweise = useMemo(
+    () => (eniKlausurStand && eniKlausurStand.tage <= 3
+      ? { noten: `klausur ${abstandText(eniKlausurStand.tage)}` }
+      : undefined),
+    [eniKlausurStand]
+  )
+
   useEffect(() => {
     onDuellStand?.({
       ich: me,
@@ -260,8 +275,9 @@ function Tracker({
       wocheEr: match.wocheEr,
       diff: match.wocheDiff,
       statusText: match.statusText,
+      klausur: eniKlausurStand,
     })
-  }, [me, match, onDuellStand])
+  }, [me, match, onDuellStand, eniKlausurStand])
   const ich = userDef(me)
   const er = other(me)
   const abrechnungDerWoche = abrechnungen.find((a) => a.woche === (woche[0] ?? heuteKey)) ?? null
@@ -448,7 +464,7 @@ function Tracker({
         )}
 
         {/* Tab-Navigation */}
-        <TabLeiste aktiverTab={aktiverTab} onTabWechsel={setAktiverTab} />
+        <TabLeiste aktiverTab={aktiverTab} onTabWechsel={setAktiverTab} hinweise={tabHinweise} />
 
         {/* mindestens eine zeile freihalten; lange statusmeldungen duerfen bei
             grosser schrift umbrechen, statt abgeschnitten zu werden. */}

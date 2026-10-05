@@ -61,4 +61,10 @@ describe('hauptbereich-tabs', () => {
     expect(screen.getByRole('tab', { name: 'schlaf' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole('tab', { name: 'schlaf' }).tabIndex).toBe(0)
   })
+
+  it('setzt einen hinweis an den tab, den auch screenreader hoeren', () => {
+    render(<TabLeiste aktiverTab="tracker" onTabWechsel={() => {}} hinweise={{ noten: 'klausur morgen' }} />)
+    expect(screen.getByRole('tab', { name: 'abi, klausur morgen' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'duell' })).toBeTruthy()
+  })
 })

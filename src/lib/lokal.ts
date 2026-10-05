@@ -619,6 +619,12 @@ function uebernimmAltbestand() {
   localStorage.setItem(MIGRIERT_KEY, '1')
 }
 
+/** der klausurplan des prototyps, wie der notenbereich ihn zeigt */
+export function lokaleKlausuren(): { faecher: Fach[]; klausuren: Klausur[] } {
+  const faecher = alleFaecher()
+  return { faecher, klausuren: alleKlausuren(faecher) }
+}
+
 export function lokalesMe(): UserId {
   const gespeichert = leseRoh(ME_KEY)
   if (gespeichert === null || gespeichert === 'erijon') return 'erijon'

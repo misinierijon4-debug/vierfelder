@@ -464,6 +464,40 @@ per `net.http_post` aus der Datenbank: `eni` `{pruefen: true}` → 200,
 Zurückrollen: dieselbe Zeile mit `44ae18d` für `eni` (Version 50) und mit
 `f1d8064` für `eni-recherche` (Version 1).
 
+## Neue Migrationen `klausuren` und `klausur_meldung_konkret` (05.10.2026)
+
+Der Kursarbeitsplan MSS 13 (2026/27) kommt in die App (Auftrag von erijon):
+Tabelle `klausuren` (fester Plan wie `faecher`, beide lesen, niemand schreibt
+aus der App; Art `abitur` vorbereitet), 9 Termine je Person, Schalter
+`klausur_aktiv` und die Push-Art `klausur` (14, 7, 3 Tage vorher und am Vortag,
+17–19 Uhr, Link `#/abi`). Der Nachtrag `klausur_meldung_konkret` nennt statt
+„dazu 1 weitere bald“ die nächste Klausur danach beim Namen. Keine bestehende
+Zeile wird geändert; neu sind nur die 18 Zeilen in `klausuren`.
+
+| Datei | produktive Version |
+|---|---|
+| `20261005190000_klausuren.sql` | `20261005201128_klausuren` |
+| `20261005220000_klausur_meldung_konkret.sql` | `klausur_meldung_konkret` (Zeitstempel der Anwendung) |
+
+Vorher geprüft: produktiver Rumpf von `aktivitaets_kandidaten` per MD5 gleich
+`eni_meldungen.sql` (`59625b62…70ed`), Fächernamen beider Personen wie im
+Plan. Nachher: Rumpf gleich der jeweiligen Datei (`1ff64b47…3c7d`, dann
+`c3057097…e084`), RLS an, `authenticated` darf `klausuren` nur lesen und die
+Funktion nicht ausführen; Meldungen für 13.10., 11.11., 17.11. und 08.12. aus
+der Datenbank gelesen, Texte wie in `scripts/check-klausuren.mjs`.
+
+**Stolperstein:** `apply_migration` (und `execute_sql`) des Supabase-MCP hing
+bei jeder Anweisung `drop policy if exists` 60 Sekunden und wandte nichts an;
+die Datenbank sah die Anfrage nie. Eingegrenzt mit Proben in `begin … rollback`.
+Für eine neue Tabelle ist die Zeile ohnehin überflüssig und wurde vor der
+Anwendung aus der Datei genommen. Künftige Migrationen kommen ohne
+`drop policy` aus oder werden vom Menschen eingespielt.
+
+**Reihenfolge:** Migrationen, dann Worker `aktivitaets-erinnerung` (kennt sonst
+die Art `klausur` nicht; erster möglicher Versand am 13.10.), dann `eni`, dann
+Pages. Bei Korays Sozialkunde-Klausur steht keine Uhrzeit, bis sein Kurs
+(skek1/skek2 oder skekf) feststeht — Nachtrag dann per neuer Migration.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

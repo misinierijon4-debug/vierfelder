@@ -23,6 +23,13 @@ function planAusMigration(): unknown[] {
     treffer[1]!.split(/,\s+(?=(?:'|null))/).map((teil) => wert(teil.trim())))
 }
 
+const nachtraege = import.meta.glob('../../supabase/migrations/*_klausur_meldung_konkret.sql', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+}) as Record<string, string>
+const konkret = Object.values(nachtraege)[0] ?? ''
+
 function rumpf(datei: string): string {
   const start = datei.indexOf('create or replace function public.aktivitaets_kandidaten(')
   const marke = 'grant execute on function public.aktivitaets_kandidaten(timestamptz) to service_role;'
@@ -63,5 +70,18 @@ describe('klausurplan', () => {
     expect(sql).not.toMatch(/\b(update|delete from)\s+public\./i)
     expect(sql.match(/insert into public\.(\w+)/gi)).toEqual(['insert into public.klausuren'])
     expect(sql).toContain('add column if not exists klausur_aktiv boolean not null default true')
+  })
+
+  it('nachtrag: aendert nur die klausur-meldung und nennt die klausur danach', () => {
+    expect(Object.keys(nachtraege)).toHaveLength(1)
+    const alt = rumpf(sql)
+    const neu = rumpf(konkret)
+    const marke = '  -- Klausuren aus dem festen Plan'
+    expect(neu.slice(0, neu.indexOf(marke))).toBe(alt.slice(0, alt.indexOf(marke)))
+    const schluss = '  select * from grundtaetigkeiten'
+    expect(neu.slice(neu.indexOf(schluss))).toBe(alt.slice(alt.indexOf(schluss)))
+    expect(neu).toContain("then ' danach: '")
+    expect(neu).toContain("when 7 then 'in einer woche '")
+    expect(konkret).not.toMatch(/\b(insert into|update|delete from|drop policy)\b/i)
   })
 })
