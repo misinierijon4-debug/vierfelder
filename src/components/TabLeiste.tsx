@@ -7,13 +7,16 @@ import { STEMPEL } from '../lib/motion'
 type Props = {
   aktiverTab: AppTab
   onTabWechsel: (tab: AppTab) => void
+  /** ein punkt am tab, mit dem text für screenreader (etwa „klausur morgen“) */
+  hinweise?: Partial<Record<AppTab, string>>
 }
 
 const TABS: Array<{ id: AppTab; label: string }> = [
   { id: 'tracker', label: 'tracker' },
   { id: 'duell', label: 'duell' },
   { id: 'schlaf', label: 'schlaf' },
-  { id: 'noten', label: 'noten' },
+  // klausuren, noten und abiprognose: der tab heißt nach dem, worum es geht
+  { id: 'noten', label: 'abi' },
 ]
 
 export const HAUPTBEREICH_PANEL_ID = 'hauptbereich-panel'
@@ -27,7 +30,7 @@ export function hauptbereichTabId(tab: AppTab) {
  * render neu aus, und das erzwingt ein layout der ganzen seite. die leiste
  * aendert sich aber nur beim tabwechsel, nicht bei jedem tap darunter.
  */
-export const TabLeiste = memo(function TabLeiste({ aktiverTab, onTabWechsel }: Props) {
+export const TabLeiste = memo(function TabLeiste({ aktiverTab, onTabWechsel, hinweise }: Props) {
   const wechslePerTastatur = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let ziel: number | null = null
     if (event.key === 'ArrowRight') ziel = (index + 1) % TABS.length
@@ -75,7 +78,15 @@ export const TabLeiste = memo(function TabLeiste({ aktiverTab, onTabWechsel }: P
                 style={{ border: '1px solid var(--linie-hell)' }}
               />
             )}
-            <span className="relative z-10">{tab.label}</span>
+            <span className="relative z-10">
+              {tab.label}
+              {hinweise?.[tab.id] && (
+                <>
+                  <span aria-hidden="true" className="absolute -top-0.5 -right-2 size-1.5 rounded-full" style={{ background: 'var(--kreide)' }} />
+                  <span className="sr-only">, {hinweise[tab.id]}</span>
+                </>
+              )}
+            </span>
           </button>
         )
       })}

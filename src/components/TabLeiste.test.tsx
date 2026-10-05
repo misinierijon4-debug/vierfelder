@@ -44,11 +44,11 @@ describe('hauptbereich-tabs', () => {
     expect(screen.getByRole('tab', { name: 'duell' }).getAttribute('aria-selected')).toBe('true')
 
     await user.keyboard('{End}')
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'noten' }))
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'abi' }))
     await user.keyboard('{ArrowRight}')
     expect(document.activeElement).toBe(tracker)
     await user.keyboard('{ArrowLeft}')
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'noten' }))
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'abi' }))
     await user.keyboard('{Home}')
     expect(document.activeElement).toBe(tracker)
   })
@@ -60,5 +60,11 @@ describe('hauptbereich-tabs', () => {
     await user.click(screen.getByRole('tab', { name: 'schlaf' }))
     expect(screen.getByRole('tab', { name: 'schlaf' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole('tab', { name: 'schlaf' }).tabIndex).toBe(0)
+  })
+
+  it('setzt einen hinweis an den tab, den auch screenreader hoeren', () => {
+    render(<TabLeiste aktiverTab="tracker" onTabWechsel={() => {}} hinweise={{ noten: 'klausur morgen' }} />)
+    expect(screen.getByRole('tab', { name: 'abi, klausur morgen' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'duell' })).toBeTruthy()
   })
 })

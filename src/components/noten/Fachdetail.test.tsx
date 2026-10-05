@@ -111,4 +111,16 @@ describe('Fachdetail sichere Mutationen', () => {
     expect(screen.queryByRole('button', { name: 'rückgängig' })).toBeNull()
     expect(screen.getByRole('dialog')).toHaveFocus()
   })
+
+  it('nennt die naechste klausur des fachs aus dem plan', () => {
+    renderDetail({
+      naechste: {
+        klausur: { id: 'k', user: 'erijon', fachId: FACH.id, art: 'klausur', kurs: 'm3', datum: '2026-11-23', beginn: '07:55', ende: '09:30', bemerkung: '' },
+        fach: FACH,
+        tage: 78,
+        zusammen: false,
+      },
+    })
+    expect(screen.getByText(/nächste klausur/)).toHaveTextContent('nächste klausur mo 23.11. · 07:55–09:30 · in 78 tagen')
+  })
 })

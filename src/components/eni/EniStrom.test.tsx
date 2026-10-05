@@ -152,6 +152,35 @@ describe('die auftakte im leeren chat', () => {
     expect(onAuftakt).toHaveBeenCalledWith('frag mich ab')
   })
 
+  it('stellt bei einer nahen klausur den lernplan an den anfang', async () => {
+    const nutzer = userEvent.setup()
+    const onAuftakt = vi.fn()
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={false}
+        duellStand={{
+          ich: 'erijon', gegner: 'koray', ichName: 'Erijon', gegnerName: 'Koray',
+          wocheIch: 3, wocheEr: 2, diff: 1,
+          klausur: { fach: 'geschichte lk', datum: '2026-11-18', tage: 5 },
+        }}
+        onAuftakt={onAuftakt}
+        feldBelegt={false}
+      />
+    )
+    const knoepfe = screen.getAllByRole('button')
+    const lernplan = screen.getByRole('button', { name: 'lernplan für geschichte lk · in 5 tagen' })
+    expect(knoepfe.indexOf(lernplan)).toBeLessThan(knoepfe.indexOf(screen.getByRole('button', { name: 'wie stehe ich gegen koray' })))
+    await nutzer.click(lernplan)
+    expect(onAuftakt).toHaveBeenCalledWith('mach mir einen lernplan für meine klausur in geschichte lk am mi 18.11.')
+  })
+
+  it('bietet ohne nahe klausur keinen lernplan an', () => {
+    leer(false)
+    expect(screen.queryByRole('button', { name: /lernplan/ })).toBeNull()
+  })
+
   it('reicht den vollen satz weiter, nicht die beschriftung', async () => {
     const nutzer = userEvent.setup()
     const onAuftakt = leer(false)

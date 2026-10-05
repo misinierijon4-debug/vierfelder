@@ -7,7 +7,7 @@ import { lokaleMinute } from './erinnerung.ts'
  * Ein Abbruch kann eine Nachricht kosten, aber niemals eine zweite erzeugen.
  * Auch nach einer verlorenen Providerantwort bleibt die Reservierung bestehen.
  */
-export type AktivitaetsArt = 'lernen' | 'lesen' | 'wochenblick' | 'partner' | 'wochenrueckblick' | 'wochenbericht' | 'ansage' | 'aufgabe'
+export type AktivitaetsArt = 'lernen' | 'lesen' | 'wochenblick' | 'partner' | 'wochenrueckblick' | 'wochenbericht' | 'ansage' | 'aufgabe' | 'klausur'
 export type Kandidat = {
   user_id: string
   art: AktivitaetsArt
@@ -16,7 +16,7 @@ export type Kandidat = {
   /** Berliner Tag des aktuellen Worker-Laufs. */
   sendetag: string
   nachricht: string
-  url: './' | './#/eni' | `./#/eni?woche=${string}` | `./#/bericht?woche=${string}`
+  url: './' | './#/eni' | './#/abi' | `./#/eni?woche=${string}` | `./#/bericht?woche=${string}`
 }
 type Optionen = { senden?: typeof sende; jetzt?: () => Date }
 
@@ -53,6 +53,8 @@ function istNochImFenster(kandidat: Kandidat, jetzt: Date): boolean {
   }
   // Faellige Aufgaben aus ENIs Gedaechtnis: einmal morgens, nicht vor 08:30.
   if (kandidat.art === 'aufgabe') return minute >= '08:30' && minute < '10:00'
+  // Klausuren aus dem Plan: abends, damit am Vortag noch Zeit zum Lernen bleibt.
+  if (kandidat.art === 'klausur') return minute >= '17:00' && minute < '19:00'
   if (kandidat.art === 'lernen') {
     return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(wochentag(jetzt)) &&
       minute >= '18:30' && minute < '20:00'

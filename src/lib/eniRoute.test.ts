@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import {
+  ABI_HASH,
   BERICHT_HASH,
   ENI_HASH,
   istEniWochenbeginn,
@@ -10,7 +11,9 @@ import {
   oeffneEniWoche,
   routeZuruecksetzen,
   schliesseEni,
+  useAbiAdresse,
   useBerichtWoche,
+  verlasseAbi,
   verlasseBericht,
 } from './eniRoute'
 
@@ -103,5 +106,24 @@ describe('der weg zum wochenbericht', () => {
     window.location.hash = `${ENI_HASH}?woche=2026-09-14`
     verlasseBericht()
     expect(window.location.hash).toBe(`${ENI_HASH}?woche=2026-09-14`)
+  })
+})
+
+describe('der weg zum abi-tab', () => {
+  it('erkennt die adresse der klausur-meldung und raeumt sie danach ab', () => {
+    window.location.hash = ABI_HASH
+    const { result } = renderHook(() => useAbiAdresse())
+    expect(result.current).toBe(true)
+    act(() => verlasseAbi())
+    expect(window.location.hash).toBe('')
+    expect(result.current).toBe(false)
+  })
+
+  it('laesst andere adressen in ruhe', () => {
+    window.location.hash = ENI_HASH
+    const { result } = renderHook(() => useAbiAdresse())
+    expect(result.current).toBe(false)
+    verlasseAbi()
+    expect(window.location.hash).toBe(ENI_HASH)
   })
 })

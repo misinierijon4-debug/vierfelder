@@ -55,7 +55,33 @@ it('faellt bei fehlenden neuen Spalten auf den alten Einstellungen-Vertrag zurue
     wochenbericht_aktiv: true,
     ansage_aktiv: true,
     aufgabe_aktiv: true,
+    klausur_aktiv: true,
   })
+})
+it('behaelt vor der klausur-migration die gespeicherten uebrigen schalter', async () => {
+  m.select.mockImplementation((spalten: string) => ({
+    maybeSingle: spalten.includes('klausur_aktiv')
+      ? async () => ({ data: null, error: { code: '42703' } })
+      : async () => ({
+          data: {
+            lernen_aktiv: true, lesen_aktiv: true, wochenblick_aktiv: true, partner_aktiv: true,
+            wochenrueckblick_aktiv: true, wochenbericht_aktiv: true, ansage_aktiv: true, aufgabe_aktiv: false,
+          },
+          error: null,
+        }),
+  }))
+
+  await expect(ladeAktivitaetsErinnerungen()).resolves.toMatchObject({
+    aufgabe_aktiv: false,
+    klausur_aktiv: true,
+  })
+})
+it('schreibt den schalter fuer klausuren', async () => {
+  await setzeAktivitaetsErinnerung('klausur', false)
+  expect(m.upsert).toHaveBeenCalledWith(
+    { user_id: 'me', klausur_aktiv: false, aktualisiert: expect.any(String) },
+    { onConflict: 'user_id' },
+  )
 })
 it('behaelt vor der aufgaben-migration die gespeicherten uebrigen schalter', async () => {
   m.select.mockImplementation((spalten: string) => ({

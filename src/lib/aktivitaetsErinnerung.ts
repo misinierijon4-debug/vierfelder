@@ -9,10 +9,13 @@ export const AKTIVITAETS_ERINNERUNGEN = [
   { art: 'wochenbericht', label: 'wochenbericht', beschreibung: 'montag · sobald die letzte nacht drin ist · dein bericht ist fertig' },
   { art: 'ansage', label: 'ansagen', beschreibung: 'sofort · 08:00–22:00 · wenn dir jemand eine ansage macht' },
   { art: 'aufgabe', label: 'fällige aufgaben', beschreibung: 'täglich · 08:30 · was du dir mit ENI für heute vorgenommen hast' },
+  { art: 'klausur', label: 'klausuren', beschreibung: '14, 7, 3 tage vorher und am vortag · 17:00 · deine nächste klausur' },
 ] as const
 export type AktivitaetsArt = typeof AKTIVITAETS_ERINNERUNGEN[number]['art']
 export type AktivitaetsEinstellungen = Record<`${AktivitaetsArt}_aktiv`, boolean>
-const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv,aufgabe_aktiv'
+const SPALTEN = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv,aufgabe_aktiv,klausur_aktiv'
+/** stand vor dem klausurplan: ohne `klausur_aktiv` */
+const SPALTEN_OHNE_KLAUSUR = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv,aufgabe_aktiv'
 /** stand vor den faelligen aufgaben: ohne `aufgabe_aktiv` */
 const SPALTEN_OHNE_AUFGABE = 'lernen_aktiv,lesen_aktiv,wochenblick_aktiv,partner_aktiv,wochenrueckblick_aktiv,wochenbericht_aktiv,ansage_aktiv'
 /** stand vor den ansagen: ohne `ansage_aktiv` */
@@ -27,6 +30,7 @@ const STANDARD: AktivitaetsEinstellungen = {
   wochenbericht_aktiv: true,
   ansage_aktiv: true,
   aufgabe_aktiv: true,
+  klausur_aktiv: true,
 }
 
 const FEHLENDE_SCHEMA_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'])
@@ -48,6 +52,7 @@ function vervollstaendigeEinstellungen(roh: unknown): AktivitaetsEinstellungen {
     wochenbericht_aktiv: typeof daten.wochenbericht_aktiv === 'boolean' ? daten.wochenbericht_aktiv : STANDARD.wochenbericht_aktiv,
     ansage_aktiv: typeof daten.ansage_aktiv === 'boolean' ? daten.ansage_aktiv : STANDARD.ansage_aktiv,
     aufgabe_aktiv: typeof daten.aufgabe_aktiv === 'boolean' ? daten.aufgabe_aktiv : STANDARD.aufgabe_aktiv,
+    klausur_aktiv: typeof daten.klausur_aktiv === 'boolean' ? daten.klausur_aktiv : STANDARD.klausur_aktiv,
   }
 }
 
@@ -63,6 +68,10 @@ export async function ladeAktivitaetsErinnerungen(): Promise<AktivitaetsEinstell
   if (!istFehlendesSchema(aktuelle.error)) {
     throw new Error('erinnerungen konnten nicht geladen werden.')
   }
+  // Frontend vor der Klausur-Migration: dieselbe Stufe noch einmal.
+  const ohneKlausur = await supabase.from('erinnerungs_einstellungen').select(SPALTEN_OHNE_KLAUSUR).maybeSingle()
+  if (!ohneKlausur.error) return vervollstaendigeEinstellungen(ohneKlausur.data)
+  if (!istFehlendesSchema(ohneKlausur.error)) throw new Error('erinnerungen konnten nicht geladen werden.')
   // Frontend vor der Aufgaben-Migration: wie unten, eine Stufe spaeter.
   const ohneAufgabe = await supabase.from('erinnerungs_einstellungen').select(SPALTEN_OHNE_AUFGABE).maybeSingle()
   if (!ohneAufgabe.error) return vervollstaendigeEinstellungen(ohneAufgabe.data)

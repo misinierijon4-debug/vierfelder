@@ -2,10 +2,12 @@ import { supabase } from './supabase'
 import { raeumeChatDateien } from './eniAnhang'
 import type { EniAnhang } from './eniAnhang'
 import { addDays, startOfWeek, toKey } from './dates'
-import { lokalePunktquellen } from './lokal'
+import { lokaleKlausuren, lokalePunktquellen } from './lokal'
 import { tafelAusZeilen } from '../../supabase/functions/_shared/duellPunkte'
 import type { Punktetafel } from '../../supabase/functions/_shared/duellPunkte'
 import type { UserId } from './types'
+import { eniKlausur } from './klausuren'
+import type { EniKlausur } from './klausuren'
 
 export type DuellKontext = {
   ich: UserId
@@ -17,6 +19,8 @@ export type DuellKontext = {
   diff: number
   statusText?: string
   offeneAufgaben?: string[]
+  /** die nächste eigene klausur in den nächsten drei wochen: einstieg „lernplan“ */
+  klausur?: EniKlausur | null
 }
 
 export type EniRolle = 'eni' | 'mensch'
@@ -220,7 +224,7 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
     async duellStand() {
       try {
         const zeit = duellZeitraum()
-        const [profile, einheiten, aufenthalte, gewicht] = await Promise.all([
+        const [profile, einheiten, aufenthalte, gewicht, klausuren, faecher] = await Promise.all([
           klient.from('profile').select('id,person'),
           klient.from('einheiten').select('user_id,bereich,tag').gte('tag', zeit.montag),
           klient
@@ -228,6 +232,9 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
             .select('user_id,bereich,ankunft,abgang')
             .gte('ankunft', `${zeit.vorMontag}T00:00:00Z`),
           klient.from('gewicht').select('user_id,tag').gte('tag', zeit.montag),
+          // ohne klausurplan (fehlende tabelle, fehler) bleibt nur der einstieg weg
+          klient.from('klausuren').select('fach_id,datum').eq('user_id', kontoId).gte('datum', zeit.heute),
+          klient.from('faecher').select('id,name,kursart').eq('user_id', kontoId),
         ])
 
         const nachKonto = new Map(
@@ -243,7 +250,12 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
           zeit.montag,
           zeit.heute
         )
-        return baueDuellKontext(person, tafel)
+        const fach = new Map((faecher.data ?? []).map((zeile) => [String(zeile.id), zeile]))
+        const termine = klausuren.error || faecher.error ? [] : (klausuren.data ?? []).flatMap((zeile) => {
+          const f = fach.get(String(zeile.fach_id))
+          return f ? [{ fach: String(f.name), lk: f.kursart === 'lk', datum: String(zeile.datum) }] : []
+        })
+        return { ...baueDuellKontext(person, tafel), klausur: eniKlausur(termine, zeit.heute) }
       } catch {
         return null
       }
@@ -419,7 +431,13 @@ export function lokalerEniSpeicher(me: UserId): EniSpeicher {
           zeit.montag,
           zeit.heute
         )
-        return baueDuellKontext(me, tafel)
+        // der prototyp kennt den plan aus derselben quelle wie sein notenbereich
+        const { faecher, klausuren } = lokaleKlausuren()
+        const termine = klausuren.filter((k) => k.user === me).flatMap((k) => {
+          const f = faecher.find((fach) => fach.id === k.fachId)
+          return f ? [{ fach: f.name, lk: f.kursart === 'lk', datum: k.datum }] : []
+        })
+        return { ...baueDuellKontext(me, tafel), klausur: eniKlausur(termine, zeit.heute) }
       } catch {
         return null
       }

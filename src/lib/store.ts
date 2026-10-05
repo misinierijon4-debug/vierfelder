@@ -30,6 +30,7 @@ import type {
   Fach,
   Gewichte,
   GewichtQuellen,
+  Klausur,
   Note,
   Notenart,
   Notenstand,
@@ -121,6 +122,8 @@ export function useTracker(backend: Backend) {
   const [abrechnungStatus, setAbrechnungStatus] = useState<Record<string, AbrechnungSchreibstatus>>({})
   const [faecher, setFaecher] = useState<Fach[]>([])
   const [noten, setNoten] = useState<Note[]>([])
+  // der klausurplan ist fest: er kommt nur mit dem laden, nie über realtime
+  const [klausuren, setKlausuren] = useState<Klausur[] | undefined>(undefined)
   /** ansagen beider personen. das ziel rechnet das backend, deshalb nie optimistisch */
   const [ansagen, setAnsagen] = useState<Ansage[]>([])
   const [ansagenVerfuegbar, setAnsagenVerfuegbar] = useState(false)
@@ -440,6 +443,7 @@ export function useTracker(backend: Backend) {
     setAbrechnungen(anfang.abrechnungen)
     setFaecher(anfang.noten.faecher)
     setNoten(anfang.noten.noten)
+    setKlausuren(anfang.noten.klausuren)
     setAnsagen(ansagenRef.current)
     setAnsagenVerfuegbar(anfang.ansagen !== undefined)
     setEinheitVonVerfuegbar(anfang.einheitVonVerfuegbar)
@@ -1770,7 +1774,10 @@ export function useTracker(backend: Backend) {
     [backend, darfMutationStarten, darfSchreiben, uebernimmAnsage, verfolgeMutation]
   )
 
-  const notenstand = useMemo<Notenstand>(() => ({ faecher, noten }), [faecher, noten])
+  const notenstand = useMemo<Notenstand>(
+    () => (klausuren ? { faecher, noten, klausuren } : { faecher, noten }),
+    [faecher, noten, klausuren]
+  )
 
   const phasenLadezustaende = useMemo<Record<string, PhasenLadezustand>>(() => {
     const next: Record<string, PhasenLadezustand> = {}

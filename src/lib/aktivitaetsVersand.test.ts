@@ -137,6 +137,32 @@ describe('aktivitaeten ohne doppelte oder veraltete Pushs', () => {
     await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-10-01T08:00:00Z') })
     expect(senden).not.toHaveBeenCalled()
   })
+  it('meldet klausuren abends zwischen 17 und 19 uhr und oeffnet den abi-tab', async () => {
+    const klausur = {
+      ...kandidat,
+      art: 'klausur' as const,
+      tag: '2026-11-17',
+      sendetag: '2026-11-17',
+      nachricht: 'morgen klausur: geschichte lk, 08:00–12:00. koray schreibt sie auch.',
+      url: './#/abi' as const,
+    }
+    rpc.mockImplementation(async (name: string) =>
+      ({ data: name === 'reserviere_aktivitaetsversand' ? true : [klausur], error: null }))
+
+    // Dienstag 16:50 Berlin (Winterzeit): noch zu früh
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-11-17T15:50:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+
+    // Dienstag 17:30 Berlin
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-11-17T16:30:00Z') })
+    expect(senden).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('geschichte lk'), key, 0)
+    expect(JSON.parse(senden.mock.calls[0]![1] as string)).toMatchObject({ tag: 'klausur', url: './#/abi' })
+
+    // Dienstag 19:00 Berlin: vorbei
+    senden.mockClear()
+    await versendeAktivitaeten(db, key, { senden, jetzt: () => new Date('2026-11-17T18:00:00Z') })
+    expect(senden).not.toHaveBeenCalled()
+  })
   it('schickt den sonntagsstand erst ab 18:10, wenn die ansagen entschieden sind', async () => {
     const sonntag = {
       ...kandidat,

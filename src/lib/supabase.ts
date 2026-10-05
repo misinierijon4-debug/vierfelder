@@ -28,6 +28,7 @@ import type {
   Fach,
   Gewichte,
   GewichtQuellen,
+  Klausur,
   Kursart,
   MessbarerBereich,
   Phase,
@@ -753,6 +754,18 @@ type FachZeile = {
   pruefungsfach: number | null
   sortierung: number
 }
+type KlausurZeile = {
+  id: string
+  user_id: string
+  fach_id: string
+  art: string
+  kurs: string | null
+  datum: string
+  /** postgres liefert `hh:mm:ss` */
+  beginn: string | null
+  ende: string | null
+  bemerkung: string
+}
 type NoteZeile = {
   id: string
   user_id: string
@@ -1386,6 +1399,26 @@ export function supabaseBackend(
     }
   }
 
+  const zeileZuKlausur = (k: KlausurZeile): Klausur | null => {
+    const person = personen.get(k.user_id)
+    if (!person || (k.art !== 'klausur' && k.art !== 'abitur')) return null
+    if (typeof k.datum !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(k.datum)) return null
+    const uhr = (wert: string | null) => (typeof wert === 'string' && /^\d{2}:\d{2}/.test(wert) ? wert.slice(0, 5) : null)
+    const beginn = uhr(k.beginn)
+    const ende = uhr(k.ende)
+    return {
+      id: k.id,
+      user: person,
+      fachId: k.fach_id,
+      art: k.art,
+      kurs: typeof k.kurs === 'string' && k.kurs.trim() ? k.kurs : null,
+      datum: k.datum,
+      beginn: beginn && ende ? beginn : null,
+      ende: beginn && ende ? ende : null,
+      bemerkung: typeof k.bemerkung === 'string' ? k.bemerkung : '',
+    }
+  }
+
   const zeileZuNote = (n: NoteZeile): Note | null => {
     const person = personen.get(n.user_id)
     if (!person) return null
@@ -1434,6 +1467,7 @@ export function supabaseBackend(
         fachZeilen,
         notenZeilen,
         ansageZeilen,
+        klausurZeilen,
       ] = await Promise.all([
         versucheAlleSeiten<EinheitZeile>(
           () => db
@@ -1532,6 +1566,16 @@ export function supabaseBackend(
             .order('id', { ascending: true }),
           { name: 'duell_ansagen', schluessel: (ansage) => ansage.id }
         ),
+        // der feste klausurplan beider personen, ein paar dutzend zeilen
+        versucheAlleSeiten<KlausurZeile>(
+          () => db
+            .from('klausuren')
+            .select('id, user_id, fach_id, art, kurs, datum, beginn, ende, bemerkung', { count: 'exact' })
+            .in('user_id', userIds)
+            .order('datum', { ascending: true })
+            .order('id', { ascending: true }),
+          { name: 'klausuren', schluessel: (klausur) => klausur.id }
+        ),
       ])
 
       // Während Schema und Frontend getrennt veröffentlicht werden, darf eine
@@ -1626,6 +1670,8 @@ export function supabaseBackend(
         && !istFehlendeVonSpalte(fehlercode(ansageZeilen.error))
       ) throw ansageZeilen.error
       ansagenVerfuegbar = !ansageZeilen.error
+      // ohne die tabelle bleibt der notenbereich, wie er war
+      if (klausurZeilen.error && !fehltNoch(fehlercode(klausurZeilen.error))) throw klausurZeilen.error
       wettenVerfuegbar = !lesbareWetten.error
       abrechnungVerfuegbar = !abrechnungMitQuelle.error
       notenVerfuegbar = !fachZeilen.error && !notenZeilen.error
@@ -1756,6 +1802,11 @@ export function supabaseBackend(
         const note = zeileZuNote(n)
         if (note) noten.push(note)
       }
+      const klausuren: Klausur[] = []
+      for (const k of (klausurZeilen.data ?? []) as KlausurZeile[]) {
+        const klausur = zeileZuKlausur(k)
+        if (klausur) klausuren.push(klausur)
+      }
       const ansagen: Ansage[] = []
       for (const zeile of ansageZeilen.data ?? []) {
         const ansage = ansageAusZeile(zeile, (id) => personen.get(id))
@@ -1777,7 +1828,7 @@ export function supabaseBackend(
         wettenMeta,
         abrechnungen,
         ...(ansagenVerfuegbar ? { ansagen } : {}),
-        noten: { faecher, noten },
+        noten: { faecher, noten, ...(klausurZeilen.error ? {} : { klausuren }) },
         einheitVonVerfuegbar,
         altbestand,
       }

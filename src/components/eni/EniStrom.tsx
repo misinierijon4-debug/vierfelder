@@ -16,6 +16,7 @@ import { toKey } from '../../lib/dates'
 import { eniBegruessung } from '../../lib/eni'
 import { lesbareGroesse } from '../../lib/eniAnhang'
 import type { EniAnhang } from '../../lib/eniAnhang'
+import { abstandText, datumKurz } from '../../lib/klausuren'
 import type { DuellKontext, EniZeile } from '../../lib/eniSpeicher'
 import { EniDiagramm } from './EniDiagramm'
 import { EniAktionKarte } from './EniAktionKarte'
@@ -1167,7 +1168,19 @@ function EniLeer({
         : { titel: 'heute aufholen', prompt: `wie hole ich heute gegen ${gegnerKlein} am besten auf` }
     : { titel: 'führung übernehmen', prompt: `wie übernehme ich heute die führung gegen ${gegnerKlein}` }
 
+  // steht eine klausur an, ist der lernplan der erste einstieg: ENI kennt den
+  // termin aus der LAGE und plant von dort rückwärts
+  const klausur = duellStand?.klausur ?? null
+  const lernplan = klausur
+    ? [{
+        id: 'lernplan',
+        titel: `lernplan für ${klausur.fach} · ${abstandText(klausur.tage)}`,
+        prompt: `mach mir einen lernplan für meine klausur in ${klausur.fach} am ${datumKurz(klausur.datum)}`,
+      }]
+    : []
+
   const vorschlaege = [
+    ...lernplan,
     { id: 'duell', titel: `wie stehe ich gegen ${gegnerKlein}`, prompt: `wie stehe ich gegen ${gegnerKlein}` },
     { id: 'aufholen', titel: aufholen.titel, prompt: aufholen.prompt },
     { id: 'abend', titel: 'abend planen', prompt: 'hilf mir den abend planen: schlaf, essen und regeneration' },

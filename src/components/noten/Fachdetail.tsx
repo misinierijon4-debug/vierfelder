@@ -8,6 +8,8 @@ import { fachSchnitt, istNotenDatum, klausurAnteil, punkteKurz } from '../../lib
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { useDialogFokus } from '../../lib/dialogFokus'
+import { abstandText, datumKurz, zeitText } from '../../lib/klausuren'
+import type { KlausurZeile } from '../../lib/klausuren'
 
 type Props = {
   fach: Fach
@@ -18,6 +20,8 @@ type Props = {
   onNote: (punkte: number, art: Notenart, titel: string, datum: string) => Note | null
   onNoteLoeschen: (id: string) => Note | null
   onNoteWiederherstellen: (note: Note) => boolean
+  /** die nächste klausur in diesem fach aus dem plan, wenn es eine gibt */
+  naechste?: KlausurZeile | null
 }
 
 const notenartLabel: Record<Notenart, string> = {
@@ -26,7 +30,7 @@ const notenartLabel: Record<Notenart, string> = {
   hue: 'hü',
 }
 
-export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, onNote, onNoteLoeschen, onNoteWiederherstellen }: Props) {
+export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, onNote, onNoteLoeschen, onNoteWiederherstellen, naechste = null }: Props) {
   const reduced = useReducedMotion()
   const schliessen = useRef<HTMLButtonElement>(null)
   const dialog = useRef<HTMLElement>(null)
@@ -121,6 +125,13 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
         <div className="mt-4 border-y border-linie py-3">
           <p className="text-[12px]">{fach.kursart === 'lk' ? 'leistungskurs' : 'grundkurs'}</p>
           <p className="mt-1 text-[10px] text-kreide-52">{anteil}% klausur · {100 - anteil}% mündlich</p>
+          {naechste && (
+            <p className="mt-2 text-[12px]">
+              nächste klausur <span className="tnum">{datumKurz(naechste.klausur.datum)}</span>
+              <span className="text-kreide-52"> · {zeitText(naechste.klausur) ?? 'uhrzeit offen'} · </span>
+              <span style={{ color: farbe }}>{abstandText(naechste.tage)}</span>
+            </p>
+          )}
         </div>
 
         {/* vier prüfungen: die drei lk schriftlich, dazu genau ein mündlicher gk */}
