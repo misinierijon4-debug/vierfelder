@@ -503,7 +503,8 @@ Pages. Bei Korays Sozialkunde-Klausur steht keine Uhrzeit, bis sein Kurs
 - Migrationen wie oben.
 - Worker `aktivitaets-erinnerung` **Version 12**, eine Zeile aus `b68bad1`
   (`verify_jwt: false`). Vorher lokal in Deno: ohne Secret → 401. Danach in
-  Produktion per `net.http_post` ohne Secret → 401.
+  Produktion per `net.http_post` ohne Secret → 401; Cron-Lauf 20:55 UTC → 200,
+  `{gesendet: 0, uebersprungen: 0, fehler: 0}`.
 - `eni` **Version 57**, eine Zeile aus **`f061cc6`** (`verify_jwt: true`).
   Nicht aus `main`: Version 56 war ein hochgeladenes Bündel vom 03.10. mit dem
   Stand von `feat/eni-mimo` (#96, nicht gemergt, Anbieter `mimo-infron`).
