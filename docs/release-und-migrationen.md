@@ -498,6 +498,25 @@ die Art `klausur` nicht; erster möglicher Versand am 13.10.), dann `eni`, dann
 Pages. Bei Korays Sozialkunde-Klausur steht keine Uhrzeit, bis sein Kurs
 (skek1/skek2 oder skekf) feststeht — Nachtrag dann per neuer Migration.
 
+**Eingespielt am 05.10.2026** in dieser Reihenfolge:
+
+- Migrationen wie oben.
+- Worker `aktivitaets-erinnerung` **Version 12**, eine Zeile aus `b68bad1`
+  (`verify_jwt: false`). Vorher lokal in Deno: ohne Secret → 401. Danach in
+  Produktion per `net.http_post` ohne Secret → 401; Cron-Lauf 20:55 UTC → 200,
+  `{gesendet: 0, uebersprungen: 0, fehler: 0}`.
+- `eni` **Version 57**, eine Zeile aus **`f061cc6`** (`verify_jwt: true`).
+  Nicht aus `main`: Version 56 war ein hochgeladenes Bündel vom 03.10. mit dem
+  Stand von `feat/eni-mimo` (#96, nicht gemergt, Anbieter `mimo-infron`).
+  `f061cc6` liegt auf dem Branch `claude/eni-deploy-klausuren` und ist `main`
+  (`b68bad1`) plus `feat/eni-mimo`; gegen Version 56 ändert sich nur
+  `eniLage.ts` (Abschnitt Klausuren), inhaltlich per Dateivergleich geprüft.
+  Nach dem Deploy: `{pruefen: true}` → 200, Anbieter `deepseek, qwen-flash,
+  qwen-infron, mimo-infron`; Log `booted` ohne Fehler.
+  **Solange #96 offen ist, deployt ein `eni` aus `main` den Mimo-Anbieter
+  weg.** Erst #96 mergen (oder bewusst verwerfen), dann wieder aus `main`.
+  Zurückrollen: dieselbe Zeile mit `ab496df` (Stand von Version 56).
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien
