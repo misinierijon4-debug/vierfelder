@@ -13,7 +13,8 @@ const TABS: Array<{ id: AppTab; label: string }> = [
   { id: 'tracker', label: 'tracker' },
   { id: 'duell', label: 'duell' },
   { id: 'schlaf', label: 'schlaf' },
-  { id: 'noten', label: 'noten' },
+  // klausuren, noten und abiprognose: der tab heißt nach dem, worum es geht
+  { id: 'noten', label: 'abi' },
 ]
 
 export const HAUPTBEREICH_PANEL_ID = 'hauptbereich-panel'

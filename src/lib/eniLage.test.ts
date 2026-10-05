@@ -200,3 +200,44 @@ describe('Lage: Gewichtstrend und Schlafschnitt', () => {
     expect(lage).toContain('(Schnitt 6,5h aus 2 Naechten)')
   })
 })
+
+describe('Lage: Klausuren', () => {
+  const faecher = [
+    { id: 'eg', user_id: 'u-erijon', name: 'geschichte', kursart: 'lk' },
+    { id: 'es', user_id: 'u-erijon', name: 'sozialkunde', kursart: 'gk' },
+    { id: 'ed', user_id: 'u-erijon', name: 'deutsch', kursart: 'gk' },
+    { id: 'kg', user_id: 'u-koray', name: 'geschichte', kursart: 'lk' },
+    { id: 'ks', user_id: 'u-koray', name: 'sozialkunde', kursart: 'gk' },
+  ]
+  const klausur = (user: string, fach: string, datum: string, beginn: string | null = null, ende: string | null = null) =>
+    ({ user_id: user, fach_id: fach, art: 'klausur', kurs: null, datum, beginn, ende, bemerkung: '' })
+
+  it('nennt die kommenden Klausuren beider Personen mit Abstand, Zeit und gemeinsamen Terminen', async () => {
+    const lage = await baueLage(
+      dbAus({
+        faecher,
+        klausuren: [
+          klausur('u-erijon', 'ed', '2026-09-30', '08:45:00', '11:20:00'),
+          klausur('u-erijon', 'ed', '2026-10-05', '08:45:00', '11:20:00'),
+          klausur('u-erijon', 'es', '2026-10-27', '09:45:00', '11:20:00'),
+          klausur('u-erijon', 'eg', '2026-11-18', '08:00:00', '12:00:00'),
+          klausur('u-koray', 'ks', '2026-10-27'),
+          klausur('u-koray', 'kg', '2026-11-18', '08:00:00', '12:00:00'),
+        ],
+      }),
+      personen,
+      JETZT,
+    )
+    expect(lage).toContain('Erijon  Di 27.10. sozialkunde (in 19 Tagen, 09:45-11:20); Mi 18.11. geschichte LK (in 41 Tagen, 08:00-12:00)')
+    expect(lage).toContain('Koray   Di 27.10. sozialkunde (in 19 Tagen, Uhrzeit offen)')
+    // eine Woche zurueck steht sie als geschrieben da, aeltere fallen weg
+    expect(lage).toContain('zuletzt geschrieben: Mo 05.10. deutsch (vor 3 Tagen, 08:45-11:20)')
+    expect(lage).not.toContain('30.09.')
+    expect(lage).toContain('Am selben Tag im selben Fach: 27.10. sozialkunde, 18.11. geschichte.')
+  })
+
+  it('meldet einen Ausfall, statt Termine zu schaetzen', async () => {
+    expect(await baueLage(dbAus({ faecher }, ['klausuren']), personen, JETZT)).toContain('Klausuren: nicht lesbar.')
+    expect(await baueLage(dbAus({ faecher }), personen, JETZT)).toContain('Erijon  keine mehr im Plan')
+  })
+})

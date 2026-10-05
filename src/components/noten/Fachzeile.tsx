@@ -3,8 +3,10 @@ import type { Fach, Note } from '../../lib/types'
 import { brauchtFuerSchnitt, fachSchnitt, trend } from '../../lib/noten'
 import { Zahl } from '../Zahl'
 import { Trendlinie } from './Trendlinie'
+import { datumKurz } from '../../lib/klausuren'
+import type { KlausurZeile } from '../../lib/klausuren'
 
-export function Fachzeile({ fach, noten, onOeffnen }: { fach: Fach; noten: Note[]; onOeffnen: () => void }) {
+export function Fachzeile({ fach, noten, naechste = null, onOeffnen }: { fach: Fach; noten: Note[]; naechste?: KlausurZeile | null; onOeffnen: () => void }) {
   const schnitt = fachSchnitt(noten, fach).gesamt
   const braucht = brauchtFuerSchnitt(noten, fach)
   return (
@@ -12,7 +14,7 @@ export function Fachzeile({ fach, noten, onOeffnen }: { fach: Fach; noten: Note[
       <button type="button" onClick={onOeffnen} className="flex min-h-16 w-full items-center gap-3 py-2 text-left active:translate-y-px">
         <span className="min-w-0 flex-1">
           <span className="display block truncate text-[18px] font-semibold lowercase leading-none">{fach.name}</span>
-          <span className="mt-1 block text-[11px] text-kreide-52">{fach.kursart} · {fachSchnitt(noten, fach).anzahl || 'keine'} noten</span>
+          <span className="mt-1 block text-[11px] text-kreide-52">{fach.kursart} · {fachSchnitt(noten, fach).anzahl || 'keine'} noten{naechste ? ` · klausur ${datumKurz(naechste.klausur.datum)}` : ''}</span>
           {braucht !== null && (
             <span className="mt-0.5 block text-[10px] text-kreide-52">nächste klausur hält schnitt ab {braucht} {braucht === 1 ? 'punkt' : 'punkten'}</span>
           )}

@@ -76,7 +76,29 @@ export type Note = {
   titel: string
 }
 
-export type Notenstand = { faecher: Fach[]; noten: Note[] }
+/** eine klausur aus dem festen plan der schule; `abitur` kommt später dazu */
+export type Pruefungsart = 'klausur' | 'abitur'
+
+export type Klausur = {
+  id: string
+  user: UserId
+  fachId: string
+  art: Pruefungsart
+  /** kurskürzel aus dem plan (`m3`, `BIO1`); null, solange er nicht feststeht */
+  kurs: string | null
+  /** lokaler kalendertag, yyyy-mm-dd */
+  datum: string
+  /** `hh:mm`; beide null, solange die stunde nicht feststeht */
+  beginn: string | null
+  ende: string | null
+  bemerkung: string
+}
+
+/**
+ * `klausuren` fehlt, solange die tabelle nicht eingespielt ist, und in einem
+ * gemerkten offline-stand von vor dem klausurplan
+ */
+export type Notenstand = { faecher: Fach[]; noten: Note[]; klausuren?: Klausur[] }
 
 export const GEWICHT_STANDARD = 10
 

@@ -13,6 +13,8 @@ import { useSyncExternalStore } from 'react'
  */
 export const ENI_HASH = '#/eni'
 export const BERICHT_HASH = '#/bericht'
+/** die klausur-meldung schlägt den abi-tab auf */
+export const ABI_HASH = '#/abi'
 const ENI_WOCHE_PARAM = 'woche'
 const DATUM_MUSTER = /^\d{4}-\d{2}-\d{2}$/
 
@@ -92,6 +94,22 @@ export function useBerichtWoche(): string | null {
  */
 export function verlasseBericht(): void {
   if (typeof window === 'undefined' || !istBerichtHash(window.location.hash)) return
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  window.dispatchEvent(new HashChangeEvent('hashchange'))
+}
+
+function liesAbi(): boolean {
+  return typeof window !== 'undefined' && window.location.hash === ABI_HASH
+}
+
+/** ob die adresse gerade den abi-tab verlangt. wie beim bericht ein einstieg, kein zustand. */
+export function useAbiAdresse(): boolean {
+  return useSyncExternalStore(abonniere, liesAbi, () => false)
+}
+
+/** räumt `#/abi` ab, sobald der tab offen ist */
+export function verlasseAbi(): void {
+  if (!liesAbi()) return
   window.history.replaceState(null, '', window.location.pathname + window.location.search)
   window.dispatchEvent(new HashChangeEvent('hashchange'))
 }

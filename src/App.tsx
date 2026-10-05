@@ -38,7 +38,7 @@ import {
 import { SchlafTab } from './components/schlaf/SchlafTab'
 import { DuellTab } from './components/duell/DuellTab'
 import { NotenTab } from './components/noten/NotenTab'
-import { oeffneEni, oeffneEniWoche, schliesseEni, useBerichtWoche, useRoute, verlasseBericht } from './lib/eniRoute'
+import { oeffneEni, oeffneEniWoche, schliesseEni, useAbiAdresse, useBerichtWoche, useRoute, verlasseAbi, verlasseBericht } from './lib/eniRoute'
 import type { DuellKontext } from './lib/eniSpeicher'
 /**
  * ENI haengt am startpfad nicht mit drin. die anzeigetafel startet ohne sie,
@@ -241,6 +241,14 @@ function Tracker({
     oeffneBericht(berichtAusAdresse)
     verlasseBericht()
   }, [berichtAusAdresse, oeffneBericht])
+
+  // die klausur-meldung zeigt auf `#/abi`: tab aufschlagen, adresse abräumen
+  const abiAusAdresse = useAbiAdresse()
+  useEffect(() => {
+    if (!abiAusAdresse) return
+    setAktiverTab('noten')
+    verlasseAbi()
+  }, [abiAusAdresse])
 
   useEffect(() => {
     onDuellStand?.({

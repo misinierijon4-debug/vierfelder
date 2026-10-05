@@ -5,6 +5,8 @@ import { NotenKopf } from './NotenKopf'
 import { Fachzeile } from './Fachzeile'
 import { Fachdetail } from './Fachdetail'
 import { NotenVergleich } from './NotenVergleich'
+import { Klausuren } from './Klausuren'
+import { naechsteKlausur } from '../../lib/klausuren'
 
 type Props = {
   stand: Notenstand
@@ -22,10 +24,13 @@ export const NotenTab = memo(function NotenTab({ stand, me, heute, onPruefungsfa
   const detail = offen ? stand.faecher.find((fach) => fach.id === offen) ?? null : null
   return (
     <div>
-      <NotenKopf stand={stand} me={me} />
+      <Klausuren stand={stand} me={me} heute={heute} onFachOeffnen={setOffen} />
+      <div className={stand.klausuren ? 'mt-4' : undefined}>
+        <NotenKopf stand={stand} me={me} />
+      </div>
       <section aria-labelledby="faecher-titel" className="mt-5">
         <h2 id="faecher-titel" className="display text-[18px] font-semibold">deine fächer</h2>
-        {faecher.length === 0 ? <p className="mt-3 text-[12px] text-kreide-52">keine fächer geladen</p> : <ul className="mt-2 border-t border-linie">{faecher.map((fach) => <Fachzeile key={fach.id} fach={fach} noten={stand.noten} onOeffnen={() => setOffen(fach.id)} />)}</ul>}
+        {faecher.length === 0 ? <p className="mt-3 text-[12px] text-kreide-52">keine fächer geladen</p> : <ul className="mt-2 border-t border-linie">{faecher.map((fach) => <Fachzeile key={fach.id} fach={fach} noten={stand.noten} naechste={naechsteKlausur(stand, fach, heute)} onOeffnen={() => setOffen(fach.id)} />)}</ul>}
       </section>
       <NotenVergleich stand={stand} />
       <AnimatePresence>{detail && <Fachdetail key={detail.id} fach={detail} noten={stand.noten} heute={heute} onSchliessen={() => setOffen(null)} onPruefungsfach={onPruefungsfach} onNote={(punkte, art, titel, datum) => onNote(detail.id, punkte, art, datum, titel)} onNoteLoeschen={onNoteLoeschen} onNoteWiederherstellen={onNoteWiederherstellen} />}</AnimatePresence>

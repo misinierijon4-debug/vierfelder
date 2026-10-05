@@ -20,6 +20,7 @@ import { AnsageAbgelehnt, festzuschreiben, istAnsage, neueAnsage, reagiere, zaeh
 import type { Ansage, AnsageFeld, AnsageReaktion, AnsageStufe } from './ansagen'
 import { gewichtKey, neueEinheitId, other, tickKey, wertKey } from './types'
 import { notenGewicht } from './noten'
+import { KLAUSURPLAN } from './klausurplan'
 import type {
   Abrechnung,
   Aufenthalt,
@@ -28,6 +29,7 @@ import type {
   Einheiten,
   Fach,
   Gewichte,
+  Klausur,
   Note,
   Phase,
   PhasenArt,
@@ -559,6 +561,21 @@ function alleFaecher(): Fach[] {
   return lade<Fach[]>(FAECHER_KEY, [], (wert): wert is Fach[] => istObjektListe(wert, istFach))
 }
 
+/**
+ * der klausurplan ist fest und wird nicht gespeichert: er folgt den
+ * gespeicherten faechern über den namen, wie die migration produktiv.
+ */
+function alleKlausuren(faecher: Fach[]): Klausur[] {
+  return KLAUSURPLAN.flatMap(([wer, name, kurs, datum, beginn, ende, bemerkung], i) => {
+    const fach = faecher.find((f) => f.user === wer && f.name === name)
+    if (!fach) return []
+    return [{
+      id: `c0000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+      user: wer, fachId: fach.id, art: 'klausur' as const, kurs, datum, beginn, ende, bemerkung,
+    }]
+  })
+}
+
 function alleNoten(): Note[] {
   if (leseRoh(NOTEN_KEY) === null) {
     const start = beispielNoten()
@@ -1068,7 +1085,10 @@ export function lokalesBackend(): Backend {
           wettenMeta: wetteStand.meta.wochen,
           abrechnungen: alleAbrechnungen(),
           ansagen,
-          noten: { faecher: alleFaecher(), noten: alleNoten() },
+          noten: (() => {
+            const faecher = alleFaecher()
+            return { faecher, noten: alleNoten(), klausuren: alleKlausuren(faecher) }
+          })(),
           einheitVonVerfuegbar: true,
           altbestand: false,
         }

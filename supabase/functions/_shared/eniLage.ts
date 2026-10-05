@@ -81,6 +81,10 @@ const SERIE_TAGE = 35
 const TREND_TAGE = 28
 /** Wochen, die die Lage einzeln nennt; die Bilanz zaehlt alle gelesenen */
 const WOCHEN_GENANNT = 5
+/** so lange nach dem Termin steht eine Klausur noch als geschrieben da */
+const KLAUSUR_RUECKBLICK_TAGE = 7
+/** so viele kommende Klausuren nennt die Lage je Person */
+const KLAUSUREN_GENANNT = 8
 
 function mitVorzeichen(n: number): string {
   return n > 0 ? `+${n}` : String(n)
@@ -175,7 +179,7 @@ export async function baueLage(
       .eq('user_id', [...personen].find(([, name]) => name === person)?.[0] ?? '')
       .order('datum', { ascending: false })
       .limit(6)
-  const [aufenthalte, gewicht, einheiten, schlaf, faecher, notenErijon, notenKoray, ansagen, wochen] = await Promise.all([
+  const [aufenthalte, gewicht, einheiten, schlaf, faecher, notenErijon, notenKoray, ansagen, wochen, klausuren] = await Promise.all([
     db
     .from('aufenthalte')
     .select('user_id,bereich,ankunft,abgang')
@@ -199,7 +203,7 @@ export async function baueLage(
     .select('user_id,nacht,schlaf_minuten,nachtwert')
     .gte('nacht', minusTage(tag, 6))
     .order('nacht', { ascending: false }),
-    db.from('faecher').select('id,user_id,name'),
+    db.from('faecher').select('id,user_id,name,kursart'),
     notenVon('erijon'),
     notenVon('koray'),
     // ansagen enden spaetestens sonntag; alles ab montag ist die laufende woche
@@ -213,6 +217,13 @@ export async function baueLage(
     .select('woche,sieger,grund,differenz,punkte_erijon,punkte_koray')
     .order('woche', { ascending: false })
     .limit(52),
+    // der feste Klausurplan; eine Woche zurueck, damit ENI nach einer
+    // gerade geschriebenen fragen kann
+    db
+    .from('klausuren')
+    .select('user_id,fach_id,art,kurs,datum,beginn,ende,bemerkung')
+    .gte('datum', minusTage(tag, KLAUSUR_RUECKBLICK_TAGE))
+    .order('datum', { ascending: true }),
   ])
   const noten = {
     data: [...(notenErijon.data ?? []), ...(notenKoray.data ?? [])],
@@ -432,6 +443,48 @@ export async function baueLage(
         )
       zeilen.push(`${spalte(gross(person), 8)}${eintraege.length ? eintraege.join(', ') : 'nichts eingetragen'}`)
     }
+  }
+
+  zeilen.push('')
+
+  // klausuren aus dem festen plan der schule
+  if (faecher.error || klausuren.error) {
+    zeilen.push('Klausuren: nicht lesbar. Keine Termine nennen oder schaetzen.')
+  } else {
+    const fach = new Map(
+      (faecher.data ?? []).map((zeile) => [String(zeile.id), { name: String(zeile.name), lk: zeile.kursart === 'lk' }])
+    )
+    const termine = (klausuren.data ?? []).flatMap((zeile) => {
+      const person = wer(zeile.user_id)
+      const f = fach.get(String(zeile.fach_id))
+      if (!person || !f) return []
+      return [{
+        person,
+        name: f.name,
+        lk: f.lk,
+        abitur: zeile.art === 'abitur',
+        datum: String(zeile.datum),
+        zeit: zeile.beginn && zeile.ende ? `${String(zeile.beginn).slice(0, 5)}-${String(zeile.ende).slice(0, 5)}` : 'Uhrzeit offen',
+        tage: tageZwischen(tag, String(zeile.datum)),
+      }]
+    })
+    const wochentagKurz = (datum: string) => (WOCHENTAG[new Date(`${datum}T12:00:00Z`).getUTCDay()] ?? '').slice(0, 2)
+    const abstand = (tage: number) =>
+      tage === 0 ? 'heute' : tage === 1 ? 'morgen' : tage > 0 ? `in ${tage} Tagen` : tage === -1 ? 'gestern' : `vor ${-tage} Tagen`
+    const beschreibe = (t: (typeof termine)[number]) =>
+      `${wochentagKurz(t.datum)} ${kurz(t.datum)} ${t.abitur ? 'Abiturpruefung ' : ''}${t.name}${t.lk ? ' LK' : ''} (${abstand(t.tage)}, ${t.zeit})`
+    zeilen.push('Klausuren, aus dem festen Kursarbeitsplan der Schule (MSS 13), naechste zuerst. Nur diese Termine gelten; keine erfinden oder verschieben:')
+    for (const person of ['erijon', 'koray'] as const) {
+      const kommend = termine.filter((t) => t.person === person && t.tage >= 0).slice(0, KLAUSUREN_GENANNT)
+      zeilen.push(`${spalte(gross(person), 8)}${kommend.length ? kommend.map(beschreibe).join('; ') : 'keine mehr im Plan'}`)
+      const geschrieben = termine.filter((t) => t.person === person && t.tage < 0)
+      if (geschrieben.length) zeilen.push(`${spalte('', 8)}zuletzt geschrieben: ${geschrieben.map(beschreibe).join('; ')}`)
+    }
+    const gemeinsam = termine.filter((t) =>
+      t.person === 'erijon' && t.tage >= 0 &&
+      termine.some((k) => k.person === 'koray' && k.datum === t.datum && k.name === t.name))
+    if (gemeinsam.length) zeilen.push(`Am selben Tag im selben Fach: ${gemeinsam.map((t) => `${kurz(t.datum)} ${t.name}`).join(', ')}.`)
+    zeilen.push('Bei Lernplaenen und der Frage, was als Naechstes dran ist: vom naechsten Termin rueckwaerts planen, Leistungskurse (4 bis 4,5 Stunden) frueher anfangen, und die Lernzeit dieser Woche aus der Tabelle oben mitdenken. Nach einer gerade geschriebenen Klausur darfst du fragen, wie sie lief, und an das Eintragen der Note erinnern, sobald sie da ist.')
   }
 
   return zeilen.join('\n')

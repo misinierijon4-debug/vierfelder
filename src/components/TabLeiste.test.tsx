@@ -44,11 +44,11 @@ describe('hauptbereich-tabs', () => {
     expect(screen.getByRole('tab', { name: 'duell' }).getAttribute('aria-selected')).toBe('true')
 
     await user.keyboard('{End}')
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'noten' }))
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'abi' }))
     await user.keyboard('{ArrowRight}')
     expect(document.activeElement).toBe(tracker)
     await user.keyboard('{ArrowLeft}')
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'noten' }))
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'abi' }))
     await user.keyboard('{Home}')
     expect(document.activeElement).toBe(tracker)
   })
