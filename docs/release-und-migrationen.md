@@ -535,6 +535,16 @@ beide Klausuren 09:45–11:20, Push für den 24.10. nennt Erdkunde mit Uhrzeit. 
 Vergleich (`VERGLEICHSPAARE`); bis der Pages-Lauf durch ist, steht das Fach
 dort kurz ohne Partner.
 
+## Neue Migration `fach_sozialkunde` (06.10.2026)
+
+Korrektur von erijon: beide haben Sozialkunde, nicht Erdkunde. Die schon
+angewandte `fach_erdkunde` bleibt unverändert stehen (Regel 2); die neue
+`20261006090000_fach_sozialkunde.sql` benennt das Fach bei beiden zurück.
+Korays Klausurzeit 09:45–11:20 bleibt, es ist derselbe Kurs. Datenänderung:
+zwei Fachnamen. Produktiv als `20261006103811_fach_sozialkunde`; danach
+gelesen: beide Fächer `sozialkunde`, beide Klausuren 09:45–11:20, Push für den
+13.10. nennt Sozialkunde mit Uhrzeit.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

@@ -9,14 +9,15 @@ import type { UserId } from './types'
  * bemerkung. ein leerer kurs heißt: es gibt parallelkurse, und welcher es ist,
  * steht nicht fest.
  *
- * nachtrag `*_fach_erdkunde.sql`: das fach heißt dieses halbjahr erdkunde, und
- * korays klausur liegt wie erijons in der 3.–4. stunde.
+ * nachträge: korays klausur liegt wie erijons in der 3.–4. stunde
+ * (`*_fach_erdkunde.sql`); der fachname war kurz `erdkunde` und heißt seit
+ * `*_fach_sozialkunde.sql` wieder `sozialkunde`.
  */
 export type Planzeile = [UserId, string, string | null, string, string | null, string | null, string]
 
 export const KLAUSURPLAN: readonly Planzeile[] = [
   ['erijon', 'deutsch', null, '2026-09-30', '08:45', '11:20', '3-stündig'],
-  ['erijon', 'erdkunde', 'skek1', '2026-10-27', '09:45', '11:20', ''],
+  ['erijon', 'sozialkunde', 'skek1', '2026-10-27', '09:45', '11:20', ''],
   ['erijon', 'ethik', 'eth', '2026-10-29', '11:35', '13:05', ''],
   ['erijon', 'englisch', 'E2', '2026-11-06', '09:00', '13:30', 'Zentraltermin'],
   ['erijon', 'bildende kunst', 'bk1', '2026-11-12', '15:30', '17:00', ''],
@@ -25,7 +26,7 @@ export const KLAUSURPLAN: readonly Planzeile[] = [
   ['erijon', 'bio', 'BIO1', '2026-12-03', '08:00', '12:00', '4 Zeitstunden'],
   ['erijon', 'informatik', 'inf', '2026-12-07', '15:30', '17:00', ''],
   ['koray', 'deutsch', 'D', '2026-09-30', '08:45', '13:15', '4,5 Zeitstunden'],
-  ['koray', 'erdkunde', null, '2026-10-27', '09:45', '11:20', ''],
+  ['koray', 'sozialkunde', null, '2026-10-27', '09:45', '11:20', ''],
   ['koray', 'katholische religion', null, '2026-10-29', '11:35', '13:05', ''],
   ['koray', 'bildende kunst', null, '2026-11-12', '15:30', '17:00', ''],
   ['koray', 'geschichte', 'G', '2026-11-18', '08:00', '12:00', '4 Zeitstunden'],
