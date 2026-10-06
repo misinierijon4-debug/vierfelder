@@ -517,6 +517,22 @@ Pages. Bei Korays Sozialkunde-Klausur steht keine Uhrzeit, bis sein Kurs
   weg.** Erst #96 mergen (oder bewusst verwerfen), dann wieder aus `main`.
   Zurückrollen: dieselbe Zeile mit `ab496df` (Stand von Version 56).
 
+## #96 gemergt, neue Migration `fach_erdkunde` (06.10.2026)
+
+Auf Wunsch von erijon ist `feat/eni-mimo` (#96) in `main` (`2a4e36d`). Damit
+ist der Function-Code auf `main` gleich dem produktiven Deploy-Commit
+`f061cc6` (`eni` v57, per `git diff` geprüft); die Sperre „nicht aus `main`
+deployen“ aus dem Eintrag vom 05.10. entfällt. Der nächste `eni`-Deploy kommt
+wieder als eine Zeile aus dem gemergten `main`-Commit.
+
+Migration `20261006080000_fach_erdkunde.sql`: Dieses Halbjahr haben beide
+Erdkunde, nicht Sozialkunde. Das Fach heißt bei beiden `erdkunde` (Noten und
+Klausur hängen an der id), Korays Klausur am 27.10. liegt wie Erijons in der
+3.–4. Stunde (09:45–11:20). Datenänderung: zwei Fachnamen, eine
+Klausurzeile; ausdrücklich so beauftragt. Die App paart `erdkunde` im
+Vergleich (`VERGLEICHSPAARE`); bis der Pages-Lauf durch ist, steht das Fach
+dort kurz ohne Partner.
+
 ## Aktuelle Sperre
 
 `supabase/schema.sql` ist ein historischer Grundstands-Snapshot. Die Dateien

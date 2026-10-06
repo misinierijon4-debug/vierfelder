@@ -30,6 +30,24 @@ const nachtraege = import.meta.glob('../../supabase/migrations/*_klausur_meldung
 }) as Record<string, string>
 const konkret = Object.values(nachtraege)[0] ?? ''
 
+const erdkundeDateien = import.meta.glob('../../supabase/migrations/*_fach_erdkunde.sql', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+}) as Record<string, string>
+const erdkunde = Object.values(erdkundeDateien)[0] ?? ''
+
+/** der plan nach dem nachtrag `*_fach_erdkunde.sql`: neuer fachname, korays zeit */
+function mitErdkunde(plan: unknown[]): unknown[] {
+  return plan.map((zeile) => {
+    const [wer, fach, kurs, datum, beginn, ende, bemerkung] = zeile as Array<string | null>
+    if (fach !== 'sozialkunde') return zeile
+    return wer === 'koray'
+      ? [wer, 'erdkunde', kurs, datum, '09:45', '11:20', '']
+      : [wer, 'erdkunde', kurs, datum, beginn, ende, bemerkung]
+  })
+}
+
 function rumpf(datei: string): string {
   const start = datei.indexOf('create or replace function public.aktivitaets_kandidaten(')
   const marke = 'grant execute on function public.aktivitaets_kandidaten(timestamptz) to service_role;'
@@ -40,7 +58,7 @@ function rumpf(datei: string): string {
 describe('klausurplan', () => {
   it('steht im prototyp genauso wie in der migration', () => {
     expect(Object.keys(dateien)).toHaveLength(1)
-    expect(planAusMigration()).toEqual(KLAUSURPLAN.map((zeile) => [...zeile]))
+    expect(mitErdkunde(planAusMigration())).toEqual(KLAUSURPLAN.map((zeile) => [...zeile]))
   })
 
   it('hat je person höchstens eine klausur pro fach und gültige zeiten', () => {
@@ -83,5 +101,15 @@ describe('klausurplan', () => {
     expect(neu).toContain("then ' danach: '")
     expect(neu).toContain("when 7 then 'in einer woche '")
     expect(konkret).not.toMatch(/\b(insert into|update|delete from|drop policy)\b/i)
+  })
+
+  it('nachtrag erdkunde: benennt nur das fach um und setzt korays zeit', () => {
+    expect(Object.keys(erdkundeDateien)).toHaveLength(1)
+    expect(erdkunde).toContain("set name = 'erdkunde'")
+    expect(erdkunde).toContain("and f.name = 'sozialkunde';")
+    expect(erdkunde).toContain("set beginn = '09:45', ende = '11:20', bemerkung = ''")
+    expect(erdkunde).toContain("and p.person = 'koray'")
+    expect(erdkunde).toContain('and k.beginn is null;')
+    expect(erdkunde).not.toMatch(/\b(delete|drop|insert into|create)\b/i)
   })
 })

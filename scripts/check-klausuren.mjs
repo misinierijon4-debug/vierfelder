@@ -25,6 +25,7 @@ const altEndeMarke = 'grant execute on function public.aktivitaets_kandidaten(ti
 const altFunktion = alt.slice(altStart, alt.indexOf(altEndeMarke, altStart) + altEndeMarke.length)
 const migration = await lies('20261005190000_klausuren.sql')
 const konkret = await lies('20261005220000_klausur_meldung_konkret.sql')
+const erdkunde = await lies('20261006080000_fach_erdkunde.sql')
 
 const query = (sql, params = []) => db.query(sql, params)
 const berlin = (zeit) => `${zeit} Europe/Berlin`
@@ -239,6 +240,38 @@ try {
   await query('update public.erinnerungs_einstellungen set klausur_aktiv = false where user_id = $1', [erijon])
   assert.equal(await meldung('2026-11-17 17:30', erijon), null)
   await query('update public.erinnerungs_einstellungen set klausur_aktiv = true where user_id = $1', [erijon])
+
+  // ------------------------------------------------------ fach erdkunde
+  // dieses halbjahr heisst das fach erdkunde; korays klausur liegt in der 3.–4. stunde
+  const notenVorher = (await query("select id, name from public.faecher where name = 'sozialkunde' order by id")).rows
+  assert.equal(notenVorher.length, 2)
+  await db.exec(erdkunde)
+  await db.exec(erdkunde) // zweimal einspielen aendert nichts mehr
+  assert.deepEqual(
+    (await query("select id, name from public.faecher where id = any($1::uuid[]) order by id", [notenVorher.map((z) => z.id)])).rows,
+    notenVorher.map((z) => ({ id: z.id, name: 'erdkunde' })),
+    'dieselben faecher, nur der name ist neu',
+  )
+  assert.equal((await query("select count(*)::int as n from public.faecher where name = 'sozialkunde'")).rows[0].n, 0)
+  assert.equal(
+    await meldung('2026-10-24 17:10', koray),
+    'in 3 tagen klausur: erdkunde am 27.10., 09:45–11:20. erijon schreibt sie auch. danach: katholische religion in 5 tagen.',
+  )
+  assert.equal(
+    await meldung('2026-10-13 17:10', erijon),
+    'in zwei wochen klausur: erdkunde am 27.10., 09:45–11:20. koray schreibt sie auch. danach: ethik in 16 tagen.',
+  )
+  // nur korays zeile hat sich geaendert, erijons kurs bleibt
+  assert.deepEqual(
+    (await query(`select p.person, k.kurs, left(k.beginn::text, 5) as beginn, left(k.ende::text, 5) as ende, k.bemerkung
+      from public.klausuren k join public.faecher f on f.id = k.fach_id join public.profile p on p.id = k.user_id
+      where f.name = 'erdkunde' order by p.person`)).rows,
+    [
+      { person: 'erijon', kurs: 'skek1', beginn: '09:45', ende: '11:20', bemerkung: '' },
+      { person: 'koray', kurs: null, beginn: '09:45', ende: '11:20', bemerkung: '' },
+    ],
+  )
+  assert.equal((await query('select count(*)::int as n from public.klausuren')).rows[0].n, 18)
 
   // ------------------------------------------------------ die uebrigen arten
   // dienstag 17.11. 18:40, erijon hat nichts gelernt
