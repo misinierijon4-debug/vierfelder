@@ -161,7 +161,7 @@ export const VERGLEICHSPAARE: Array<{ erijon: string; koray: string }> = [
   { erijon: 'englisch', koray: 'deutsch' },
   { erijon: 'mathe', koray: 'mathe' },
   { erijon: 'deutsch', koray: 'englisch' },
-  { erijon: 'sozialkunde', koray: 'sozialkunde' },
+  { erijon: 'erdkunde', koray: 'erdkunde' },
   { erijon: 'ethik', koray: 'katholische religion' },
   { erijon: 'sport', koray: 'sport' },
   { erijon: 'bildende kunst', koray: 'bildende kunst' },

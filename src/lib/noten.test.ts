@@ -296,8 +296,8 @@ describe('vergleich', () => {
     const bau = (user: 'erijon' | 'koray', liste: Array<[string, 'lk' | 'gk']>): Fach[] =>
       liste.map(([name, kursart], i) => ({ id: `${user}-${name}`, user, name, kursart, pruefungsfach: null, sortierung: i }))
     return [
-      ...bau('erijon', [['bio', 'lk'], ['englisch', 'lk'], ['geschichte', 'lk'], ['mathe', 'gk'], ['deutsch', 'gk'], ['sozialkunde', 'gk'], ['ethik', 'gk'], ['sport', 'gk'], ['informatik', 'gk'], ['bildende kunst', 'gk']]),
-      ...bau('koray', [['deutsch', 'lk'], ['physik', 'lk'], ['geschichte', 'lk'], ['mathe', 'gk'], ['englisch', 'gk'], ['sozialkunde', 'gk'], ['katholische religion', 'gk'], ['französisch', 'gk'], ['sport', 'gk'], ['bildende kunst', 'gk']]),
+      ...bau('erijon', [['bio', 'lk'], ['englisch', 'lk'], ['geschichte', 'lk'], ['mathe', 'gk'], ['deutsch', 'gk'], ['erdkunde', 'gk'], ['ethik', 'gk'], ['sport', 'gk'], ['informatik', 'gk'], ['bildende kunst', 'gk']]),
+      ...bau('koray', [['deutsch', 'lk'], ['physik', 'lk'], ['geschichte', 'lk'], ['mathe', 'gk'], ['englisch', 'gk'], ['erdkunde', 'gk'], ['katholische religion', 'gk'], ['französisch', 'gk'], ['sport', 'gk'], ['bildende kunst', 'gk']]),
     ]
   }
 

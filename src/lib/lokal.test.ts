@@ -901,3 +901,26 @@ describe('lokale ansagen', () => {
     expect(JSON.parse(speicher.getItem('vierfelder.ansagen.v1')!)[0].entschieden.ergebnis).toBe('verfehlt')
   })
 })
+
+describe('klausurplan im prototyp', () => {
+  beforeEach(() => {
+    speicher.clear()
+  })
+
+  it('bringt den plan mit und haengt die klausur an das fach erdkunde', async () => {
+    const { noten } = await lokalesBackend().laden()
+    const erdkunde = noten.faecher.filter((fach) => fach.name === 'erdkunde')
+    expect(erdkunde.map((fach) => fach.user).sort()).toEqual(['erijon', 'koray'])
+    const korays = noten.klausuren?.find((k) => k.fachId === erdkunde.find((f) => f.user === 'koray')!.id)
+    expect(korays).toMatchObject({ datum: '2026-10-27', beginn: '09:45', ende: '11:20' })
+    expect(noten.klausuren).toHaveLength(18)
+  })
+
+  it('nennt ein gemerktes fach sozialkunde jetzt erdkunde, mit derselben id', async () => {
+    const alt = [{ id: 'a0000000-0000-4000-8000-000000000006', user: 'erijon', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 }]
+    speicher.setItem('vierfelder.faecher.v2', JSON.stringify(alt))
+    const { noten } = await lokalesBackend().laden()
+    expect(noten.faecher).toEqual([{ ...alt[0], name: 'erdkunde' }])
+    expect(noten.klausuren?.map((k) => k.fachId)).toEqual(['a0000000-0000-4000-8000-000000000006'])
+  })
+})

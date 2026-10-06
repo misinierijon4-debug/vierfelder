@@ -514,7 +514,7 @@ const START_FAECHER: Fach[] = [
   { id: 'a0000000-0000-4000-8000-000000000003', user: 'erijon', name: 'geschichte', kursart: 'lk', pruefungsfach: null, sortierung: 2 },
   { id: 'a0000000-0000-4000-8000-000000000004', user: 'erijon', name: 'mathe', kursart: 'gk', pruefungsfach: 4, sortierung: 3 },
   { id: 'a0000000-0000-4000-8000-000000000005', user: 'erijon', name: 'deutsch', kursart: 'gk', pruefungsfach: null, sortierung: 4 },
-  { id: 'a0000000-0000-4000-8000-000000000006', user: 'erijon', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
+  { id: 'a0000000-0000-4000-8000-000000000006', user: 'erijon', name: 'erdkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
   { id: 'a0000000-0000-4000-8000-000000000007', user: 'erijon', name: 'ethik', kursart: 'gk', pruefungsfach: null, sortierung: 6 },
   { id: 'a0000000-0000-4000-8000-000000000009', user: 'erijon', name: 'sport', kursart: 'gk', pruefungsfach: null, sortierung: 7 },
   { id: 'a0000000-0000-4000-8000-000000000010', user: 'erijon', name: 'informatik', kursart: 'gk', pruefungsfach: null, sortierung: 8 },
@@ -524,7 +524,7 @@ const START_FAECHER: Fach[] = [
   { id: 'b0000000-0000-4000-8000-000000000003', user: 'koray', name: 'geschichte', kursart: 'lk', pruefungsfach: null, sortierung: 2 },
   { id: 'b0000000-0000-4000-8000-000000000004', user: 'koray', name: 'mathe', kursart: 'gk', pruefungsfach: null, sortierung: 3 },
   { id: 'b0000000-0000-4000-8000-000000000005', user: 'koray', name: 'englisch', kursart: 'gk', pruefungsfach: 4, sortierung: 4 },
-  { id: 'b0000000-0000-4000-8000-000000000006', user: 'koray', name: 'sozialkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
+  { id: 'b0000000-0000-4000-8000-000000000006', user: 'koray', name: 'erdkunde', kursart: 'gk', pruefungsfach: null, sortierung: 5 },
   { id: 'b0000000-0000-4000-8000-000000000007', user: 'koray', name: 'katholische religion', kursart: 'gk', pruefungsfach: null, sortierung: 6 },
   { id: 'b0000000-0000-4000-8000-000000000008', user: 'koray', name: 'französisch', kursart: 'gk', pruefungsfach: null, sortierung: 7 },
   { id: 'b0000000-0000-4000-8000-000000000010', user: 'koray', name: 'sport', kursart: 'gk', pruefungsfach: null, sortierung: 8 },
@@ -558,7 +558,9 @@ function alleFaecher(): Fach[] {
     localStorage.setItem(FAECHER_KEY, JSON.stringify(START_FAECHER))
     return START_FAECHER
   }
+  // wie die migration `*_fach_erdkunde.sql`: ein gemerkter alter name heißt jetzt erdkunde
   return lade<Fach[]>(FAECHER_KEY, [], (wert): wert is Fach[] => istObjektListe(wert, istFach))
+    .map((fach) => (fach.name === 'sozialkunde' ? { ...fach, name: 'erdkunde' } : fach))
 }
 
 /**
