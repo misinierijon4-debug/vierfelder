@@ -529,7 +529,9 @@ Migration `20261006080000_fach_erdkunde.sql`: Dieses Halbjahr haben beide
 Erdkunde, nicht Sozialkunde. Das Fach heißt bei beiden `erdkunde` (Noten und
 Klausur hängen an der id), Korays Klausur am 27.10. liegt wie Erijons in der
 3.–4. Stunde (09:45–11:20). Datenänderung: zwei Fachnamen, eine
-Klausurzeile; ausdrücklich so beauftragt. Die App paart `erdkunde` im
+Klausurzeile; ausdrücklich so beauftragt. Produktiv als
+`20261006040230_fach_erdkunde`; danach gelesen: beide Fächer `erdkunde`,
+beide Klausuren 09:45–11:20, Push für den 24.10. nennt Erdkunde mit Uhrzeit. Die App paart `erdkunde` im
 Vergleich (`VERGLEICHSPAARE`); bis der Pages-Lauf durch ist, steht das Fach
 dort kurz ohne Partner.
 
