@@ -37,14 +37,22 @@ const erdkundeDateien = import.meta.glob('../../supabase/migrations/*_fach_erdku
 }) as Record<string, string>
 const erdkunde = Object.values(erdkundeDateien)[0] ?? ''
 
-/** der plan nach dem nachtrag `*_fach_erdkunde.sql`: neuer fachname, korays zeit */
-function mitErdkunde(plan: unknown[]): unknown[] {
+const sozialkundeDateien = import.meta.glob('../../supabase/migrations/*_fach_sozialkunde.sql', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+}) as Record<string, string>
+const sozialkunde = Object.values(sozialkundeDateien)[0] ?? ''
+
+/**
+ * der plan nach beiden nachträgen: `*_fach_erdkunde.sql` setzt korays zeit und
+ * benennt um, `*_fach_sozialkunde.sql` nimmt nur den namen zurück
+ */
+function mitNachtraegen(plan: unknown[]): unknown[] {
   return plan.map((zeile) => {
-    const [wer, fach, kurs, datum, beginn, ende, bemerkung] = zeile as Array<string | null>
-    if (fach !== 'sozialkunde') return zeile
-    return wer === 'koray'
-      ? [wer, 'erdkunde', kurs, datum, '09:45', '11:20', '']
-      : [wer, 'erdkunde', kurs, datum, beginn, ende, bemerkung]
+    const [wer, fach, kurs, datum] = zeile as Array<string | null>
+    if (wer !== 'koray' || fach !== 'sozialkunde') return zeile
+    return [wer, fach, kurs, datum, '09:45', '11:20', '']
   })
 }
 
@@ -58,7 +66,7 @@ function rumpf(datei: string): string {
 describe('klausurplan', () => {
   it('steht im prototyp genauso wie in der migration', () => {
     expect(Object.keys(dateien)).toHaveLength(1)
-    expect(mitErdkunde(planAusMigration())).toEqual(KLAUSURPLAN.map((zeile) => [...zeile]))
+    expect(mitNachtraegen(planAusMigration())).toEqual(KLAUSURPLAN.map((zeile) => [...zeile]))
   })
 
   it('hat je person höchstens eine klausur pro fach und gültige zeiten', () => {
@@ -111,5 +119,12 @@ describe('klausurplan', () => {
     expect(erdkunde).toContain("and p.person = 'koray'")
     expect(erdkunde).toContain('and k.beginn is null;')
     expect(erdkunde).not.toMatch(/\b(delete|drop|insert into|create)\b/i)
+  })
+
+  it('nachtrag sozialkunde: nimmt nur den namen zurück', () => {
+    expect(Object.keys(sozialkundeDateien)).toHaveLength(1)
+    expect(sozialkunde).toContain("set name = 'sozialkunde'")
+    expect(sozialkunde).toContain("and f.name = 'erdkunde';")
+    expect(sozialkunde).not.toMatch(/klausuren|\b(delete|drop|insert into|create)\b/i)
   })
 })
