@@ -13,11 +13,14 @@ werden.
   im mündlichen Topf doppelt, eine HÜ und eine Klausur einfach. LK werden 50/50,
   GK 33/67 aus Klausur und mündlichem Topf gebildet.
 - Die echten Fächer stehen in den Migrationen und in `src/lib/lokal.ts`.
-  Erijon: Bio, Englisch, Geschichte als LK sowie Mathe, Deutsch, Sozialkunde,
+  Erijon: Bio, Englisch, Geschichte als LK sowie Mathe, Deutsch, Erdkunde,
   Ethik, Sport, Informatik und Bildende Kunst als GK. Koray: Deutsch, Physik,
-  Geschichte als LK sowie Mathe, Englisch, Sozialkunde, Katholische Religion,
-  Französisch, Sport und Bildende Kunst als GK. Es gibt Sozialkunde, keine
-  erfundene Erdkunde.
+  Geschichte als LK sowie Mathe, Englisch, Erdkunde, Katholische Religion,
+  Französisch, Sport und Bildende Kunst als GK. Der gemeinsame Kurs heißt nach
+  dem, was dieses Halbjahr im Stundenplan steht: bis 05.10.2026 `sozialkunde`,
+  seit `20261006080000_fach_erdkunde.sql` `erdkunde` (Auskunft von erijon).
+  Bei einem Halbjahreswechsel wird umbenannt, nicht ein zweites Fach angelegt;
+  Noten hängen an der id.
 - Das Prüfungsprofil besteht aus genau drei schriftlichen LK und einem
   mündlichen GK. Sport ist kein zulässiges viertes Prüfungsfach. Die fachliche
   Grundlage ist die
