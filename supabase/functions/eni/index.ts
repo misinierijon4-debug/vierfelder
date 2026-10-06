@@ -7,7 +7,7 @@ import {
   type EniDatenbank,
   type ModellAnfrage,
 } from '../_shared/eniModell.ts'
-import type { Gegenstelle } from '../_shared/eniAnbieter.ts'
+import { systemFuer, type Gegenstelle } from '../_shared/eniAnbieter.ts'
 import {
   mitWiederholung,
   Nochmal,
@@ -74,6 +74,7 @@ async function einVersuch(
     signal: anfrage.signal ? AbortSignal.any([anfrage.signal, AbortSignal.timeout(fristMs)]) : AbortSignal.timeout(fristMs),
     body: JSON.stringify({
       model: anbieter.modell,
+      ...anbieter.parameter,
       ...(anfrage.onText ? { stream: true } : {}),
       /**
        * Wer vordenkt, bekommt mehr Luft: denk-token sind ausgabe-token und
@@ -87,7 +88,7 @@ async function einVersuch(
        */
       ...anbieter.denken,
       messages: [
-        { role: 'system', content: anfrage.system },
+        { role: 'system', content: systemFuer(anbieter, anfrage.system) },
         ...anfrage.nachrichten.map((nachricht) => ({
           role: nachricht.rolle,
           /**
