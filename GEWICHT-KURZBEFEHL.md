@@ -80,7 +80,10 @@ nicht als neue Messung für den heutigen Tag gespeichert werden.
    | `p_token` | dein persönliches Import-Token |
    | `p_kg` | der Gewichtswert des heutigen Health-Ergebnisses |
 
-Der Typ **Text** ist wichtig. iOS legt neue Felder gern als Boolean an, und dann
+Der Typ **Text** ist wichtig. Das Menü beim Anlegen eines Feldes bietet genau
+fünf Einträge: Text, Zahl, Liste, Wörterbuch, Boolescher Wert — „Liste“ ist
+dabei der Array-Typ, einen Eintrag namens „Array“ gibt es nicht. iOS legt neue
+Felder gern als Boolescher Wert an, und dann
 kommt statt des Tokens ein `true` an. Aus demselben Grund parst die Funktion die
 Zahl selbst: Komma statt Punkt und ein angehängtes „kg" stören sie nicht.
 
