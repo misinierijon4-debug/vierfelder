@@ -463,6 +463,7 @@ export async function baueLage(
         name: f.name,
         lk: f.lk,
         abitur: zeile.art === 'abitur',
+        bemerkung: String(zeile.bemerkung ?? ''),
         datum: String(zeile.datum),
         zeit: zeile.beginn && zeile.ende ? `${String(zeile.beginn).slice(0, 5)}-${String(zeile.ende).slice(0, 5)}` : 'Uhrzeit offen',
         tage: tageZwischen(tag, String(zeile.datum)),
@@ -472,8 +473,8 @@ export async function baueLage(
     const abstand = (tage: number) =>
       tage === 0 ? 'heute' : tage === 1 ? 'morgen' : tage > 0 ? `in ${tage} Tagen` : tage === -1 ? 'gestern' : `vor ${-tage} Tagen`
     const beschreibe = (t: (typeof termine)[number]) =>
-      `${wochentagKurz(t.datum)} ${kurz(t.datum)} ${t.abitur ? 'Abiturpruefung ' : ''}${t.name}${t.lk ? ' LK' : ''} (${abstand(t.tage)}, ${t.zeit})`
-    zeilen.push('Klausuren, aus dem festen Kursarbeitsplan der Schule (MSS 13), naechste zuerst. Nur diese Termine gelten; keine erfinden oder verschieben:')
+      `${wochentagKurz(t.datum)} ${kurz(t.datum)} ${t.abitur ? 'Abiturpruefung ' : ''}${t.name}${t.lk ? ' LK' : ''} (${abstand(t.tage)}, ${t.zeit}${t.abitur && t.bemerkung ? `, ${t.bemerkung}` : ''})`
+    zeilen.push('Klausuren und Abiturpruefungen, aus dem festen Kursarbeits- und Terminplan der Schule (MSS 13), naechste zuerst. Nur diese Termine gelten; keine erfinden oder verschieben:')
     for (const person of ['erijon', 'koray'] as const) {
       const kommend = termine.filter((t) => t.person === person && t.tage >= 0).slice(0, KLAUSUREN_GENANNT)
       zeilen.push(`${spalte(gross(person), 8)}${kommend.length ? kommend.map(beschreibe).join('; ') : 'keine mehr im Plan'}`)

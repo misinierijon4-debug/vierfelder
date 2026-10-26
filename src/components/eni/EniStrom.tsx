@@ -1175,7 +1175,7 @@ function EniLeer({
     ? [{
         id: 'lernplan',
         titel: `lernplan für ${klausur.fach} · ${abstandText(klausur.tage)}`,
-        prompt: `mach mir einen lernplan für meine klausur in ${klausur.fach} am ${datumKurz(klausur.datum)}`,
+        prompt: `mach mir einen lernplan für meine ${klausur.abitur ? 'abiprüfung' : 'klausur'} in ${klausur.fach} am ${datumKurz(klausur.datum)}`,
       }]
     : []
 

@@ -20,7 +20,7 @@ import { AnsageAbgelehnt, festzuschreiben, istAnsage, neueAnsage, reagiere, zaeh
 import type { Ansage, AnsageFeld, AnsageReaktion, AnsageStufe } from './ansagen'
 import { gewichtKey, neueEinheitId, other, tickKey, wertKey } from './types'
 import { notenGewicht } from './noten'
-import { KLAUSURPLAN } from './klausurplan'
+import { ABITURPLAN, KLAUSURPLAN } from './klausurplan'
 import type {
   Abrechnung,
   Aufenthalt,
@@ -568,12 +568,16 @@ function alleFaecher(): Fach[] {
  * gespeicherten faechern über den namen, wie die migration produktiv.
  */
 function alleKlausuren(faecher: Fach[]): Klausur[] {
-  return KLAUSURPLAN.flatMap(([wer, name, kurs, datum, beginn, ende, bemerkung], i) => {
+  const plan = [
+    ...KLAUSURPLAN.map((zeile) => ({ zeile, art: 'klausur' as const })),
+    ...ABITURPLAN.map((zeile) => ({ zeile, art: 'abitur' as const })),
+  ]
+  return plan.flatMap(({ zeile: [wer, name, kurs, datum, beginn, ende, bemerkung], art }, i) => {
     const fach = faecher.find((f) => f.user === wer && f.name === name)
     if (!fach) return []
     return [{
       id: `c0000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
-      user: wer, fachId: fach.id, art: 'klausur' as const, kurs, datum, beginn, ende, bemerkung,
+      user: wer, fachId: fach.id, art, kurs, datum, beginn, ende, bemerkung,
     }]
   })
 }

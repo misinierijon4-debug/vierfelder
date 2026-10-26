@@ -233,7 +233,7 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
             .gte('ankunft', `${zeit.vorMontag}T00:00:00Z`),
           klient.from('gewicht').select('user_id,tag').gte('tag', zeit.montag),
           // ohne klausurplan (fehlende tabelle, fehler) bleibt nur der einstieg weg
-          klient.from('klausuren').select('fach_id,datum').eq('user_id', kontoId).gte('datum', zeit.heute),
+          klient.from('klausuren').select('fach_id,art,datum').eq('user_id', kontoId).gte('datum', zeit.heute),
           klient.from('faecher').select('id,name,kursart').eq('user_id', kontoId),
         ])
 
@@ -253,7 +253,7 @@ export function supabaseEniSpeicher(kontoId: string): EniSpeicher {
         const fach = new Map((faecher.data ?? []).map((zeile) => [String(zeile.id), zeile]))
         const termine = klausuren.error || faecher.error ? [] : (klausuren.data ?? []).flatMap((zeile) => {
           const f = fach.get(String(zeile.fach_id))
-          return f ? [{ fach: String(f.name), lk: f.kursart === 'lk', datum: String(zeile.datum) }] : []
+          return f ? [{ fach: String(f.name), lk: f.kursart === 'lk', datum: String(zeile.datum), abitur: zeile.art === 'abitur' }] : []
         })
         return { ...baueDuellKontext(person, tafel), klausur: eniKlausur(termine, zeit.heute) }
       } catch {
@@ -435,7 +435,7 @@ export function lokalerEniSpeicher(me: UserId): EniSpeicher {
         const { faecher, klausuren } = lokaleKlausuren()
         const termine = klausuren.filter((k) => k.user === me).flatMap((k) => {
           const f = faecher.find((fach) => fach.id === k.fachId)
-          return f ? [{ fach: f.name, lk: f.kursart === 'lk', datum: k.datum }] : []
+          return f ? [{ fach: f.name, lk: f.kursart === 'lk', datum: k.datum, abitur: k.art === 'abitur' }] : []
         })
         return { ...baueDuellKontext(me, tafel), klausur: eniKlausur(termine, zeit.heute) }
       } catch {

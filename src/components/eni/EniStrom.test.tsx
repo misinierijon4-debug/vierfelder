@@ -176,6 +176,27 @@ describe('die auftakte im leeren chat', () => {
     expect(onAuftakt).toHaveBeenCalledWith('mach mir einen lernplan für meine klausur in geschichte lk am mi 18.11.')
   })
 
+  it('nennt im lernplan eine abiprüfung beim namen', async () => {
+    const nutzer = userEvent.setup()
+    const onAuftakt = vi.fn()
+    render(
+      <EniStrom
+        zeilen={[]}
+        me="erijon"
+        prueft={false}
+        duellStand={{
+          ich: 'erijon', gegner: 'koray', ichName: 'Erijon', gegnerName: 'Koray',
+          wocheIch: 3, wocheEr: 2, diff: 1,
+          klausur: { fach: 'englisch lk', datum: '2027-01-15', tage: 10, abitur: true },
+        }}
+        onAuftakt={onAuftakt}
+        feldBelegt={false}
+      />
+    )
+    await nutzer.click(screen.getByRole('button', { name: 'lernplan für englisch lk · in 10 tagen' }))
+    expect(onAuftakt).toHaveBeenCalledWith('mach mir einen lernplan für meine abiprüfung in englisch lk am fr 15.01.')
+  })
+
   it('bietet ohne nahe klausur keinen lernplan an', () => {
     leer(false)
     expect(screen.queryByRole('button', { name: /lernplan/ })).toBeNull()

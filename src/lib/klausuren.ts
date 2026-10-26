@@ -30,6 +30,15 @@ export function zeitText(klausur: Klausur): string | null {
   return klausur.beginn && klausur.ende ? `${klausur.beginn}–${klausur.ende}` : null
 }
 
+/** „abi schriftlich, zentraltermin“ für eine abiturprüfung, sonst null */
+export function abiText(klausur: Klausur): string | null {
+  if (klausur.art !== 'abitur') return null
+  return `abi ${klausur.bemerkung.toLocaleLowerCase('de')}`.trim()
+}
+
+/** wie der termin in kurzen zeilen heißt: „klausur“ oder „abi“ */
+export const terminWort = (klausur: Klausur) => (klausur.art === 'abitur' ? 'abi' : 'klausur')
+
 function fachVon(stand: Notenstand, klausur: Klausur): Fach | null {
   return stand.faecher.find((fach) => fach.id === klausur.fachId && fach.user === klausur.user) ?? null
 }
@@ -92,27 +101,33 @@ export function ohneNote(stand: Notenstand, wer: UserId, heute: string): Klausur
 export const LERNPLAN_VORLAUF_TAGE = 21
 
 /** die nächste eigene klausur, so knapp, wie ENIs begrüßung sie braucht */
-export type EniKlausur = { fach: string; datum: string; tage: number }
+export type EniKlausur = { fach: string; datum: string; tage: number; abitur?: boolean }
 
 /**
  * die nächste klausur in den nächsten drei wochen, oder null. nimmt rohe
  * zeilen, weil ENI auch ohne tracker-zustand startet (eigenes homescreen-symbol).
  */
 export function eniKlausur(
-  termine: ReadonlyArray<{ fach: string; lk: boolean; datum: string }>,
+  termine: ReadonlyArray<{ fach: string; lk: boolean; datum: string; abitur?: boolean }>,
   heute: string,
 ): EniKlausur | null {
   const naechste = termine
     .map((t) => ({ ...t, tage: tageBis(heute, t.datum) }))
     .filter((t) => t.tage >= 0 && t.tage <= LERNPLAN_VORLAUF_TAGE)
     .sort((a, b) => a.datum.localeCompare(b.datum))[0]
-  return naechste ? { fach: `${naechste.fach}${naechste.lk ? ' lk' : ''}`, datum: naechste.datum, tage: naechste.tage } : null
+  if (!naechste) return null
+  const fach = `${naechste.fach}${naechste.lk ? ' lk' : ''}`
+  return naechste.abitur
+    ? { fach, datum: naechste.datum, tage: naechste.tage, abitur: true }
+    : { fach, datum: naechste.datum, tage: naechste.tage }
 }
 
 /** dieselbe auswahl aus dem notenstand des trackers */
 export function eniKlausurAusStand(stand: Notenstand, wer: UserId, heute: string): EniKlausur | null {
   return eniKlausur(
-    kommendeKlausuren(stand, wer, heute).map((z) => ({ fach: z.fach.name, lk: z.fach.kursart === 'lk', datum: z.klausur.datum })),
+    kommendeKlausuren(stand, wer, heute).map((z) => ({
+      fach: z.fach.name, lk: z.fach.kursart === 'lk', datum: z.klausur.datum, abitur: z.klausur.art === 'abitur',
+    })),
     heute,
   )
 }

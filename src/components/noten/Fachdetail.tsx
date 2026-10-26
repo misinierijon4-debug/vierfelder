@@ -8,7 +8,7 @@ import { fachSchnitt, istNotenDatum, klausurAnteil, punkteKurz } from '../../lib
 import { useScrollSperre } from '../../lib/scrollsperre'
 import { useNeustartBlocker } from '../../lib/pwaBlocker'
 import { useDialogFokus } from '../../lib/dialogFokus'
-import { abstandText, datumKurz, zeitText } from '../../lib/klausuren'
+import { abiText, abstandText, datumKurz, zeitText } from '../../lib/klausuren'
 import type { KlausurZeile } from '../../lib/klausuren'
 
 type Props = {
@@ -127,7 +127,7 @@ export function Fachdetail({ fach, noten, heute, onSchliessen, onPruefungsfach, 
           <p className="mt-1 text-[10px] text-kreide-52">{anteil}% klausur · {100 - anteil}% mündlich</p>
           {naechste && (
             <p className="mt-2 text-[12px]">
-              nächste klausur <span className="tnum">{datumKurz(naechste.klausur.datum)}</span>
+              {abiText(naechste.klausur) ?? 'nächste klausur'} <span className="tnum">{datumKurz(naechste.klausur.datum)}</span>
               <span className="text-kreide-52"> · {zeitText(naechste.klausur) ?? 'uhrzeit offen'} · </span>
               <span style={{ color: farbe }}>{abstandText(naechste.tage)}</span>
             </p>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { CaretRight } from '@phosphor-icons/react'
 import type { Notenstand, UserId } from '../../lib/types'
 import { other, user } from '../../lib/types'
-import { abstandText, datumKurz, kommendeKlausuren, ohneNote, zeitText } from '../../lib/klausuren'
+import { abiText, abstandText, datumKurz, kommendeKlausuren, ohneNote, zeitText } from '../../lib/klausuren'
 import type { KlausurZeile } from '../../lib/klausuren'
 import { Zahl } from '../Zahl'
 
@@ -66,7 +66,7 @@ export function Klausuren({ stand, me, heute, onFachOeffnen }: Props) {
       {naechste ? (
         <div className="mt-3 flex items-end justify-between gap-4" aria-live="polite">
           <div className="min-w-0">
-            <p className="text-[11px] text-kreide-52">nächste</p>
+            <p className="text-[11px] text-kreide-52">nächste{abiText(naechste.klausur) ? ` · ${abiText(naechste.klausur)}` : ''}</p>
             <p className="display mt-1 break-words text-[24px] font-bold lowercase leading-none">{fachLabel(naechste)}</p>
             <p className="mt-1.5 text-[12px] text-kreide-60">
               {datumKurz(naechste.klausur.datum)} · {zeitText(naechste.klausur) ?? 'uhrzeit offen'}
@@ -97,6 +97,7 @@ export function Klausuren({ stand, me, heute, onFachOeffnen }: Props) {
               <span className="min-w-0">
                 <span className="block truncate lowercase">{fachLabel(zeile)}</span>
                 <span className="block truncate text-[10px] text-kreide-52">
+                  {abiText(zeile.klausur) ? `${abiText(zeile.klausur)} · ` : ''}
                   {zeitText(zeile.klausur) ?? 'uhrzeit offen'}
                   {zeile.zusammen ? ` · ${partner} auch` : ''}
                 </span>
