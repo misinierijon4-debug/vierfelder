@@ -35,3 +35,20 @@ export const KLAUSURPLAN: readonly Planzeile[] = [
   ['koray', 'physik', 'PH', '2026-12-03', '08:00', '12:00', '4 Zeitstunden'],
   ['koray', 'englisch', null, '2026-12-09', '09:45', '11:20', ''],
 ]
+
+/**
+ * abiturtermine aus dem terminplan MSS 13 — dieselben zeilen wie in
+ * `*_abitur_termine.sql`, art `abitur`. die drei lk schriftlich, das vierte
+ * prüfungsfach mündlich; der mündliche tag (15. oder 16.03.) steht erst im
+ * prüfungsplan, bis dahin der frühere.
+ */
+export const ABITURPLAN: readonly Planzeile[] = [
+  ['erijon', 'englisch', 'E2', '2027-01-15', null, null, 'schriftlich, Zentraltermin'],
+  ['erijon', 'geschichte', 'G', '2027-01-18', null, null, 'schriftlich'],
+  ['erijon', 'bio', 'BIO1', '2027-01-22', null, null, 'schriftlich, Zentraltermin'],
+  ['erijon', 'mathe', null, '2027-03-15', null, null, 'mündlich, 15. oder 16.03.'],
+  ['koray', 'deutsch', 'D', '2027-01-13', null, null, 'schriftlich, Zentraltermin'],
+  ['koray', 'geschichte', 'G', '2027-01-18', null, null, 'schriftlich'],
+  ['koray', 'physik', 'PH', '2027-01-27', null, null, 'schriftlich, Zentraltermin'],
+  ['koray', 'englisch', null, '2027-03-15', null, null, 'mündlich, 15. oder 16.03.'],
+]

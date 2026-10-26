@@ -913,7 +913,21 @@ describe('klausurplan im prototyp', () => {
     expect(sozialkunde.map((fach) => fach.user).sort()).toEqual(['erijon', 'koray'])
     const korays = noten.klausuren?.find((k) => k.fachId === sozialkunde.find((f) => f.user === 'koray')!.id)
     expect(korays).toMatchObject({ datum: '2026-10-27', beginn: '09:45', ende: '11:20' })
-    expect(noten.klausuren).toHaveLength(18)
+    expect(noten.klausuren?.filter((k) => k.art === 'klausur')).toHaveLength(18)
+  })
+
+  it('bringt die abiturtermine als art abitur mit: drei lk schriftlich, ein fach mündlich', async () => {
+    const { noten } = await lokalesBackend().laden()
+    const fachName = (id: string) => noten.faecher.find((fach) => fach.id === id)
+    const abi = (noten.klausuren ?? []).filter((k) => k.art === 'abitur')
+    for (const wer of ['erijon', 'koray'] as const) {
+      const eigene = abi.filter((k) => k.user === wer)
+      expect(eigene).toHaveLength(4)
+      expect(eigene.filter((k) => k.bemerkung.startsWith('schriftlich')).map((k) => fachName(k.fachId)?.kursart))
+        .toEqual(['lk', 'lk', 'lk'])
+      expect(eigene.filter((k) => k.bemerkung.startsWith('mündlich')).map((k) => fachName(k.fachId)?.pruefungsfach))
+        .toEqual([4])
+    }
   })
 
   it('nennt ein kurz gemerktes fach erdkunde wieder sozialkunde, mit derselben id', async () => {

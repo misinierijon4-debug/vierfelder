@@ -260,7 +260,7 @@ function Tracker({
   // ein punkt am tab „abi“, solange die nächste eigene klausur höchstens drei tage weg ist
   const tabHinweise = useMemo(
     () => (eniKlausurStand && eniKlausurStand.tage <= 3
-      ? { noten: `klausur ${abstandText(eniKlausurStand.tage)}` }
+      ? { noten: `${eniKlausurStand.abitur ? 'abi' : 'klausur'} ${abstandText(eniKlausurStand.tage)}` }
       : undefined),
     [eniKlausurStand]
   )

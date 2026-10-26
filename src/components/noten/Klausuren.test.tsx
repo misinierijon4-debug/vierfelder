@@ -58,6 +58,23 @@ describe('Klausuren im abi-tab', () => {
     expect(screen.queryByText(/note eintragen/)).not.toBeInTheDocument()
   })
 
+  it('kennzeichnet abiturprüfungen und fragt nach ihnen nicht nach einer note', () => {
+    const abi = (id: string, fachId: string, datum: string, bemerkung: string): Klausur =>
+      ({ ...klausur(id, 'erijon', fachId, datum, null, null), art: 'abitur', bemerkung })
+    const stand = {
+      ...STAND,
+      klausuren: [
+        abi('a1', 'eg', '2027-01-18', 'schriftlich'),
+        abi('a2', 'ed', '2027-01-08', 'schriftlich, Zentraltermin'),
+        abi('a3', 'es', '2027-03-15', 'mündlich, 15. oder 16.03.'),
+      ],
+    }
+    render(<Klausuren stand={stand} me="erijon" heute="2027-01-12" onFachOeffnen={() => {}} />)
+    expect(screen.getByText('nächste · abi schriftlich')).toBeInTheDocument()
+    expect(screen.getByText(/abi mündlich, 15\. oder 16\.03\. · uhrzeit offen/)).toBeInTheDocument()
+    expect(screen.queryByText(/note eintragen/)).not.toBeInTheDocument()
+  })
+
   it('bleibt weg, solange es keinen klausurplan gibt', () => {
     const { container } = render(<Klausuren stand={{ faecher: [], noten: [] }} me="erijon" heute="2026-10-05" onFachOeffnen={() => {}} />)
     expect(container).toBeEmptyDOMElement()

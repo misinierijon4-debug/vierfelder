@@ -27,6 +27,7 @@ const migration = await lies('20261005190000_klausuren.sql')
 const konkret = await lies('20261005220000_klausur_meldung_konkret.sql')
 const erdkunde = await lies('20261006080000_fach_erdkunde.sql')
 const sozialkunde = await lies('20261006090000_fach_sozialkunde.sql')
+const abitur = await lies('20261026120000_abitur_termine.sql')
 
 const query = (sql, params = []) => db.query(sql, params)
 const berlin = (zeit) => `${zeit} Europe/Berlin`
@@ -293,6 +294,40 @@ try {
     'in zwei wochen klausur: sozialkunde am 27.10., 09:45–11:20. koray schreibt sie auch. danach: ethik in 16 tagen.',
   )
 
+  // ------------------------------------------------------ abiturtermine
+  // die drei lk schriftlich, das vierte pruefungsfach muendlich; zweimal einspielen schadet nicht
+  await db.exec(abitur)
+  await db.exec(abitur)
+  const abi = (await query(`
+    select p.person, f.name, k.datum::text, k.beginn, k.bemerkung
+    from public.klausuren k join public.faecher f on f.id = k.fach_id join public.profile p on p.id = k.user_id
+    where k.art = 'abitur' and f.user_id = k.user_id
+    order by p.person, k.datum, f.name`)).rows
+  assert.deepEqual(abi.map((z) => `${z.person} ${z.datum} ${z.name} ${z.bemerkung}`), [
+    'erijon 2027-01-15 englisch schriftlich, Zentraltermin',
+    'erijon 2027-01-18 geschichte schriftlich',
+    'erijon 2027-01-22 bio schriftlich, Zentraltermin',
+    'erijon 2027-03-15 mathe mündlich, 15. oder 16.03.',
+    'koray 2027-01-13 deutsch schriftlich, Zentraltermin',
+    'koray 2027-01-18 geschichte schriftlich',
+    'koray 2027-01-27 physik schriftlich, Zentraltermin',
+    'koray 2027-03-15 englisch mündlich, 15. oder 16.03.',
+  ])
+  assert.ok(abi.every((z) => z.beginn === null), 'der plan nennt keine uhrzeiten')
+  assert.equal((await query("select count(*)::int as n from public.klausuren where art = 'klausur'")).rows[0].n, 18, 'klausuren bleiben')
+  assert.equal((await alsPerson(koray, "select count(*)::int as n from public.klausuren where art = 'abitur'")).rows[0].n, 8, 'beide lesen beide')
+  // die push-art klausur meldet die abiturpruefungen mit
+  for (const [zeit, user, text] of [
+    ['2026-12-30 17:10', koray, 'in zwei wochen abiprüfung: deutsch lk am 13.01. danach: geschichte lk in 19 tagen.'],
+    ['2027-01-01 17:10', erijon, 'in zwei wochen abiprüfung: englisch lk am 15.01. danach: geschichte lk in 17 tagen.'],
+    ['2027-01-12 17:10', koray, 'morgen abiprüfung: deutsch lk. danach: geschichte lk in 6 tagen.'],
+    ['2027-01-17 17:10', erijon, 'morgen abiprüfung: geschichte lk. koray schreibt sie auch. danach: bio lk in 5 tagen.'],
+    ['2027-01-17 17:10', koray, 'morgen abiprüfung: geschichte lk. erijon schreibt sie auch. danach: physik lk in 10 tagen.'],
+    ['2027-01-26 17:10', koray, 'morgen abiprüfung: physik lk.'],
+    ['2027-03-08 17:10', erijon, 'in einer woche abiprüfung: mathe am 15.03.'],
+    ['2027-03-14 17:10', koray, 'morgen abiprüfung: englisch.'],
+  ]) assert.equal(await meldung(zeit, user), text, `${zeit}`)
+
   // ------------------------------------------------------ die uebrigen arten
   // dienstag 17.11. 18:40, erijon hat nichts gelernt
   assert.equal(
@@ -310,7 +345,7 @@ try {
   )).rows[0]
   assert.deepEqual(rechte, { a: false, s: true })
 
-  console.log('klausuren: plan, rechte, push-art klausur und uebrige arten geprueft')
+  console.log('klausuren: plan, abiturtermine, rechte, push-art klausur und uebrige arten geprueft')
 } finally {
   await db.close()
 }

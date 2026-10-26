@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Fach, Klausur, Note, Notenstand, UserId } from './types'
-import { abstandText, datumKurz, eniKlausur, eniKlausurAusStand, kommendeKlausuren, naechsteKlausur, ohneNote, tageBis, zeitText } from './klausuren'
+import { abiText, abstandText, datumKurz, eniKlausur, eniKlausurAusStand, kommendeKlausuren, naechsteKlausur, ohneNote, tageBis, terminWort, zeitText } from './klausuren'
 
 const fach = (id: string, user: UserId, name: string, kursart: Fach['kursart'] = 'gk'): Fach =>
   ({ id, user, name, kursart, pruefungsfach: null, sortierung: 0 })
@@ -81,5 +81,21 @@ describe('klausuren', () => {
       { fach: 'mathe', lk: false, datum: '2026-11-23' },
       { fach: 'bio', lk: true, datum: '2026-11-20' },
     ], '2026-11-19')).toEqual({ fach: 'bio lk', datum: '2026-11-20', tage: 1 })
+  })
+
+  it('nennt abiturprüfungen als abi, mit der bemerkung aus dem plan', () => {
+    const abi: Klausur = { ...klausur('9', 'erijon', 'eg', '2027-01-18', null, null), art: 'abitur', bemerkung: 'schriftlich' }
+    const muendlich: Klausur = { ...abi, bemerkung: 'mündlich, 15. oder 16.03.' }
+    expect(abiText(abi)).toBe('abi schriftlich')
+    expect(abiText(muendlich)).toBe('abi mündlich, 15. oder 16.03.')
+    expect(abiText(klausur('1', 'erijon', 'em', '2026-11-23'))).toBeNull()
+    expect(terminWort(abi)).toBe('abi')
+    expect(terminWort(klausur('1', 'erijon', 'em', '2026-11-23'))).toBe('klausur')
+    // die abiprüfung zählt nicht als geschriebene klausur ohne note
+    const st: Notenstand = { faecher: FAECHER, noten: [], klausuren: [abi] }
+    expect(ohneNote(st, 'erijon', '2027-01-25')).toEqual([])
+    expect(eniKlausur([{ fach: 'geschichte', lk: true, datum: '2027-01-18', abitur: true }], '2027-01-04'))
+      .toEqual({ fach: 'geschichte lk', datum: '2027-01-18', tage: 14, abitur: true })
+    expect(eniKlausurAusStand(st, 'erijon', '2027-01-04')).toEqual({ fach: 'geschichte lk', datum: '2027-01-18', tage: 14, abitur: true })
   })
 })

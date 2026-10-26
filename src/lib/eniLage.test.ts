@@ -236,6 +236,24 @@ describe('Lage: Klausuren', () => {
     expect(lage).toContain('Am selben Tag im selben Fach: 27.10. sozialkunde, 18.11. geschichte.')
   })
 
+  it('nennt Abiturpruefungen mit schriftlich oder muendlich aus dem Plan', async () => {
+    const abi = (user: string, fach: string, datum: string, bemerkung: string) =>
+      ({ ...klausur(user, fach, datum), art: 'abitur', bemerkung })
+    const lage = await baueLage(
+      dbAus({
+        faecher,
+        klausuren: [
+          abi('u-erijon', 'eg', '2027-01-18', 'schriftlich'),
+          abi('u-erijon', 'ed', '2027-03-15', 'mündlich, 15. oder 16.03.'),
+        ],
+      }),
+      personen,
+      JETZT,
+    )
+    expect(lage).toContain('Mo 18.01. Abiturpruefung geschichte LK (in 102 Tagen, Uhrzeit offen, schriftlich)')
+    expect(lage).toContain('Mo 15.03. Abiturpruefung deutsch (in 158 Tagen, Uhrzeit offen, mündlich, 15. oder 16.03.)')
+  })
+
   it('meldet einen Ausfall, statt Termine zu schaetzen', async () => {
     expect(await baueLage(dbAus({ faecher }, ['klausuren']), personen, JETZT)).toContain('Klausuren: nicht lesbar.')
     expect(await baueLage(dbAus({ faecher }), personen, JETZT)).toContain('Erijon  keine mehr im Plan')
